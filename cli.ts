@@ -6,6 +6,8 @@ import { RwkvEngine } from "./src/rwkv-engine.ts"
 import { SessionManager } from "./src/session.ts"
 import { StorytellerAgent } from "./src/storyteller.ts"
 import { AgentLoop } from "./src/agent-loop.ts"
+import { GatewayServer } from "./src/gateway/server.ts"
+import { TuiChannel } from "./tui/index.ts"
 import { GenerateOpts, DEFAULT_GEN_OPTS } from "./src/types.ts"
 
 const __filename = fileURLToPath(import.meta.url)
@@ -17,17 +19,69 @@ const command = args[0]
 const modelPath = args.find((a) => a.startsWith("--model="))?.split("=")[1]
   || path.join(PROJECT_ROOT, "models/rwkv7-g1g-2.9b-20260526-ctx8192-Q4_K_M.gguf")
 const story = args.find((a) => a.startsWith("--story="))?.split("=")[1] || "default"
-const gpu = (args.find((a) => a.startsWith("--gpu="))?.split("=")[1] || "vulkan") as "vulkan" | "cuda" | "auto"
+const gpuArg = (args.find((a) => a.startsWith("--gpu="))?.split("=")[1] || "vulkan") as "vulkan" | "cuda" | "auto"
 const loraRaw = args.find((a) => a.startsWith("--lora="))?.split("=")[1]
 const loraPaths = loraRaw ? loraRaw.split(",").map((p) => p.startsWith("/") ? p : path.join(PROJECT_ROOT, p)) : undefined
 const fixParagraphs = args.includes("--fix-paragraphs") || args.includes("-p")
 const agentDepth = parseInt(args.find((a) => a.startsWith("--depth="))?.split("=")[1] || "5", 10)
 const grammarPath = args.find((a) => a.startsWith("--grammar="))?.split("=")[1]
+const gatewayPort = parseInt(args.find((a) => a.startsWith("--port="))?.split("=")[1] || "3030", 10)
 const input = args.slice(1).filter((a) => !a.startsWith("--")).join(" ")
-
 const stateDir = path.join(PROJECT_ROOT, "s", story)
 
 async function main() {
+  switch (command) {
+    case "gateway":
+      return runGateway()
+    case "tui":
+      return runTui()
+    default:
+      return runCli()
+  }
+}
+
+async function runGateway() {
+  const engine = new RwkvEngine(modelPath, path.join(PROJECT_ROOT, "s", "_gateway"))
+  await engine.init(gpuArg, loraPaths)
+
+  let grammar: string | undefined
+  if (grammarPath) {
+    grammar = await fsp.readFile(grammarPath, "utf-8")
+  }
+
+  console.error(`Gateway | port: ${gatewayPort} | model: ${path.basename(modelPath)} | gpu: ${gpuArg}`)
+
+  const server = new GatewayServer(engine)
+  await server.start(gatewayPort)
+  console.error(`Listening on http://0.0.0.0:${gatewayPort}`)
+  console.error(`Webapp: http://0.0.0.0:${gatewayPort}`)
+
+  const shutdown = async () => {
+    console.error("\nShutting down...")
+    await server.stop()
+    process.exit(0)
+  }
+  process.on("SIGINT", shutdown)
+  process.on("SIGTERM", shutdown)
+}
+
+async function runTui() {
+  const tui = new TuiChannel({
+    modelPath,
+    stateDir,
+    story,
+    gpu: gpuArg,
+    loraPaths,
+    fixParagraphs,
+    agentDepth,
+    grammar: grammarPath ? await fsp.readFile(grammarPath, "utf-8") : undefined,
+  })
+
+  await tui.init()
+  await tui.start()
+}
+
+async function runCli() {
   const engine = new RwkvEngine(modelPath, stateDir)
   const session = new SessionManager(stateDir, story, modelPath)
   const agent = new StorytellerAgent(engine, session, { fixParagraphBreak: fixParagraphs })
@@ -38,7 +92,7 @@ async function main() {
   async function cleanup(signal: string) {
     if (shutdown) return
     shutdown = true
-    console.error(`\n${signal} — saving state...`)
+    console.error(`\n${signal} - saving state...`)
     await cleanupAgent()
     process.exit(0)
   }
@@ -46,19 +100,18 @@ async function main() {
   process.on("SIGINT", () => cleanup("SIGINT"))
   process.on("SIGTERM", () => cleanup("SIGTERM"))
 
-  console.error(`RWKV Agent | model: ${path.basename(modelPath)} | gpu: ${gpu} | story: ${story}`)
+  console.error(`RWKV CLI | model: ${path.basename(modelPath)} | gpu: ${gpuArg} | story: ${story}`)
   if (loraPaths) console.error(`LoRA: ${loraPaths.join(", ")}`)
   if (fixParagraphs) console.error("Fix-paragraph-break enabled")
   console.error(`State: ${stateDir}`)
   console.error("---")
 
-  await engine.init(gpu, loraPaths)
+  await engine.init(gpuArg, loraPaths)
   await agent.init()
 
   let grammar: string | undefined
   if (grammarPath) {
     grammar = await fsp.readFile(grammarPath, "utf-8")
-    console.error(`Grammar: ${grammarPath}`)
   }
 
   const genOpts: Partial<GenerateOpts> = { grammar }
@@ -139,7 +192,7 @@ async function main() {
     case "interactive": {
       console.error("\nInteractive mode. Type 'exit' to quit, 'save' to checkpoint.\n")
       while (!shutdown) {
-        const prompt = new Promise<string>((resolve) => {
+        const prompt = await new Promise<string>((resolve) => {
           process.stdout.write("\n> ")
           let buf = ""
           const stdin = process.stdin
@@ -158,9 +211,9 @@ async function main() {
           stdin.on("data", onData)
         })
 
-        const input = await prompt
-        if (!input || input === "exit") break
-        if (input === "save") {
+        const inp = prompt
+        if (!inp || inp === "exit") break
+        if (inp === "save") {
           const name = `interactive_${Date.now()}`
           const info = await engine.saveCheckpoint(name)
           session.registerCheckpoint(name, engine.statePath(name))
@@ -170,7 +223,7 @@ async function main() {
         }
 
         process.stdout.write("\n")
-        const result = await agent.continueStoryStream(input, (t) => process.stdout.write(t), genOpts)
+        const result = await agent.continueStoryStream(inp, (t) => process.stdout.write(t), genOpts)
         process.stdout.write("\n")
       }
       break
@@ -214,23 +267,26 @@ async function main() {
 Usage: pnpm tsx cli.ts <command> [options]
 
 Commands:
-  tell [prompt]              Generate story text
-  agent [prompt]             Agent mode with tool use (read/write/edit/ls/find/grep)
-  chapter --num=N [prompt]   Write a chapter, save checkpoint
-  checkpoint save|load|ls    Manage RWKV state checkpoints
-  plan [prompt]              Generate story plan
-  interactive                Interactive story mode
-  continue [prompt]          Continue from latest checkpoint
-  state-info                 Show engine/session state info
+  gateway                Start gateway server (HTTP/WS API)
+  tui                    Start terminal UI (interactive TUI)
+  tell [prompt]          Generate story text
+  agent [prompt]         Agent mode with tool use
+  chapter --num=N        Write a chapter, save checkpoint
+  checkpoint save|load|ls
+  plan [prompt]          Generate story plan
+  interactive            Interactive story mode
+  continue [prompt]      Continue from latest checkpoint
+  state-info             Show engine/session state info
 
 Options:
-  --model=PATH         Model path (default: models/rwkv7-g1g-2.9b-...)
+  --model=PATH         Model path
   --story=NAME         Story slug (default: "default")
-  --gpu=TYPE           GPU backend: vulkan | cuda | auto (default: vulkan)
-  --lora=PATH          LoRA adapter(s), comma-separated (e.g. --lora=adapters/prose.gguf)
+  --gpu=TYPE           GPU backend: vulkan | cuda | auto
+  --lora=PATH          LoRA adapter(s), comma-separated
   --depth=N            Max agent loop depth (default: 5)
-  --grammar=PATH       GBNF grammar file for structured output
-  --fix-paragraphs, -p  Continue past \n\n EOS boundary (paragraph-break workaround)
+  --grammar=PATH       GBNF grammar file
+  --port=N             Gateway port (default: 3030)
+  --fix-paragraphs, -p Continue past \\n\\n EOS boundary
 `)
       process.exit(1)
   }

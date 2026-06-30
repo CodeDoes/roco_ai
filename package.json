@@ -10,6 +10,9 @@
     "continue": "tsx cli.ts continue",
     "checkpoint": "tsx cli.ts checkpoint",
     "state-info": "tsx cli.ts state-info",
+    "gateway": "tsx cli.ts gateway",
+    "tui": "tsx cli.ts tui",
+    "agent": "tsx cli.ts agent",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
@@ -25,13 +28,17 @@
   "type": "module",
   "dependencies": {
     "@node-llama-cpp/linux-x64-vulkan": "^3.18.1",
+    "express": "^5.2.1",
     "filesniffer": "^1.0.3",
     "node-llama-cpp": "^3.18.1",
     "simple-grep": "^0.0.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.0.1",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.22.4"
   }
 }

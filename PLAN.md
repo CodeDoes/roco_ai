@@ -11,7 +11,7 @@
 - [x] Paragraph break workaround
 - [x] Session persistence
 
-## Phase 2: Agent Loop (Current)
+## Phase 2: Agent Loop ✓
 
 - [x] Tool-calling agent loop (`src/agent-loop.ts`)
 - [x] Wire existing `tools/` into agent (`src/tool-registry.ts`)
@@ -23,18 +23,21 @@
 - [x] `--depth=N` / `--grammar=PATH` CLI flags
 - [x] Tested base RWKV 2.9B agent loop (see findings below)
 
-## Phase 3: Gateway & Channels
+## Phase 3: Gateway & Channels (Current)
 
-## Phase 4: Gateway & Channels
+- [ ] HTTP/WebSocket gateway (`src/gateway/`)
+- [ ] REST API (`/api/sessions`, `/api/session/:id/chat`)
+- [ ] Web channel (dashboard at `webapp/`)
+- [ ] TUI (terminal UI at `tui/`)
+- [ ] Model loader config
+- [ ] CLI improvements
 
-- [ ] HTTP/WebSocket gateway
-- [ ] Web channel (dashboard)
-- [ ] TUI (terminal UI)
-- [ ] CLI (current)
-- [ ] REST API
+## Phase 4: Multi-Channel Routing
+
 - [ ] Channel-agnostic session routing
+- [ ] File watcher (session changes → broadcast)
 
-## Phase 5: Skills & Memory
+## Deferred / Archived (formerly Phase 5)
 
 - [ ] Skill system (modular tool directories)
 - [ ] Long-term memory (state archiving + retrieval)
@@ -77,8 +80,9 @@ Training put on hold until harness proves base RWKV limits. If agent loop works 
 
 ## Immediate Next Steps
 
-1. Fix `generateStream` — true token-by-token streaming
-2. Add GBNF grammar for tool-call schema enforcement
-3. Test base RWKV agent loop: can 2.9B call tools with good prompting?
-4. Wire session checkpointing into agent loop
-5. Print tool call count/depth in `agent` output
+1. Gateway daemon (Express + WS) in `src/gateway/`
+2. REST API endpoints (sessions list, get, chat with streaming)
+3. Webapp dashboard (React or plain HTML/JS)
+4. TUI (blessed or simple readline-based)
+5. CLI extend to support gateway mode
+6. Model loader config (YAML/JSON for model paths, GPU, LoRA defaults)

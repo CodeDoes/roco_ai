@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "allowArbitraryExtensions": true,
     "allowImportingTsExtensions": true,
-    "types": ["node"],
+    "types": ["node", "express"],
   },
-  "include": ["cli.ts", "src/*", "tools/*"],
+  "include": ["cli.ts", "src/**/*", "tools/**/*", "tui/**/*"],
 }

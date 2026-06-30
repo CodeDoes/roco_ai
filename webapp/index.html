@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RWKV Chat</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; height: 100vh; }
+  .sidebar { width: 240px; background: #161b22; border-right: 1px solid #30363d; padding: 16px; overflow-y: auto; }
+  .sidebar h2 { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+  .story { padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; font-size: 13px; }
+  .story:hover { background: #1c2128; }
+  .story.active { background: #1f6feb22; border: 1px solid #1f6feb55; }
+  .main { flex: 1; display: flex; flex-direction: column; }
+  .header { padding: 12px 20px; border-bottom: 1px solid #30363d; }
+  .header h1 { font-size: 16px; }
+  .header .meta { font-size: 11px; color: #8b949e; margin-top: 2px; }
+  .messages { flex: 1; overflow-y: auto; padding: 20px; }
+  .msg { margin-bottom: 12px; max-width: 80%; }
+  .msg.user { margin-left: auto; }
+  .msg.user .bubble { background: #1f6feb; }
+  .msg.assistant .bubble { background: #21262d; border: 1px solid #30363d; }
+  .bubble { padding: 10px 14px; border-radius: 8px; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+  .input-area { padding: 12px 20px; border-top: 1px solid #30363d; display: flex; gap: 8px; }
+  .input-area textarea { flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #c9d1d9; font-size: 14px; resize: none; font-family: inherit; }
+  .input-area textarea:focus { outline: none; border-color: #1f6feb; }
+  .input-area button { padding: 8px 16px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; }
+  .input-area button:hover { background: #2ea043; }
+  .input-area button:disabled { opacity: .5; }
+  .status { padding: 4px 20px; background: #161b22; font-size: 11px; color: #8b949e; }
+  .loading { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #238636; margin-left: 6px; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <h2>Sessions</h2>
+  <div id="story-list"></div>
+</div>
+<div class="main">
+  <div class="header">
+    <h1 id="story-name">RWKV</h1>
+    <div class="meta" id="story-meta"></div>
+  </div>
+  <div class="status" id="status">Connected</div>
+  <div class="messages" id="messages"></div>
+  <div class="input-area">
+    <textarea id="input" rows="2" placeholder="Type..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+    <button id="send-btn" onclick="send()">Send</button>
+  </div>
+</div>
+<script>
+const GATEWAY = ""
+let ws = null
+
+const SESSIONS_KEY = "rwkv_sessions"
+function loadSessions() {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY)
+    return raw ? JSON.parse(raw) : [{ id: "default", messages: [] }]
+  } catch { return [{ id: "default", messages: [] }] }
+}
+function saveSessions(sessions) {
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+}
+
+let sessions = loadSessions()
+let active = sessions[0]?.id || "default"
+
+function renderSidebar() {
+  const list = document.getElementById("story-list")
+  list.innerHTML = sessions.map(s =>
+    `<div class="story ${s.id === active ? 'active' : ''}" onclick="switchSession('${s.id}')" ondblclick="renameSession('${s.id}')">${s.id}</div>`
+  ).join("")
+  const btn = document.createElement("button")
+  btn.textContent = "+"
+  btn.style.cssText = "width:100%;padding:6px;margin-top:8px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;cursor:pointer"
+  btn.onclick = newSession
+  list.appendChild(btn)
+}
+
+function switchSession(id) {
+  active = id
+  const s = sessions.find(s => s.id === id)
+  document.getElementById("story-name").textContent = id
+  document.getElementById("story-meta").textContent = `Messages: ${s?.messages?.length || 0}`
+  renderMessages(s?.messages || [])
+  renderSidebar()
+}
+
+function renderMessages(msgs) {
+  const container = document.getElementById("messages")
+  container.innerHTML = msgs.map(m =>
+    `<div class="msg ${m.role}"><div class="bubble">${esc(m.content)}</div></div>`
+  ).join("")
+  container.scrollTop = container.scrollHeight
+}
+
+function esc(t) { return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") }
+
+function newSession() {
+  const id = prompt("Session name:") || "session-" + Date.now()
+  if (sessions.find(s => s.id === id)) return alert("Exists")
+  sessions.push({ id, messages: [] })
+  saveSessions(sessions)
+  switchSession(id)
+}
+
+function renameSession(id) {
+  const newId = prompt("Rename:", id)
+  if (!newId || newId === id) return
+  const s = sessions.find(s => s.id === id)
+  if (s) s.id = newId
+  if (active === id) active = newId
+  saveSessions(sessions)
+  renderSidebar()
+}
+
+async function send() {
+  const input = document.getElementById("input")
+  const btn = document.getElementById("send-btn")
+  const prompt = input.value.trim()
+  if (!prompt) return
+  input.value = ""
+  btn.disabled = true
+  document.getElementById("status").textContent = "Generating..."
+  document.getElementById("status").innerHTML = "Generating<span class='loading'></span>"
+
+  const s = sessions.find(s => s.id === active)
+  if (!s) return
+  s.messages.push({ role: "user", content: prompt })
+  renderMessages(s.messages)
+
+  const assistantDiv = document.createElement("div")
+  assistantDiv.className = "msg assistant"
+  const bubble = document.createElement("div")
+  bubble.className = "bubble"
+  assistantDiv.appendChild(bubble)
+  document.getElementById("messages").appendChild(assistantDiv)
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "generate", prompt }))
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data)
+      if (m.type === "token") {
+        bubble.textContent += m.text
+      } else if (m.type === "done") {
+        s.messages.push({ role: "assistant", content: bubble.textContent })
+        saveSessions(sessions)
+        btn.disabled = false
+        document.getElementById("status").textContent = "Ready"
+        document.getElementById("story-meta").textContent = `Messages: ${s.messages.length}`
+      } else if (m.type === "error") {
+        bubble.textContent = "Error: " + m.message
+        btn.disabled = false
+        document.getElementById("status").textContent = "Error"
+      }
+    }
+  } else {
+    try {
+      const r = await fetch(GATEWAY + "/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      })
+      const d = await r.json()
+      bubble.textContent = d.result
+      s.messages.push({ role: "assistant", content: d.result })
+      saveSessions(sessions)
+      document.getElementById("story-meta").textContent = `Messages: ${s.messages.length}`
+    } catch (e) {
+      bubble.textContent = "Error: " + e.message
+    }
+    btn.disabled = false
+    document.getElementById("status").textContent = "Ready"
+  }
+}
+
+function connectWs() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:"
+  ws = new WebSocket(`${proto}//${location.host}`)
+  ws.onclose = () => setTimeout(connectWs, 2000)
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data)
+    if (m.type === "connected") console.log("WS ready")
+  }
+}
+
+switchSession(active)
+connectWs()
+</script>
+</body>
+</html>
