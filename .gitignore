@@ -1,8 +1,0 @@
-models/
-node_modules/
-sessions/
-workspace/
-*.state
-adapters/
-src/eval/.traces/
-inference-3210.pid
