@@ -1,0 +1,17 @@
+import ChapterTemplate from '../templates/chapter.mdx'
+
+Load this skill when writing or revising a chapter.
+
+## Process
+
+1. Load chapter checkpoint or restore from baseline
+2. Review chapter synopsis from plan for scene breakdown
+3. Write prose targeting <ChapterTemplate /> slot fill
+4. Run `story-chapter-analyze` on output for word/section counts
+5. Run `story-chapter-validate` with conditions (word range, section count)
+
+## Conventions
+
+- Each scene separated by `\n---\n`
+- Section headings `### Scene N: Title` for navigable structure
+- Track character POV shifts per scene

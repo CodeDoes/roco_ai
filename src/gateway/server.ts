@@ -3,7 +3,7 @@ import * as http from "http"
 import * as path from "path"
 import { fileURLToPath } from "url"
 import { WebSocketServer, WebSocket } from "ws"
-import { AgentEngine } from "../agent-engine.ts"
+import { AgentEngine } from "../core/agent-engine.ts"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)

@@ -1,5 +1,6 @@
 models/
 node_modules/
-s/
+sessions/
+workspace/
 *.state
 adapters/

@@ -1,4 +1,4 @@
-import { RwkvEngine } from "./rwkv-engine.ts"
+import { RwkvEngine } from "../engine/rwkv-engine.ts"
 import { SessionManager } from "./session.ts"
 import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks, ToolCall, ToolResult } from "./types.ts"
 import { toolDefs, toolHandlers, toolsToXml } from "./tool-registry.ts"
@@ -48,18 +48,9 @@ export class AgentLoop {
       callbacks?.onText?.(text)
       finalText += text
 
-      const cpName = `agent_turn_${String(depth).padStart(2, "0")}`
-      const cpInfo = await this.engine.saveCheckpoint(cpName)
-      this.session.registerCheckpoint(cpName, cpInfo.filePath)
-      await this.session.save()
-
       if (toolCalls.length === 0) break
 
       for (const call of toolCalls) {
-        const preCpName = `agent_pretool_${String(depth).padStart(2, "0")}_${call.name}`
-        const preCpInfo = await this.engine.saveCheckpoint(preCpName)
-        this.session.registerCheckpoint(preCpName, preCpInfo.filePath)
-
         const result = await this.executeTool(call)
         const resultBlock = this.formatToolResult(result)
         fullPrompt += raw + "\n\nUser: " + resultBlock + "\n\nAssistant: "
@@ -70,12 +61,11 @@ export class AgentLoop {
 
     callbacks?.onDone?.()
 
-    const cleaned = this.cleanOutput(finalText)
     this.session.addMessage({ role: "user", content: userInput })
-    this.session.addMessage({ role: "assistant", content: cleaned })
+    this.session.addMessage({ role: "assistant", content: finalText })
     await this.session.save()
 
-    return cleaned
+    return this.cleanOutput(finalText)
   }
 
   private buildSystemPrompt(): string {
@@ -138,7 +128,6 @@ export class AgentLoop {
   private cleanOutput(text: string): string {
     return text
       .replace(/^Assistant:\s*/i, "")
-      .replace(/<think>[\s\S]*?<\/think>\n*/g, "")
       .trim()
   }
 

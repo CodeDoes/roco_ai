@@ -1,79 +1,103 @@
 # For AI Coding Agents
 
-## Project State
+Active development. Storyteller agent + tool-calling agent loop + gateway/channels. See `PLAN.md` for milestones. Phase 3 (Gateway & Channels) current.
 
-Active development. Working storyteller agent with RWKV state management. Tools exist but not wired into agent loop yet. See PLAN.md for current milestones.
+## Commands
 
-## Important Files
+| `pnpm ...` | What |
+|------------|------|
+| `tell "prompt"` | Generate story text |
+| `agent "prompt"` | Agent mode with tool use (`--depth=N`, default 5) |
+| `chapter --num=N "prompt"` | Write chapter, save checkpoint |
+| `plan "outline"` | Generate story plan, save to `sessions/<session>/_plan.md` |
+| `interactive` | REPL mode (`exit` to quit, `save` to checkpoint) |
+| `continue "prompt"` | Resume from latest checkpoint |
+| `checkpoint save\|load\|ls [name]` | Manual checkpoint ops |
+| `state-info` | Show engine/session state |
+| `gateway` | Start engine + HTTP/WS server (default port 3030) |
+| `tui [--connect]` | Terminal UI (direct engine or gateway client) |
+| `typecheck` | `tsc --noEmit` |
 
-| File | Must-Read For |
-|------|---------------|
-| `cli.ts` | Entry point, argument parsing |
-| `src/rwkv-engine.ts` | Core engine: model lifecycle, state save/load, generate, LoRA |
-| `src/storyteller.ts` | Story agent: prompt building, chapter checkpoints, output cleaning |
-| `src/agent-loop.ts` | Agent loop: tool-call parsing, execution, multi-turn feedback |
-| `src/tool-registry.ts` | Tool definitions, descriptions, XML serialization for system prompt |
-| `src/session.ts` | Session JSON persistence |
-| `src/types.ts` | All shared type definitions (including ToolCall, ToolResult, ToolDef) |
-| `tools/*.ts` | File operation modules (now wired via agent-loop) |
-| `docs/*.md` | Architecture decisions and future plans |
-| `docs/future/*.md` | Aspirations, not implemented |
+Default model: `models/rwkv7-g1g-2.9b-20260526-ctx8192-Q4_K_M.gguf`
 
-## Key Patterns to Follow
+## File Layout
 
-### Engine + Session + Agent Composition
-Engine handles model I/O. Session handles persistence. Agent handles orchestration. They compose via constructor injection:
+| Path | Role |
+|------|------|
+| `cli.ts` | Entry point, 10 commands, arg parsing |
+| `src/core/types.ts` | Shared type definitions |
+| `src/core/session.ts` | Session persistence, JSONL event log (`sessions/<id>/session.jsonl`) |
+| `src/core/agent-loop.ts` | Tool-call loop runtime: generate → parse → execute → feedback |
+| `src/core/agent-engine.ts` | Standalone agent engine with labeled session management |
+| `src/core/tool-registry.ts` | Tool defs + handlers, XML serialization for system prompt |
+| `src/engine/rwkv-engine.ts` | Model lifecycle, state save/load, generate, LoRA |
+| `src/agents/storyteller/` | Story generation agent (prose mode) — `instructions.mdx` loaded at init |
+| `src/agents/storyteller/skills/` | Skill modules + `tools/story-analyze.ts`, `tools/story-validate.ts` |
+| `src/agents/coder/` | Code agent (skeleton) — full 7-tool access |
+| `src/tools/*.ts` | Shared tool implementations (read, write, edit, ls, mkdir, grep, find) |
+| `src/skills/` | Global skill modules (instructions + subagent dispatch) |
+| `src/gateway/server.ts` | Express + WebSocket server, REST chat + WS broadcast |
+| `src/channels/tui/index.ts` | Terminal UI (direct engine or gateway client) |
+| `src/channels/web/index.html` | Browser dashboard (served by gateway) |
+| `src/grammars/tool_call.gbnf` | GBNF grammar constraining tool call output |
+| `sessions/<ts>_<id>_<slug>/` | Per-session dir: `session.jsonl`, `_state_*.state`, `_system_baseline.state` |
+| `workspace/` | Project files |
+| `docs/` | Architecture docs + future plans |
+
+## Architecture
+
+5 layers: Gateway → Channel → Agent → Session → Engine
+
+```
+cli.ts → RwkvEngine (src/engine/)
+       → SessionManager (src/core/) → sessions/<id>/
+       → StorytellerAgent (src/agents/) / AgentLoop (src/core/)
+       → GatewayServer (src/gateway/, port 3030)
+```
+
+Sessions are JSONL event logs. Each line typed: `init`, `message`, `checkpoint`, `baseline`. Binary state files alongside in the session directory.
+
+Key pattern — constructor injection:
 ```ts
-const engine = new RwkvEngine(modelPath, stateDir)
-const session = new SessionManager(stateDir, story, modelPath)
+const engine = new RwkvEngine(modelPath, sessionDir)
+const session = new SessionManager(sessionsDir, story, modelPath)
 const agent = new StorytellerAgent(engine, session, config)
+const agentLoop = new AgentLoop(engine, session, maxDepth)
+const gateway = new GatewayServer(agentEngine, webappDir)
 ```
 
-### State Checkpoints
-Always save state before potentially destructive operations. Restore on failure. Checkpoints are full sequence states (~21MB for 2.9B).
+## State Management
 
-### Agent Loop
-`AgentLoop` wraps engine + session, runs `generate → parseToolCalls → execute → feedback → repeat`. Uses `<tool_call>` / `<tool_result>` XML tags. Call `agent.run(userInput)` for single request. Text output is accumulated across all turns; tool calls and results are stripped from visible output but kept in prompt context.
+- RWKV state is fixed-size (~21MB for 2.9B). No KV cache growth.
+- System prompt baked once via `bakeSystemPrompt()` → `_system_baseline.state`
+- Named checkpoints: `_state_<name>.state`
+- State checkpoints only valuable after significant token ingestion or to lock behavior modes. Saving after short exchanges wastes I/O for ~21MB per write.
+- Always save before destructive ops, restore on failure
+- Agent loop does NOT save per-turn checkpoints (wasteful I/O for short exchanges). Checkpoints only at chapter boundaries or manual save.
+- Restore strategy: load closest previous checkpoint, replay remaining messages to rebuild state.
 
-Tools are defined in `tool-registry.ts` with `ToolDef` interface (name, description, parameters). Tool handlers live alongside tool definitions and delegate to `tools/*.ts` functions.
+## Tool Protocol
 
-### Tool Call XML Format
-Model outputs:
-```xml
-<tool_call>
-{"name": "read", "args": {"path": "file.txt"}}
-</tool_call>
-```
-Agent feeds back:
-```xml
-<tool_result name="read" success="true">
-file content here
-</tool_result>
-```
+Model outputs `<tool_call>\n{"name": "...", "args": {...}}\n</tool_call>`. Agent feeds back `<tool_result name="..." success="true|false">\n...\n</tool_result>`. Results truncated to 2000 chars.
 
-### LoRA Through `any` Cast`
-
-### Module Pattern
-Tools export default functions. Functions are pure (input → output). No side effects except filesystem. See `tools/` for examples.
+GBNF grammar at `src/grammars/tool_call.gbnf` constrains output to valid tool calls. Load via `--grammar=tool_call.gbnf` (resolved from `src/grammars/` if relative).
 
 ## Known Quirks
 
-- `generateStream` is currently a batch wrapper, not true streaming. `generate()` builds full result, then feeds to callback.
-- `fixParagraphBreak` is a heuristic — detects EOS after `\n\n`, injects newline token to continue. Quality degrades over repeated fixes.
-- EOS token access via `(model as any).tokenEos?.()` — fragile cast.
-- `find.ts` and `grep.ts` have path resolution bugs (don't join parent dir on recursive calls).
+- `generateStream` is a batch wrapper, not true streaming. `generate()` builds full result then feeds to callback.
+- `fixParagraphBreak` heuristic: detects EOS after `\n\n`, injects newline token to continue. Quality degrades over repeated fixes.
+- LoRA API via `any` cast on `node-llama-cpp` types.
+- `<think>` blocks preserved in session history and fed back as context for state consistency. RNN state encodes every token — removing blocks breaks what model "remembers". Still stripped from final return/display output only.
+- Model sometimes hallucinates `<tool_result>` blocks (GBNF grammar prevents); pick wrong tool names (needs prompt tuning).
 
 ## Testing
 
-```bash
-pnpm typecheck  # tsc --noEmit
-# No test runner configured yet
-```
+Only `pnpm typecheck` (`tsc --noEmit`). No test runner.
 
-## LoRA Training Pipeline
+## Config
 
-1. Get `.pth` base model from HuggingFace
-2. Prepare jsonl dataset
-3. Train via RWKV-PEFT on Runpod/Kaggle
-4. Convert `.pth` LoRA → `.gguf` LoRA
-5. Load with `--lora=adapters/story.gguf`
+- `pnpm` required (v11.9.0). Lockfile: `pnpm-lock.yaml`. Workspace: `pnpm-workspace.yaml` (allows `esbuild` and `node-llama-cpp` builds).
+- ESM (`"type": "module"`). Run with `tsx`. TypeScript 6.0.
+- GPU defaults to Vulkan. Override `--gpu=cuda` or `--gpu=auto`.
+- LoRA via `--lora=path1.gguf,path2.gguf` (relative paths resolved from project root).
+- `node-llama-cpp` v3.18.1, Linux Vulkan bindings.

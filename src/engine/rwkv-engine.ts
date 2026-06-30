@@ -1,5 +1,5 @@
 import { getLlama, LlamaModel, LlamaContext, LlamaContextSequence, LlamaGrammar, LlamaGrammarEvaluationState } from "node-llama-cpp"
-import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks } from "./types.ts"
+import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks } from "../core/types.ts"
 import type { Token } from "node-llama-cpp"
 
 interface StateInfo {

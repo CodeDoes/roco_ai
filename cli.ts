@@ -2,18 +2,21 @@
 import { promises as fsp } from "fs"
 import * as path from "path"
 import { fileURLToPath } from "url"
-import { RwkvEngine } from "./src/rwkv-engine.ts"
-import { SessionManager } from "./src/session.ts"
-import { StorytellerAgent } from "./src/storyteller.ts"
-import { AgentLoop } from "./src/agent-loop.ts"
-import { AgentEngine } from "./src/agent-engine.ts"
+import { RwkvEngine } from "./src/engine/rwkv-engine.ts"
+import { SessionManager } from "./src/core/session.ts"
+import { StorytellerAgent } from "./src/agents/storyteller/index.ts"
+import { AgentLoop } from "./src/core/agent-loop.ts"
+import { AgentEngine } from "./src/core/agent-engine.ts"
 import { GatewayServer } from "./src/gateway/server.ts"
-import { Tui } from "./tui/index.ts"
-import { GenerateOpts, DEFAULT_GEN_OPTS } from "./src/types.ts"
+import { Tui } from "./src/channels/tui/index.ts"
+import { GenerateOpts, DEFAULT_GEN_OPTS } from "./src/core/types.ts"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname)
+const SESSIONS_DIR = path.join(PROJECT_ROOT, "sessions")
+const GRAMMARS_DIR = path.join(PROJECT_ROOT, "src", "grammars")
+const WEBAPP_DIR = path.join(PROJECT_ROOT, "src", "channels", "web")
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -28,7 +31,10 @@ const agentDepth = parseInt(args.find((a) => a.startsWith("--depth="))?.split("=
 const grammarPath = args.find((a) => a.startsWith("--grammar="))?.split("=")[1]
 const gatewayPort = parseInt(args.find((a) => a.startsWith("--port="))?.split("=")[1] || "3030", 10)
 const input = args.slice(1).filter((a) => !a.startsWith("--")).join(" ")
-const stateDir = path.join(PROJECT_ROOT, "s", story)
+
+function makeGrammarPath(p: string): string {
+  return path.isAbsolute(p) ? p : path.join(GRAMMARS_DIR, p)
+}
 
 async function main() {
   switch (command) {
@@ -42,13 +48,14 @@ async function main() {
 }
 
 async function runGateway() {
+  const gwStateDir = path.join(SESSIONS_DIR, "_gateway")
   console.error(`RWKV Gateway | port: ${gatewayPort} | model: ${path.basename(modelPath)}`)
 
-  const engine = new RwkvEngine(modelPath, path.join(PROJECT_ROOT, "s", "_gateway"))
+  const engine = new RwkvEngine(modelPath, gwStateDir)
   await engine.init(gpuArg, loraPaths)
-  const agent = new AgentEngine(engine, path.join(PROJECT_ROOT, "s", "_gateway"))
+  const agent = new AgentEngine(engine, gwStateDir)
   await agent.init()
-  const server = new GatewayServer(agent, path.join(PROJECT_ROOT, "webapp"))
+  const server = new GatewayServer(agent, WEBAPP_DIR)
 
   await server.start(gatewayPort)
   console.error(`  API:  http://0.0.0.0:${gatewayPort}`)
@@ -68,16 +75,18 @@ async function runGateway() {
 async function runTui() {
   const mode = args.includes("--connect") ? "gateway_client" : "direct"
   const gatewayHost = args.find((a) => a.startsWith("--host="))?.split("=")[1]
+  const session = new SessionManager(SESSIONS_DIR, story, modelPath)
+  const sessionDir = session.sessionDirPath
 
   const tui = new Tui({
     modelPath,
-    stateDir,
+    stateDir: sessionDir,
     story,
     gpu: gpuArg,
     loraPaths,
     fixParagraphs,
     agentDepth,
-    grammar: grammarPath ? await fsp.readFile(grammarPath, "utf-8") : undefined,
+    grammar: grammarPath ? await fsp.readFile(makeGrammarPath(grammarPath), "utf-8") : undefined,
     gatewayPort,
     mode: mode as any,
     gatewayHost,
@@ -87,8 +96,9 @@ async function runTui() {
 }
 
 async function runCli() {
-  const engine = new RwkvEngine(modelPath, stateDir)
-  const session = new SessionManager(stateDir, story, modelPath)
+  const session = new SessionManager(SESSIONS_DIR, story, modelPath)
+  const sessionDir = session.sessionDirPath
+  const engine = new RwkvEngine(modelPath, sessionDir)
   const agent = new StorytellerAgent(engine, session, { fixParagraphBreak: fixParagraphs })
 
   let cleanupAgent: () => Promise<void> = () => agent.dispose()
@@ -108,7 +118,7 @@ async function runCli() {
   console.error(`RWKV CLI | model: ${path.basename(modelPath)} | gpu: ${gpuArg} | story: ${story}`)
   if (loraPaths) console.error(`LoRA: ${loraPaths.join(", ")}`)
   if (fixParagraphs) console.error("Fix-paragraph-break enabled")
-  console.error(`State: ${stateDir}`)
+  console.error(`Session: ${sessionDir}`)
   console.error("---")
 
   await engine.init(gpuArg, loraPaths)
@@ -116,7 +126,7 @@ async function runCli() {
 
   let grammar: string | undefined
   if (grammarPath) {
-    grammar = await fsp.readFile(grammarPath, "utf-8")
+    grammar = await fsp.readFile(makeGrammarPath(grammarPath), "utf-8")
   }
 
   const genOpts: Partial<GenerateOpts> = { grammar }
@@ -187,8 +197,8 @@ async function runCli() {
       console.error(`\nGenerating plan...\n`)
       const result = await engine.generate(planPrompt, { ...DEFAULT_GEN_OPTS, maxTokens: 2048, temperature: 0.9, ...genOpts })
       console.log(result)
-      const planPath = path.join(stateDir, "_plan.md")
-      await fsp.mkdir(stateDir, { recursive: true })
+      const planPath = path.join(sessionDir, "_plan.md")
+      await fsp.mkdir(sessionDir, { recursive: true })
       await fsp.writeFile(planPath, result, "utf-8")
       console.error(`\nPlan saved to ${planPath}`)
       break
@@ -289,7 +299,7 @@ Options:
   --gpu=TYPE           GPU backend: vulkan | cuda | auto
   --lora=PATH          LoRA adapter(s)
   --depth=N            Max agent loop depth (default: 5)
-  --grammar=PATH       GBNF grammar file
+  --grammar=PATH       GBNF grammar file (resolved from src/grammars/ if relative)
   --port=N             Gateway port (default: 3030)
   --host=URL           Gateway URL for --connect mode
   --connect            TUI connects to running gateway

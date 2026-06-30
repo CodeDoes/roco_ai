@@ -1,21 +1,15 @@
-import { RwkvEngine } from "./rwkv-engine.ts"
-import { SessionManager } from "./session.ts"
-import { StoryState, ChapterInfo, DEFAULT_GEN_OPTS, RwkvMessage, GenerateOpts } from "./types.ts"
+import { promises as fsp } from "fs"
+import * as path from "path"
+import { fileURLToPath } from "url"
+import { RwkvEngine } from "../../engine/rwkv-engine.ts"
+import { SessionManager } from "../../core/session.ts"
+import { StoryState, ChapterInfo, DEFAULT_GEN_OPTS, GenerateOpts } from "../../core/types.ts"
 
-const STORYTELLER_SYSTEM = `You are a creative writing AI assistant. You write compelling fiction with rich worldbuilding, consistent character development, and engaging plots.
-
-Core rules:
-- Write proactively. Do not ask questions.
-- Maintain consistent tone, POV, and tense throughout.
-- Show, don't tell. Use sensory details, dialogue, and action.
-- Each chapter section should advance plot, develop character, or deepen worldbuilding.
-- Track word counts. Chapter sections target 400-800 words.
-- Keep responses minimal — no verbose summaries or step-by-step narration. Just write.`
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 function cleanOutput(text: string): string {
   return text
     .replace(/^Assistant:\s*/i, "")
-    .replace(/<think>[\s\S]*?<\/think>\n*/g, "")
     .trim()
 }
 
@@ -24,6 +18,7 @@ export class StorytellerAgent {
   private session: SessionManager
   private storyState: StoryState | null = null
   private fixParagraphBreak: boolean
+  private systemPrompt: string = ""
 
   constructor(
     engine: RwkvEngine,
@@ -36,11 +31,15 @@ export class StorytellerAgent {
   }
 
   async init() {
+    this.systemPrompt = await fsp.readFile(
+      path.join(__dirname, "instructions.mdx"),
+      "utf-8",
+    )
     await this.session.ensureDir()
     const sess = await this.session.load()
 
     if (sess.status === "new") {
-      await this.engine.bakeSystemPrompt(STORYTELLER_SYSTEM)
+      await this.engine.bakeSystemPrompt(this.systemPrompt)
       await this.session.save()
     } else {
       await this.engine.loadBaseline()
@@ -51,7 +50,7 @@ export class StorytellerAgent {
     const sess = this.session.get()
     sess.status = "active"
 
-    const history = this.session.buildPrompt(STORYTELLER_SYSTEM)
+    const history = this.session.buildPrompt(this.systemPrompt)
     const fullPrompt = history + userInput + "\n\n"
 
     const raw = await this.engine.generate(fullPrompt, {
@@ -63,7 +62,7 @@ export class StorytellerAgent {
 
     const cleaned = cleanOutput(raw)
     this.session.addMessage({ role: "user", content: userInput })
-    this.session.addMessage({ role: "assistant", content: cleaned })
+    this.session.addMessage({ role: "assistant", content: raw })
     await this.session.save()
 
     return cleaned
@@ -77,7 +76,7 @@ export class StorytellerAgent {
     const sess = this.session.get()
     sess.status = "active"
 
-    const history = this.session.buildPrompt(STORYTELLER_SYSTEM)
+    const history = this.session.buildPrompt(this.systemPrompt)
     const fullPrompt = history + userInput + "\n\n"
 
     const raw = await this.engine.generateStream(
@@ -88,7 +87,7 @@ export class StorytellerAgent {
 
     const cleaned = cleanOutput(raw)
     this.session.addMessage({ role: "user", content: userInput })
-    this.session.addMessage({ role: "assistant", content: cleaned })
+    this.session.addMessage({ role: "assistant", content: raw })
     await this.session.save()
 
     return cleaned

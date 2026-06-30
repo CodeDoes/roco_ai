@@ -1,11 +1,11 @@
 import * as readline from "readline"
 import * as path from "path"
-import { RwkvEngine } from "../src/rwkv-engine.ts"
-import { AgentEngine } from "../src/agent-engine.ts"
-import { GatewayServer } from "../src/gateway/server.ts"
-import { DEFAULT_GEN_OPTS } from "../src/types.ts"
+import { RwkvEngine } from "../../engine/rwkv-engine.ts"
+import { AgentEngine } from "../../core/agent-engine.ts"
+import { GatewayServer } from "../../gateway/server.ts"
+import { DEFAULT_GEN_OPTS } from "../../core/types.ts"
 
-const PROJECT_ROOT = path.resolve(import.meta.dirname!, "..")
+const PROJECT_ROOT = path.resolve(import.meta.dirname!, "../..")
 
 interface TuiOptions {
   modelPath: string

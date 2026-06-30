@@ -1,6 +1,6 @@
 import * as path from "path"
 import { promises as fsp } from "fs"
-import { RwkvEngine } from "./rwkv-engine.ts"
+import { RwkvEngine } from "../engine/rwkv-engine.ts"
 import { AgentLoop } from "./agent-loop.ts"
 import { SessionManager } from "./session.ts"
 import { GenerateOpts, DEFAULT_GEN_OPTS, SessionInfo, ChatMessage } from "./types.ts"
