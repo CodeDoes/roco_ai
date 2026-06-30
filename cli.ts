@@ -3,6 +3,7 @@ import { promises as fsp } from "fs"
 import * as path from "path"
 import { fileURLToPath } from "url"
 import { RwkvEngine } from "./src/engine/rwkv-engine.ts"
+import { RwkvApiEngine } from "./src/engine/rwkv-api-engine.ts"
 import { SessionManager } from "./src/core/session.ts"
 import { StorytellerAgent } from "./src/agents/storyteller/index.ts"
 import { AgentLoop } from "./src/core/agent-loop.ts"
@@ -30,6 +31,7 @@ const fixParagraphs = args.includes("--fix-paragraphs") || args.includes("-p")
 const agentDepth = parseInt(args.find((a) => a.startsWith("--depth="))?.split("=")[1] || "5", 10)
 const grammarPath = args.find((a) => a.startsWith("--grammar="))?.split("=")[1]
 const gatewayPort = parseInt(args.find((a) => a.startsWith("--port="))?.split("=")[1] || "3030", 10)
+const apiBase = args.find((a) => a.startsWith("--api="))?.split("=")[1]
 const input = args.slice(1).filter((a) => !a.startsWith("--")).join(" ")
 
 function makeGrammarPath(p: string): string {
@@ -47,11 +49,17 @@ async function main() {
   }
 }
 
+function createEngine(modelPath: string, stateDir: string): RwkvEngine {
+  return (apiBase
+    ? new RwkvApiEngine(modelPath, stateDir, apiBase)
+    : new RwkvEngine(modelPath, stateDir)) as unknown as RwkvEngine
+}
+
 async function runGateway() {
   const gwStateDir = path.join(SESSIONS_DIR, "_gateway")
   console.error(`RWKV Gateway | port: ${gatewayPort} | model: ${path.basename(modelPath)}`)
 
-  const engine = new RwkvEngine(modelPath, gwStateDir)
+  const engine = createEngine(modelPath, gwStateDir)
   await engine.init(gpuArg, loraPaths)
   const agent = new AgentEngine(engine, gwStateDir)
   await agent.init()
@@ -98,7 +106,7 @@ async function runTui() {
 async function runCli() {
   const session = new SessionManager(SESSIONS_DIR, story, modelPath)
   const sessionDir = session.sessionDirPath
-  const engine = new RwkvEngine(modelPath, sessionDir)
+  const engine = createEngine(modelPath, sessionDir)
   const agent = new StorytellerAgent(engine, session, { fixParagraphBreak: fixParagraphs })
 
   let cleanupAgent: () => Promise<void> = () => agent.dispose()
@@ -277,6 +285,152 @@ async function runCli() {
       break
     }
 
+    // ---- MoSE commands ----
+
+    case "mose": {
+      const sub = args[1]
+
+      if (sub === "expert") {
+        const subsub = args[2]
+
+        if (subsub === "create") {
+          const name = args[3]
+          if (!name) { console.error("Usage: mose expert create <name> [--text=...]"); break }
+          const text = args.find((a) => a.startsWith("--text="))?.split("=").slice(1).join("=")
+            || input
+          if (!text) { console.error("Provide expert text via --text=... or as trailing argument"); break }
+          const expert = await engine.mose.createExpert(name, text)
+          console.error(`Expert "${name}" created (${expert.stateFile})`)
+        } else if (subsub === "ls") {
+          const experts = engine.mose.list()
+          if (experts.length === 0) { console.error("No experts"); break }
+          for (const e of experts) {
+            const stat = await fsp.stat(e.stateFile).catch(() => null)
+            const size = stat ? `(${(stat.size / 1024).toFixed(1)} KB)` : "(missing)"
+            console.error(`  ${e.name} weight=${e.weight} ${size}`)
+          }
+        } else if (subsub === "rm") {
+          const name = args[3]
+          if (!name) { console.error("Usage: mose expert rm <name>"); break }
+          await engine.mose.removeExpert(name)
+          console.error(`Removed expert "${name}"`)
+        } else {
+          console.error("Usage: mose expert create|ls|rm [name]")
+        }
+        break
+      }
+
+      if (sub === "blend") {
+        // mose blend name1=weight1 name2=weight2 ...
+        const weightPairs = args.slice(2)
+        if (weightPairs.length === 0) { console.error("Usage: mose blend name=weight [name=weight ...]"); break }
+        const weights: Record<string, number> = {}
+        for (const p of weightPairs) {
+          const [name, w] = p.split("=")
+          weights[name] = parseFloat(w)
+        }
+        await engine.mose.apply(weights)
+        console.error(`Blended: ${JSON.stringify(weights)}`)
+        break
+      }
+
+      if (sub === "generate") {
+        const prompt = input
+        if (!prompt) { console.error("Usage: mose generate <prompt> [name=weight ...]"); break }
+        const weightPairs = args.slice(2).filter((a) => a.includes("=") && !a.startsWith("--"))
+        const weights: Record<string, number> = {}
+        for (const p of weightPairs) {
+          const [name, w] = p.split("=")
+          weights[name] = parseFloat(w)
+        }
+        const result = await engine.generateWithBlend(prompt, Object.keys(weights).length > 0 ? weights : undefined)
+        console.log(result)
+        break
+      }
+
+      if (sub === "segment") {
+        // Parse segment definitions (for now, 2 expert segments from CLI args)
+        console.error("Segment routing: define segments in code or use the gateway API")
+        console.error("  POST /mose/segment with JSON body: { segments: [{text, blend}] }")
+        break
+      }
+
+      console.error(`
+Usage: mose <subcommand>
+
+Subcommands:
+  expert create <name> --text="..."   Create expert state from text
+  expert ls                           List experts
+  expert rm <name>                    Remove expert
+  blend name=weight [...]             Blend experts into sequence
+  generate <prompt> [name=weight ...] Blend + generate
+  segment                             Segment routing (use API)
+`)
+      break
+    }
+
+    // ---- MoLE commands ----
+
+    case "lora": {
+      const sub = args[1]
+
+      if (sub === "add") {
+        const name = args[2]
+        const filePath = args.find((a) => a.startsWith("--file="))?.split("=").slice(1).join("=")
+        const scaleRaw = args.find((a) => a.startsWith("--scale="))?.split("=")[1]
+        if (!name || !filePath) { console.error("Usage: lora add <name> --file=<path> [--scale=N]"); break }
+        const absPath = filePath.startsWith("/") ? filePath : path.join(PROJECT_ROOT, filePath)
+        engine.loraMgr.add(name, absPath, scaleRaw ? parseFloat(scaleRaw) : 1.0)
+        console.error(`LoRA "${name}" registered (${absPath})`)
+        break
+      }
+
+      if (sub === "rm") {
+        const name = args[2]
+        if (!name) { console.error("Usage: lora rm <name>"); break }
+        engine.loraMgr.remove(name)
+        console.error(`Removed LoRA "${name}"`)
+        break
+      }
+
+      if (sub === "ls") {
+        const adapters = engine.loraMgr.list()
+        const active = engine.loraMgr.getActive()
+        if (adapters.length === 0) { console.error("No LoRA adapters registered"); break }
+        for (const a of adapters) {
+          const isActive = active.includes(a.name)
+          console.error(`  ${a.name} ${isActive ? "(active)" : ""} scale=${a.scale} ${a.filePath}`)
+        }
+        break
+      }
+
+      if (sub === "activate") {
+        const names = args.slice(2)
+        if (names.length === 0) { console.error("Usage: lora activate <name> [name ...]"); break }
+        await engine.loraMgr.activate(...names)
+        console.error(`Activated LoRA: ${names.join(", ")}`)
+        break
+      }
+
+      if (sub === "deactivate") {
+        await engine.loraMgr.deactivateAll()
+        console.error("All LoRA adapters deactivated")
+        break
+      }
+
+      console.error(`
+Usage: lora <subcommand>
+
+Subcommands:
+  add <name> --file=<path> [--scale=N]   Register LoRA adapter
+  rm <name>                               Remove LoRA adapter
+  ls                                      List registered adapters
+  activate <name> [name ...]              Activate adapter(s)
+  deactivate                              Deactivate all
+`)
+      break
+    }
+
     default:
       console.error(`
 Usage: pnpm tsx cli.ts <command> [options]
@@ -292,9 +446,12 @@ Commands:
   interactive          Interactive story mode
   continue [prompt]    Continue from latest checkpoint
   state-info           Show engine/session state info
+  mose                 Mixture of State Experts (see mose --help)
+  lora                 LoRA expert management (see lora --help)
 
 Options:
-  --model=PATH         Model path
+  --model=PATH         Model path (ignored with --api)
+  --api=URL            Rust inference API base URL (e.g. http://localhost:3100)
   --story=NAME         Story slug
   --gpu=TYPE           GPU backend: vulkan | cuda | auto
   --lora=PATH          LoRA adapter(s)

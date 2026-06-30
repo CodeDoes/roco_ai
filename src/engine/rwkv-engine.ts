@@ -1,5 +1,7 @@
 import { getLlama, LlamaModel, LlamaContext, LlamaContextSequence, LlamaGrammar, LlamaGrammarEvaluationState } from "node-llama-cpp"
 import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks } from "../core/types.ts"
+import type { MoSEConfig, MoseBlendWeights } from "../core/types.ts"
+import { MoSEEngine, LoRAManager } from "./mose-engine.ts"
 import type { Token } from "node-llama-cpp"
 
 interface StateInfo {
@@ -31,10 +33,20 @@ export class RwkvEngine {
   private stateDir: string
   private systemState: SystemPromptState | null = null
   private loras: LoraOpts | null = null
+  /** MoSE — Mixture of State Experts. Created after init(). */
+  mose!: MoSEEngine
+  /** LoRA expert manager. Created after init(). */
+  loraMgr!: LoRAManager
 
   constructor(modelPath: string, stateDir: string) {
     this.modelPath = modelPath
     this.stateDir = stateDir
+  }
+
+  /** Initialize MoSE + LoRA managers (safe to call after init resolves). */
+  private initMoSE() {
+    this.mose = new MoSEEngine(this, this.stateDir)
+    this.loraMgr = new LoRAManager(this)
   }
 
   async init(gpu: "vulkan" | "cuda" | "auto" = "vulkan", loraPaths?: string | string[]) {
@@ -54,6 +66,7 @@ export class RwkvEngine {
     })
     const sequence = context.getSequence()
     this.ctx = { llama, model, context, sequence }
+    this.initMoSE()
   }
 
   async setLora(loraPaths: string | string[]) {
@@ -248,6 +261,37 @@ export class RwkvEngine {
 
   getStateSize(): number {
     return this.ensureCtx().context.stateSize
+  }
+
+  /**
+   * Generate with MoSE state blending.
+   * Blends expert states → loads into sequence → generates.
+   */
+  async generateWithBlend(
+    prompt: string,
+    blend?: MoseBlendWeights,
+    opts: GenOptsWithExtras = {}
+  ): Promise<string> {
+    await this.mose.apply(blend)
+    return this.generate(prompt, opts)
+  }
+
+  /**
+   * Generate with MoSE segment routing.
+   * Each segment uses a different state blend before evaluation.
+   */
+  async generateWithSegments(
+    segments: { text: string; blend: MoseBlendWeights }[],
+    opts: GenOptsWithExtras = {}
+  ): Promise<string> {
+    // Last segment's text is treated as the prompt for generation
+    const last = segments.pop()!
+    for (const seg of segments) {
+      await this.mose.segmentRoute([seg])
+    }
+    // Blend and generate for final segment
+    await this.mose.apply(last.blend)
+    return this.generate(last.text, opts)
   }
 
   async dispose() {

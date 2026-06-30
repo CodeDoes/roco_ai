@@ -104,6 +104,126 @@ export class GatewayServer {
         res.status(500).json({ error: err.message })
       }
     })
+
+    // ---- MoSE endpoints ----
+
+    const mose = () => this.agent.engine.mose
+    const loraMgr = () => this.agent.engine.loraMgr
+
+    /** POST /mose/experts — create a new expert state from text. */
+    this.app.post("/mose/experts", async (req, res) => {
+      try {
+        const { name, text, weight } = req.body
+        if (!name || !text) { res.status(400).json({ error: "name and text required" }); return }
+        const expert = await mose().createExpert(name, text, weight ?? 1.0)
+        res.json({ expert })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    /** GET /mose/experts — list registered experts. */
+    this.app.get("/mose/experts", (_req, res) => {
+      res.json({ experts: mose().list() })
+    })
+
+    /** DELETE /mose/experts/:name — remove an expert. */
+    this.app.delete("/mose/experts/:name", async (req, res) => {
+      try {
+        const ok = await mose().removeExpert(req.params.name)
+        res.json({ removed: ok })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    /** POST /mose/blend — set blend weights and load blended state. */
+    this.app.post("/mose/blend", async (req, res) => {
+      try {
+        const { weights } = req.body
+        if (!weights) { res.status(400).json({ error: "weights required" }); return }
+        await mose().apply(weights)
+        res.json({ status: "blended", weights })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    /** POST /mose/generate — blend then generate. */
+    this.app.post("/mose/generate", async (req, res) => {
+      try {
+        const { prompt, blend, ...genOpts } = req.body
+        if (!prompt) { res.status(400).json({ error: "prompt required" }); return }
+        await mose().apply(blend)
+        const result = await this.agent.engine.generate(prompt, genOpts)
+        res.json({ result })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    /** POST /mose/segment — segment routing. */
+    this.app.post("/mose/segment", async (req, res) => {
+      try {
+        const { segments } = req.body
+        if (!segments || !Array.isArray(segments)) {
+          res.status(400).json({ error: "segments array required" }); return
+        }
+        const result = await this.agent.engine.generateWithSegments(segments)
+        res.json({ result })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    // ---- MoLE endpoints ----
+
+    /** POST /lora/experts — register a LoRA adapter. */
+    this.app.post("/lora/experts", async (req, res) => {
+      try {
+        const { name, filePath, scale } = req.body
+        if (!name || !filePath) { res.status(400).json({ error: "name and filePath required" }); return }
+        loraMgr().add(name, filePath, scale ?? 1.0)
+        res.json({ status: "registered", name })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    /** GET /lora/experts — list registered LoRA adapters. */
+    this.app.get("/lora/experts", (_req, res) => {
+      res.json({ adapters: loraMgr().list(), active: loraMgr().getActive() })
+    })
+
+    /** DELETE /lora/experts/:name — remove a registered LoRA adapter. */
+    this.app.delete("/lora/experts/:name", (req, res) => {
+      loraMgr().remove(req.params.name)
+      res.json({ removed: true })
+    })
+
+    /** POST /lora/activate — activate one or more LoRA adapters. */
+    this.app.post("/lora/activate", async (req, res) => {
+      try {
+        const { adapters } = req.body
+        if (!adapters || !Array.isArray(adapters)) {
+          res.status(400).json({ error: "adapters array required" }); return
+        }
+        await loraMgr().activate(...adapters)
+        res.json({ status: "activated", adapters })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    /** POST /lora/deactivate — deactivate all LoRA adapters. */
+    this.app.post("/lora/deactivate", async (_req, res) => {
+      try {
+        await loraMgr().deactivateAll()
+        res.json({ status: "all deactivated" })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
+    })
   }
 
   private setupWebSocket() {

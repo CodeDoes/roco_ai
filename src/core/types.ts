@@ -101,3 +101,53 @@ export interface ChatMessage {
   content: string
   timestamp: string
 }
+
+// --- Engine interface ---
+
+export interface Engine {
+  init(gpu?: string, loraPaths?: unknown): Promise<void>
+  dispose(): Promise<void>
+  tokenize(text: string): number[]
+  detokenize(tokens: number[]): string
+  generate(prompt: string, opts?: Record<string, unknown>): Promise<string>
+  generateStream(prompt: string, callbacks?: GenerateCallbacks, opts?: Record<string, unknown>): Promise<string>
+  evaluate(text: string): Promise<void>
+  saveCheckpoint(name: string): Promise<{ filePath: string; fileSize: number }>
+  loadCheckpoint(name: string): Promise<void>
+  statePath(name: string): string
+  bakeSystemPrompt(systemPrompt: string): Promise<{ baselinePath: string; fileSize: number }>
+  loadBaseline(): Promise<void>
+  getStateSize(): number
+  generateWithBlend(prompt: string, blend?: MoseBlendWeights, opts?: Record<string, unknown>): Promise<string>
+  generateWithSegments(segments: { text: string; blend: MoseBlendWeights }[], opts?: Record<string, unknown>): Promise<string>
+  mose: Record<string, unknown>
+  loraMgr: Record<string, unknown>
+}
+
+// --- MoSE types ---
+
+export interface MoSEExpert {
+  name: string
+  stateFile: string
+  weight: number
+}
+
+export interface MoSEConfig {
+  experts: { name: string; text?: string; stateFile?: string; weight: number }[]
+  /** Blend weights (expert name → weight). Applied before generation. */
+  blend?: MoseBlendWeights
+}
+
+export type MoseBlendWeights = Record<string, number>
+
+// --- MoLE types ---
+
+export interface LoRAExpertConfig {
+  name: string
+  filePath: string
+  scale?: number
+}
+
+export interface LoRASwitchRequest {
+  adapters: string[]
+}
