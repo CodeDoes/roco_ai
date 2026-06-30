@@ -102,16 +102,17 @@ export function toolsToGbnf(defs?: ToolDef[]): string {
 export function toolsToGbnfWithThink(defs?: ToolDef[]): string {
   const names = toolNamesGbnf(defs ?? toolDefs)
   return [
-    'root ::= think-block? tool-call',
+    'root ::= think-block? (tool-call | end)',
     'think-block ::= "<think>" ws text ws "</think>" ws',
     ...toolCallGbnf(names).slice(1), // drop root, use the one above
+    `end ::= "\\n\\n" "${EOT}"`,
     'text ::= [^<]*',
   ].join("\n")
 }
 
 export function toolsToGbnfResponse(): string {
   return [
-    `root ::= text "${EOT}"`,
+    `root ::= text "\\n\\n" "${EOT}"`,
     `text ::= [^${EOT}]*`,
   ].join("\n")
 }
