@@ -101,12 +101,12 @@ async function runAgentLoop(
           trace?.stream(chunk)
           process.stdout.write(chunk)
         },
-      }, { ...DEFAULT_GEN_OPTS, temperature: 0.7, stopSequences: ["</tool_call>"], ...genOpts } as any)
+      }, { ...DEFAULT_GEN_OPTS, temperature: 0.7, stopSequences: ["</tool_call>", "\x03"], ...genOpts } as any)
       trace?.write("[output_end]")
       raw = accumulated
       opts?.onText?.(accumulated)
     } else {
-      raw = await engine.generate(fullPrompt, { ...DEFAULT_GEN_OPTS, temperature: 0.7, stopSequences: ["</tool_call>"], ...genOpts } as any)
+      raw = await engine.generate(fullPrompt, { ...DEFAULT_GEN_OPTS, temperature: 0.7, stopSequences: ["</tool_call>", "\x03"], ...genOpts } as any)
       trace?.generate(raw)
       opts?.onText?.(raw)
     }

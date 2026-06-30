@@ -4,6 +4,7 @@ import { fileURLToPath } from "url"
 import { RwkvEngine } from "../../engine/rwkv-engine.ts"
 import { SessionManager } from "../../core/session.ts"
 import { StoryState, ChapterInfo, DEFAULT_GEN_OPTS, GenerateOpts } from "../../core/types.ts"
+import { toolsToGbnfResponse } from "../../core/tool-registry.ts"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -13,21 +14,21 @@ function cleanOutput(text: string): string {
     .trim()
 }
 
+const RESPONSE_GRAMMAR = toolsToGbnfResponse()
+
 export class StorytellerAgent {
   private engine: RwkvEngine
   private session: SessionManager
   private storyState: StoryState | null = null
-  private fixParagraphBreak: boolean
   private systemPrompt: string = ""
 
   constructor(
     engine: RwkvEngine,
     session: SessionManager,
-    config?: { fixParagraphBreak?: boolean },
+    _config?: { fixParagraphBreak?: boolean },
   ) {
     this.engine = engine
     this.session = session
-    this.fixParagraphBreak = config?.fixParagraphBreak ?? false
   }
 
   async init() {
@@ -56,8 +57,9 @@ export class StorytellerAgent {
     const raw = await this.engine.generate(fullPrompt, {
       ...DEFAULT_GEN_OPTS,
       temperature: 0.85,
+      stopSequences: ["\x03"],
+      grammar: RESPONSE_GRAMMAR,
       ...opts,
-      fixParagraphBreak: this.fixParagraphBreak,
     })
 
     const cleaned = cleanOutput(raw)
@@ -82,7 +84,7 @@ export class StorytellerAgent {
     const raw = await this.engine.generateStream(
       fullPrompt,
       { onText },
-      { ...DEFAULT_GEN_OPTS, temperature: 0.85, ...opts, fixParagraphBreak: this.fixParagraphBreak },
+      { ...DEFAULT_GEN_OPTS, temperature: 0.85, stopSequences: ["\x03"], grammar: RESPONSE_GRAMMAR, ...opts },
     )
 
     const cleaned = cleanOutput(raw)
