@@ -9,8 +9,8 @@ const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname)
 
 const args = process.argv.slice(2)
-const port = parseInt(args.find((a) => a.startsWith("--port="))?.split("=")[1] || "3100", 10)
-const slotsDir = args.find((a) => a.startsWith("--slots-dir="))?.split("=")[1] || path.join(PROJECT_ROOT, "inference-slots")
+const port = parseInt(args.find((a) => a.startsWith("--port="))?.split("=")[1] || "3210", 10)
+const slotsDir = args.find((a) => a.startsWith("--slots-dir="))?.split("=")[1] || path.join(PROJECT_ROOT, "inference-slots", String(port))
 
 async function main() {
   await fsp.mkdir(slotsDir, { recursive: true })

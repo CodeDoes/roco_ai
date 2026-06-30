@@ -7,7 +7,7 @@ import { MockEngine } from "./mock-engine.ts"
 import { toolHandlers as storytellerHandlers, toolDefs as storytellerToolDefs } from "../agents/storyteller/tools/index.ts"
 import { toolDefs as envoyToolDefs } from "../agents/envoy/tools/index.ts"
 import { ToolCall, ToolResult, ToolDef, ToolHandler, DEFAULT_GEN_OPTS, type Engine } from "../core/types.ts"
-import { RwkvEngine } from "../engine/rwkv-engine.ts"
+import { bootEngine, EngineHTTPClient } from "../engine/engine-http-client.ts"
 import mkdirTool from "../tools/mkdir.ts"
 import { TraceWriter } from "./trace-writer.ts"
 import { toolsToGbnf } from "../core/tool-registry.ts"
@@ -417,8 +417,8 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
   console.error(`GPU: ${gpu}`)
   console.error(`Workspace: ${baseDir}`)
 
-  const engine = new RwkvEngine(modelPath, baseDir)
-  await engine.init(gpu)
+  const { engine, close } = await bootEngine({ modelPath, gpu })
+  const engineClient = engine as EngineHTTPClient
 
   const envoyGrammar = toolsToGbnf(envoyToolDefs)
   const storytellerGrammar = toolsToGbnf(storytellerToolDefs)
@@ -426,12 +426,9 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
   const envoyPrompt = buildEnvoyPrompt()
   const userInput = "Create a story about dragons with 3 first chapters and an up-to-date wiki."
 
-  // Mock engine wrapper for passing to sub-loops — NOT used in live mode, but
-  // the runAgentLoop signature expects MockEngine | Engine
   let finalText = ""
   let subToolCalls = 0
 
-  // In live mode the spawn_agent handler runs a new AgentLoop with the real engine
   const { AgentLoop } = await import("../core/agent-loop.ts")
   const { SessionManager } = await import("../core/session.ts")
   const storytellerPrompt = buildStorytellerPrompt(storytellerToolDefs)
@@ -441,28 +438,26 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
   trace.systemPrompt(envoyPrompt)
   trace.write(`model: ${path.basename(modelPath)}`)
   trace.write(`gpu: ${gpu}`)
-  if (engine.loraAdapters.length) {
-    const names = engine.loraAdapters.map(a => a.filePath).join(", ")
+  if (engineClient.loraAdapters.length) {
+    const names = engineClient.loraAdapters.map(a => a.filePath).join(", ")
     trace.write(`lora: ${names}`)
   }
-  const moseExperts = engine.moseExperts.length ? engine.moseExperts.join(", ") : "none"
-  trace.write(`mose experts: ${moseExperts}`)
+  trace.write(`mose experts: none`)
 
   const result = await runAgentLoop(
-    engine,
+    engine as Engine,
     envoyPrompt,
     {
-  spawn_agent: async (args) => {
-    const task = args.task as string
-    trace.section(`spawn_agent: storyteller`)
-    trace.write(`task: ${task}`)
-    trace.systemPrompt(storytellerPrompt)
-    console.error(`\nENVOY spawned "${args.agent}"`)
-    // Create sub-session for storyteller
-    const subSession = new SessionManager(baseDir, "storyteller-dragons", modelPath)
+      spawn_agent: async (args) => {
+        const task = args.task as string
+        trace.section(`spawn_agent: storyteller`)
+        trace.write(`task: ${task}`)
+        trace.systemPrompt(storytellerPrompt)
+        console.error(`\nENVOY spawned "${args.agent}"`)
+        const subSession = new SessionManager(baseDir, "storyteller-dragons", modelPath)
         await subSession.ensureDir()
 
-        const subLoop = new AgentLoop(engine, subSession, 15, {
+        const subLoop = new AgentLoop(engine as Engine, subSession, 15, {
           systemPrompt: storytellerPrompt,
           toolDefs: storytellerToolDefs,
           toolHandlers: {
@@ -498,13 +493,12 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
       },
       trace,
       tag: "envoy",
-      genOpts: { grammar: envoyGrammar },
+      genOpts: {},
     },
   )
 
   finalText = result.finalText
 
-  // ── Live verification (structure only) ──
   const storyDir = findStoryDir(baseDir)
   const storyName = storyDir ? path.basename(storyDir) : "(not found)"
 
@@ -544,6 +538,8 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
   trace.verification(checks)
   trace.close()
   console.error(`\nTrace: ${trace.path}`)
+
+  await close()
   return allPass
 }
 

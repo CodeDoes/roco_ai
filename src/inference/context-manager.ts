@@ -32,6 +32,8 @@ export class ContextManager {
   private contexts: Map<string, ContextHandle> = new Map()
   private llama: Awaited<ReturnType<typeof getLlama>> | null = null
   private slotsDir: string
+  private _globalModel: LlamaModel | null = null
+  private _globalModelPath: string = ""
 
   constructor(slotsDir: string) {
     this.slotsDir = slotsDir
@@ -93,7 +95,7 @@ export class ContextManager {
   async destroy(id: string): Promise<void> {
     const c = this.contexts.get(id)
     if (!c) return
-    await this.dispose(c)
+    await this.disposeContext(c)
     this.contexts.delete(id)
   }
 
@@ -102,9 +104,21 @@ export class ContextManager {
   async loadModel(id: string, modelPath: string, loraPaths?: string[]): Promise<void> {
     const c = this.get(id)
     if (!c) throw new Error(`Context not found: ${id}`)
-    await this.dispose(c)
-    const llama = await this.ensureLlama()
-    const model = await llama.loadModel({ modelPath })
+    await this.disposeContext(c)
+    let model: LlamaModel
+    if (this._globalModel && this._globalModelPath === modelPath) {
+      model = this._globalModel
+    } else {
+      if (this._globalModel) {
+        try { await this._globalModel.dispose() } catch { /* */ }
+        this._globalModel = null
+        this._globalModelPath = ""
+      }
+      const llama = await this.ensureLlama()
+      model = await llama.loadModel({ modelPath })
+      this._globalModel = model
+      this._globalModelPath = modelPath
+    }
     const loras = loraPaths ?? []
     const loraOpts = loras.length > 0 ? { lora: loras.map((p) => ({ filePath: p, scale: 1.0 })) as any } : {}
     const ctx = await model.createContext({ contextSize: c.contextSize, ...loraOpts })
@@ -120,7 +134,7 @@ export class ContextManager {
   async unloadModel(id: string): Promise<void> {
     const c = this.get(id)
     if (!c) throw new Error(`Context not found: ${id}`)
-    await this.dispose(c)
+    await this.disposeContext(c)
     c.modelPath = ""
     c.model = null
     c.context = null
@@ -283,6 +297,7 @@ export class ContextManager {
       const grammar = await ctx.createGrammar({ grammar: genOpts.grammar })
       grammarEvalState = new LlamaGrammarEvaluationState({ model: c.model, grammar })
     }
+    const stopSeqs: string[] = (opts as any).stopSequences ?? []
     const gen = c.sequence.evaluate(tokens, {
       maxTokens: genOpts.maxTokens,
       temperature: genOpts.temperature,
@@ -305,6 +320,10 @@ export class ContextManager {
         result += text
         count++
         cbs.onToken?.(text)
+        for (const seq of stopSeqs) {
+          if (result.includes(seq)) break
+        }
+        if (stopSeqs.some((seq) => result.includes(seq))) break
       }
       cbs.onDone?.({ tokens: count, text: result })
     } catch (err: any) {
@@ -320,11 +339,10 @@ export class ContextManager {
     return tmp
   }
 
-  private async dispose(c: ContextHandle): Promise<void> {
+  private async disposeContext(c: ContextHandle): Promise<void> {
     try { c.sequence?.dispose() } catch { /* already disposed */ }
     try { c.context?.dispose() } catch { /* already disposed */ }
     c.sequence = null
     c.context = null
-    c.model = null
   }
 }
