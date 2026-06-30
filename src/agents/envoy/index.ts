@@ -1,7 +1,7 @@
 import { promises as fsp } from "fs"
 import * as path from "path"
 import { fileURLToPath } from "url"
-import { RwkvEngine } from "../../engine/rwkv-engine.ts"
+import type { Engine } from "../../core/types.ts"
 import { SessionManager } from "../../core/session.ts"
 import { AgentLoop } from "../../core/agent-loop.ts"
 import { GenerateOpts, GenerateCallbacks } from "../../core/types.ts"
@@ -11,9 +11,9 @@ import { toolDefs as storytellerToolDefs, toolHandlers as storytellerHandlers } 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export class EnvoyAgent {
-  private engine: RwkvEngine
+  private engine: Engine
 
-  constructor(engine: RwkvEngine) {
+  constructor(engine: Engine) {
     this.engine = engine
   }
 

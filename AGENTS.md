@@ -17,7 +17,6 @@ Active development. Storyteller agent + tool-calling agent loop + gateway/channe
 | `gateway` | Start engine + HTTP/WS server (default port 3030) |
 | `tui [--connect]` | Terminal UI (direct engine or gateway client) |
 | `typecheck` | `tsc --noEmit` |
-| (any command) | + `--api=http://localhost:3100` uses Rust inference API backend instead of llama.cpp |
 
 Default model: `models/rwkv7-g1g-2.9b-20260526-ctx8192-Q4_K_M.gguf`
 
@@ -31,8 +30,8 @@ Default model: `models/rwkv7-g1g-2.9b-20260526-ctx8192-Q4_K_M.gguf`
 | `src/core/agent-loop.ts` | Tool-call loop runtime: generate → parse → execute → feedback. Uses `stopSequences: ["</tool_call>"]` to cut generation at tool call boundary. Accepts custom `AgentLoopConfig` (systemPrompt, toolDefs, toolHandlers). |
 | `src/core/agent-engine.ts` | Standalone agent engine with labeled session management |
 | `src/core/tool-registry.ts` | Global tool defs + handlers, XML serialization. `toolsToXml(defs?)` accepts optional custom tool set. |
-| `src/engine/rwkv-engine.ts` | llama.cpp backend via `node-llama-cpp`. Model lifecycle, state save/load, generate, LoRA. |
-| `src/engine/rwkv-api-engine.ts` | Rust inference API backend via HTTP client. Same `Engine` interface. Used when `--api=` flag set. Stateless — model runs in separate Rust process. |
+| `src/engine/rwkv-engine.ts` | llama.cpp backend via `node-llama-cpp`. Model lifecycle, state save/load, generate, LoRA, MoSE. |
+| `src/engine/mose-engine.ts` | MoSE (state blending) + LoRAManager (adapter switching). Used by RwkvEngine. |
 | `src/agents/envoy/` | User-facing agent. Only `spawn_agent` tool. Delegates to subagents (storyteller, coder). |
 | `src/agents/storyteller/` | Story generation agent (prose mode) — 5 file tools + story-analyze/validate |
 | `src/agents/storyteller/skills/` | Skill modules + `tools/story-analyze.ts`, `tools/story-validate.ts` |
@@ -52,18 +51,16 @@ Default model: `models/rwkv7-g1g-2.9b-20260526-ctx8192-Q4_K_M.gguf`
 | `workspace/` | Project files |
 | `docs/` | Architecture docs + future plans |
 
-## Engines: llama.cpp vs Rust API
+## Engine
 
-Two backends implement same `Engine` interface:
+Single backend — `RwkvEngine` implements `Engine` interface via `node-llama-cpp`:
 
-| Backend | Class | Activation | Readiness | State |
-|---------|-------|------------|-----------|-------|
-| llama.cpp | `RwkvEngine` | default | ready | local file save/load |
-| Rust API | `RwkvApiEngine` | `--api=http://localhost:3100` | needs Rust server running | HTTP base64 state get/set |
+```
+RwkvEngine ──▸ MoSEEngine (state blending)
+        └──▸ LoRAManager (LoRA adapter switching)
+```
 
-`RwkvApiEngine` delegates all model ops to `rwkv-inference-api` Rust process via HTTP. State operations (MoSE expert save/load/blend) done server-side — harness sends/receives base64-encoded f32 tensors (~28MB each).
-
-`cli.ts:createEngine()` returns `RwkvEngine` (cast) — both backends produce same interface for agents.
+`cli.ts:createEngine()` returns `Engine` interface — agents communicate through it.
 
 ## Architecture
 
@@ -74,12 +71,12 @@ User → EnvoyAgent (spawn_agent only)
          → storyteller sub-agent (AgentLoop with storyteller tools + instructions)
          → coder sub-agent (AgentLoop with coder tools + instructions)
               → SessionManager → sessions/<id>/
-              → RwkvEngine  or  RwkvApiEngine → Rust API server:3100
+              → RwkvEngine (node-llama-cpp)
 ```
 
 Envoy delegates to specialized subagents via `spawn_agent`. Subagents run their own `AgentLoop` instance with dedicated tools and instructions. Results flow back to the envoy for user presentation.
 
-`--api` flag sets `apiBase` global in `cli.ts` — all commands (`tell`, `agent`, `gateway`, etc.) work with either backend transparently.
+Gateway mode (`cli.ts gateway`) wraps the engine in an Express server for remote access.
 
 Key pattern — constructor injection + AgentLoopConfig:
 ```ts
@@ -143,4 +140,3 @@ Oracle demonstrates correct workflow sequence. If live mode fails, tune system p
 - GPU defaults to Vulkan. Override `--gpu=cuda` or `--gpu=auto`.
 - LoRA via `--lora=path1.gguf,path2.gguf` (relative paths resolved from project root).
 - `node-llama-cpp` v3.18.1, Linux Vulkan bindings.
-- `--api=http://localhost:3100` switches to Rust API backend. Rust server must be started first (`cargo run --release` in `rwkv-inference-api/`). Server load takes ~35s (model + quant).

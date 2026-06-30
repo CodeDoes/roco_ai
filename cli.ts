@@ -3,7 +3,7 @@ import { promises as fsp } from "fs"
 import * as path from "path"
 import { fileURLToPath } from "url"
 import { RwkvEngine } from "./src/engine/rwkv-engine.ts"
-import { RwkvApiEngine } from "./src/engine/rwkv-api-engine.ts"
+import type { Engine } from "./src/core/types.ts"
 import { SessionManager } from "./src/core/session.ts"
 import { StorytellerAgent } from "./src/agents/storyteller/index.ts"
 import { AgentLoop } from "./src/core/agent-loop.ts"
@@ -31,7 +31,6 @@ const fixParagraphs = args.includes("--fix-paragraphs") || args.includes("-p")
 const agentDepth = parseInt(args.find((a) => a.startsWith("--depth="))?.split("=")[1] || "5", 10)
 const grammarPath = args.find((a) => a.startsWith("--grammar="))?.split("=")[1]
 const gatewayPort = parseInt(args.find((a) => a.startsWith("--port="))?.split("=")[1] || "3030", 10)
-const apiBase = args.find((a) => a.startsWith("--api="))?.split("=")[1]
 const input = args.slice(1).filter((a) => !a.startsWith("--")).join(" ")
 
 function makeGrammarPath(p: string): string {
@@ -49,10 +48,8 @@ async function main() {
   }
 }
 
-function createEngine(modelPath: string, stateDir: string): RwkvEngine {
-  return (apiBase
-    ? new RwkvApiEngine(modelPath, stateDir, apiBase)
-    : new RwkvEngine(modelPath, stateDir)) as unknown as RwkvEngine
+function createEngine(modelPath: string, stateDir: string): Engine {
+  return new RwkvEngine(modelPath, stateDir)
 }
 
 async function runGateway() {
@@ -450,8 +447,7 @@ Commands:
   lora                 LoRA expert management (see lora --help)
 
 Options:
-  --model=PATH         Model path (ignored with --api)
-  --api=URL            Rust inference API base URL (e.g. http://localhost:3100)
+  --model=PATH         Model path (.gguf file)
   --story=NAME         Story slug
   --gpu=TYPE           GPU backend: vulkan | cuda | auto
   --lora=PATH          LoRA adapter(s)

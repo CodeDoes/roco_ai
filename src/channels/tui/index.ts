@@ -1,6 +1,7 @@
 import * as readline from "readline"
 import * as path from "path"
 import { RwkvEngine } from "../../engine/rwkv-engine.ts"
+import type { Engine } from "../../core/types.ts"
 import { AgentEngine } from "../../core/agent-engine.ts"
 import { GatewayServer } from "../../gateway/server.ts"
 import { DEFAULT_GEN_OPTS } from "../../core/types.ts"

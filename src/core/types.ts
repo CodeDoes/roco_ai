@@ -104,6 +104,27 @@ export interface ChatMessage {
 
 // --- Engine interface ---
 
+export interface MoSEHandle {
+  createExpert(name: string, text: string, weight?: number): Promise<MoSEExpert>
+  list(): MoSEExpert[]
+  get(name: string): MoSEExpert | undefined
+  removeExpert(name: string): Promise<boolean>
+  setWeight(name: string, weight: number): boolean
+  setWeights(weights: MoseBlendWeights): void
+  apply(weights?: MoseBlendWeights): Promise<void>
+  segmentRoute(segments: { text: string; blend: MoseBlendWeights }[]): Promise<void>
+  dispose(): Promise<void>
+}
+
+export interface LoRAHandle {
+  add(name: string, filePath: string, scale?: number): void
+  remove(name: string): boolean
+  list(): { name: string; filePath: string; scale: number }[]
+  getActive(): string[]
+  activate(...names: string[]): Promise<void>
+  deactivateAll(): Promise<void>
+}
+
 export interface Engine {
   init(gpu?: string, loraPaths?: unknown): Promise<void>
   dispose(): Promise<void>
@@ -120,8 +141,8 @@ export interface Engine {
   getStateSize(): number
   generateWithBlend(prompt: string, blend?: MoseBlendWeights, opts?: Record<string, unknown>): Promise<string>
   generateWithSegments(segments: { text: string; blend: MoseBlendWeights }[], opts?: Record<string, unknown>): Promise<string>
-  mose: Record<string, unknown>
-  loraMgr: Record<string, unknown>
+  mose: MoSEHandle
+  loraMgr: LoRAHandle
 }
 
 // --- MoSE types ---

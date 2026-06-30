@@ -1,6 +1,6 @@
 import * as path from "path"
 import { promises as fsp } from "fs"
-import { RwkvEngine } from "../engine/rwkv-engine.ts"
+import type { Engine } from "./types.ts"
 import { AgentLoop } from "./agent-loop.ts"
 import { SessionManager } from "./session.ts"
 import { GenerateOpts, DEFAULT_GEN_OPTS, SessionInfo, ChatMessage } from "./types.ts"
@@ -9,13 +9,13 @@ import { toolDefs, toolsToXml } from "./tool-registry.ts"
 const SYSTEM_PREAMBLE = `You are a helpful AI assistant with file system access. You can read, write, edit files, list directories, and search file contents.`
 
 export class AgentEngine {
-  private _engine: RwkvEngine
+  private _engine: Engine
   private stateDir: string
   private currentLabel: string = "default"
   private sessions: Map<string, { label: string; messages: ChatMessage[] }> = new Map()
   private sessionManager: SessionManager
 
-  constructor(engine: RwkvEngine, stateDir: string) {
+  constructor(engine: Engine, stateDir: string) {
     this._engine = engine
     this.stateDir = stateDir
     this.sessionManager = new SessionManager(stateDir, "_agent", "unknown")
@@ -60,7 +60,7 @@ export class AgentEngine {
     await fsp.writeFile(this.sessionIndexPath(), JSON.stringify(data, null, 2), "utf-8")
   }
 
-  get engine(): RwkvEngine {
+  get engine(): Engine {
     return this._engine
   }
 

@@ -1,4 +1,4 @@
-import { RwkvEngine } from "../engine/rwkv-engine.ts"
+import type { Engine } from "./types.ts"
 import { SessionManager } from "./session.ts"
 import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks, ToolCall, ToolResult, ToolDef, ToolHandler } from "./types.ts"
 import { toolDefs as defaultToolDefs, toolHandlers as defaultHandlers, toolsToXml, toolsToGbnfWithThink } from "./tool-registry.ts"
@@ -23,12 +23,12 @@ export interface AgentLoopConfig {
 }
 
 export class AgentLoop {
-  private engine: RwkvEngine
+  private engine: Engine
   private session: SessionManager
   private maxDepth: number
   private config: Required<AgentLoopConfig>
 
-  constructor(engine: RwkvEngine, session: SessionManager, maxDepth = 5, config?: AgentLoopConfig) {
+  constructor(engine: Engine, session: SessionManager, maxDepth = 5, config?: AgentLoopConfig) {
     this.engine = engine
     this.session = session
     this.maxDepth = maxDepth

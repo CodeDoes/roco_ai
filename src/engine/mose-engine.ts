@@ -2,7 +2,7 @@ import { promises as fsp } from "fs"
 import * as fs from "fs"
 import * as path from "path"
 import { RwkvEngine } from "./rwkv-engine.ts"
-import type { MoSEConfig, MoSEExpert, MoseBlendWeights } from "../core/types.ts"
+import type { MoSEConfig, MoSEExpert, MoseBlendWeights, MoSEHandle, LoRAHandle } from "../core/types.ts"
 
 /**
  * MoSE — Mixture of State Experts via binary state blending.
@@ -24,7 +24,7 @@ import type { MoSEConfig, MoSEExpert, MoseBlendWeights } from "../core/types.ts"
  * (`sequence.saveStateToFile`). For RWKV models these are purely the
  * recurrent state tensors (float32), so element-wise blending is safe.
  */
-export class MoSEEngine {
+export class MoSEEngine implements MoSEHandle {
   private engine: RwkvEngine
   private stateDir: string
   private experts: Map<string, MoSEExpert> = new Map()
@@ -227,7 +227,7 @@ export class MoSEEngine {
  * Supports activating multiple adapters simultaneously (stacked)
  * and per-request scale adjustment.
  */
-export class LoRAManager {
+export class LoRAManager implements LoRAHandle {
   private engine: RwkvEngine
   private adapters: Map<string, { filePath: string; scale: number }> = new Map()
   private active: string[] = []

@@ -6,7 +6,7 @@ import { fileURLToPath } from "url"
 import { MockEngine } from "./mock-engine.ts"
 import { toolHandlers as storytellerHandlers, toolDefs as storytellerToolDefs } from "../agents/storyteller/tools/index.ts"
 import { toolDefs as envoyToolDefs } from "../agents/envoy/tools/index.ts"
-import { ToolCall, ToolResult, ToolDef, ToolHandler, DEFAULT_GEN_OPTS } from "../core/types.ts"
+import { ToolCall, ToolResult, ToolDef, ToolHandler, DEFAULT_GEN_OPTS, type Engine } from "../core/types.ts"
 import { RwkvEngine } from "../engine/rwkv-engine.ts"
 import mkdirTool from "../tools/mkdir.ts"
 import { TraceWriter } from "./trace-writer.ts"
@@ -69,7 +69,7 @@ function toolsToXml(defs: ToolDef[]): string {
 // ──────────────────────────────────────────────
 
 async function runAgentLoop(
-  engine: MockEngine | RwkvEngine,
+  engine: MockEngine | Engine,
   systemPrompt: string,
   toolHandlers: Record<string, ToolHandler>,
   userInput: string,
@@ -92,10 +92,10 @@ async function runAgentLoop(
     trace?.write(`[input] (prompt, ${fullPrompt.length} chars)`)
 
     let raw: string
-    if ("generateStream" in engine && typeof (engine as RwkvEngine).generateStream === "function") {
+    if ("generateStream" in engine) {
       trace?.write("[output_start]")
       let accumulated = ""
-      await (engine as RwkvEngine).generateStream(fullPrompt, {
+      await engine.generateStream(fullPrompt, {
         onText: (chunk: string) => {
           accumulated += chunk
           trace?.stream(chunk)
@@ -425,7 +425,7 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
   const userInput = "Create a story about dragons with 3 first chapters and an up-to-date wiki."
 
   // Mock engine wrapper for passing to sub-loops — NOT used in live mode, but
-  // the runAgentLoop signature expects MockEngine | RwkvEngine
+  // the runAgentLoop signature expects MockEngine | Engine
   let finalText = ""
   let subToolCalls = 0
 

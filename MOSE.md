@@ -2,65 +2,46 @@
 
 RWKV's fixed-size recurrent state enables something impossible with transformers: **state blending**. Blend N expert states at the binary level (weighted float32 sum) → single forward pass with combined behavior.
 
-## Architecture (Rust Inference API)
+## Architecture
 
-State blending is handled server-side by the Rust inference API (`rwkv-inference-api`). Expert states are registered via HTTP as base64-encoded state tensors and blended in GPU memory on the Rust server.
+MoSE + MoLE live in `RwkvEngine` (node-llama-cpp backend). The gateway (`cli.ts gateway`) wraps `RwkvEngine` and exposes MoSE/MoLE via REST endpoints.
 
 ```
-rwkv-harness ──▸ rwkv-inference-api (Rust, axum, Vulkan)
-                     │ POST /v1/mose/expert   register expert state
-                     │ POST /v1/mose/blend    blend experts server-side
-                     │ POST /v1/mose/generate blend + generate
-                     │ POST /v1/generate      standard generation
-                     │ GET  /v1/state         export current state (base64)
-                     │ POST /v1/state         import state (base64)
+cli.ts ──▸ RwkvEngine ──▸ MoSEEngine (state blending)
+                    └─▸ LoRAManager (LoRA adapter switching)
 ```
 
-### Backends
+Gateway (port 3030) exposes MoSE/MoLE API for remote clients.
 
-| Backend | Engine | Usage |
-|---------|--------|-------|
-| **Rust API** (default for MoSE) | `RwkvApiEngine` | `--api=http://localhost:3100` |
-| llama.cpp (legacy) | `RwkvEngine` | default (no `--api` flag) |
+## How State Blending Works
 
-## How State Blending Works (Rust API)
+1. `createExpert(name, text)` — evaluates text through model, saves resulting state as binary `.state` file
+2. `blend(weights)` — reads N expert state files, element-wise weighted float32 sum, normalizes
+3. `apply(sequence)` — loads blended state into active sequence
 
-The Rust API server stores expert states as raw `TensorCpu<f32>` in memory. On blend:
-1. N expert states read as `&[f32]` from hashmap
-2. Element-wise weighted float32 sum in Rust (`blend_states` function)
-3. Normalized by total weight
-4. Loaded into engine's active state via `state.load()`
-5. Single forward pass with blended state
-
-The same HTTP interface means rwkv-harness never touches raw state bytes. Everything is base64 over POST/GET.
+State files are opaque binary blobs from llama.cpp. For RWKV models these are recurrent state tensors (float32), so element-wise blending is safe.
 
 ## MoSE CLI Usage
 
-Use `--api` flag to connect to the Rust inference API instead of local llama.cpp:
-
 ```bash
-# Start API server (separate terminal)
-cd /home/kit/dev/rwkv-inference-api
-./target/release/rwkv-inference-api --model=model.st --quant=32 --port=3100
-
-# Create expert (state baked from text, stored server-side)
-pnpm tsx cli.ts --api=http://localhost:3100 mose expert create formal \
+# Create expert (state baked from text)
+pnpm tsx cli.ts mose expert create formal \
   --text="You write with academic formality. Precise vocabulary, structured paragraphs."
 
-pnpm tsx cli.ts --api=http://localhost:3100 mose expert create creative \
+pnpm tsx cli.ts mose expert create creative \
   --text="You write with vivid imagery. Metaphors, sensory detail, varied sentence rhythm."
 
 # List experts
-pnpm tsx cli.ts --api=http://localhost:3100 mose expert ls
+pnpm tsx cli.ts mose expert ls
 
 # Blend and generate
-pnpm tsx cli.ts --api=http://localhost:3100 mose generate "Explain quantum computing" formal=0.7 creative=0.3
+pnpm tsx cli.ts mose generate "Explain quantum computing" formal=0.7 creative=0.3
 
 # Standard generate (no blend)
-pnpm tsx cli.ts --api=http://localhost:3100 tell "Write a story about AI"
+pnpm tsx cli.ts tell "Write a story about AI"
 
-# Gateway mode with API backend
-pnpm tsx cli.ts --api=http://localhost:3100 gateway
+# Gateway mode with MoSE API
+pnpm tsx cli.ts gateway
 ```
 
 ## MoLE CLI Usage
@@ -82,36 +63,21 @@ pnpm tsx cli.ts lora deactivate
 
 ## Gateway API
 
-When running `pnpm tsx cli.ts --api=http://localhost:3100 gateway`, the gateway forwards MoSE requests to the Rust API:
+When running `pnpm tsx cli.ts gateway`, MoSE/MoLE exposed at:
 
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
-| POST | `/mose/experts` | `{name, text, weight?}` | Create expert from text (eval + register via API) |
+| POST | `/mose/experts` | `{name, text, weight?}` | Create expert from text (eval + save state) |
 | GET | `/mose/experts` | | List experts |
 | DELETE | `/mose/experts/:name` | | Remove expert |
-| POST | `/mose/blend` | `{weights: {name: w, ...}}` | Blend experts server-side |
+| POST | `/mose/blend` | `{weights: {name: w, ...}}` | Blend experts into sequence |
 | POST | `/mose/generate` | `{prompt, blend?, ...genOpts}` | Blend then generate |
 | POST | `/mose/segment` | `{segments: [{text, blend}]}` | Segment routing |
-
-## Rust Inference API Endpoints
-
-The Rust server (`rwkv-inference-api`) exposes:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Server health + state size |
-| POST | `/v1/tokenize` | `{text}` → `{tokens}` |
-| POST | `/v1/detokenize` | `{tokens}` → `{text}` |
-| POST | `/v1/eval` | `{tokens}` → `{logits}` (updates state) |
-| GET | `/v1/state` | Export state as base64 |
-| POST | `/v1/state` | Import state (base64) |
-| POST | `/v1/state/clear` | Reset state to zeros |
-| POST | `/v1/generate` | `{prompt, max_tokens, temperature, top_p}` → `{text, tokens_generated}` |
-| POST | `/v1/mose/expert` | `{name, state (base64), weight?}` → register expert |
-| GET | `/v1/mose/expert/list` | List registered experts |
-| DELETE | `/v1/mose/expert/{name}` | Remove expert |
-| POST | `/v1/mose/blend` | `{weights: {name: w, ...}}` → blend states, load into engine |
-| POST | `/v1/mose/generate` | `{prompt, blend?, max_tokens, temperature, top_p}` → blend + generate |
+| POST | `/lora/experts` | `{name, filePath, scale?}` | Register LoRA adapter |
+| GET | `/lora/experts` | | List + active adapters |
+| DELETE | `/lora/experts/:name` | | Remove adapter |
+| POST | `/lora/activate` | `{adapters: [name,...]}` | Activate adapter(s) |
+| POST | `/lora/deactivate` | | Deactivate all |
 
 ## Segment Routing
 
@@ -129,35 +95,31 @@ POST /mose/segment
 
 Each segment evaluates with its blend, accumulating state for the next segment. Last segment's text is used for generation.
 
-## Implementation Details
+## Implementation
 
-### Rust API files
+### Files
 
 | File | Role |
 |------|------|
-| `/home/kit/dev/rwkv-inference-api/src/main.rs` | Axum HTTP server, 14 endpoints, MoSE state blending |
-| `/home/kit/extern/web-rwkv/src/runtime/loader.rs` | Patched for Goose V7 variant (`num_head = num_emb / v`) |
-| `/home/kit/extern/web-rwkv/src/runtime/v7.rs` | Patched: `r_k` tensor reshaped to `[head_size, num_head]` |
-| `/home/kit/dev/convert_gguf_to_st.py` | GGUF→ST converter for web-rwkv V7 format |
+| `src/engine/mose-engine.ts` | `MoSEEngine` (state blend) + `LoRAManager` (LoRA switching) |
+| `src/engine/rwkv-engine.ts` | `RwkvEngine implements Engine` — inference backend with MoSE/MoLE |
+| `src/core/types.ts` | `Engine`, `MoSEHandle`, `LoRAHandle` interfaces |
+| `src/gateway/server.ts` | REST API for MoSE/MoLE |
+| `cli.ts` | CLI commands for `mose` and `lora` |
 
 ### State format
 
-State is `TensorCpu<f32>` with shape `[num_emb, head_size + 2, num_layer, 1]` = `[2560, 66, 32, 1]` for 2.9B Goose model. Total: 21,626,880 bytes (~20.6 MB) as raw float32, ~28 MB as base64 over HTTP.
+State is float32 blob from `LlamaContextSequence.saveStateToFile()`. For 2.9B Goose model: ~21 MB as raw float32.
 
-### Expert creation flow (Rust API)
+### Expert creation flow
 
 ```
-1. GET /v1/state → save current state (restore point)
-2. POST /v1/state/clear → reset to zeros
-3. POST /v1/eval {tokens} → evaluate expert text
-4. GET /v1/state → export expert state as base64
-5. POST /v1/mose/expert {name, state, weight} → register
-6. POST /v1/state {state} → restore original state
+1. Save current sequence state (restore point)
+2. Load baseline state
+3. Evaluate expert text through model
+4. Save resulting state as _expert_<name>.state
+5. Restore original state
 ```
-
-### True MRSS (future)
-
-The Rust API's `back(0)` / `load(tensor, 0)` state operations support true MRSS: maintain N expert states in CPU memory, evaluate each independently, combine logits per token. Not implemented but the state API is ready.
 
 ## Verification
 
@@ -167,7 +129,6 @@ The Rust API's `back(0)` / `load(tensor, 0)` state operations support true MRSS:
 - [x] LoRA switching wraps existing `_setLoras` private API
 - [x] CLI integration (mose + lora subcommands)
 - [x] Gateway integration (REST endpoints)
-- [ ] End-to-end with real model on RTX 2050 4GB (needs Q4_K_M GGUF)
 
 ## Future
 

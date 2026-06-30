@@ -1,6 +1,6 @@
 import { getLlama, LlamaModel, LlamaContext, LlamaContextSequence, LlamaGrammar, LlamaGrammarEvaluationState } from "node-llama-cpp"
-import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks } from "../core/types.ts"
-import type { MoSEConfig, MoseBlendWeights } from "../core/types.ts"
+import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks, type Engine, type MoSEHandle, type LoRAHandle } from "../core/types.ts"
+import type { MoseBlendWeights } from "../core/types.ts"
 import { MoSEEngine, LoRAManager } from "./mose-engine.ts"
 import type { Token } from "node-llama-cpp"
 
@@ -27,16 +27,16 @@ interface LoraOpts {
 
 type GenOptsWithExtras = Partial<GenerateOpts> & { fixParagraphBreak?: boolean; stopSequences?: string[] }
 
-export class RwkvEngine {
+export class RwkvEngine implements Engine {
   private ctx: RwkvEngineCtx | null = null
   private modelPath: string
   private stateDir: string
   private systemState: SystemPromptState | null = null
   private loras: LoraOpts | null = null
   /** MoSE — Mixture of State Experts. Created after init(). */
-  mose!: MoSEEngine
+  mose!: MoSEHandle & MoSEEngine
   /** LoRA expert manager. Created after init(). */
-  loraMgr!: LoRAManager
+  loraMgr!: LoRAHandle & LoRAManager
 
   constructor(modelPath: string, stateDir: string) {
     this.modelPath = modelPath

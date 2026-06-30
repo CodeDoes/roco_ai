@@ -1,7 +1,7 @@
 import { promises as fsp } from "fs"
 import * as path from "path"
 import { fileURLToPath } from "url"
-import { RwkvEngine } from "../../engine/rwkv-engine.ts"
+import type { Engine } from "../../core/types.ts"
 import { SessionManager } from "../../core/session.ts"
 import { StoryState, ChapterInfo, DEFAULT_GEN_OPTS, GenerateOpts } from "../../core/types.ts"
 import { toolsToGbnfResponse } from "../../core/tool-registry.ts"
@@ -18,13 +18,13 @@ function cleanOutput(text: string): string {
 const RESPONSE_GRAMMAR = toolsToGbnfResponse()
 
 export class StorytellerAgent {
-  private engine: RwkvEngine
+  private engine: Engine
   private session: SessionManager
   private storyState: StoryState | null = null
   private systemPrompt: string = ""
 
   constructor(
-    engine: RwkvEngine,
+    engine: Engine,
     session: SessionManager,
     _config?: { fixParagraphBreak?: boolean },
   ) {
