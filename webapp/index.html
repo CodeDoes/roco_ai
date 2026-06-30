@@ -2,19 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>RWKV Chat</title>
+<title>RWKV Agent</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; height: 100vh; }
-  .sidebar { width: 240px; background: #161b22; border-right: 1px solid #30363d; padding: 16px; overflow-y: auto; }
-  .sidebar h2 { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
-  .story { padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; font-size: 13px; }
-  .story:hover { background: #1c2128; }
-  .story.active { background: #1f6feb22; border: 1px solid #1f6feb55; }
+  .sidebar { width: 220px; background: #161b22; border-right: 1px solid #30363d; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; }
+  .sidebar h2 { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .session { padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-bottom: 2px; }
+  .session:hover { background: #1c2128; }
+  .session.active { background: #1f6feb22; border: 1px solid #1f6feb55; }
+  .new-btn { width: 100%; padding: 6px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 12px; margin-bottom: 8px; }
+  .new-btn:hover { background: #30363d; }
   .main { flex: 1; display: flex; flex-direction: column; }
-  .header { padding: 12px 20px; border-bottom: 1px solid #30363d; }
-  .header h1 { font-size: 16px; }
-  .header .meta { font-size: 11px; color: #8b949e; margin-top: 2px; }
+  .header { padding: 12px 20px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 15px; }
+  .header .meta { font-size: 11px; color: #8b949e; }
   .messages { flex: 1; overflow-y: auto; padding: 20px; }
   .msg { margin-bottom: 12px; max-width: 80%; }
   .msg.user { margin-left: auto; }
@@ -35,14 +37,17 @@
 <body>
 <div class="sidebar">
   <h2>Sessions</h2>
-  <div id="story-list"></div>
+  <button class="new-btn" onclick="newSession()">+ New</button>
+  <div id="session-list"></div>
 </div>
 <div class="main">
   <div class="header">
-    <h1 id="story-name">RWKV</h1>
-    <div class="meta" id="story-meta"></div>
+    <div>
+      <h1 id="session-name">default</h1>
+      <div class="meta" id="session-meta"></div>
+    </div>
   </div>
-  <div class="status" id="status">Connected</div>
+  <div class="status" id="status">Disconnected</div>
   <div class="messages" id="messages"></div>
   <div class="input-area">
     <textarea id="input" rows="2" placeholder="Type..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
@@ -50,48 +55,101 @@
   </div>
 </div>
 <script>
-const GATEWAY = ""
 let ws = null
+let currentSession = "default"
+let sessions = ["default"]
+let messages = []
+let generating = false
 
-const SESSIONS_KEY = "rwkv_sessions"
-function loadSessions() {
-  try {
-    const raw = localStorage.getItem(SESSIONS_KEY)
-    return raw ? JSON.parse(raw) : [{ id: "default", messages: [] }]
-  } catch { return [{ id: "default", messages: [] }] }
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:"
+  ws = new WebSocket(`${proto}//${location.host}`)
+
+  ws.onopen = () => {
+    document.getElementById("status").textContent = "Connected"
+  }
+
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data)
+
+    switch (msg.type) {
+      case "connected":
+        currentSession = msg.session?.label || "default"
+        messages = msg.messages || []
+        sessions = msg.sessions || ["default"]
+        renderAll()
+        document.getElementById("status").textContent = "Connected"
+        break
+
+      case "token":
+        const last = messages[messages.length - 1]
+        if (last && last.role === "assistant") {
+          last.content += msg.text
+        } else {
+          messages.push({ role: "assistant", content: msg.text, timestamp: new Date().toISOString() })
+        }
+        renderMessages()
+        break
+
+      case "done":
+        messages = msg.messages || messages
+        generating = false
+        document.getElementById("send-btn").disabled = false
+        document.getElementById("status").textContent = "Connected"
+        renderAll()
+        break
+
+      case "session_created":
+      case "session_switched":
+        currentSession = msg.session?.label || currentSession
+        messages = msg.messages || []
+        sessions = [...new Set([...sessions, currentSession])]
+        renderAll()
+        break
+
+      case "session_deleted":
+        currentSession = msg.current?.label || "default"
+        messages = msg.messages || []
+        sessions = sessions.filter(s => s !== msg.label)
+        renderAll()
+        break
+
+      case "error":
+        document.getElementById("status").textContent = "Error: " + msg.message
+        generating = false
+        document.getElementById("send-btn").disabled = false
+        break
+    }
+  }
+
+  ws.onclose = () => {
+    document.getElementById("status").textContent = "Disconnected (reconnect...)"
+    generating = false
+    document.getElementById("send-btn").disabled = false
+    setTimeout(connect, 2000)
+  }
+
+  ws.onerror = () => ws.close()
 }
-function saveSessions(sessions) {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+
+function renderAll() {
+  renderSessions()
+  renderMessages()
+  document.getElementById("session-name").textContent = currentSession
+  document.getElementById("session-meta").textContent = `Messages: ${messages.length}`
 }
 
-let sessions = loadSessions()
-let active = sessions[0]?.id || "default"
-
-function renderSidebar() {
-  const list = document.getElementById("story-list")
+function renderSessions() {
+  const list = document.getElementById("session-list")
   list.innerHTML = sessions.map(s =>
-    `<div class="story ${s.id === active ? 'active' : ''}" onclick="switchSession('${s.id}')" ondblclick="renameSession('${s.id}')">${s.id}</div>`
+    `<div class="session ${s === currentSession ? 'active' : ''}" onclick="switchSession('${s}')">${s}</div>`
   ).join("")
-  const btn = document.createElement("button")
-  btn.textContent = "+"
-  btn.style.cssText = "width:100%;padding:6px;margin-top:8px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;cursor:pointer"
-  btn.onclick = newSession
-  list.appendChild(btn)
 }
 
-function switchSession(id) {
-  active = id
-  const s = sessions.find(s => s.id === id)
-  document.getElementById("story-name").textContent = id
-  document.getElementById("story-meta").textContent = `Messages: ${s?.messages?.length || 0}`
-  renderMessages(s?.messages || [])
-  renderSidebar()
-}
-
-function renderMessages(msgs) {
+function renderMessages() {
   const container = document.getElementById("messages")
-  container.innerHTML = msgs.map(m =>
-    `<div class="msg ${m.role}"><div class="bubble">${esc(m.content)}</div></div>`
+  container.innerHTML = messages.map(m =>
+    `<div class="msg ${m.role}"><div class="bubble">${esc(m.content || "")}</div></div>`
   ).join("")
   container.scrollTop = container.scrollHeight
 }
@@ -99,95 +157,40 @@ function renderMessages(msgs) {
 function esc(t) { return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") }
 
 function newSession() {
-  const id = prompt("Session name:") || "session-" + Date.now()
-  if (sessions.find(s => s.id === id)) return alert("Exists")
-  sessions.push({ id, messages: [] })
-  saveSessions(sessions)
-  switchSession(id)
+  const label = prompt("Session name:") || "session-" + Date.now()
+  if (!label || label === currentSession) return
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "create_session", label }))
+  }
 }
 
-function renameSession(id) {
-  const newId = prompt("Rename:", id)
-  if (!newId || newId === id) return
-  const s = sessions.find(s => s.id === id)
-  if (s) s.id = newId
-  if (active === id) active = newId
-  saveSessions(sessions)
-  renderSidebar()
+function switchSession(label) {
+  if (label === currentSession) return
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "switch_session", label }))
+  }
 }
 
-async function send() {
+function send() {
   const input = document.getElementById("input")
   const btn = document.getElementById("send-btn")
   const prompt = input.value.trim()
-  if (!prompt) return
+  if (!prompt || generating) return
+
   input.value = ""
+  generating = true
   btn.disabled = true
-  document.getElementById("status").textContent = "Generating..."
   document.getElementById("status").innerHTML = "Generating<span class='loading'></span>"
 
-  const s = sessions.find(s => s.id === active)
-  if (!s) return
-  s.messages.push({ role: "user", content: prompt })
-  renderMessages(s.messages)
+  messages.push({ role: "user", content: prompt, timestamp: new Date().toISOString() })
+  renderMessages()
 
-  const assistantDiv = document.createElement("div")
-  assistantDiv.className = "msg assistant"
-  const bubble = document.createElement("div")
-  bubble.className = "bubble"
-  assistantDiv.appendChild(bubble)
-  document.getElementById("messages").appendChild(assistantDiv)
-
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "generate", prompt }))
-    ws.onmessage = (ev) => {
-      const m = JSON.parse(ev.data)
-      if (m.type === "token") {
-        bubble.textContent += m.text
-      } else if (m.type === "done") {
-        s.messages.push({ role: "assistant", content: bubble.textContent })
-        saveSessions(sessions)
-        btn.disabled = false
-        document.getElementById("status").textContent = "Ready"
-        document.getElementById("story-meta").textContent = `Messages: ${s.messages.length}`
-      } else if (m.type === "error") {
-        bubble.textContent = "Error: " + m.message
-        btn.disabled = false
-        document.getElementById("status").textContent = "Error"
-      }
-    }
-  } else {
-    try {
-      const r = await fetch(GATEWAY + "/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      })
-      const d = await r.json()
-      bubble.textContent = d.result
-      s.messages.push({ role: "assistant", content: d.result })
-      saveSessions(sessions)
-      document.getElementById("story-meta").textContent = `Messages: ${s.messages.length}`
-    } catch (e) {
-      bubble.textContent = "Error: " + e.message
-    }
-    btn.disabled = false
-    document.getElementById("status").textContent = "Ready"
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "chat", prompt }))
   }
 }
 
-function connectWs() {
-  const proto = location.protocol === "https:" ? "wss:" : "ws:"
-  ws = new WebSocket(`${proto}//${location.host}`)
-  ws.onclose = () => setTimeout(connectWs, 2000)
-  ws.onmessage = (ev) => {
-    const m = JSON.parse(ev.data)
-    if (m.type === "connected") console.log("WS ready")
-  }
-}
-
-switchSession(active)
-connectWs()
+connect()
 </script>
 </body>
 </html>

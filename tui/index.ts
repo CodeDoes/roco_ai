@@ -1,14 +1,13 @@
 import * as readline from "readline"
-import { RwkvEngine } from "../src/rwkv-engine.ts"
-import { SessionManager } from "../src/session.ts"
-import { AgentLoop } from "../src/agent-loop.ts"
-import { StorytellerAgent } from "../src/storyteller.ts"
 import * as path from "path"
+import { RwkvEngine } from "../src/rwkv-engine.ts"
+import { AgentEngine } from "../src/agent-engine.ts"
+import { GatewayServer } from "../src/gateway/server.ts"
 import { DEFAULT_GEN_OPTS } from "../src/types.ts"
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname!, "..")
 
-interface TuiConfig {
+interface TuiOptions {
   modelPath: string
   stateDir: string
   story: string
@@ -17,26 +16,17 @@ interface TuiConfig {
   fixParagraphs?: boolean
   agentDepth?: number
   grammar?: string
+  gatewayPort?: number
+  mode?: "direct" | "gateway_client"
+  gatewayHost?: string
 }
 
-export class TuiChannel {
-  private engine: RwkvEngine
-  private session: SessionManager
-  private loop: AgentLoop
-  private storyAgent: StorytellerAgent
+export class Tui {
+  private options: TuiOptions
   private rl: readline.Interface
-  private config: TuiConfig
-  private mode: "agent" | "story" = "agent"
 
-  constructor(config: TuiConfig) {
-    this.config = config
-    this.engine = new RwkvEngine(config.modelPath, config.stateDir)
-    this.session = new SessionManager(config.stateDir, config.story, config.modelPath)
-    this.loop = new AgentLoop(this.engine, this.session, config.agentDepth || 5)
-    this.storyAgent = new StorytellerAgent(this.engine, this.session, {
-      fixParagraphBreak: config.fixParagraphs,
-    })
-
+  constructor(options: TuiOptions) {
+    this.options = options
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -44,21 +34,27 @@ export class TuiChannel {
     })
   }
 
-  async init() {
-    await this.engine.init(this.config.gpu, this.config.loraPaths)
-    await this.session.load()
-    await this.session.ensureDir()
-    if (this.session.get().status === "new") {
-      await this.engine.bakeSystemPrompt("You are a helpful AI assistant with file system access.")
-      await this.session.save()
+  async start() {
+    if (this.options.mode === "direct" || !this.options.mode) {
+      await this.startDirect()
     } else {
-      await this.engine.loadBaseline()
+      await this.startGatewayClient()
     }
   }
 
-  async start() {
-    console.error("\x1b[36mRWKV TUI\x1b[0m | story: \x1b[33m" + this.config.story + "\x1b[0m | mode: " + this.mode)
-    console.error("Commands: /mode agent|story, /save, /load <name>, /clear, /exit")
+  private async startDirect() {
+    console.error("\x1b[36mRWKV TUI (direct)\x1b[0m")
+
+    const engine = new RwkvEngine(this.options.modelPath, this.options.stateDir)
+    console.error("Loading model...")
+    await engine.init(this.options.gpu, this.options.loraPaths)
+    console.error("Model loaded.")
+
+    const agent = new AgentEngine(engine, this.options.stateDir)
+    await agent.init()
+
+    let generating = false
+    console.error("Type /help for commands. /exit to quit.")
     console.error("---")
 
     this.rl.on("line", async (line) => {
@@ -66,23 +62,134 @@ export class TuiChannel {
       if (!input) { this.prompt(); return }
 
       if (input.startsWith("/")) {
-        await this.handleCommand(input)
+        await this.handleDirectCommand(input, agent)
         this.prompt()
         return
       }
 
-      process.stdout.write("\n")
+      if (generating) { this.prompt(); return }
+      generating = true
 
       try {
-        if (this.mode === "agent") {
-          const result = await this.loop.run(input, {
-            onText: (t) => process.stdout.write(t),
-          })
-          process.stdout.write("\n\n")
-        } else {
-          const result = await this.storyAgent.continueStoryStream(input, (t) => process.stdout.write(t))
-          process.stdout.write("\n\n")
+        process.stdout.write("\n")
+        await agent.chat(input, {
+          onToken: (t) => process.stdout.write(t),
+        })
+        process.stdout.write("\n\n")
+      } catch (err: any) {
+        console.error("\x1b[31mError:\x1b[0m", err.message)
+      }
+
+      generating = false
+      this.prompt()
+    })
+
+    this.prompt()
+  }
+
+  private async handleDirectCommand(input: string, agent: AgentEngine) {
+    const parts = input.slice(1).split(/\s+/)
+    const verb = parts[0]
+
+    switch (verb) {
+      case "sessions":
+      case "ls": {
+        const sessions = await agent.listSessions()
+        const current = agent.getCurrentSession()
+        console.error(`\x1b[36mSessions:\x1b[0m (current: \x1b[33m${current.label}\x1b[0m)`)
+        for (const s of sessions) {
+          const marker = s.label === current.label ? " *" : "  "
+          console.error(`  ${marker} ${s.label} (\x1b[90m${s.messageCount} msgs\x1b[0m)`)
         }
+        break
+      }
+      case "session":
+      case "switch": {
+        const label = parts[1]
+        if (!label) { console.error("Usage: /switch <label>"); break }
+        try {
+          const session = await agent.switchSession(label)
+          console.error(`\x1b[32mSwitched to:\x1b[0m ${session.label} (\x1b[90m${session.messageCount} msgs\x1b[0m)`)
+        } catch (e: any) {
+          console.error(`\x1b[31mError:\x1b[0m ${e.message}`)
+        }
+        break
+      }
+      case "create": {
+        const label = parts[1] || `session_${Date.now()}`
+        const session = await agent.createSession(label)
+        console.error(`\x1b[32mCreated:\x1b[0m ${session.label}`)
+        break
+      }
+      case "delete": {
+        const label = parts[1]
+        if (!label) { console.error("Usage: /delete <label>"); break }
+        try {
+          await agent.deleteSession(label)
+          console.error(`\x1b[32mDeleted:\x1b[0m ${label}`)
+        } catch (e: any) {
+          console.error(`\x1b[31mError:\x1b[0m ${e.message}`)
+        }
+        break
+      }
+      case "clear":
+        console.clear()
+        break
+      case "help":
+        console.error(`
+\x1b[36mCommands:\x1b[0m
+  /sessions, /ls     List sessions
+  /switch <label>    Switch session
+  /create <label>    Create new session
+  /delete <label>    Delete session
+  /clear             Clear screen
+  /exit, /quit       Exit
+`)
+        break
+      case "exit":
+      case "quit":
+        await agent.dispose()
+        process.exit(0)
+      default:
+        console.error("Unknown:", verb, "(\x1b[90m/help\x1b[0m)")
+    }
+  }
+
+  private async startGatewayClient() {
+    const host = this.options.gatewayHost || "http://localhost:" + (this.options.gatewayPort || 3030)
+    console.error(`\x1b[36mRWKV TUI (gateway client)\x1b[0m -> ${host}`)
+
+    try {
+      const r = await fetch(`${host}/sessions`)
+      const data = await r.json()
+      console.error(`Connected. Current session: \x1b[33m${data.current}\x1b[0m`)
+      console.error("Type /help for commands.")
+      console.error("---")
+    } catch (err: any) {
+      console.error("\x1b[31mCould not connect to gateway:\x1b[0m", err.message)
+      return
+    }
+
+    this.rl.on("line", async (line) => {
+      const input = line.trim()
+      if (!input) { this.prompt(); return }
+
+      if (input.startsWith("/")) {
+        await this.handleClientCommand(input, host)
+        this.prompt()
+        return
+      }
+
+      try {
+        process.stdout.write("\n")
+        const r = await fetch(`${host}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: input }),
+        })
+        const data = await r.json()
+        console.log(data.result)
+        process.stdout.write("\n")
       } catch (err: any) {
         console.error("\x1b[31mError:\x1b[0m", err.message)
       }
@@ -93,63 +200,58 @@ export class TuiChannel {
     this.prompt()
   }
 
-  private async handleCommand(cmd: string) {
-    const parts = cmd.slice(1).split(/\s+/)
+  private async handleClientCommand(input: string, host: string) {
+    const parts = input.slice(1).split(/\s+/)
     const verb = parts[0]
 
     switch (verb) {
-      case "mode": {
-        const m = parts[1]
-        if (m === "agent" || m === "story") {
-          this.mode = m
-          console.error("\x1b[32mMode:\x1b[0m", this.mode)
-        } else {
-          console.error("Usage: /mode agent|story")
+      case "sessions":
+      case "ls": {
+        const r = await fetch(`${host}/sessions`)
+        const data = await r.json()
+        console.error(`\x1b[36mSessions:\x1b[0m (current: \x1b[33m${data.current}\x1b[0m)`)
+        for (const s of data.sessions) {
+          const marker = s.label === data.current ? " *" : "  "
+          console.error(`  ${marker} ${s.label} (\x1b[90m${s.messageCount} msgs\x1b[0m)`)
         }
         break
       }
-      case "save": {
-        const name = parts[1] || `tui_${Date.now()}`
-        const info = await this.engine.saveCheckpoint(name)
-        this.session.registerCheckpoint(name, info.filePath)
-        await this.session.save()
-        console.error("\x1b[32mSaved:\x1b[0m", name, `(${(info.fileSize / 1024).toFixed(1)} KB)`)
+      case "create": {
+        const label = parts[1] || `session_${Date.now()}`
+        const r = await fetch(`${host}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label }),
+        })
+        const data = await r.json()
+        console.error(`\x1b[32mCreated:\x1b[0m ${data.session?.label}`)
         break
       }
-      case "load": {
-        const name = parts[1]
-        if (!name) { console.error("Usage: /load <name>"); break }
-        try {
-          await this.engine.loadCheckpoint(name)
-          console.error("\x1b[32mLoaded:\x1b[0m", name)
-        } catch (e: any) {
-          console.error("\x1b[31mError:\x1b[0m", e.message)
-        }
+      case "switch": {
+        const label = parts[1]
+        if (!label) { console.error("Usage: /switch <label>"); break }
+        const r = await fetch(`${host}/sessions/${label}/switch`, { method: "POST" })
+        const data = await r.json()
+        console.error(`\x1b[32mSwitched:\x1b[0m ${data.session?.label} (\x1b[90m${data.session?.messageCount} msgs\x1b[0m)`)
         break
       }
-      case "clear": {
-        console.clear()
+      case "help":
+        console.error(`
+Commands:
+  /ls               List sessions
+  /create <label>   New session
+  /switch <label>   Switch session
+  /exit             Exit
+`)
         break
-      }
       case "exit":
-      case "quit": {
-        await this.dispose()
+      case "quit":
         process.exit(0)
-      }
-      default:
-        console.error("Unknown command:", verb)
     }
   }
 
   private prompt() {
-    const prefix = this.mode === "agent" ? "\x1b[36magent\x1b[0m" : "\x1b[33mstory\x1b[0m"
-    this.rl.setPrompt(`[${prefix}]> `)
+    this.rl.setPrompt("\x1b[36m>\x1b[0m ")
     this.rl.prompt()
-  }
-
-  async dispose() {
-    await this.loop.dispose()
-    await this.storyAgent.dispose()
-    this.rl.close()
   }
 }

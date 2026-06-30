@@ -6,8 +6,9 @@ import { RwkvEngine } from "./src/rwkv-engine.ts"
 import { SessionManager } from "./src/session.ts"
 import { StorytellerAgent } from "./src/storyteller.ts"
 import { AgentLoop } from "./src/agent-loop.ts"
+import { AgentEngine } from "./src/agent-engine.ts"
 import { GatewayServer } from "./src/gateway/server.ts"
-import { TuiChannel } from "./tui/index.ts"
+import { Tui } from "./tui/index.ts"
 import { GenerateOpts, DEFAULT_GEN_OPTS } from "./src/types.ts"
 
 const __filename = fileURLToPath(import.meta.url)
@@ -41,20 +42,19 @@ async function main() {
 }
 
 async function runGateway() {
+  console.error(`RWKV Gateway | port: ${gatewayPort} | model: ${path.basename(modelPath)}`)
+
   const engine = new RwkvEngine(modelPath, path.join(PROJECT_ROOT, "s", "_gateway"))
   await engine.init(gpuArg, loraPaths)
+  const agent = new AgentEngine(engine, path.join(PROJECT_ROOT, "s", "_gateway"))
+  await agent.init()
+  const server = new GatewayServer(agent, path.join(PROJECT_ROOT, "webapp"))
 
-  let grammar: string | undefined
-  if (grammarPath) {
-    grammar = await fsp.readFile(grammarPath, "utf-8")
-  }
-
-  console.error(`Gateway | port: ${gatewayPort} | model: ${path.basename(modelPath)} | gpu: ${gpuArg}`)
-
-  const server = new GatewayServer(engine)
   await server.start(gatewayPort)
-  console.error(`Listening on http://0.0.0.0:${gatewayPort}`)
-  console.error(`Webapp: http://0.0.0.0:${gatewayPort}`)
+  console.error(`  API:  http://0.0.0.0:${gatewayPort}`)
+  console.error(`  WS:   ws://0.0.0.0:${gatewayPort}`)
+  console.error(`  Web:  http://0.0.0.0:${gatewayPort}`)
+  console.error(`  Sessions: ${(await agent.listSessions()).length}`)
 
   const shutdown = async () => {
     console.error("\nShutting down...")
@@ -66,7 +66,10 @@ async function runGateway() {
 }
 
 async function runTui() {
-  const tui = new TuiChannel({
+  const mode = args.includes("--connect") ? "gateway_client" : "direct"
+  const gatewayHost = args.find((a) => a.startsWith("--host="))?.split("=")[1]
+
+  const tui = new Tui({
     modelPath,
     stateDir,
     story,
@@ -75,9 +78,11 @@ async function runTui() {
     fixParagraphs,
     agentDepth,
     grammar: grammarPath ? await fsp.readFile(grammarPath, "utf-8") : undefined,
+    gatewayPort,
+    mode: mode as any,
+    gatewayHost,
   })
 
-  await tui.init()
   await tui.start()
 }
 
@@ -267,25 +272,27 @@ async function runCli() {
 Usage: pnpm tsx cli.ts <command> [options]
 
 Commands:
-  gateway                Start gateway server (HTTP/WS API)
-  tui                    Start terminal UI (interactive TUI)
-  tell [prompt]          Generate story text
-  agent [prompt]         Agent mode with tool use
-  chapter --num=N        Write a chapter, save checkpoint
+  gateway              Start gateway (engine + API + WS broadcast)
+  tui                  Terminal UI (--connect to connect to running gateway)
+  tell [prompt]        Generate story text
+  agent [prompt]       Agent mode with tool use
+  chapter --num=N      Write a chapter, save checkpoint
   checkpoint save|load|ls
-  plan [prompt]          Generate story plan
-  interactive            Interactive story mode
-  continue [prompt]      Continue from latest checkpoint
-  state-info             Show engine/session state info
+  plan [prompt]        Generate story plan
+  interactive          Interactive story mode
+  continue [prompt]    Continue from latest checkpoint
+  state-info           Show engine/session state info
 
 Options:
   --model=PATH         Model path
-  --story=NAME         Story slug (default: "default")
+  --story=NAME         Story slug
   --gpu=TYPE           GPU backend: vulkan | cuda | auto
-  --lora=PATH          LoRA adapter(s), comma-separated
+  --lora=PATH          LoRA adapter(s)
   --depth=N            Max agent loop depth (default: 5)
   --grammar=PATH       GBNF grammar file
   --port=N             Gateway port (default: 3030)
+  --host=URL           Gateway URL for --connect mode
+  --connect            TUI connects to running gateway
   --fix-paragraphs, -p Continue past \\n\\n EOS boundary
 `)
       process.exit(1)

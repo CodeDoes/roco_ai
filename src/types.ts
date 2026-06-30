@@ -87,3 +87,17 @@ export interface ToolResult {
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>
+
+export interface SessionInfo {
+  label: string
+  createdAt: string
+  updatedAt: string
+  statePath: string
+  messageCount: number
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "tool" | "system"
+  content: string
+  timestamp: string
+}

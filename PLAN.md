@@ -1,5 +1,37 @@
 # Project Plan
 
+## Architecture
+
+```
+Inference Engine (rwkv-engine.ts)
+  ⇅ generation, state ops
+Agent Engine (agent-engine.ts)
+  ⇅ conversation, tool calls, sessions
+Gateway (gateway/server.ts)
+  ⇅ WS broadcast to all channels
+Channels (webapp, TUI, CLI)
+```
+
+**Inference Engine** — persistent daemon. Model loads once, runs indefinitely.
+
+**Agent Engine** — conversation logic, tool call handling, session management (labeled context checkpoints).
+
+**Gateway** — thin router between agent engine and channels. Manages WS connections. Broadcasts messages to all connected channels. All channels see the same messages.
+
+**Channel** — UI "window" to the agent. Webapp (browser), TUI (terminal), CLI (scriptable). Multiple channels connected to the same gateway share the same conversation.
+
+**Session** — labeled context checkpoint. Defines what the model can see. UI stores full message history (human reads old messages). Model only gets context from current session forward. Sessions can be saved, loaded, switched by label.
+
+### Key Rules
+
+- Human sees everything (full history in UI)
+- Bot only sees current session context
+- Sessions are labeled checkpoints you can switch between
+- All channels connected to the gateway share the same conversation
+- Gateway broadcasts tokens/messages to all channels simultaneously
+
+---
+
 ## Phase 1: Foundation ✓
 
 - [x] RWKV engine with Vulkan GPU
@@ -25,24 +57,27 @@
 
 ## Phase 3: Gateway & Channels (Current)
 
-- [ ] HTTP/WebSocket gateway (`src/gateway/`)
-- [ ] REST API (`/api/sessions`, `/api/session/:id/chat`)
-- [ ] Web channel (dashboard at `webapp/`)
-- [ ] TUI (terminal UI at `tui/`)
-- [ ] Model loader config
-- [ ] CLI improvements
+- [x] Agent engine (`src/agent-engine.ts`) — standalone, session management, labeled sessions
+- [x] Gateway (`src/gateway/server.ts`) — thin router, WS broadcast to all channels
+- [x] Web channel (`webapp/index.html`) — browser dashboard, full history, WS streaming
+- [x] TUI (`tui/index.ts`) — terminal UI, direct mode or gateway client
+- [x] CLI commands: `gateway` starts engine+server, `tui` interactive mode
+- [ ] Multi-channel broadcast (2+ channels seeing same messages)
+- [ ] Session persistence (save/restore by label)
+- [ ] Session search tool (peek into old session messages)
 
 ## Phase 4: Multi-Channel Routing
 
 - [ ] Channel-agnostic session routing
 - [ ] File watcher (session changes → broadcast)
 
-## Deferred / Archived (formerly Phase 5)
+## Deferred / Archived
 
 - [ ] Skill system (modular tool directories)
 - [ ] Long-term memory (state archiving + retrieval)
 - [ ] Cron/scheduled tasks
 - [ ] System prompt as routable state
+- [ ] Cloud training pipeline
 
 ---
 
@@ -69,20 +104,9 @@ Tested `agent` command end-to-end with base RWKV 7 2.9B Q4_K_M on Vulkan.
 3. Lower temperature (0.5) for more deterministic tool choice
 4. Tool names in ALL CAPS in descriptions to stand out (LS, READ, etc.)
 
-## Deferred: Cloud Training (On Hold)
+## Current Focus
 
-Training put on hold until harness proves base RWKV limits. If agent loop works well with prompting alone, training may not be needed.
-
-- **Dataset**: still researching ideal tool-use dataset
-- **Tool**: RWKV-PEFT on Runpod RTX 4090 (~$0.09/run)
-- **Keys needed**: Runpod ($10 credit), Hugging Face token, SSH keypair
-- **Accounts**: runpod.io account + billing, huggingface.co token, ssh-keygen
-
-## Immediate Next Steps
-
-1. Gateway daemon (Express + WS) in `src/gateway/`
-2. REST API endpoints (sessions list, get, chat with streaming)
-3. Webapp dashboard (React or plain HTML/JS)
-4. TUI (blessed or simple readline-based)
-5. CLI extend to support gateway mode
-6. Model loader config (YAML/JSON for model paths, GPU, LoRA defaults)
+1. Test multi-channel broadcast (webapp + TUI simultaneous)
+2. Session persistence by label (save/restore across restarts)
+3. Session search tool (load old session context)
+4. Polish webapp UI (message history, session management)
