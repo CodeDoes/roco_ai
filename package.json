@@ -13,6 +13,8 @@
     "gateway": "tsx cli.ts gateway",
     "tui": "tsx cli.ts tui",
     "agent": "tsx cli.ts agent",
+    "eval": "tsx src/eval/story-creation.eval.ts",
+    "eval:live": "tsx src/eval/story-creation.eval.ts --live",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

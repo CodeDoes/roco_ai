@@ -74,6 +74,22 @@ export const toolHandlers: Record<string, ToolHandler> = {
   find: (args) => findTool({ path: args.path as string, term: args.term as string }),
 }
 
+function escapeToolName(name: string): string {
+  return '"' + name.replace(/[\\"]/g, "\\$&") + '"'
+}
+
+export function toolsToGbnf(defs?: ToolDef[]): string {
+  const names = (defs ?? toolDefs).map((t) => escapeToolName(t.name)).join(" | ")
+  return [
+    'root ::= tool-call',
+    'tool-call ::= "<tool_call>" ws "{" ws name-property ws args-property ws "}" ws "</tool_call>"',
+    'name-property ::= "\\"name\\"" ws ":" ws "\"" tool-name "\\""',
+    'args-property ::= "\\"args\\"" ws ":" ws "{" ws [^}]* "}"',
+    `tool-name ::= ${names}`,
+    'ws ::= [ \\t\\n]*',
+  ].join("\n")
+}
+
 export function toolsToXml(defs?: ToolDef[]): string {
   return (defs ?? toolDefs).map((t) => {
     const params = t.parameters.map((p) =>

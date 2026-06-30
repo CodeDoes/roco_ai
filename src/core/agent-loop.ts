@@ -1,7 +1,7 @@
 import { RwkvEngine } from "../engine/rwkv-engine.ts"
 import { SessionManager } from "./session.ts"
 import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks, ToolCall, ToolResult, ToolDef, ToolHandler } from "./types.ts"
-import { toolDefs as defaultToolDefs, toolHandlers as defaultHandlers, toolsToXml } from "./tool-registry.ts"
+import { toolDefs as defaultToolDefs, toolHandlers as defaultHandlers, toolsToXml, toolsToGbnf } from "./tool-registry.ts"
 
 const DEFAULT_SYSTEM_PREAMBLE = `You can use tools to read and write files. When you need to use a tool, output:
 
@@ -58,6 +58,7 @@ export class AgentLoop {
         ...DEFAULT_GEN_OPTS,
         temperature: 0.7,
         stopSequences: ["</tool_call>"],
+        grammar: toolsToGbnf(this.config.toolDefs),
         ...opts,
       })
 

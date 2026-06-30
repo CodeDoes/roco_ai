@@ -10,10 +10,10 @@ import { ToolCall, ToolResult, ToolDef, ToolHandler, DEFAULT_GEN_OPTS } from "..
 import { RwkvEngine } from "../engine/rwkv-engine.ts"
 import mkdirTool from "../tools/mkdir.ts"
 import { TraceWriter } from "./trace-writer.ts"
+import { toolsToGbnf } from "../core/tool-registry.ts"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = path.resolve(__dirname, "../..")
-const GRAMMARS_DIR = path.join(PROJECT_ROOT, "src", "grammars")
 
 const TOOL_CALL_RE = /<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/g
 
@@ -418,11 +418,8 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
   const engine = new RwkvEngine(modelPath, baseDir)
   await engine.init(gpu)
 
-  let grammar: string | undefined
-  const grammarPath = path.join(GRAMMARS_DIR, "tool_call.gbnf")
-  if (fs.existsSync(grammarPath)) {
-    grammar = fs.readFileSync(grammarPath, "utf-8")
-  }
+  const envoyGrammar = toolsToGbnf(envoyToolDefs)
+  const storytellerGrammar = toolsToGbnf(storytellerToolDefs)
 
   const envoyPrompt = buildEnvoyPrompt()
   const userInput = "Create a story about dragons with 3 first chapters and an up-to-date wiki."
@@ -470,7 +467,7 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
             process.stdout.write(t)
             trace?.stream(t)
           },
-        }, { ...DEFAULT_GEN_OPTS, temperature: 0.7, grammar })
+        })
         trace?.write("[output_end]")
 
         return {
@@ -490,7 +487,7 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
       },
       trace,
       tag: "envoy",
-      genOpts: grammar ? { grammar } : undefined,
+      genOpts: { grammar: envoyGrammar },
     },
   )
 
