@@ -43,6 +43,14 @@ export class RwkvEngine implements Engine {
     this.stateDir = stateDir
   }
 
+  get loraAdapters(): { filePath: string; scale?: number }[] {
+    return this.loras?.adapters ?? []
+  }
+
+  get moseExperts(): string[] {
+    return this.mose?.list?.().map(e => e.name) ?? []
+  }
+
   /** Initialize MoSE + LoRA managers (safe to call after init resolves). */
   private initMoSE() {
     this.mose = new MoSEEngine(this, this.stateDir)

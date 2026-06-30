@@ -82,6 +82,8 @@ async function runAgentLoop(
     onText?: (text: string) => void
   },
 ): Promise<{ finalText: string; toolCallCount: number }> {
+  // RWKV7 function calling format: System: ... User: ... Assistant: ...
+  // Temp 0, top_p 0, penalty 0 for function calling per HF guide
   let fullPrompt = systemPrompt + "\n\nUser: " + userInput + "\n\nAssistant: "
   let finalText = ""
   let toolCallCount = 0
@@ -101,12 +103,12 @@ async function runAgentLoop(
           trace?.stream(chunk)
           process.stdout.write(chunk)
         },
-      }, { ...DEFAULT_GEN_OPTS, temperature: 0.7, stopSequences: ["</tool_call>", "\x03"], ...genOpts } as any)
+      }, { ...DEFAULT_GEN_OPTS, temperature: 0, topP: 0, repeatPenalty: 0, stopSequences: ["</tool_call>", "\x03"], ...genOpts } as any)
       trace?.write("[output_end]")
       raw = accumulated.replace(/\x03/g, "")
       opts?.onText?.(raw)
     } else {
-      raw = (await engine.generate(fullPrompt, { ...DEFAULT_GEN_OPTS, temperature: 0.7, stopSequences: ["</tool_call>", "\x03"], ...genOpts } as any)).replace(/\x03/g, "")
+      raw = (await engine.generate(fullPrompt, { ...DEFAULT_GEN_OPTS, temperature: 0, topP: 0, repeatPenalty: 0, stopSequences: ["</tool_call>", "\x03"], ...genOpts } as any)).replace(/\x03/g, "")
       trace?.generate(raw)
       opts?.onText?.(raw)
     }
@@ -151,7 +153,7 @@ async function runAgentLoop(
 
 function buildEnvoyPrompt(): string {
   const toolXml = toolsToXml(envoyToolDefs)
-  return `You are the envoy — the user's direct point of contact. You do not perform tasks yourself. Instead, you delegate work to specialized agents.
+  return `System: You are the envoy — the user's direct point of contact. You do not perform tasks yourself. Instead, you delegate work to specialized agents.
 
 Available agents:
 - storyteller: Creative writing, story planning, worldbuilding wiki entries
@@ -181,7 +183,7 @@ Assistant: I'll delegate this to the storyteller.
 
 function buildStorytellerPrompt(defs: ToolDef[]): string {
   const toolXml = toolsToXml(defs)
-  return `You are a creative writing AI assistant. You write compelling fiction with rich worldbuilding, consistent character development, and engaging plots.
+  return `System: You are a creative writing AI assistant. You write compelling fiction with rich worldbuilding, consistent character development, and engaging plots.
 
 Core rules:
 - Write proactively. Do not ask questions.
@@ -295,20 +297,20 @@ async function runOracle(baseDir: string, W: (p: string) => string): Promise<boo
   ]
 
   const trace = new TraceWriter("oracle").open()
-  trace.userInput("Create a story about dragons with 3 first chapters and an up-to-date wiki.")
-
   const engine = new MockEngine(mockResponses)
-  const userInput = "Create a story about dragons with 3 first chapters and an up-to-date wiki."
+const userInput = "Create a story about dragons with 3 first chapters and an up-to-date wiki."
+// Tool handlers for the storyteller sub-loop
+const storytellerHandlersWithMkdir: Record<string, ToolHandler> = {
+...storytellerHandlers,
+mkdir: (args) => mkdirTool({ path: args.path as string }),
+}
 
-  // Tool handlers for the storyteller sub-loop
-  const storytellerHandlersWithMkdir: Record<string, ToolHandler> = {
-    ...storytellerHandlers,
-    mkdir: (args) => mkdirTool({ path: args.path as string }),
-  }
+// ── Main loop (envoy) ──
+const envoyPrompt = buildEnvoyPrompt()
+trace.systemPrompt(envoyPrompt)
+trace.userInput(userInput)
+let subToolCalls = 0
 
-  // ── Main loop (envoy) ──
-  const envoyPrompt = buildEnvoyPrompt()
-  let subToolCalls = 0
 
   const mainResult = await runAgentLoop(
     engine,
@@ -436,19 +438,28 @@ async function runLive(baseDir: string, W: (p: string) => string, args: string[]
 
   const trace = new TraceWriter("live").open()
   trace.userInput(userInput)
+  trace.systemPrompt(envoyPrompt)
+  trace.write(`model: ${path.basename(modelPath)}`)
+  trace.write(`gpu: ${gpu}`)
+  if (engine.loraAdapters.length) {
+    const names = engine.loraAdapters.map(a => a.filePath).join(", ")
+    trace.write(`lora: ${names}`)
+  }
+  const moseExperts = engine.moseExperts.length ? engine.moseExperts.join(", ") : "none"
+  trace.write(`mose experts: ${moseExperts}`)
 
   const result = await runAgentLoop(
     engine,
     envoyPrompt,
     {
-      spawn_agent: async (args) => {
-        const task = args.task as string
-        trace.section(`spawn_agent: storyteller`)
-        trace.write(`task: ${task}`)
-        console.error(`\nENVOY spawned "${args.agent}"`)
-
-        // Create sub-session for storyteller
-        const subSession = new SessionManager(baseDir, "storyteller-dragons", modelPath)
+  spawn_agent: async (args) => {
+    const task = args.task as string
+    trace.section(`spawn_agent: storyteller`)
+    trace.write(`task: ${task}`)
+    trace.systemPrompt(storytellerPrompt)
+    console.error(`\nENVOY spawned "${args.agent}"`)
+    // Create sub-session for storyteller
+    const subSession = new SessionManager(baseDir, "storyteller-dragons", modelPath)
         await subSession.ensureDir()
 
         const subLoop = new AgentLoop(engine, subSession, 15, {

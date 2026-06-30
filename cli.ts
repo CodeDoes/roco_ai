@@ -3,6 +3,7 @@ import { promises as fsp } from "fs"
 import * as path from "path"
 import { fileURLToPath } from "url"
 import { RwkvEngine } from "./src/engine/rwkv-engine.ts"
+import { EngineHTTPClient } from "./src/engine/engine-client.ts"
 import type { Engine } from "./src/core/types.ts"
 import { SessionManager } from "./src/core/session.ts"
 import { StorytellerAgent } from "./src/agents/storyteller/index.ts"
@@ -27,6 +28,7 @@ const story = args.find((a) => a.startsWith("--story="))?.split("=")[1] || "defa
 const gpuArg = (args.find((a) => a.startsWith("--gpu="))?.split("=")[1] || "vulkan") as "vulkan" | "cuda" | "auto"
 const loraRaw = args.find((a) => a.startsWith("--lora="))?.split("=")[1]
 const loraPaths = loraRaw ? loraRaw.split(",").map((p) => p.startsWith("/") ? p : path.join(PROJECT_ROOT, p)) : undefined
+const engineUrl = args.find((a) => a.startsWith("--engine-url="))?.split("=")[1]
 const fixParagraphs = args.includes("--fix-paragraphs") || args.includes("-p")
 const agentDepth = parseInt(args.find((a) => a.startsWith("--depth="))?.split("=")[1] || "5", 10)
 const grammarPath = args.find((a) => a.startsWith("--grammar="))?.split("=")[1]
@@ -49,6 +51,10 @@ async function main() {
 }
 
 function createEngine(modelPath: string, stateDir: string): Engine {
+  if (engineUrl) {
+    console.error(`Engine: remote (${engineUrl})`)
+    return new EngineHTTPClient(engineUrl)
+  }
   return new RwkvEngine(modelPath, stateDir)
 }
 

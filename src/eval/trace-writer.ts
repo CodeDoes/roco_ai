@@ -50,11 +50,8 @@ export class TraceWriter {
     }
   }
 
-  generate(text: string, truncated = true) {
-    const content = truncated && text.length > 2000
-      ? text.slice(0, 2000) + `\n... [truncated, total ${text.length} chars]`
-      : text
-    this.emit(`[generate]\n${content}`)
+generate(text: string) {
+    this.emit(`[generate]\n${text}`)
   }
 
   toolCall(name: string, args: Record<string, unknown>) {
@@ -63,9 +60,9 @@ export class TraceWriter {
   }
 
   toolResult(name: string, success: boolean, data: unknown, error?: string) {
-    const dataStr = JSON.stringify(data ?? null).slice(0, 500)
+    const dataStr = JSON.stringify(data ?? null)
     if (error) {
-      this.emit(`[tool_result] ${name} success=${success} error=${error.slice(0, 300)}`)
+      this.emit(`[tool_result] ${name} success=${success} error=${error}`)
     } else {
       this.emit(`[tool_result] ${name} success=${success} data=${dataStr}`)
     }
@@ -73,6 +70,10 @@ export class TraceWriter {
 
   userInput(text: string) {
     this.emit(`[user] ${text}`)
+  }
+
+  systemPrompt(text: string) {
+    this.emit(`[system] ${text}`)
   }
 
   verification(checks: { name: string; pass: boolean }[]) {
