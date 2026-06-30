@@ -27,42 +27,53 @@ Default model: `models/rwkv7-g1g-2.9b-20260526-ctx8192-Q4_K_M.gguf`
 | `cli.ts` | Entry point, 10 commands, arg parsing |
 | `src/core/types.ts` | Shared type definitions |
 | `src/core/session.ts` | Session persistence, JSONL event log (`sessions/<id>/session.jsonl`) |
-| `src/core/agent-loop.ts` | Tool-call loop runtime: generate → parse → execute → feedback |
+| `src/core/agent-loop.ts` | Tool-call loop runtime: generate → parse → execute → feedback. Uses `stopSequences: ["</tool_call>"]` to cut generation at tool call boundary. Accepts custom `AgentLoopConfig` (systemPrompt, toolDefs, toolHandlers). |
 | `src/core/agent-engine.ts` | Standalone agent engine with labeled session management |
-| `src/core/tool-registry.ts` | Tool defs + handlers, XML serialization for system prompt |
-| `src/engine/rwkv-engine.ts` | Model lifecycle, state save/load, generate, LoRA |
-| `src/agents/storyteller/` | Story generation agent (prose mode) — `instructions.mdx` loaded at init |
+| `src/core/tool-registry.ts` | Global tool defs + handlers, XML serialization. `toolsToXml(defs?)` accepts optional custom tool set. |
+| `src/engine/rwkv-engine.ts` | Model lifecycle, state save/load, generate, LoRA. `generateStream` supports `stopSequences` for early termination at boundary tags. |
+| `src/agents/envoy/` | User-facing agent. Only `spawn_agent` tool. Delegates to subagents (storyteller, coder). |
+| `src/agents/storyteller/` | Story generation agent (prose mode) — 5 file tools + story-analyze/validate |
 | `src/agents/storyteller/skills/` | Skill modules + `tools/story-analyze.ts`, `tools/story-validate.ts` |
 | `src/agents/coder/` | Code agent (skeleton) — full 7-tool access |
 | `src/tools/*.ts` | Shared tool implementations (read, write, edit, ls, mkdir, grep, find) |
-| `src/skills/` | Global skill modules (instructions + subagent dispatch) |
 | `src/gateway/server.ts` | Express + WebSocket server, REST chat + WS broadcast |
 | `src/channels/tui/index.ts` | Terminal UI (direct engine or gateway client) |
 | `src/channels/web/index.html` | Browser dashboard (served by gateway) |
 | `src/grammars/tool_call.gbnf` | GBNF grammar constraining tool call output |
+| `src/eval/mock-engine.ts` | Reusable `MockEngine` class for deterministic eval |
+| `src/eval/trace-writer.ts` | Sync file writer for eval traces (`src/eval/.traces/`, gitignored) |
+| `src/eval/story-creation.eval.ts` | Envoy→storyteller eval. Oracle mode (mock) + live mode (real model) |
+| `src/grammars/tool_call.gbnf` | GBNF grammar constraining tool call output |
+| `docs/agent-behavior/` | Behavioral spec docs — universal-base, envoy, storyteller, coder |
+| `docs/synthdata/` | Training dataset examples — multi-turn conversational patterns |
 | `sessions/<ts>_<id>_<slug>/` | Per-session dir: `session.jsonl`, `_state_*.state`, `_system_baseline.state` |
 | `workspace/` | Project files |
 | `docs/` | Architecture docs + future plans |
 
 ## Architecture
 
-5 layers: Gateway → Channel → Agent → Session → Engine
+3 agent layers: Envoy → Subagent (storyteller/coder) → Session → Engine
 
 ```
-cli.ts → RwkvEngine (src/engine/)
-       → SessionManager (src/core/) → sessions/<id>/
-       → StorytellerAgent (src/agents/) / AgentLoop (src/core/)
-       → GatewayServer (src/gateway/, port 3030)
+User → EnvoyAgent (spawn_agent only)
+         → storyteller sub-agent (AgentLoop with storyteller tools + instructions)
+         → coder sub-agent (AgentLoop with coder tools + instructions)
+              → SessionManager → sessions/<id>/
+              → RwkvEngine
 ```
 
-Sessions are JSONL event logs. Each line typed: `init`, `message`, `checkpoint`, `baseline`. Binary state files alongside in the session directory.
+Envoy delegates to specialized subagents via `spawn_agent`. Subagents run their own `AgentLoop` instance with dedicated tools and instructions. Results flow back to the envoy for user presentation.
 
-Key pattern — constructor injection:
+Key pattern — constructor injection + AgentLoopConfig:
 ```ts
 const engine = new RwkvEngine(modelPath, sessionDir)
 const session = new SessionManager(sessionsDir, story, modelPath)
 const agent = new StorytellerAgent(engine, session, config)
-const agentLoop = new AgentLoop(engine, session, maxDepth)
+const agentLoop = new AgentLoop(engine, session, maxDepth, {
+  systemPrompt: "...",          // custom system prompt
+  toolDefs: storytellerToolDefs, // custom tool definitions
+  toolHandlers: {...},          // custom tool handlers
+})
 const gateway = new GatewayServer(agentEngine, webappDir)
 ```
 
@@ -82,6 +93,8 @@ Model outputs `<tool_call>\n{"name": "...", "args": {...}}\n</tool_call>`. Agent
 
 GBNF grammar at `src/grammars/tool_call.gbnf` constrains output to valid tool calls. Load via `--grammar=tool_call.gbnf` (resolved from `src/grammars/` if relative).
 
+**Stop sequence**: Harness uses `stopSequences: ["</tool_call>"]` to terminate generation the instant the closing tag appears. This prevents the model from hallucinating `<tool_result>` blocks — harness injects the real result instead.
+
 ## Known Quirks
 
 - `generateStream` is a batch wrapper, not true streaming. `generate()` builds full result then feeds to callback.
@@ -93,6 +106,18 @@ GBNF grammar at `src/grammars/tool_call.gbnf` constrains output to valid tool ca
 ## Testing
 
 Only `pnpm typecheck` (`tsc --noEmit`). No test runner.
+
+### Agent Oracle Eval
+
+`src/eval/story-creation.eval.ts` — two modes:
+
+| `pnpm eval` | Oracle mode (default). MockEngine with scripted tool calls simulating envoy → storyteller chain. Verifies exact file creation (plan + 3 chapters + 3 wiki entries). No model needed. Fast (~1s). |
+|-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `pnpm eval:live` | Live mode. Runs against real model with same workflow. Checks structural match (does agent create plan + chapters + wiki?). Keeps files in `/tmp/eval-story-*` for inspection. |
+
+Oracle demonstrates correct workflow sequence. If live mode fails, tune system prompt examples in `buildSystemPrompt()` at `src/eval/story-creation.eval.ts`.
+
+`src/eval/mock-engine.ts` — reusable `MockEngine` class for other evals. `src/eval/trace-writer.ts` saves structured traces to `src/eval/.traces/` (gitignored) with streamed model output, input markers, tool calls, and verification results.
 
 ## Config
 

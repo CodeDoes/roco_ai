@@ -23,7 +23,7 @@ interface LoraOpts {
   adapters: { filePath: string; scale?: number }[]
 }
 
-type GenOptsWithExtras = Partial<GenerateOpts> & { fixParagraphBreak?: boolean }
+type GenOptsWithExtras = Partial<GenerateOpts> & { fixParagraphBreak?: boolean; stopSequences?: string[] }
 
 export class RwkvEngine {
   private ctx: RwkvEngineCtx | null = null
@@ -191,6 +191,19 @@ export class RwkvEngine {
       const text = model.detokenize([token])
       result += text
       callbacks.onText?.(text)
+
+      if (opts.stopSequences) {
+        let stopped = false
+        for (const seq of opts.stopSequences) {
+          const idx = result.indexOf(seq)
+          if (idx !== -1) {
+            result = result.slice(0, idx + seq.length)
+            stopped = true
+            break
+          }
+        }
+        if (stopped) break
+      }
     }
 
     if (

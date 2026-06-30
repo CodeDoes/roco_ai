@@ -4,3 +4,4 @@ sessions/
 workspace/
 *.state
 adapters/
+src/eval/.traces/

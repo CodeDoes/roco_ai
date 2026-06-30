@@ -1,9 +1,9 @@
 import { RwkvEngine } from "../engine/rwkv-engine.ts"
 import { SessionManager } from "./session.ts"
-import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks, ToolCall, ToolResult } from "./types.ts"
-import { toolDefs, toolHandlers, toolsToXml } from "./tool-registry.ts"
+import { GenerateOpts, DEFAULT_GEN_OPTS, GenerateCallbacks, ToolCall, ToolResult, ToolDef, ToolHandler } from "./types.ts"
+import { toolDefs as defaultToolDefs, toolHandlers as defaultHandlers, toolsToXml } from "./tool-registry.ts"
 
-const SYSTEM_PREAMBLE = `You can use tools to read and write files. When you need to use a tool, output:
+const DEFAULT_SYSTEM_PREAMBLE = `You can use tools to read and write files. When you need to use a tool, output:
 
 <tool_call>
 {"name": "tool_name", "args": { ... }}
@@ -11,17 +11,33 @@ const SYSTEM_PREAMBLE = `You can use tools to read and write files. When you nee
 
 Then I'll run the tool and give you the result.`
 
+const DEFAULT_EXAMPLES = `\n\nExamples:\n\nUser: list files in /tmp\n\nAssistant: <tool_call>\n{\"name\": \"ls\", \"args\": {\"path\": \"/tmp\"}}\n</tool_call>\n\nUser: <tool_result name=\"ls\" success=\"true\">\n[\"file1.txt\", \"file2.txt\"]\n</tool_result>\n\nAssistant: Here are the files in /tmp: file1.txt, file2.txt.\n\nUser: read file.txt\n\nAssistant: <tool_call>\n{\"name\": \"read\", \"args\": {\"path\": \"file.txt\"}}\n</tool_call>\n\nUser: <tool_result name=\"read\" success=\"true\">\n\"file contents here\"\n</tool_result>\n\nAssistant: The file contains: file contents here.`
+
 const TOOL_CALL_RE = /<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/g
+
+export interface AgentLoopConfig {
+  systemPrompt?: string
+  toolDefs?: ToolDef[]
+  toolHandlers?: Record<string, ToolHandler>
+  examples?: string
+}
 
 export class AgentLoop {
   private engine: RwkvEngine
   private session: SessionManager
   private maxDepth: number
+  private config: Required<AgentLoopConfig>
 
-  constructor(engine: RwkvEngine, session: SessionManager, maxDepth = 5) {
+  constructor(engine: RwkvEngine, session: SessionManager, maxDepth = 5, config?: AgentLoopConfig) {
     this.engine = engine
     this.session = session
     this.maxDepth = maxDepth
+    this.config = {
+      systemPrompt: config?.systemPrompt ?? DEFAULT_SYSTEM_PREAMBLE,
+      toolDefs: config?.toolDefs ?? defaultToolDefs,
+      toolHandlers: config?.toolHandlers ?? defaultHandlers,
+      examples: config?.examples ?? DEFAULT_EXAMPLES,
+    }
   }
 
   async run(
@@ -41,6 +57,7 @@ export class AgentLoop {
       const raw = await this.engine.generate(fullPrompt, {
         ...DEFAULT_GEN_OPTS,
         temperature: 0.7,
+        stopSequences: ["</tool_call>"],
         ...opts,
       })
 
@@ -51,7 +68,7 @@ export class AgentLoop {
       if (toolCalls.length === 0) break
 
       for (const call of toolCalls) {
-        const result = await this.executeTool(call)
+        const result = await this.execTool(call)
         const resultBlock = this.formatToolResult(result)
         fullPrompt += raw + "\n\nUser: " + resultBlock + "\n\nAssistant: "
       }
@@ -69,10 +86,10 @@ export class AgentLoop {
   }
 
   private buildSystemPrompt(): string {
-    return SYSTEM_PREAMBLE + "\n\nTools:\n" + toolsToXml() + "\n\nExamples:\n\nUser: list files in /tmp\n\nAssistant: <tool_call>\n{\"name\": \"ls\", \"args\": {\"path\": \"/tmp\"}}\n</tool_call>\n\nUser: <tool_result name=\"ls\" success=\"true\">\n[\"file1.txt\", \"file2.txt\"]\n</tool_result>\n\nAssistant: Here are the files in /tmp: file1.txt, file2.txt.\n\nUser: read file.txt\n\nAssistant: <tool_call>\n{\"name\": \"read\", \"args\": {\"path\": \"file.txt\"}}\n</tool_call>\n\nUser: <tool_result name=\"read\" success=\"true\">\n\"file contents here\"\n</tool_result>\n\nAssistant: The file contains: file contents here."
+    return this.config.systemPrompt + "\n\nTools:\n" + toolsToXml(this.config.toolDefs) + this.config.examples
   }
 
-  private parseToolCalls(text: string): {
+  parseToolCalls(text: string): {
     text: string
     toolCalls: ToolCall[]
     beforeFirst: string
@@ -101,8 +118,8 @@ export class AgentLoop {
     return { text: cleaned, toolCalls, beforeFirst }
   }
 
-  private async executeTool(call: ToolCall): Promise<ToolResult> {
-    const handler = toolHandlers[call.name]
+  async execTool(call: ToolCall): Promise<ToolResult> {
+    const handler = this.config.toolHandlers[call.name]
     if (!handler) {
       return { name: call.name, success: false, data: null, error: `Unknown tool: ${call.name}` }
     }
@@ -115,7 +132,7 @@ export class AgentLoop {
     }
   }
 
-  private formatToolResult(result: ToolResult): string {
+  formatToolResult(result: ToolResult): string {
     const body = JSON.stringify(result.data ?? null)
     const label = `<tool_result name="${result.name}" success="${result.success}">`
     if (result.error) {
@@ -125,7 +142,7 @@ export class AgentLoop {
     return `${label}\n${truncated}\n</tool_result>`
   }
 
-  private cleanOutput(text: string): string {
+  cleanOutput(text: string): string {
     return text
       .replace(/^Assistant:\s*/i, "")
       .trim()

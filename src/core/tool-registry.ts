@@ -74,8 +74,8 @@ export const toolHandlers: Record<string, ToolHandler> = {
   find: (args) => findTool({ path: args.path as string, term: args.term as string }),
 }
 
-export function toolsToXml(): string {
-  return toolDefs.map((t) => {
+export function toolsToXml(defs?: ToolDef[]): string {
+  return (defs ?? toolDefs).map((t) => {
     const params = t.parameters.map((p) =>
       `  <parameter name="${p.name}" type="${p.type}"${p.required ? " required=\"true\"" : ""}>${p.description}</parameter>`
     ).join("\n")
