@@ -1,0 +1,43 @@
+[package]
+name = "roco_ai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core ML / GPU
+# burn = "0.16"           # Rust ML framework with GPU backends (CUDA, WGPU, Candle)
+# candle-core = "0.8"      # Minimalist LLM framework in Rust (HuggingFace)
+# wgpu = "24"              # Cross-platform GPU compute (WebGPU native)
+
+# Async / Runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization / Config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Logging / Observability
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# CLI / Args (optional, for agent mode)
+# clap = { version = "4", features = ["derive"] }
+
+# State Space Models (future)
+# These will be implemented manually or vendored initially:
+# - S4 / S5 / Mamba-style selective state space
+# - RWKV v6 linear attention mechanism
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[[bin]]
+name = "roco"
+path = "src/main.rs"
