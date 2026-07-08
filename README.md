@@ -56,6 +56,7 @@ real 3B `ModelBackend` once the model is downloaded.
 | `policy.rs` | Composable `Policy` gate over actions (sandbox guard, tool allowlist, human-in-loop) | Done |
 | `toolcall.rs` | Parse `<tool_call>` from model output → vet via policy → dispatch via registry/sandbox | Done |
 | `builtins.rs` | Concrete agent tools: `read`/`write`/`list` (workspace-rooted) + `bash` (via sandbox) | Done |
+| `infer.rs` | Sampling (greedy/temp/top-k/top-p) + autoregressive generation loop behind `GenerativeModel` | Done |
 
 Design patterns follow `models/small_model_agent_patterns.md`. Run the smoke test with:
 

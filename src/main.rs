@@ -20,6 +20,7 @@ mod sandbox;
 mod policy;
 mod toolcall;
 mod builtins;
+mod infer;
 #[cfg(feature = "http-backends")]
 mod backends;
 
