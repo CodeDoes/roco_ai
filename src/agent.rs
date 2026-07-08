@@ -16,6 +16,10 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::engine::{CompletionRequest, ModelBackend, TokenCounter, TokenUsage};
+use crate::policy::Policy;
+use crate::sandbox::Sandbox;
+use crate::tools::ToolRegistry;
+use crate::toolcall::{execute_tool_calls, ToolExecutionResult};
 
 // ---------------------------------------------------------------------------
 // Context budget (§4.1)
@@ -107,6 +111,9 @@ pub struct WorkerOutput {
     pub usage: TokenUsage,
     /// True when the worker chose the do_nothing / abstain action.
     pub aborted: bool,
+    /// Results of any tool calls the worker executed (empty when tooling is
+    /// not enabled or the model emitted none).
+    pub tool_results: Vec<ToolExecutionResult>,
 }
 
 // ---------------------------------------------------------------------------
@@ -135,11 +142,35 @@ pub enum AgentError {
 pub struct Worker<B: ModelBackend + Send + Sync> {
     backend: Arc<B>,
     budget: ContextBudget,
+    /// Optional tool-calling support (see `toolcall`).
+    tools: Option<Arc<ToolRegistry>>,
+    sandbox: Option<Arc<Sandbox>>,
+    policy: Option<Arc<dyn Policy>>,
 }
 
 impl<B: ModelBackend + Send + Sync> Worker<B> {
     pub fn new(backend: Arc<B>, budget: ContextBudget) -> Self {
-        Self { backend, budget }
+        Self {
+            backend,
+            budget,
+            tools: None,
+            sandbox: None,
+            policy: None,
+        }
+    }
+
+    /// Enable tool-calling for this worker. Tool calls parsed from the model
+    /// response are vetted by `policy` and dispatched via `tools`/`sandbox`.
+    pub fn with_tooling(
+        mut self,
+        tools: Arc<ToolRegistry>,
+        sandbox: Arc<Sandbox>,
+        policy: Arc<dyn Policy>,
+    ) -> Self {
+        self.tools = Some(tools);
+        self.sandbox = Some(sandbox);
+        self.policy = Some(policy);
+        self
     }
 
     /// Execute a single atomic subtask with a schema-first prompt and sampling
@@ -165,12 +196,23 @@ impl<B: ModelBackend + Send + Sync> Worker<B> {
         let parsed = serde_json::from_str::<Value>(&resp.text).unwrap_or(Value::Null);
         let aborted = task.allow_abstain
             && parsed.get("action").and_then(|a| a.as_str()) == Some("do_nothing");
+        // If this worker is tool-enabled, parse and execute any tool calls the
+        // model emitted: each is vetted by the policy and dispatched via the
+        // registry (regular tools) or sandbox (shell tools).
+        let tool_results = if let (Some(tools), Some(sandbox), Some(policy)) =
+            (&self.tools, &self.sandbox, &self.policy)
+        {
+            execute_tool_calls(&resp.text, tools, sandbox, policy.as_ref()).await
+        } else {
+            Vec::new()
+        };
         Ok(WorkerOutput {
             subtask_id: task.id.clone(),
             raw: resp.text,
             parsed,
             usage: resp.usage,
             aborted,
+            tool_results,
         })
     }
 }
@@ -424,6 +466,9 @@ pub struct AggregatedResult {
     pub failed: usize,
     pub outputs: Vec<Value>,
     pub majority_label: Option<String>,
+    /// Tool-call results collected across all subtasks (empty when tooling is
+    /// disabled or no tool calls were emitted).
+    pub tool_results: Vec<Value>,
 }
 
 /// Orchestrator-Worker controller (§1.1). Decomposes a task, fans out to workers,
@@ -433,6 +478,10 @@ pub struct Orchestrator<B: ModelBackend + Send + Sync, V: Verifier> {
     budget: ContextBudget,
     verifier: V,
     retry_policy: RetryPolicy,
+    /// Optional tool-calling support, shared with every worker.
+    tools: Option<Arc<ToolRegistry>>,
+    sandbox: Option<Arc<Sandbox>>,
+    policy: Option<Arc<dyn Policy>>,
 }
 
 impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
@@ -447,7 +496,24 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
             budget,
             verifier,
             retry_policy,
+            tools: None,
+            sandbox: None,
+            policy: None,
         }
+    }
+
+    /// Enable tool-calling for the orchestrator. Every worker it spawns will
+    /// parse/execute tool calls from model output under the given policy.
+    pub fn with_tooling(
+        mut self,
+        tools: Arc<ToolRegistry>,
+        sandbox: Arc<Sandbox>,
+        policy: Arc<dyn Policy>,
+    ) -> Self {
+        self.tools = Some(tools);
+        self.sandbox = Some(sandbox);
+        self.policy = Some(policy);
+        self
     }
 
     /// Decompose a task into atomic subtasks, chunking context to fit the budget
@@ -484,7 +550,15 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
 
     /// Execute one subtask with retry + verification gate + escalation (§3, §5).
     async fn execute_with_recovery(&self, task: &Subtask) -> Result<WorkerOutput, AgentError> {
-        let worker = Worker::new(Arc::clone(&self.backend), self.budget.clone());
+        let worker = if self.tools.is_some() {
+            Worker::new(Arc::clone(&self.backend), self.budget.clone()).with_tooling(
+                Arc::clone(self.tools.as_ref().unwrap()),
+                Arc::clone(self.sandbox.as_ref().unwrap()),
+                Arc::clone(self.policy.as_ref().unwrap()),
+            )
+        } else {
+            Worker::new(Arc::clone(&self.backend), self.budget.clone())
+        };
         let mut esc = EscalationController::new(self.retry_policy.clone());
         loop {
             match worker.execute(task).await {
@@ -560,6 +634,12 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
             .map(|o| o.parsed.clone())
             .collect();
 
+        let tool_results: Vec<Value> = outputs
+            .iter()
+            .flat_map(|o| o.tool_results.iter())
+            .filter_map(|r| r.output.clone())
+            .collect();
+
         let mut majority_label = None;
         if parsed.first().map(|v| v.get("label")).flatten().is_some() {
             let mut counts: HashMap<String, usize> = HashMap::new();
@@ -576,6 +656,7 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
             failed,
             outputs: parsed,
             majority_label,
+            tool_results,
         }
     }
 }
@@ -614,7 +695,11 @@ fn chunk_text(text: &str, budget_tokens: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::MockBackend;
+    use crate::engine::{CompletionResponse, EngineError, MockBackend};
+    use crate::policy::{ComposedPolicy, Policy};
+    use crate::sandbox::Sandbox;
+    use crate::tools::{AddTool, ToolRegistry};
+    use std::sync::Arc;
 
     #[test]
     fn budget_hard_cap_is_3000() {
@@ -687,6 +772,7 @@ mod tests {
             parsed: Value::Null,
             usage: TokenUsage::default(),
             aborted: false,
+            tool_results: vec![],
         };
         let verdict = v.verify(&task, &out).await.unwrap();
         assert!(!verdict.passed);
@@ -714,5 +800,54 @@ mod tests {
         };
         let result = orchestrator.run(&task).await.unwrap();
         assert!(result.subtask_count >= 1);
+    }
+
+    /// A mock backend that emits a tool call instead of schema JSON, so we can
+    /// exercise the worker's tool-execution path without a real model.
+    struct ToolCallingMockBackend;
+    impl ModelBackend for ToolCallingMockBackend {
+        fn name(&self) -> &str {
+            "mock-tool"
+        }
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> Result<CompletionResponse, EngineError> {
+            let text = "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
+                .to_string();
+            Ok(CompletionResponse {
+                text: text.clone(),
+                usage: TokenUsage::default(),
+                parsed: serde_json::from_str(&text).ok(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn worker_executes_tool_calls_when_tooling_present() {
+        let backend = Arc::new(ToolCallingMockBackend);
+        let tools = Arc::new({
+            let mut r = ToolRegistry::new();
+            r.register(Arc::new(AddTool));
+            r
+        });
+        let sandbox = Arc::new(Sandbox::new());
+        let policy: Arc<dyn Policy> = Arc::new(ComposedPolicy::new());
+        let worker = Worker::new(backend, ContextBudget::default())
+            .with_tooling(tools, sandbox, policy);
+
+        let subtask = Subtask {
+            id: "t1".into(),
+            objective: "add".into(),
+            context: String::new(),
+            output_schema: "{}".into(),
+            allow_abstain: false,
+            prompt_tokens: 10,
+        };
+        let out = worker.execute(&subtask).await.unwrap();
+        assert_eq!(out.tool_results.len(), 1);
+        let res = &out.tool_results[0];
+        assert_eq!(res.verdict, crate::policy::PolicyVerdict::Allow);
+        assert_eq!(res.output.as_ref().unwrap()["sum"], 6.0);
     }
 }

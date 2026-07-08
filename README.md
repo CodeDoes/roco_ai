@@ -50,6 +50,11 @@ real 3B `ModelBackend` once the model is downloaded.
 | `config.rs` | `Config` (provider selection, capacity, retry, context) loaded from `model/default_config`; **default provider: NVIDIA** | Done |
 | `backends.rs` | HTTP model backends (OpenAI-compatible): `NvidiaBackend` (free NVIDIA API), `KiloBackend`, `AnyBackend` — gated behind `http-backends` | Done (feature-gated) |
 | `main.rs` | Smoke test: decomposition, passing gate, escalation-to-human, and optional live backend demos | Done |
+| `tools.rs` | `Tool` trait + `ToolRegistry` (register/lookup/schemas/validate/dispatch) | Done |
+| `grammar.rs` | GBNF generation for tool calls (`tools_to_gbnf`/`_with_think`/`_response`), `tools_to_xml`, `validate_grammar` | Done |
+| `sandbox.rs` | Timeout-bounded command runner + `GuardPolicy` (deny/allowlist) gate | Done |
+| `policy.rs` | Composable `Policy` gate over actions (sandbox guard, tool allowlist, human-in-loop) | Done |
+| `toolcall.rs` | Parse `<tool_call>` from model output → vet via policy → dispatch via registry/sandbox | Done |
 
 Design patterns follow `models/small_model_agent_patterns.md`. Run the smoke test with:
 
