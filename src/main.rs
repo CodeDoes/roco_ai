@@ -16,6 +16,7 @@ mod capacity;
 mod config;
 mod tools;
 mod grammar;
+mod sandbox;
 #[cfg(feature = "http-backends")]
 mod backends;
 
