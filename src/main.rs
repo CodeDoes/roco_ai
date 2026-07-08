@@ -18,6 +18,7 @@ mod tools;
 mod grammar;
 mod sandbox;
 mod policy;
+mod toolcall;
 #[cfg(feature = "http-backends")]
 mod backends;
 
