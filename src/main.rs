@@ -19,6 +19,7 @@ mod grammar;
 mod sandbox;
 mod policy;
 mod toolcall;
+mod builtins;
 #[cfg(feature = "http-backends")]
 mod backends;
 

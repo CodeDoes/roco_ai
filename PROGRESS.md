@@ -35,6 +35,7 @@ how the pieces fit together, and what remains.
 | `sandbox.rs` | Timeout-bounded command runner + `GuardPolicy` (Permissive / AllowList / DenyList) gate | Done |
 | `policy.rs` | Composable `Policy` gate over `Action`s (sandbox guard, tool allowlist, human-in-the-loop) | Done |
 | `toolcall.rs` | Parse `<tool_call>` from model output → vet via policy → dispatch via registry (tools) / sandbox (shell) | Done |
+| `builtins.rs` | Concrete agent tools: `read`/`write`/`list` (workspace-rooted) + `bash` (via sandbox) | Done |
 | `eval.rs` | Eval-suite runner (16 named evals) | Done |
 | `main.rs` | Smoke test (mock backend; optional live backends) | Done |
 | `infer.rs` / `rwkv.rs` / `train.rs` | Sampling/batching, linear attention, training loop | **stub (model required)** |
@@ -68,8 +69,8 @@ is live end-to-end (exercised without a real model via a tool-emitting mock).
 
 ## Test status
 
-`cargo test` → **47 passing** (17 foundation + 6 tools + 7 grammar + 7 sandbox
-+ 5 policy + 4 toolcall + 1 worker-integration). `cargo build --features
+`cargo test` → **51 passing** (17 foundation + 6 tools + 7 grammar + 7 sandbox
++ 5 policy + 4 toolcall + 1 worker-integration + 4 builtins). `cargo build --features
 http-backends` also compiles.
 
 ## Commits this session
@@ -78,7 +79,8 @@ http-backends` also compiles.
 - `72a88ec` — `sandbox.rs`
 - `8890487` — `policy.rs`
 - `dd21890` — `toolcall.rs` (glue)
-- (pending) — agent orchestrator tool-call integration + README update + this doc
+- `32e3159` — agent orchestrator tool-call integration + README update + this doc
+- (latest) — concrete builtins tools (read/write/list/bash) + progress-doc update
 
 ## Remaining work
 
