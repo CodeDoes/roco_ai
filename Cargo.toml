@@ -19,6 +19,7 @@ serde_json = "1"
 # Error handling
 thiserror = "1"
 anyhow = "1"
+async-trait = "0.1"
 
 # Logging / Observability
 tracing = "0.1"
@@ -26,6 +27,20 @@ tracing-subscriber = "0.3"
 
 # CLI / Args (optional, for agent mode)
 # clap = { version = "4", features = ["derive"] }
+
+# Async fan-out (map-reduce over subtasks)
+futures = "0.3"
+
+# HTTP model backends (NVIDIA free API, Kilo-AI) — OpenAI-compatible chat
+# completions. Gated behind a feature so the core stays network-free.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+# Loads API keys from a local .env file (used by the live backend demos).
+dotenvy = { version = "0.15", optional = true }
+
+[features]
+default = []
+# Enables src/backends.rs (NvidiaBackend, KiloBackend), reqwest, and .env loading.
+http-backends = ["reqwest", "dotenvy"]
 
 # State Space Models (future)
 # These will be implemented manually or vendored initially:

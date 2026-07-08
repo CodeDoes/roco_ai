@@ -1,0 +1,22 @@
+{
+  "provider": "nvidia",
+  "nvidia_model": "qwen/qwen3-next-80b-a3b-instruct",
+  "kilo_model": "tencent/hy3:free",
+  "capacity": {
+    "local_gpu_gb": 4,
+    "local_cache_gb": 8,
+    "cpu_model": 1,
+    "cpu_ram_gb": 32,
+    "kilo_tencent": 1,
+    "nvidia_gpu": 1
+  },
+  "retry": { "max_per_task": 3, "max_per_step": 2 },
+  "context": {
+    "total": 4096,
+    "system": 700,
+    "task_context": 1200,
+    "tools": 800,
+    "scratch": 700,
+    "generation": 1536
+  }
+}

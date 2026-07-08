@@ -1,0 +1,8 @@
+{
+  "provider": "local_rwkv",
+  "size": "rwkv7_g1g_2_9b",
+  "exec_mode": "gpu_direct_quantized",
+  "quantized": true,
+  "cache": true,
+  "allow_abstain": true
+}
