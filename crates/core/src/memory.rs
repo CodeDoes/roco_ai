@@ -967,7 +967,7 @@ pub fn memory_tools<B: ModelBackend + Send + Sync + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{CompletionResponse, EngineError};
+    use crate::engine::{BoxFuture, CompletionResponse, EngineError};
     use std::sync::Arc;
 
     fn proc() -> Arc<MemoryProcessor> {
@@ -1038,25 +1038,24 @@ mod tests {
         fn name(&self) -> &str {
             "mock-memory"
         }
-        async fn complete(
-            &self,
-            req: CompletionRequest,
-        ) -> Result<CompletionResponse, EngineError> {
-            let text = if req.system.contains("conflict resolver") {
-                // Mark the new memory as an UPDATE of the first existing fact.
-                "{\"action\": \"UPDATE\", \"target_id\": \"f0\"}".to_string()
-            } else if req.system.contains("dialectic") {
-                "{\"identity\":\"Sam\",\"current_goals\":\"ship memory layer\",\"preferences\":\"concise\",\"open_loops\":\"\"}".to_string()
-            } else if req.system.contains("subject-predicate-object") {
-                "[[\"User\",\"lives_in\",\"Austin\"]]".to_string()
-            } else {
-                // Fact extraction.
-                "[\"User moved to Austin, TX\", \"User has a dog named Barnaby\"]".to_string()
-            };
-            Ok(CompletionResponse {
-                text: text.clone(),
-                usage: crate::engine::TokenUsage::default(),
-                parsed: serde_json::from_str(&text).ok(),
+        fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+            Box::pin(async move {
+let text = if req.system.contains("conflict resolver") {
+                    // Mark the new memory as an UPDATE of the first existing fact.
+                    "{\"action\": \"UPDATE\", \"target_id\": \"f0\"}".to_string()
+                } else if req.system.contains("dialectic") {
+                    "{\"identity\":\"Sam\",\"current_goals\":\"ship memory layer\",\"preferences\":\"concise\",\"open_loops\":\"\"}".to_string()
+                } else if req.system.contains("subject-predicate-object") {
+                    "[[\"User\",\"lives_in\",\"Austin\"]]".to_string()
+                } else {
+                    // Fact extraction.
+                    "[\"User moved to Austin, TX\", \"User has a dog named Barnaby\"]".to_string()
+                };
+                Ok(CompletionResponse {
+                    text: text.clone(),
+                    usage: crate::engine::TokenUsage::default(),
+                    parsed: serde_json::from_str(&text).ok(),
+                })
             })
         }
     }

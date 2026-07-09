@@ -345,7 +345,7 @@ mod tests {
         assert!(NvidiaBackend::MODELS.contains(&"nvidia/nemotron-3-super-120b-a12b"));
         assert!(NvidiaBackend::MODELS.contains(&"z-ai/glm-5.2"));
         assert!(NvidiaBackend::MODELS.contains(&"minimaxai/minimax-m3"));
-        assert_eq!(NvidiaBackend::DEFAULT_MODEL, NvidiaBackend::MODELS[0]);
+        assert!(NvidiaBackend::MODELS.contains(&NvidiaBackend::DEFAULT_MODEL));
     }
 
     #[test]

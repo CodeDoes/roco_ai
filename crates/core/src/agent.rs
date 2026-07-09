@@ -984,7 +984,7 @@ fn chunk_text(text: &str, budget_tokens: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{CompletionResponse, EngineError, MockBackend};
+    use crate::engine::{BoxFuture, CompletionResponse, EngineError, MockBackend};
     use crate::policy::{ComposedPolicy, Policy};
     use crate::sandbox::Sandbox;
     use crate::tools::{AddTool, ToolRegistry};
@@ -1100,22 +1100,21 @@ mod tests {
         fn name(&self) -> &str {
             "mock-tool"
         }
-        async fn complete(
-            &self,
-            req: CompletionRequest,
-        ) -> Result<CompletionResponse, EngineError> {
-            let text = if req.prompt.contains("[TOOL RESULTS]") {
-                // Second turn: the model now returns a final answer.
-                "{\"label\":\"pass\",\"notes\":\"aggregated\"}".to_string()
-            } else {
-                // First turn: emit a tool call.
-                "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
-                    .to_string()
-            };
-            Ok(CompletionResponse {
-                text: text.clone(),
-                usage: TokenUsage::default(),
-                parsed: serde_json::from_str(&text).ok(),
+        fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+            Box::pin(async move {
+let text = if req.prompt.contains("[TOOL RESULTS]") {
+                    // Second turn: the model now returns a final answer.
+                    "{\"label\":\"pass\",\"notes\":\"aggregated\"}".to_string()
+                } else {
+                    // First turn: emit a tool call.
+                    "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
+                        .to_string()
+                };
+                Ok(CompletionResponse {
+                    text: text.clone(),
+                    usage: TokenUsage::default(),
+                    parsed: serde_json::from_str(&text).ok(),
+                })
             })
         }
     }
@@ -1127,24 +1126,23 @@ mod tests {
         fn name(&self) -> &str {
             "mock-multistep"
         }
-        async fn complete(
-            &self,
-            req: CompletionRequest,
-        ) -> Result<CompletionResponse, EngineError> {
-            let rounds = req.prompt.matches("[TOOL RESULTS]").count();
-            let text = if rounds >= 2 {
-                "{\"label\":\"pass\",\"notes\":\"done\"}".to_string()
-            } else if rounds == 1 {
-                "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[10,20,30]}}\n</tool_call>"
-                    .to_string()
-            } else {
-                "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
-                    .to_string()
-            };
-            Ok(CompletionResponse {
-                text: text.clone(),
-                usage: TokenUsage::default(),
-                parsed: serde_json::from_str(&text).ok(),
+        fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+            Box::pin(async move {
+let rounds = req.prompt.matches("[TOOL RESULTS]").count();
+                let text = if rounds >= 2 {
+                    "{\"label\":\"pass\",\"notes\":\"done\"}".to_string()
+                } else if rounds == 1 {
+                    "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[10,20,30]}}\n</tool_call>"
+                        .to_string()
+                } else {
+                    "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
+                        .to_string()
+                };
+                Ok(CompletionResponse {
+                    text: text.clone(),
+                    usage: TokenUsage::default(),
+                    parsed: serde_json::from_str(&text).ok(),
+                })
             })
         }
     }
@@ -1218,7 +1216,8 @@ mod tests {
         struct RagMockBackend;
         impl ModelBackend for RagMockBackend {
             fn name(&self) -> &str { "mock-rag" }
-            async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, EngineError> {
+            fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+                Box::pin(async move {
                 let rounds = req.prompt.matches("[TOOL RESULTS]").count();
                 let text = if rounds >= 1 {
                     "{\"label\":\"pass\"}".to_string()
@@ -1229,6 +1228,7 @@ mod tests {
                     text: text.clone(),
                     usage: TokenUsage::default(),
                     parsed: serde_json::from_str(&text).ok(),
+                })
                 })
             }
         }
