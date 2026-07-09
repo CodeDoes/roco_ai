@@ -1,0 +1,11 @@
+[package]
+name = "roco-workspace"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roco_workspace"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true

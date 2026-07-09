@@ -1,0 +1,18 @@
+[package]
+name = "roco-gateway"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "roco-gateway"
+path = "src/main.rs"
+
+[dependencies]
+roco-core = { path = "../core" }
+roco-session = { path = "../session" }
+roco-workspace = { path = "../workspace" }
+axum.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

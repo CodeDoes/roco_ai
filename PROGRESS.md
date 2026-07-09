@@ -1,123 +1,38 @@
-# RoCo AI — Progress Log
+# RoCo AI — Implementation Progress
 
-_Last updated: 2026-07-09_
+Tracks work against SPEC.md phases.
 
-This document tracks what has been built in the RoCo AI Rust agent framework,
-how the pieces fit together, and what remains.
+## Phase 0 — Cargo workspace + core extraction (IN PROGRESS)
 
-## Environment & setup
+Goal: Convert the single-crate blob into a cargo workspace. No behavior change.
 
-- The project was copied from the Windows `C:` drive
-  (`/run/media/kit/4997C4E96CC40CF7/Users/Kit/Documents/dev/roco_ai`) to
-  `/run/media/kit/EXTHD/dev/roco_ai` (the `EXTHD` NTFS volume). The 1.3 GB
-  `target/` build cache was excluded; all 98 source files were copied and
-  verified byte-identical in file lists.
-- **devenv is not currently usable here.** A stale/invalid GitHub PAT in
-  `~/.config/nix/nix.conf` caused 401s (fixed by commenting it out), but the
-  `languages.rust` rustup channel then tried to build Rust from source plus
-  gdb/valgrind/clang over a very slow binary cache and failed. The committed
-  `devenv.nix` uses `channel = "nixpkgs"` (prebuilt binary), which is correct
-  and will build once the nix binary cache is healthy.
-- **Day-to-day dev uses the system `cargo`** (1.96.0 at `~/.cargo`), which
-  builds and tests the project directly on the NTFS drive without issue.
+- [x] `SPEC.md` written and committed
+- [ ] Convert root `Cargo.toml` to `[workspace]` with members
+- [ ] Move `src/*` → `crates/core/src/` (all modules → core library)
+- [ ] Create `crates/cli/` — thin binary that drives `roco_core`
+- [ ] Create `crates/session/` — session-manager crate (extract `src/session.rs`)
+- [ ] Create `crates/workspace/` — workspace-manager crate (extract `src/workspace.rs`)
+- [ ] `cargo build --workspace` compiles cleanly
+- [ ] `cargo run -p roco-cli` runs demos A-F identically to before
 
-## Architecture built so far
+## Phase 1 — Trace everywhere
 
-| Module | Responsibility | Status |
-|--------|---------------|--------|
-| `engine.rs` | `ModelBackend` trait (the model seam) + `MockBackend`, token budget | Done |
-| `agent.rs` | Orchestrator-Worker: 4K `ContextBudget`, decomposition, verification gates, escalation cascade, retry circuit breakers, fan-out + aggregation; **tool-calling aware**; `Worker::execute` now runs a **multi-step agentic loop** (tool calls → results fed back → another model call) gated by `max_tool_rounds` (default 4, `with_max_tool_rounds`) | Done |
-| `capacity.rs` | Capacity model + `CapacityPool` + backend routing | Done |
-| `config.rs` | `Config` (provider/capacity/retry/context) from `model/default_config` | Done |
-| `backends.rs` | HTTP model backends (`NvidiaBackend`, `KiloBackend`) — feature-gated | Done |
-| `tools.rs` | `Tool` trait (dyn-compatible) + `ToolRegistry` (register/lookup/`schemas_json`/`validate_input`/`dispatch`) + example tools | Done |
-| `grammar.rs` | GBNF generation for tool calls (`tools_to_gbnf` / `_with_think` / `_response`), `tools_to_xml`, `validate_grammar` | Done |
-| `sandbox.rs` | Timeout-bounded command runner + `GuardPolicy` (Permissive / AllowList / DenyList) gate | Done |
-| `policy.rs` | Composable `Policy` gate over `Action`s (sandbox guard, tool allowlist, human-in-the-loop) | Done |
-| `toolcall.rs` | Parse `<tool_call>` from model output → vet via policy → dispatch via registry (tools) / sandbox (shell) | Done |
-| `builtins.rs` | Concrete agent tools: `read`/`write`/`list` (workspace-rooted) + `bash` (via sandbox); **+ RAG tools** (`vector_upsert`, `vector_search`) and **audio tools** (`stt`, `tts`) via `agent_toolkit`/`default_agent_toolkit` | Done |
-| `vector.rs` | FAISS-style in-memory cosine index (`VectorStore`), `cosine_similarity`/`normalize`, pluggable `Embedder` trait + `HashingEmbedder` (dependency-free, normalized n-gram hashing) | Done |
-| `audio.rs` | STT/TTS backend seam: `AudioBackend` trait, `StubAudioBackend` (clear "not wired" error), `CommandAudioBackend` (shells to tiny local binaries, arg-templated, no shell injection) | Done |
-| `infer.rs` | Sampling (greedy/temp/top-k/top-p) + autoregressive generation loop behind `GenerativeModel` | Done |
-| `eval.rs` | Eval-suite runner (16 named evals) | Done |
-| `main.rs` | Smoke test (mock backend; optional live backends) | Done |
-| `infer.rs` / `rwkv.rs` / `train.rs` | Sampling/batching, linear attention, training loop | **stub (model required)** |
+- [ ] Ensure every crate path records `TraceEvent`s
+- [ ] `cli viz` emits traces; GUI renders them
+- [ ] Trace replay / diff support
 
-## How the pieces fit (tool-use path)
+## Phase 2 — napi-rs + oRPC
 
-```
-model output (constrained to <tool_call> GBNF)
-        │
-        ▼
-   toolcall::parse_tool_calls()        ← grammar.rs defines the GBNF
-        │  Vec<ToolCall>
-        ▼
-   for each call:
-     call.action()  ──►  policy.evaluate(action)
-        │                    ├─ Deny  → blocked, not executed
-        │                    ├─ Review → human-in-the-loop, not executed
-        │                    └─ Allow → execute
-        ▼
-     shell tool? ──► sandbox.run_shell()      (sandbox.rs guard)
-     other tool? ──► registry.dispatch()        (tools.rs)
-        │
-        ▼
-   ToolExecutionResult  ──►  aggregated into WorkerOutput.tool_results
-```
+- [ ] `crates/napi/` — napi-rs bindings to `roco_core`
+- [ ] `web/app/` — Next.js + oRPC server calling the addon
+- [ ] Visualizer wired to oRPC stream
 
-The `Orchestrator` now accepts an optional tooling bundle
-(`with_tooling(tools, sandbox, policy)`); every spawned `Worker` parses and
-executes tool calls from its model response, so the whole safety/tooling layer
-is live end-to-end (exercised without a real model via a tool-emitting mock).
+## Phase 3 — Gateway (optional)
 
-## Test status
+- [ ] `crates/gateway/` — axum HTTP server for remote access
+- [ ] oRPC can proxy to gateway
 
-`cargo test` → **71 passing** (17 foundation + 6 tools + 7 grammar + 7 sandbox
-+ 5 policy + 4 toolcall + 3 worker-integration [2-step agentic loop, RAG loop]
-+ 7 builtins [incl. vector upsert→search + STT/TTS stub] + 8 infer + 5 vector
-+ 3 audio). `cargo build --features http-backends` also compiles.
+## Phase 4 — Real model
 
-## Commits this session
-
-- `a86df42` — foundation + `tools.rs` + `grammar.rs`
-- `72a88ec` — `sandbox.rs`
-- `8890487` — `policy.rs`
-- `dd21890` — `toolcall.rs` (glue)
-- `32e3159` — agent orchestrator tool-call integration + README update + this doc
-- `1807cb9` — concrete builtins tools (read/write/list/bash) + progress-doc update
-- `7399612` — `infer.rs`: sampling + autoregressive generation loop
-- `196393f` — eval CLI subcommand + file/console `TeeWriter` logging + backend
-  request/response tracing + default NVIDIA model → nemotron-3-super-120b.
-- `269f317` — `agent.rs`: multi-step agentic tool loop in `Worker::execute`
-  (`max_tool_rounds`, `with_max_tool_rounds`); feed tool results back into the
-  prompt; + `worker_runs_multi_step_tool_loop` test.
-- (latest) — `vector.rs` (FAISS-style cosine index + `HashingEmbedder`) and
-  `audio.rs` (STT/TTS backend seam: `StubAudioBackend` + `CommandAudioBackend`);
-  `builtins.rs` gains `vector_upsert`/`vector_search`/`stt`/`tts` tools via
-  `agent_toolkit`/`default_agent_toolkit`; `main.rs` Demo C exercises a local
-  RAG round-trip. + unit/integration tests.
-
-## Remaining work
-
-- **Model-dependent stubs:** `infer.rs` (sampling/batching), `rwkv.rs`
-  (linear attention), `train.rs`. Inspiration for a local RWKV backend lives in
-  `~/dev/rwkv-harness/rust/crates/{engine,session,vectorstore,inference_daemon}`.
-- **Real RAG/audio backends (now scaffolded):** swap `HashingEmbedder` for a real
-  sentence-transformer / GGUF embedder; point `CommandAudioBackend` at local
-  `whisper.cpp` / `piper` / `espeak-ng` binaries (or implement `AudioBackend`
-  directly over the Kokoro/whisper GGUFs already in `~/Documents/models`); an
-  HNSW/IVF or native `faiss` index can back `VectorStore` behind a feature flag.
-- **Real model backends:** download a 3B model and implement a `ModelBackend`
-  that emits grammar-constrained tool calls (wiring `grammar.rs` into the request).
-- **Eval harness:** run the 16 named evals in `evals/` end-to-end once a model
-  is available (currently they write `result.json` only when driven live).
-
-## Next suggested steps
-
-1. (done) Hook `execute_tool_calls` into the orchestrator worker loop — now a
-   true multi-step ReAct-style loop that feeds tool results back to the model.
-2. Implement a local RWKV `ModelBackend` (mirroring `rust/crates/engine`),
-   with `grammar.rs` GBNF passed as a constrained-decoding grammar.
-3. Surface tool results in the worker's `WorkerOutput.parsed`/`raw` so the
-   verifier and aggregator can reason over them (currently they live in
-   `tool_results` only).
+- [ ] Swap `MockBackend` for `web-rwkv` via napi bridge
+- [ ] Keep mock path for tests/traces

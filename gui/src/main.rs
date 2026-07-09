@@ -7,7 +7,7 @@
 //! no separate server: the core crate *is* the data source.
 
 use dioxus::prelude::*;
-use roco_ai::trace::TraceEvent;
+use roco_core::trace::TraceEvent;
 
 const TABS: &[(&str, &str)] = &[
     ("Stateful Core", "O(1) state vs KV-cache growth"),
@@ -32,9 +32,9 @@ struct Msg {
 /// Run a real (mock-backed) orchestration through the `roco_ai` library and
 /// record its execution trace. This is the single source of truth for the UI.
 async fn build_trace() -> Trace {
-    use roco_ai::agent::{ChecklistVerifier, ContextBudget, Orchestrator, RetryPolicy, Task};
-    use roco_ai::engine::MockBackend;
-    use roco_ai::trace::CollectingTracer;
+    use roco_core::agent::{ChecklistVerifier, ContextBudget, Orchestrator, RetryPolicy, Task};
+    use roco_core::engine::MockBackend;
+    use roco_core::trace::CollectingTracer;
     use std::sync::Arc;
 
     let backend = Arc::new(MockBackend {

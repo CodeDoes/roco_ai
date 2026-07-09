@@ -13,7 +13,7 @@ dioxus = { version = "0.7", features = ["desktop"] }
 
 # The RoCo AI core library: orchestration, tracer, types. The GUI runs the
 # real (mock-backed) orchestration directly and renders the recorded trace.
-roco_ai = { path = ".." }
+roco-core = { path = "../crates/core" }
 
 [profile.release]
 opt-level = "s"

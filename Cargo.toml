@@ -1,62 +1,36 @@
-[package]
-name = "roco_ai"
+[workspace]
+members = [
+    "crates/core",
+    "crates/cli",
+    "crates/session",
+    "crates/workspace",
+    "crates/gateway",
+    "gui",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-name = "roco_ai"
-path = "src/lib.rs"
-
-[dependencies]
-# Core ML / GPU
-# burn = "0.16"           # Rust ML framework with GPU backends (CUDA, WGPU, Candle)
-# candle-core = "0.8"      # Minimalist LLM framework in Rust (HuggingFace)
-# wgpu = "24"              # Cross-platform GPU compute (WebGPU native)
-
-# Async / Runtime
+[workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
-
-# Serialization / Config
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# Error handling
 thiserror = "1"
 anyhow = "1"
 async-trait = "0.1"
-
-# Logging / Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# CLI / Args (optional, for agent mode)
-# clap = { version = "4", features = ["derive"] }
-
-# Async fan-out (map-reduce over subtasks)
 futures = "0.3"
-
-# HTTP model backends (NVIDIA free API, Kilo-AI) — OpenAI-compatible chat
-# completions. Gated behind a feature so the core stays network-free.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
-# Loads API keys from a local .env file (used by the live backend demos).
-dotenvy = { version = "0.15", optional = true }
-
-[features]
-default = []
-# Enables src/backends.rs (NvidiaBackend, KiloBackend), reqwest, and .env loading.
-http-backends = ["reqwest", "dotenvy"]
-
-# State Space Models (future)
-# These will be implemented manually or vendored initially:
-# - S4 / S5 / Mamba-style selective state space
-# - RWKV v6 linear attention mechanism
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+dotenvy = "0.15"
+axum = { version = "0.8", features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-
-[[bin]]
-name = "roco"
-path = "src/main.rs"
