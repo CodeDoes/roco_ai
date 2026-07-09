@@ -5,6 +5,7 @@ members = [
     "crates/session",
     "crates/workspace",
     "crates/gateway",
+    "crates/napi",
 ]
 # gui excluded until GTK system deps are available
 exclude = ["gui"]

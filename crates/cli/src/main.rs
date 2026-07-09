@@ -92,6 +92,12 @@ async fn main() -> anyhow::Result<()> {
         return run_trace_cli(&args[2..]).await;
     }
 
+    // `run-input <file>` — run a task from a JSON input file (for napi/web bridge).
+    if args.get(1).map(String::as_str) == Some("run-input") {
+        let file = args.get(2).ok_or_else(|| anyhow::anyhow!("usage: roco run-input <file>"))?;
+        return run_from_input_file(file).await;
+    }
+
     // `eval` runs a single suite through the NVIDIA endpoint only (no other
     // providers). Only available with the http-backends feature compiled in.
     #[cfg(feature = "http-backends")]
@@ -501,6 +507,91 @@ async fn run_eval_cli(rest: &[String]) -> anyhow::Result<()> {
 }
 
 /// `roco trace list` / `roco trace diff <id1> <id2>`
+/// `roco run-input <file>` — run a task from a JSON input file.
+/// Used by the web bridge to call the orchestrator from Node.js.
+async fn run_from_input_file(path: &str) -> anyhow::Result<()> {
+    use roco_core::trace::{CollectingTracer, Trace, TraceStore, TraceSummary};
+    let json = std::fs::read_to_string(path)?;
+    let input: serde_json::Value = serde_json::from_str(&json)?;
+
+    let objective = input["objective"].as_str().unwrap_or("").to_string();
+    let context = input["context"].as_str().unwrap_or("").to_string();
+    let output_schema = input["output_schema"].as_str().unwrap_or(r#"{"result": "<string>"}"#).to_string();
+    let allow_abstain = input.get("allow_abstain").and_then(|v| v.as_bool()).unwrap_or(true);
+
+    let backend = Arc::new(MockBackend {
+        name: "mock-3b".into(),
+        ..Default::default()
+    });
+    let budget = ContextBudget::default();
+    let tracer = CollectingTracer::new();
+
+    let task = Task {
+        id: "napi-task".into(),
+        objective: objective.clone(),
+        context: context.clone(),
+        output_schema,
+        allow_abstain,
+    };
+
+    let orchestrator = Orchestrator::new(
+        backend,
+        budget,
+        ChecklistVerifier,
+        RetryPolicy::default(),
+    )
+    .with_tracer(Arc::new(tracer.clone()));
+
+    let result = orchestrator.run(&task).await?;
+
+    let trace_id = format!(
+        "napi-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+
+    let messages = serde_json::json!([
+        { "role": "user", "content": &task.objective },
+        { "role": "assistant", "content": format!("{} subtasks, {} failed", result.subtask_count, result.failed) }
+    ]);
+    let memory = serde_json::Value::Null;
+
+    let events = tracer.snapshot();
+    let model_calls = events.iter().filter(|e| e.phase == "model_call").count();
+    let tool_calls = events.iter().filter(|e| e.phase == "tool_parse" && !e.detail.contains("final answer")).count();
+    let retries = events.iter().filter(|e| e.phase == "retry").count();
+    let first_ts = events.first().map(|e| e.ts_ms).unwrap_or(0);
+    let last_ts = events.last().map(|e| e.ts_ms).unwrap_or(0);
+
+    let trace = Trace::from_collector(
+        &trace_id,
+        &task.objective,
+        &tracer,
+        messages,
+        memory,
+        TraceSummary {
+            subtask_count: result.subtask_count,
+            failed_subtasks: result.failed,
+            model_calls,
+            tool_calls,
+            tool_errors: 0,
+            retries,
+            duration_ms: last_ts.saturating_sub(first_ts),
+        },
+    );
+
+    let store = TraceStore::new(".roco/traces");
+    if let Err(e) = store.save(&trace) {
+        eprintln!("warn: failed to save trace: {e}");
+    }
+
+    let json = serde_json::to_string_pretty(&trace)?;
+    print!("{}", json);
+    Ok(())
+}
+
 async fn run_trace_cli(rest: &[String]) -> anyhow::Result<()> {
     use roco_core::trace::TraceStore;
     let store = TraceStore::new(".roco/traces");

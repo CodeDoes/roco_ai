@@ -1,0 +1,21 @@
+[package]
+name = "roco-napi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["async"] }
+napi-derive = "2"
+roco-core = { path = "../core" }
+roco-session = { path = "../session" }
+roco-workspace = { path = "../workspace" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[build-dependencies]
+napi-build = "2"
