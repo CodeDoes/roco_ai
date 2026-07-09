@@ -90,7 +90,7 @@ impl TokenCounter {
     }
 }
 
-use futures::future::BoxFuture;
+pub use futures::future::BoxFuture;
 
 /// The model inference seam. A downloaded 3B model implements this later.
 pub trait ModelBackend: Send + Sync {

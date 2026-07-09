@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 use tracing::{error, info, warn};
 
 use crate::engine::{
-    CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage,
+    BoxFuture, CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage,
 };
 use crate::engine::MockBackend;
 
@@ -238,8 +238,10 @@ impl ModelBackend for NvidiaBackend {
     fn supports_constrained_decoding(&self) -> bool {
         self.inner.json_mode
     }
-    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, EngineError> {
-        self.inner.complete(&req).await
+    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+        Box::pin(async move {
+            self.inner.complete(&req).await
+        })
     }
 }
 
@@ -291,8 +293,10 @@ impl ModelBackend for KiloBackend {
     fn name(&self) -> &str {
         "kilo-ai"
     }
-    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, EngineError> {
-        self.inner.complete(&req).await
+    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+        Box::pin(async move {
+            self.inner.complete(&req).await
+        })
     }
 }
 
@@ -313,12 +317,14 @@ impl ModelBackend for AnyBackend {
             AnyBackend::Kilo(b) => b.name(),
         }
     }
-    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, EngineError> {
-        match self {
-            AnyBackend::Mock(b) => b.complete(req).await,
-            AnyBackend::Nvidia(b) => b.complete(req).await,
-            AnyBackend::Kilo(b) => b.complete(req).await,
-        }
+    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+        Box::pin(async move {
+            match self {
+                AnyBackend::Mock(b) => b.complete(req).await,
+                AnyBackend::Nvidia(b) => b.complete(req).await,
+                AnyBackend::Kilo(b) => b.complete(req).await,
+            }
+        })
     }
 }
 
