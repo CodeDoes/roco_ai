@@ -154,6 +154,8 @@ pub struct Worker<B: ModelBackend + Send + Sync + ?Sized> {
     /// that may emit tool calls whose results are fed back). Ignored when the
     /// worker has no tooling.
     max_tool_rounds: usize,
+    /// Optional execution tracer.
+    tracer: Option<Arc<dyn Tracer>>,
 }
 
 impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
@@ -165,6 +167,7 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
             sandbox: None,
             policy: None,
             max_tool_rounds: 4,
+            tracer: None,
         }
     }
 
@@ -190,6 +193,13 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
         self
     }
 
+    /// Attach an execution tracer. The worker emits events for every
+    /// architectural step (budget check, model call, tool parse, execution).
+    pub fn with_tracer(mut self, tracer: Arc<dyn Tracer>) -> Self {
+        self.tracer = Some(tracer);
+        self
+    }
+
     /// Execute a single atomic subtask with a schema-first prompt and sampling
     /// discipline (§2.2). Enforces the context budget before dispatch.
     ///
@@ -201,6 +211,18 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
     /// reached. All tool results across rounds are accumulated into the
     /// returned [`WorkerOutput`].
     pub async fn execute(&self, task: &Subtask) -> Result<WorkerOutput, AgentError> {
+        if let Some(t) = &self.tracer {
+            t.record(TraceEvent::new(
+                "budget_check",
+                format!("worker-{}", task.id),
+                format!("prompt_tokens={} budget_max={}", task.prompt_tokens, self.budget.max_prompt()),
+            ).with_meta(serde_json::json!({
+                "subtask_id": &task.id,
+                "prompt_tokens": task.prompt_tokens,
+                "budget_max": self.budget.max_prompt(),
+                "fits": self.budget.fits_prompt(task.prompt_tokens),
+            })));
+        }
         if !self.budget.fits_prompt(task.prompt_tokens) {
             return Err(AgentError::BudgetExceeded {
                 id: task.id.clone(),
@@ -230,6 +252,19 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
                 max_tokens: 512,
                 estimated_prompt_tokens: task.prompt_tokens,
             };
+            if let Some(t) = &self.tracer {
+                t.record(TraceEvent::new(
+                    "model_call",
+                    format!("worker-{}", task.id),
+                    format!("round {}/{} tokens={}", round + 1, rounds, req.estimated_prompt_tokens),
+                ).with_meta(serde_json::json!({
+                    "subtask_id": &task.id,
+                    "round": round + 1,
+                    "max_rounds": rounds,
+                    "prompt_tokens": req.estimated_prompt_tokens,
+                    "max_tokens": req.max_tokens,
+                })));
+            }
             let resp = self.backend.complete(req).await?;
             final_resp = Some(resp.clone());
 
@@ -239,6 +274,24 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
             } else {
                 Vec::new()
             };
+
+            if let Some(t) = &self.tracer {
+                let parse_detail = if calls.is_empty() {
+                    "no tool calls — final answer".to_string()
+                } else {
+                    format!("parsed {} tool call(s)", calls.len())
+                };
+                t.record(TraceEvent::new(
+                    "tool_parse",
+                    format!("worker-{}", task.id),
+                    &parse_detail,
+                ).with_meta(serde_json::json!({
+                    "subtask_id": &task.id,
+                    "round": round + 1,
+                    "call_count": calls.len(),
+                    "calls": calls.iter().map(|c| &c.name).collect::<Vec<_>>(),
+                })));
+            }
 
             if calls.is_empty() {
                 // No tool calls => this is the final answer; stop the loop.
@@ -254,7 +307,39 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
             let tools = self.tools.as_ref().unwrap();
             let sandbox = self.sandbox.as_ref().unwrap();
             let policy = &**self.policy.as_ref().unwrap();
+
+            if let Some(t) = &self.tracer {
+                t.record(TraceEvent::new(
+                    "tool_exec",
+                    format!("worker-{}", task.id),
+                    format!("executing {} tool call(s)", calls.len()),
+                ).with_meta(serde_json::json!({
+                    "subtask_id": &task.id,
+                    "round": round + 1,
+                    "calls": calls.iter().map(|c| serde_json::json!({"name": &c.name, "args": &c.arguments})).collect::<Vec<_>>(),
+                })));
+            }
             let results = execute_tool_calls(&resp.text, tools, sandbox, policy).await;
+
+            if let Some(t) = &self.tracer {
+                let success = results.iter().filter(|r| r.output.is_some()).count();
+                let errors = results.iter().filter(|r| r.error.is_some()).count();
+                t.record(TraceEvent::new(
+                    "tool_result",
+                    format!("worker-{}", task.id),
+                    format!("{success} ok, {errors} failed"),
+                ).with_meta(serde_json::json!({
+                    "subtask_id": &task.id,
+                    "round": round + 1,
+                    "success": success,
+                    "errors": errors,
+                    "results": results.iter().map(|r| {
+                        if let Some(out) = &r.output { out.clone() }
+                        else if let Some(err) = &r.error { serde_json::json!({"error": err}) }
+                        else { serde_json::json!({"verdict": format!("{:?}", r.verdict), "name": r.call.name}) }
+                    }).collect::<Vec<_>>(),
+                })));
+            }
             tool_results.extend(results);
 
             // Append the assistant's tool call and the tool outputs to the
@@ -681,7 +766,7 @@ impl<B: ModelBackend + Send + Sync + ?Sized, V: Verifier> Orchestrator<B, V> {
                     .with_meta(serde_json::json!({ "subtask_id": task.id, "prompt_tokens": task.prompt_tokens })),
             );
         }
-        let worker = if self.tools.is_some() {
+        let mut worker = if self.tools.is_some() {
             Worker::new(Arc::clone(&self.backend), self.budget.clone()).with_tooling(
                 Arc::clone(self.tools.as_ref().unwrap()),
                 Arc::clone(self.sandbox.as_ref().unwrap()),
@@ -690,6 +775,9 @@ impl<B: ModelBackend + Send + Sync + ?Sized, V: Verifier> Orchestrator<B, V> {
         } else {
             Worker::new(Arc::clone(&self.backend), self.budget.clone())
         };
+        if let Some(t) = self.tracer.clone() {
+            worker = worker.with_tracer(t);
+        }
         let mut esc = EscalationController::new(self.retry_policy.clone());
         loop {
             match worker.execute(task).await {

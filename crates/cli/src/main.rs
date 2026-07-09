@@ -87,6 +87,11 @@ async fn main() -> anyhow::Result<()> {
         return run_viz().await;
     }
 
+    // `trace list` / `trace diff` for replayable execution histories.
+    if args.get(1).map(String::as_str) == Some("trace") {
+        return run_trace_cli(&args[2..]).await;
+    }
+
     // `eval` runs a single suite through the NVIDIA endpoint only (no other
     // providers). Only available with the http-backends feature compiled in.
     #[cfg(feature = "http-backends")]
@@ -283,7 +288,7 @@ async fn run_viz() -> anyhow::Result<()> {
 
     use roco_core::agent::{ChecklistVerifier, ContextBudget, Orchestrator, RetryPolicy, Task};
     use roco_core::engine::MockBackend;
-    use roco_core::trace::CollectingTracer;
+    use roco_core::trace::{CollectingTracer, Trace, TraceStore, TraceSummary};
     use roco_core::visualizer::Visualizer;
 
     let _ = std::fs::create_dir_all(".roco/traces");
@@ -349,21 +354,51 @@ async fn run_viz() -> anyhow::Result<()> {
     }
     let memory = serde_json::Value::Array(graph);
 
-    let trace = tracer.snapshot();
     let html_path = std::path::Path::new(".roco/traces/roco_trace.html");
-    let json_path = std::path::Path::new(".roco/traces/roco_trace.json");
-    Visualizer::render_trace(&trace, &messages, &memory, html_path)?;
-    Visualizer::write_json(&trace, &messages, &memory, json_path)?;
+    Visualizer::render_trace(&tracer.snapshot(), &messages, &memory, html_path)?;
+
+    // Build and persist a structured Trace via TraceStore
+    let trace_id = format!(
+        "viz-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    let events = tracer.snapshot();
+    let model_calls = events.iter().filter(|e| e.phase == "model_call").count();
+    let tool_calls = events
+        .iter()
+        .filter(|e| e.phase == "tool_parse" && !e.detail.contains("final answer"))
+        .count();
+    let retries = events.iter().filter(|e| e.phase == "retry").count();
+    let first_ts = events.first().map(|e| e.ts_ms).unwrap_or(0);
+    let last_ts = events.last().map(|e| e.ts_ms).unwrap_or(0);
+    let trace = Trace::from_collector(
+        &trace_id,
+        &task.objective,
+        &tracer,
+        messages,
+        memory,
+        TraceSummary {
+            subtask_count: result.subtask_count,
+            failed_subtasks: result.failed,
+            model_calls,
+            tool_calls,
+            tool_errors: 0,
+            retries,
+            duration_ms: last_ts.saturating_sub(first_ts),
+        },
+    );
+    let store = TraceStore::new(".roco/traces");
+    let saved_path = store.save(&trace)?;
 
     println!("RoCo AI — visualizer trace");
     println!("  subtasks executed : {}", result.subtask_count);
     println!("  failed subtasks   : {}", result.failed);
-    println!("  trace events      : {}", trace.len());
+    println!("  trace events      : {}", tracer.len());
     println!("  HTML  -> {}", html_path.display());
-    println!(
-        "  JSON  -> {}  (consume this from your future frontend)",
-        json_path.display()
-    );
+    println!("  TRACE -> {} (id={})", saved_path.display(), trace_id);
     Ok(())
 }
 
@@ -462,6 +497,42 @@ async fn run_eval_cli(rest: &[String]) -> anyhow::Result<()> {
         result.ok, result.subtask_count, result.failed
     );
     println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// `roco trace list` / `roco trace diff <id1> <id2>`
+async fn run_trace_cli(rest: &[String]) -> anyhow::Result<()> {
+    use roco_core::trace::TraceStore;
+    let store = TraceStore::new(".roco/traces");
+    match rest.first().map(String::as_str) {
+        Some("list") => {
+            let ids = store.list()?;
+            if ids.is_empty() {
+                println!("no traces saved yet. run `roco viz` to create one.");
+            } else {
+                println!("saved traces:");
+                for id in &ids {
+                    let t = store.load(id)?;
+                    println!("  {id:40} events={:<4} subtasks={} failed={}",
+                        t.events.len(), t.summary.subtask_count, t.summary.failed_subtasks);
+                }
+            }
+        }
+        Some("diff") => {
+            let id1 = rest.get(1).ok_or_else(|| anyhow::anyhow!("usage: roco trace diff <id1> <id2>"))?;
+            let id2 = rest.get(2).ok_or_else(|| anyhow::anyhow!("usage: roco trace diff <id1> <id2>"))?;
+            let t1 = store.load(id1)?;
+            let t2 = store.load(id2)?;
+            let diff = TraceStore::diff(id1, &t1, id2, &t2);
+            println!("{diff}");
+        }
+        Some(other) => {
+            anyhow::bail!("unknown trace subcommand: '{other}'. use 'list' or 'diff'.")
+        }
+        None => {
+            println!("usage: roco trace [list|diff <id1> <id2>]");
+        }
+    }
     Ok(())
 }
 
