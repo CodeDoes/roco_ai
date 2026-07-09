@@ -6,9 +6,8 @@ members = [
     "crates/workspace",
     "crates/gateway",
     "crates/napi",
+    "gui",
 ]
-# gui excluded until GTK system deps are available
-exclude = ["gui"]
 resolver = "2"
 
 [workspace.package]

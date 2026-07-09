@@ -154,7 +154,7 @@ fn App() -> Element {
 
     // Build the real trace by running the orchestration from the `roco_ai` lib.
     let trace = use_resource(build_trace);
-    let trace = trace().cloned().unwrap_or_else(default_trace);
+    let trace = trace().as_ref().cloned().unwrap_or_else(default_trace);
 
     let t = time();
     let spd = speed();
