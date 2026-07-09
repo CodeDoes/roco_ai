@@ -15,11 +15,11 @@ use futures::future::join_all;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::engine::{CompletionRequest, ModelBackend, TokenCounter, TokenUsage};
+use crate::engine::{CompletionRequest, CompletionResponse, ModelBackend, TokenCounter, TokenUsage};
 use crate::policy::Policy;
 use crate::sandbox::Sandbox;
 use crate::tools::ToolRegistry;
-use crate::toolcall::{execute_tool_calls, ToolExecutionResult};
+use crate::toolcall::{execute_tool_calls, parse_tool_calls, ToolExecutionResult};
 
 // ---------------------------------------------------------------------------
 // Context budget (§4.1)
@@ -146,6 +146,10 @@ pub struct Worker<B: ModelBackend + Send + Sync> {
     tools: Option<Arc<ToolRegistry>>,
     sandbox: Option<Arc<Sandbox>>,
     policy: Option<Arc<dyn Policy>>,
+    /// Max tool-use rounds in the agentic loop (each round = one model call
+    /// that may emit tool calls whose results are fed back). Ignored when the
+    /// worker has no tooling.
+    max_tool_rounds: usize,
 }
 
 impl<B: ModelBackend + Send + Sync> Worker<B> {
@@ -156,6 +160,7 @@ impl<B: ModelBackend + Send + Sync> Worker<B> {
             tools: None,
             sandbox: None,
             policy: None,
+            max_tool_rounds: 4,
         }
     }
 
@@ -173,8 +178,24 @@ impl<B: ModelBackend + Send + Sync> Worker<B> {
         self
     }
 
+    /// Set the maximum number of agentic tool-use rounds (default 4). Each round
+    /// is one model call that may emit tool calls; their results are fed back
+    /// into the next call. Ignored when the worker has no tooling.
+    pub fn with_max_tool_rounds(mut self, rounds: usize) -> Self {
+        self.max_tool_rounds = rounds.max(1);
+        self
+    }
+
     /// Execute a single atomic subtask with a schema-first prompt and sampling
     /// discipline (§2.2). Enforces the context budget before dispatch.
+    ///
+    /// When the worker is tool-enabled, this runs a **multi-step agentic loop**:
+    /// the model may emit `<tool_call>` blocks, which are vetted by `policy` and
+    /// executed; their results are appended to the running transcript and fed
+    /// back into the prompt for another model call. The loop repeats until the
+    /// model returns no tool calls (a final answer) or `max_tool_rounds` is
+    /// reached. All tool results across rounds are accumulated into the
+    /// returned [`WorkerOutput`].
     pub async fn execute(&self, task: &Subtask) -> Result<WorkerOutput, AgentError> {
         if !self.budget.fits_prompt(task.prompt_tokens) {
             return Err(AgentError::BudgetExceeded {
@@ -184,28 +205,76 @@ impl<B: ModelBackend + Send + Sync> Worker<B> {
             });
         }
         let system = build_system_prompt(&task.output_schema, task.allow_abstain);
-        let req = CompletionRequest {
-            system,
-            prompt: task.render_prompt(),
-            output_schema: Some(task.output_schema.clone()),
-            temperature: 0.2,
-            max_tokens: 512,
-            estimated_prompt_tokens: task.prompt_tokens,
+
+        // Round count: tool-enabled workers may iterate; others do a single pass.
+        let rounds = if self.tools.is_some() {
+            self.max_tool_rounds
+        } else {
+            1
         };
-        let resp = self.backend.complete(req).await?;
+
+        let mut prompt = task.render_prompt();
+        let mut tool_results: Vec<ToolExecutionResult> = Vec::new();
+        let mut final_resp: Option<CompletionResponse> = None;
+
+        for round in 0..rounds {
+            let req = CompletionRequest {
+                system: system.clone(),
+                prompt: prompt.clone(),
+                output_schema: Some(task.output_schema.clone()),
+                temperature: 0.2,
+                max_tokens: 512,
+                estimated_prompt_tokens: task.prompt_tokens,
+            };
+            let resp = self.backend.complete(req).await?;
+            final_resp = Some(resp.clone());
+
+            // Only tool-enabled workers parse/execute tool calls.
+            let calls = if self.tools.is_some() {
+                parse_tool_calls(&resp.text)
+            } else {
+                Vec::new()
+            };
+
+            if calls.is_empty() {
+                // No tool calls => this is the final answer; stop the loop.
+                break;
+            }
+            if round + 1 >= rounds {
+                // Final allowed round still produced tool calls: stop, keeping
+                // whatever results were accumulated (no final answer given).
+                break;
+            }
+
+            // Execute the tool calls under the policy and feed results back.
+            let tools = self.tools.as_ref().unwrap();
+            let sandbox = self.sandbox.as_ref().unwrap();
+            let policy = &**self.policy.as_ref().unwrap();
+            let results = execute_tool_calls(&resp.text, tools, sandbox, policy).await;
+            tool_results.extend(results);
+
+            // Append the assistant's tool call and the tool outputs to the
+            // running transcript so the model can reason over them next round.
+            prompt.push_str(&format!(
+                "\n\n[ASSISTANT TOOL CALL]\n{}\n\n[TOOL RESULTS]\n{}",
+                resp.text,
+                serde_json::to_string_pretty(&Self::tool_results_to_json(&tool_results))
+                    .unwrap_or_default()
+            ));
+            tracing::debug!(
+                subtask = %task.id,
+                round,
+                accumulated = tool_results.len(),
+                "agentic tool loop step"
+            );
+        }
+
+        let resp = final_resp.ok_or_else(|| {
+            AgentError::Verification("worker produced no model response".into())
+        })?;
         let parsed = serde_json::from_str::<Value>(&resp.text).unwrap_or(Value::Null);
         let aborted = task.allow_abstain
             && parsed.get("action").and_then(|a| a.as_str()) == Some("do_nothing");
-        // If this worker is tool-enabled, parse and execute any tool calls the
-        // model emitted: each is vetted by the policy and dispatched via the
-        // registry (regular tools) or sandbox (shell tools).
-        let tool_results = if let (Some(tools), Some(sandbox), Some(policy)) =
-            (&self.tools, &self.sandbox, &self.policy)
-        {
-            execute_tool_calls(&resp.text, tools, sandbox, policy.as_ref()).await
-        } else {
-            Vec::new()
-        };
         Ok(WorkerOutput {
             subtask_id: task.id.clone(),
             raw: resp.text,
@@ -214,6 +283,26 @@ impl<B: ModelBackend + Send + Sync> Worker<B> {
             aborted,
             tool_results,
         })
+    }
+
+    /// Serialize accumulated [`ToolExecutionResult`]s into a JSON array suitable
+    /// for feeding back into the model prompt as `[TOOL RESULTS]`.
+    fn tool_results_to_json(results: &[ToolExecutionResult]) -> Value {
+        Value::Array(
+            results
+                .iter()
+                .map(|r| {
+                    if let Some(out) = &r.output {
+                        out.clone()
+                    } else if let Some(err) = &r.error {
+                        serde_json::json!({ "error": err })
+                    } else {
+                        // Denied / review-pending: surface the verdict, not output.
+                        serde_json::json!({ "verdict": format!("{:?}", r.verdict), "name": r.call.name })
+                    }
+                })
+                .collect(),
+        )
     }
 }
 
@@ -802,8 +891,9 @@ mod tests {
         assert!(result.subtask_count >= 1);
     }
 
-    /// A mock backend that emits a tool call instead of schema JSON, so we can
-    /// exercise the worker's tool-execution path without a real model.
+    /// A mock backend that emits a tool call on the first turn, then a schema
+    /// JSON answer once it sees prior `[TOOL RESULTS]` in the transcript — so
+    /// we can exercise the worker's multi-step agentic loop without a model.
     struct ToolCallingMockBackend;
     impl ModelBackend for ToolCallingMockBackend {
         fn name(&self) -> &str {
@@ -811,16 +901,80 @@ mod tests {
         }
         async fn complete(
             &self,
-            _req: CompletionRequest,
+            req: CompletionRequest,
         ) -> Result<CompletionResponse, EngineError> {
-            let text = "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
-                .to_string();
+            let text = if req.prompt.contains("[TOOL RESULTS]") {
+                // Second turn: the model now returns a final answer.
+                "{\"label\":\"pass\",\"notes\":\"aggregated\"}".to_string()
+            } else {
+                // First turn: emit a tool call.
+                "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
+                    .to_string()
+            };
             Ok(CompletionResponse {
                 text: text.clone(),
                 usage: TokenUsage::default(),
                 parsed: serde_json::from_str(&text).ok(),
             })
         }
+    }
+
+    /// Emits a tool call for the first two turns (counting `[TOOL RESULTS]`
+    /// markers in the transcript), then a final answer — to drive a 2-step loop.
+    struct MultiStepMockBackend;
+    impl ModelBackend for MultiStepMockBackend {
+        fn name(&self) -> &str {
+            "mock-multistep"
+        }
+        async fn complete(
+            &self,
+            req: CompletionRequest,
+        ) -> Result<CompletionResponse, EngineError> {
+            let rounds = req.prompt.matches("[TOOL RESULTS]").count();
+            let text = if rounds >= 2 {
+                "{\"label\":\"pass\",\"notes\":\"done\"}".to_string()
+            } else if rounds == 1 {
+                "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[10,20,30]}}\n</tool_call>"
+                    .to_string()
+            } else {
+                "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"numbers\":[1,2,3]}}\n</tool_call>"
+                    .to_string()
+            };
+            Ok(CompletionResponse {
+                text: text.clone(),
+                usage: TokenUsage::default(),
+                parsed: serde_json::from_str(&text).ok(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn worker_runs_multi_step_tool_loop() {
+        let backend = Arc::new(MultiStepMockBackend);
+        let tools = Arc::new({
+            let mut r = ToolRegistry::new();
+            r.register(Arc::new(AddTool));
+            r
+        });
+        let sandbox = Arc::new(Sandbox::new());
+        let policy: Arc<dyn Policy> = Arc::new(ComposedPolicy::new());
+        let worker = Worker::new(backend, ContextBudget::default())
+            .with_tooling(tools, sandbox, policy)
+            .with_max_tool_rounds(4);
+
+        let subtask = Subtask {
+            id: "t1".into(),
+            objective: "add twice".into(),
+            context: String::new(),
+            output_schema: "{}".into(),
+            allow_abstain: false,
+            prompt_tokens: 10,
+        };
+        let out = worker.execute(&subtask).await.unwrap();
+        // Two tool rounds were taken before the model gave a final answer.
+        assert_eq!(out.tool_results.len(), 2);
+        assert_eq!(out.tool_results[0].output.as_ref().unwrap()["sum"], 6.0);
+        assert_eq!(out.tool_results[1].output.as_ref().unwrap()["sum"], 60.0);
     }
 
     #[tokio::test]

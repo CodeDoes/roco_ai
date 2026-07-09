@@ -1,6 +1,6 @@
 # RoCo AI — Progress Log
 
-_Last updated: 2026-07-08_
+_Last updated: 2026-07-09_
 
 This document tracks what has been built in the RoCo AI Rust agent framework,
 how the pieces fit together, and what remains.
@@ -26,7 +26,7 @@ how the pieces fit together, and what remains.
 | Module | Responsibility | Status |
 |--------|---------------|--------|
 | `engine.rs` | `ModelBackend` trait (the model seam) + `MockBackend`, token budget | Done |
-| `agent.rs` | Orchestrator-Worker: 4K `ContextBudget`, decomposition, verification gates, escalation cascade, retry circuit breakers, fan-out + aggregation; **now tool-calling aware** | Done |
+| `agent.rs` | Orchestrator-Worker: 4K `ContextBudget`, decomposition, verification gates, escalation cascade, retry circuit breakers, fan-out + aggregation; **tool-calling aware**; `Worker::execute` now runs a **multi-step agentic loop** (tool calls → results fed back → another model call) gated by `max_tool_rounds` (default 4, `with_max_tool_rounds`) | Done |
 | `capacity.rs` | Capacity model + `CapacityPool` + backend routing | Done |
 | `config.rs` | `Config` (provider/capacity/retry/context) from `model/default_config` | Done |
 | `backends.rs` | HTTP model backends (`NvidiaBackend`, `KiloBackend`) — feature-gated | Done |
@@ -70,8 +70,8 @@ is live end-to-end (exercised without a real model via a tool-emitting mock).
 
 ## Test status
 
-`cargo test` → **59 passing** (17 foundation + 6 tools + 7 grammar + 7 sandbox
-+ 5 policy + 4 toolcall + 1 worker-integration + 4 builtins + 8 infer). `cargo build --features
+`cargo test` → **60 passing** (17 foundation + 6 tools + 7 grammar + 7 sandbox
++ 5 policy + 4 toolcall + 2 worker-integration [incl. a 2-step agentic loop] + 4 builtins + 8 infer). `cargo build --features
 http-backends` also compiles.
 
 ## Commits this session
@@ -83,6 +83,13 @@ http-backends` also compiles.
 - `32e3159` — agent orchestrator tool-call integration + README update + this doc
 - `1807cb9` — concrete builtins tools (read/write/list/bash) + progress-doc update
 - (latest) — `infer.rs`: sampling + autoregressive generation loop
+
+- `196393f` — eval CLI subcommand (`cargo run --features http-backends -- eval [NAME]`)
+  + file/console `TeeWriter` tracing (`.roco/logs/roco.log`), backend request/response
+  logging, default NVIDIA model → nemotron-3-super-120b.
+- (latest) — `agent.rs`: multi-step agentic tool loop in `Worker::execute`
+  (`max_tool_rounds`, `with_max_tool_rounds`); feed tool results back into the
+  prompt; + `worker_runs_multi_step_tool_loop` test.
 
 ## Remaining work
 
@@ -96,10 +103,10 @@ http-backends` also compiles.
 
 ## Next suggested steps
 
-1. Hook `execute_tool_calls` into the orchestrator worker loop (done at the
-   `Worker` level) — optionally surface tool results in the prompt for
-   multi-step agentic loops.
+1. (done) Hook `execute_tool_calls` into the orchestrator worker loop — now a
+   true multi-step ReAct-style loop that feeds tool results back to the model.
 2. Implement a local RWKV `ModelBackend` (mirroring `rust/crates/engine`),
    with `grammar.rs` GBNF passed as a constrained-decoding grammar.
-3. Add concrete tools (file read/write, bash already sandboxable) to mirror
-   `rwkv-harness/src/tools/`.
+3. Surface tool results in the worker's `WorkerOutput.parsed`/`raw` so the
+   verifier and aggregator can reason over them (currently they live in
+   `tool_results` only).
