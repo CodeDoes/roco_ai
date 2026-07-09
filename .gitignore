@@ -3,3 +3,5 @@ models/
 target/*
 # devenv build state
 .devenv/
+# runtime artifact root (eval results, logs, traces)
+.roco/

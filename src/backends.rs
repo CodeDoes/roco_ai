@@ -14,9 +14,10 @@
 //! ```
 
 use std::env;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use tracing::{error, info, warn};
 
 use crate::engine::{
     CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage,
@@ -90,44 +91,78 @@ impl OpenAICompat {
 
     async fn complete(&self, req: &CompletionRequest) -> Result<CompletionResponse, EngineError> {
         let body = self.build_body(req);
-
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+        info!(
+            model = %self.model,
+            json_mode = self.json_mode,
+            url = %url,
+            max_tokens = req.max_tokens,
+            "nvidia http request"
+        );
+        let started = Instant::now();
         let resp = self
             .client
             .post(&url)
             .bearer_auth(&self.api_key)
             .json(&body)
             .send()
-            .await
-            .map_err(|e| EngineError::Backend(format!("request failed: {e}")))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(EngineError::Backend(format!("HTTP {status}: {text}")));
+            .await;
+        match resp {
+            Ok(resp) => {
+                let status = resp.status();
+                if !status.is_success() {
+                    let text = resp.text().await.unwrap_or_default();
+                    warn!(
+                        model = %self.model,
+                        status = %status,
+                        ms = started.elapsed().as_millis(),
+                        body = %text.chars().take(500).collect::<String>(),
+                        "nvidia http error"
+                    );
+                    return Err(EngineError::Backend(format!("HTTP {status}: {text}")));
+                }
+                let value: Value = resp
+                    .json()
+                    .await
+                    .map_err(|e| EngineError::Backend(format!("invalid JSON response: {e}")))?;
+                let text = value
+                    .get("choices")
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.get("message"))
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str())
+                    .ok_or_else(|| {
+                        EngineError::Backend("missing choices[0].message.content".into())
+                    })?
+                    .to_string();
+                let usage = parse_usage(&value);
+                let parsed = serde_json::from_str(&text).ok();
+                info!(
+                    model = %self.model,
+                    status = %status,
+                    ms = started.elapsed().as_millis(),
+                    prompt_tokens = usage.prompt_tokens,
+                    completion_tokens = usage.completion_tokens,
+                    snippet = %text.chars().take(200).collect::<String>(),
+                    "nvidia http ok"
+                );
+                Ok(CompletionResponse {
+                    text,
+                    usage,
+                    parsed,
+                })
+            }
+            Err(e) => {
+                error!(
+                    model = %self.model,
+                    url = %url,
+                    ms = started.elapsed().as_millis(),
+                    error = %e,
+                    "nvidia request failed"
+                );
+                Err(EngineError::Backend(format!("request failed: {e}")))
+            }
         }
-
-        let value: Value = resp
-            .json()
-            .await
-            .map_err(|e| EngineError::Backend(format!("invalid JSON response: {e}")))?;
-
-        let text = value
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .ok_or_else(|| EngineError::Backend("missing choices[0].message.content".into()))?
-            .to_string();
-
-        let usage = parse_usage(&value);
-        let parsed = serde_json::from_str(&text).ok();
-        Ok(CompletionResponse {
-            text,
-            usage,
-            parsed,
-        })
     }
 }
 
@@ -160,7 +195,9 @@ pub struct NvidiaBackend {
 impl NvidiaBackend {
     pub const DEFAULT_BASE_URL: &'static str = "https://integrate.api.nvidia.com/v1";
     /// Default model. Override via `NV_MODEL` with any slug from [`NvidiaBackend::MODELS`].
-    pub const DEFAULT_MODEL: &'static str = "qwen/qwen3-next-80b-a3b-instruct";
+    /// `qwen/qwen3-next-80b-a3b-instruct` and `z-ai/glm-5.2` currently time out on the
+    /// free NVIDIA tier, so the default is the responsive `nemotron` model.
+    pub const DEFAULT_MODEL: &'static str = "nvidia/nemotron-3-super-120b-a12b";
 
     /// Curated NVIDIA-hosted models (provider/model slugs) available via the
     /// free NVIDIA API. Select one via `NV_MODEL`, or pass it to `new()`.

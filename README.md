@@ -91,10 +91,10 @@ Keys are loaded from the environment; a local `.env` file (e.g.
 `KILO_API_KEY=...`, `NVIDIA_API_KEY=...`) is also picked up automatically via
 `dotenvy` when the `http-backends` feature is enabled.
 
-`NvidiaBackend` curated models (`NvidiaBackend::MODELS`): `qwen/qwen3-next-80b-a3b-instruct`
-(default), `nvidia/nemotron-3-super-120b-a12b`, `z-ai/glm-5.2`, `minimaxai/minimax-m3` —
+`NvidiaBackend` curated models (`NvidiaBackend::MODELS`): `nvidia/nemotron-3-super-120b-a12b`
+(default — responsive on the free tier), `minimaxai/minimax-m3` (also works), `qwen/qwen3-next-80b-a3b-instruct`, `z-ai/glm-5.2` (both currently time out on the free NVIDIA API) —
 select any via `NV_MODEL`. It requests JSON mode (`response_format`) since Nemotron
-supports it; if a provider rejects that field, construct with `.with_json_mode(false)`.
+and Minimax support it; if a provider rejects that field, construct with `.with_json_mode(false)`.
 `KiloBackend` targets the confirmed Kilo AI Gateway at `https://api.kilo.ai/api/gateway`
 (OpenAI-compatible, per `kilo.ai/docs/gateway`). Model names are provider-prefixed
 slugs; the default is `tencent/hy3:free` with `medium` reasoning effort (the

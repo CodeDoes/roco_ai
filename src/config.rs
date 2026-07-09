@@ -146,7 +146,7 @@ impl Config {
     pub fn preset() -> Self {
         Config {
             provider: Provider::Nvidia,
-            nvidia_model: Some("qwen/qwen3-next-80b-a3b-instruct".into()),
+            nvidia_model: Some("nvidia/nemotron-3-super-120b-a12b".into()),
             kilo_model: Some("tencent/hy3:free".into()),
             capacity: CapacityConfig {
                 local_gpu_gb: 4,

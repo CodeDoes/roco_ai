@@ -64,7 +64,7 @@ fn eval_task(name: &str) -> Task {
     Task {
         id: name.to_string(),
         objective: format!("Execute the '{name}' evaluation and emit a JSON verdict."),
-        context: format!("Eval suite: {name}. Persist findings under evals/{name}/."),
+        context: format!("Eval suite: {name}. Persist findings under .roco/evals/{name}/."),
         // Simple schema so the (NVIDIA + JSON-mode) model returns valid JSON
         // and the checklist verifier passes.
         output_schema: r#"{"status": "<pass|fail>", "notes": "<string>"}"#.into(),
@@ -80,13 +80,21 @@ where
     V: Verifier,
 {
     let task = eval_task(name);
-    let agg = orch.run_sequential(&task).await?;
+    // The harness is sequential at the eval level (run_all_evals awaits each
+    // eval); each eval is a single atomic task so `run` is effectively one pass.
+    let agg = orch.run(&task).await?;
     let result = EvalResult::from_agg(name, &agg);
-    let path = Path::new("evals").join(name).join("result.json");
+    // Persist under .roco/ (artifact root), not the tracked eval-definitions tree.
+    let path = Path::new(".roco").join("evals").join(name).join("result.json");
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!("could not create {}: {e}", parent.display());
+        }
     }
-    let _ = std::fs::write(&path, serde_json::to_string_pretty(&result)?);
+    match std::fs::write(&path, serde_json::to_string_pretty(&result)?) {
+        Ok(()) => tracing::info!(name, path = %path.display(), "wrote eval result"),
+        Err(e) => tracing::warn!(name, error = %e, "failed to write eval result"),
+    }
     Ok(result)
 }
 
