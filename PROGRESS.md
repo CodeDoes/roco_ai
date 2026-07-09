@@ -35,7 +35,9 @@ how the pieces fit together, and what remains.
 | `sandbox.rs` | Timeout-bounded command runner + `GuardPolicy` (Permissive / AllowList / DenyList) gate | Done |
 | `policy.rs` | Composable `Policy` gate over `Action`s (sandbox guard, tool allowlist, human-in-the-loop) | Done |
 | `toolcall.rs` | Parse `<tool_call>` from model output → vet via policy → dispatch via registry (tools) / sandbox (shell) | Done |
-| `builtins.rs` | Concrete agent tools: `read`/`write`/`list` (workspace-rooted) + `bash` (via sandbox) | Done |
+| `builtins.rs` | Concrete agent tools: `read`/`write`/`list` (workspace-rooted) + `bash` (via sandbox); **+ RAG tools** (`vector_upsert`, `vector_search`) and **audio tools** (`stt`, `tts`) via `agent_toolkit`/`default_agent_toolkit` | Done |
+| `vector.rs` | FAISS-style in-memory cosine index (`VectorStore`), `cosine_similarity`/`normalize`, pluggable `Embedder` trait + `HashingEmbedder` (dependency-free, normalized n-gram hashing) | Done |
+| `audio.rs` | STT/TTS backend seam: `AudioBackend` trait, `StubAudioBackend` (clear "not wired" error), `CommandAudioBackend` (shells to tiny local binaries, arg-templated, no shell injection) | Done |
 | `infer.rs` | Sampling (greedy/temp/top-k/top-p) + autoregressive generation loop behind `GenerativeModel` | Done |
 | `eval.rs` | Eval-suite runner (16 named evals) | Done |
 | `main.rs` | Smoke test (mock backend; optional live backends) | Done |
@@ -70,9 +72,10 @@ is live end-to-end (exercised without a real model via a tool-emitting mock).
 
 ## Test status
 
-`cargo test` → **60 passing** (17 foundation + 6 tools + 7 grammar + 7 sandbox
-+ 5 policy + 4 toolcall + 2 worker-integration [incl. a 2-step agentic loop] + 4 builtins + 8 infer). `cargo build --features
-http-backends` also compiles.
+`cargo test` → **71 passing** (17 foundation + 6 tools + 7 grammar + 7 sandbox
++ 5 policy + 4 toolcall + 3 worker-integration [2-step agentic loop, RAG loop]
++ 7 builtins [incl. vector upsert→search + STT/TTS stub] + 8 infer + 5 vector
++ 3 audio). `cargo build --features http-backends` also compiles.
 
 ## Commits this session
 
@@ -82,22 +85,30 @@ http-backends` also compiles.
 - `dd21890` — `toolcall.rs` (glue)
 - `32e3159` — agent orchestrator tool-call integration + README update + this doc
 - `1807cb9` — concrete builtins tools (read/write/list/bash) + progress-doc update
-- (latest) — `infer.rs`: sampling + autoregressive generation loop
-
-- `196393f` — eval CLI subcommand (`cargo run --features http-backends -- eval [NAME]`)
-  + file/console `TeeWriter` tracing (`.roco/logs/roco.log`), backend request/response
-  logging, default NVIDIA model → nemotron-3-super-120b.
-- (latest) — `agent.rs`: multi-step agentic tool loop in `Worker::execute`
+- `7399612` — `infer.rs`: sampling + autoregressive generation loop
+- `196393f` — eval CLI subcommand + file/console `TeeWriter` logging + backend
+  request/response tracing + default NVIDIA model → nemotron-3-super-120b.
+- `269f317` — `agent.rs`: multi-step agentic tool loop in `Worker::execute`
   (`max_tool_rounds`, `with_max_tool_rounds`); feed tool results back into the
   prompt; + `worker_runs_multi_step_tool_loop` test.
+- (latest) — `vector.rs` (FAISS-style cosine index + `HashingEmbedder`) and
+  `audio.rs` (STT/TTS backend seam: `StubAudioBackend` + `CommandAudioBackend`);
+  `builtins.rs` gains `vector_upsert`/`vector_search`/`stt`/`tts` tools via
+  `agent_toolkit`/`default_agent_toolkit`; `main.rs` Demo C exercises a local
+  RAG round-trip. + unit/integration tests.
 
 ## Remaining work
 
 - **Model-dependent stubs:** `infer.rs` (sampling/batching), `rwkv.rs`
   (linear attention), `train.rs`. Inspiration for a local RWKV backend lives in
   `~/dev/rwkv-harness/rust/crates/{engine,session,vectorstore,inference_daemon}`.
-- **Real backends:** download a 3B model and implement a `ModelBackend` that
-  emits grammar-constrained tool calls (wiring `grammar.rs` into the request).
+- **Real RAG/audio backends (now scaffolded):** swap `HashingEmbedder` for a real
+  sentence-transformer / GGUF embedder; point `CommandAudioBackend` at local
+  `whisper.cpp` / `piper` / `espeak-ng` binaries (or implement `AudioBackend`
+  directly over the Kokoro/whisper GGUFs already in `~/Documents/models`); an
+  HNSW/IVF or native `faiss` index can back `VectorStore` behind a feature flag.
+- **Real model backends:** download a 3B model and implement a `ModelBackend`
+  that emits grammar-constrained tool calls (wiring `grammar.rs` into the request).
 - **Eval harness:** run the 16 named evals in `evals/` end-to-end once a model
   is available (currently they write `result.json` only when driven live).
 

@@ -1004,4 +1004,68 @@ mod tests {
         assert_eq!(res.verdict, crate::policy::PolicyVerdict::Allow);
         assert_eq!(res.output.as_ref().unwrap()["sum"], 6.0);
     }
+
+    /// Drives a full RAG turn through the agentic loop: the model emits a
+    /// `vector_upsert`, then a `vector_search` whose result comes back from
+    /// the shared store. Exercises the new RAG tools end-to-end (no model).
+    #[tokio::test]
+    async fn worker_runs_rag_tool_loop() {
+        use crate::builtins::{VectorSearchTool, VectorUpsertTool};
+        use crate::vector::{HashingEmbedder, SharedVectorStore, VectorStore};
+        use std::sync::Mutex;
+
+        /// Emits `vector_upsert` on turn 0, `vector_search` on turn 1, then a
+        /// final answer once it sees prior `[TOOL RESULTS]` twice.
+        struct RagMockBackend;
+        impl ModelBackend for RagMockBackend {
+            fn name(&self) -> &str {
+                "mock-rag"
+            }
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, EngineError> {
+                let rounds = req.prompt.matches("[TOOL RESULTS]").count();
+                let text = if rounds >= 2 {
+                    "{\"label\":\"pass\"}".to_string()
+                } else if rounds == 1 {
+                    "<tool_call>\n{\"name\":\"vector_search\",\"arguments\":{\"query\":\"cat mat\",\"k\":3}}\n</tool_call>"
+                        .to_string()
+                } else {
+                    "<tool_call>\n{\"name\":\"vector_upsert\",\"arguments\":{\"id\":\"doc1\",\"text\":\"the cat sat on the mat\"}}\n</tool_call>"
+                        .to_string()
+                };
+                Ok(CompletionResponse {
+                    text: text.clone(),
+                    usage: TokenUsage::default(),
+                    parsed: serde_json::from_str(&text).ok(),
+                })
+            }
+        }
+
+        let store: SharedVectorStore = Arc::new(Mutex::new(VectorStore::new(256)));
+        let embedder: Arc<dyn crate::vector::Embedder> = Arc::new(HashingEmbedder::new(256));
+        let mut tools = ToolRegistry::new();
+        tools.register(Arc::new(VectorUpsertTool::new(store.clone(), embedder.clone())));
+        tools.register(Arc::new(VectorSearchTool::new(store, embedder)));
+
+        let worker = Worker::new(Arc::new(RagMockBackend), ContextBudget::default())
+            .with_tooling(Arc::new(tools), Arc::new(Sandbox::new()), Arc::new(ComposedPolicy::new()));
+
+        let subtask = Subtask {
+            id: "rag".into(),
+            objective: "store and retrieve".into(),
+            context: String::new(),
+            output_schema: "{}".into(),
+            allow_abstain: false,
+            prompt_tokens: 10,
+        };
+        let out = worker.execute(&subtask).await.unwrap();
+        // upsert + search were both executed across the loop.
+        assert_eq!(out.tool_results.len(), 2);
+        let search = &out.tool_results[1];
+        assert_eq!(search.call.name, "vector_search");
+        let hits = search.output.as_ref().unwrap()["hits"].as_array().unwrap();
+        assert_eq!(hits[0]["id"], "doc1");
+    }
 }

@@ -21,6 +21,8 @@ mod policy;
 mod toolcall;
 mod builtins;
 mod infer;
+mod vector;
+mod audio;
 mod eval;
 #[cfg(feature = "http-backends")]
 mod backends;
@@ -29,6 +31,7 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use agent::{ContextBudget, Orchestrator, RetryPolicy, Task, ChecklistVerifier};
+use crate::sandbox::Sandbox;
 use engine::MockBackend;
 use tracing_subscriber::fmt::writer::MakeWriter;
 
@@ -98,6 +101,29 @@ async fn main() -> anyhow::Result<()> {
     println!(
         "(Expected: failed > 0 because the mock output does not satisfy the schema, \n\n  exercising the retry circuit breaker and L3 human-intervention path.)"
     );
+
+    // --- Demo C: RAG toolkit (vector embed + search) + audio tool stubs -----
+    // Builds the full agent toolkit (files + RAG + STT/TTS) and runs a
+    // vector_upsert -> vector_search round-trip entirely locally (no model).
+    println!("\n=== Demo C: RAG vector store (embed + search) ===");
+    let root = std::env::temp_dir().join("roco-demo");
+    let _ = std::fs::create_dir_all(&root);
+    let toolkit = builtins::default_agent_toolkit(root.clone(), Sandbox::new());
+    println!("Toolkit tools: {}", toolkit.schemas_json().as_array().unwrap().len());
+    let _ = toolkit
+        .dispatch(
+            "vector_upsert",
+            serde_json::json!({ "id": "doc1", "text": "RoCo is a small, fast, stateful agent" }),
+        )
+        .await?;
+    let search = toolkit
+        .dispatch(
+            "vector_search",
+            serde_json::json!({ "query": "small fast agent", "k": 1 }),
+        )
+        .await?;
+    let top = &search["hits"][0];
+    println!("top hit: id={} score={:.3}", top["id"], top["score"].as_f64().unwrap());
 
     // Real HTTP backends (only compiled with --features http-backends).
     #[cfg(feature = "http-backends")]

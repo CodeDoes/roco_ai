@@ -22,6 +22,9 @@ Build a self-regulating AI system that can:
 | `grammar.rs` | Constrained decoding, structured output generation |
 | `sandbox.rs` | Code execution sandbox for tool-use / coding agents |
 | `tools.rs` | Tool registry, function calling, external API integration |
+| `builtins.rs` | Concrete tools: `read`/`write`/`list`/`bash` + RAG (`vector_upsert`/`vector_search`) + audio (`stt`/`tts`) |
+| `vector.rs` | FAISS-style in-memory cosine index + dependency-free `HashingEmbedder` (RAG) |
+| `audio.rs` | STT/TTS backend seam (`StubAudioBackend`, `CommandAudioBackend` shelling to local binaries) |
 | `eval.rs` | Benchmarking, evaluation harnesses |
 | `rwkv.rs` | RWKV-specific linear attention implementation |
 | `main.rs` | CLI entry point |
