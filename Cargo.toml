@@ -3,6 +3,10 @@ name = "roco_ai"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "roco_ai"
+path = "src/lib.rs"
+
 [dependencies]
 # Core ML / GPU
 # burn = "0.16"           # Rust ML framework with GPU backends (CUDA, WGPU, Candle)

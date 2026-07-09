@@ -90,14 +90,19 @@ impl TokenCounter {
     }
 }
 
+use futures::future::BoxFuture;
+
 /// The model inference seam. A downloaded 3B model implements this later.
-pub trait ModelBackend {
+pub trait ModelBackend: Send + Sync {
     fn name(&self) -> &str;
     /// Whether constrained decoding (§2.2D) is available.
     fn supports_constrained_decoding(&self) -> bool {
         false
     }
-    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, EngineError>;
+    fn complete(
+        &self,
+        req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>>;
 }
 
 /// Deterministic backend for tests / pre-model development.
@@ -113,22 +118,24 @@ impl ModelBackend for MockBackend {
     fn name(&self) -> &str {
         &self.name
     }
-    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, EngineError> {
-        if self.latency_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
-        }
-        let snippet: String = req.prompt.chars().take(48).collect();
-        // Build valid JSON via serde_json so newlines/quotes are escaped properly.
-        let text = serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) })
-            .to_string();
-        let parsed = serde_json::from_str(&text).ok();
-        Ok(CompletionResponse {
-            text,
-            usage: TokenUsage {
-                prompt_tokens: req.estimated_prompt_tokens,
-                completion_tokens: 16,
-            },
-            parsed,
+    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+        Box::pin(async move {
+            if self.latency_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
+            }
+            let snippet: String = req.prompt.chars().take(48).collect();
+            // Build valid JSON via serde_json so newlines/quotes are escaped properly.
+            let text = serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) })
+                .to_string();
+            let parsed = serde_json::from_str(&text).ok();
+            Ok(CompletionResponse {
+                text,
+                usage: TokenUsage {
+                    prompt_tokens: req.estimated_prompt_tokens,
+                    completion_tokens: 16,
+                },
+                parsed,
+            })
         })
     }
 }

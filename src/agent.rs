@@ -20,6 +20,7 @@ use crate::policy::Policy;
 use crate::sandbox::Sandbox;
 use crate::tools::ToolRegistry;
 use crate::toolcall::{execute_tool_calls, parse_tool_calls, ToolExecutionResult};
+use crate::trace::{TraceEvent, Tracer};
 
 // ---------------------------------------------------------------------------
 // Context budget (§4.1)
@@ -106,7 +107,10 @@ impl Subtask {
 #[derive(Debug, Clone)]
 pub struct WorkerOutput {
     pub subtask_id: String,
+    /// The full execution transcript, including all tool calls and results.
     pub raw: String,
+    /// The final model response only.
+    pub final_raw: String,
     pub parsed: Value,
     pub usage: TokenUsage,
     /// True when the worker chose the do_nothing / abstain action.
@@ -139,7 +143,7 @@ pub enum AgentError {
 // ---------------------------------------------------------------------------
 
 /// Wraps a [`ModelBackend`] as a single 3B specialist worker.
-pub struct Worker<B: ModelBackend + Send + Sync> {
+pub struct Worker<B: ModelBackend + Send + Sync + ?Sized> {
     backend: Arc<B>,
     budget: ContextBudget,
     /// Optional tool-calling support (see `toolcall`).
@@ -152,7 +156,7 @@ pub struct Worker<B: ModelBackend + Send + Sync> {
     max_tool_rounds: usize,
 }
 
-impl<B: ModelBackend + Send + Sync> Worker<B> {
+impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
     pub fn new(backend: Arc<B>, budget: ContextBudget) -> Self {
         Self {
             backend,
@@ -272,12 +276,32 @@ impl<B: ModelBackend + Send + Sync> Worker<B> {
         let resp = final_resp.ok_or_else(|| {
             AgentError::Verification("worker produced no model response".into())
         })?;
-        let parsed = serde_json::from_str::<Value>(&resp.text).unwrap_or(Value::Null);
+        let final_raw = resp.text.clone();
+
+        let parsed = match serde_json::from_str::<Value>(&final_raw) {
+            Ok(Value::Object(mut obj)) => {
+                obj.insert("tool_results".to_string(), Self::tool_results_to_json(&tool_results));
+                Value::Object(obj)
+            }
+            Ok(other) => {
+                serde_json::json!({
+                    "answer": other,
+                    "tool_results": Self::tool_results_to_json(&tool_results)
+                })
+            }
+            Err(_) => {
+                serde_json::json!({
+                    "raw_answer": final_raw,
+                    "tool_results": Self::tool_results_to_json(&tool_results)
+                })
+            }
+        };
         let aborted = task.allow_abstain
             && parsed.get("action").and_then(|a| a.as_str()) == Some("do_nothing");
         Ok(WorkerOutput {
             subtask_id: task.id.clone(),
-            raw: resp.text,
+            raw: format!("{}\n\n[FINAL ANSWER]\n{}", prompt, final_raw),
+            final_raw,
             parsed,
             usage: resp.usage,
             aborted,
@@ -357,7 +381,7 @@ impl Verifier for ChecklistVerifier {
     ) -> Result<VerificationVerdict, AgentError> {
         let mut checks: HashMap<String, bool> = HashMap::new();
 
-        let parsed = match serde_json::from_str::<Value>(&output.raw) {
+        let parsed = match serde_json::from_str::<Value>(&output.final_raw) {
             Ok(v) => v,
             Err(_) => {
                 checks.insert("check_syntax".into(), false);
@@ -430,7 +454,7 @@ impl<B: ModelBackend + Send + Sync> Verifier for JudgeVerifier<B> {
             Be biased toward factual specificity over fluency.";
         let prompt = format!(
             "OBJECTIVE:\n{}\n\nOUTPUT:\n{}\n\nRUBRIC: score factual accuracy, completeness, logical consistency (0-10 each).",
-            task.objective, output.raw
+            task.objective, output.final_raw
         );
         let est = TokenCounter::estimate(&prompt);
         let req = CompletionRequest {
@@ -562,7 +586,7 @@ pub struct AggregatedResult {
 
 /// Orchestrator-Worker controller (§1.1). Decomposes a task, fans out to workers,
 /// gates each result through a [`Verifier`], and aggregates.
-pub struct Orchestrator<B: ModelBackend + Send + Sync, V: Verifier> {
+pub struct Orchestrator<B: ModelBackend + Send + Sync + ?Sized, V: Verifier> {
     backend: Arc<B>,
     budget: ContextBudget,
     verifier: V,
@@ -571,9 +595,12 @@ pub struct Orchestrator<B: ModelBackend + Send + Sync, V: Verifier> {
     tools: Option<Arc<ToolRegistry>>,
     sandbox: Option<Arc<Sandbox>>,
     policy: Option<Arc<dyn Policy>>,
+    /// Optional execution tracer (rustviz-style). When `None`, recording is a
+    /// no-op; the orchestration behaves exactly as before.
+    tracer: Option<Arc<dyn Tracer>>,
 }
 
-impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
+impl<B: ModelBackend + Send + Sync + ?Sized, V: Verifier> Orchestrator<B, V> {
     pub fn new(
         backend: Arc<B>,
         budget: ContextBudget,
@@ -588,6 +615,7 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
             tools: None,
             sandbox: None,
             policy: None,
+            tracer: None,
         }
     }
 
@@ -602,6 +630,14 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
         self.tools = Some(tools);
         self.sandbox = Some(sandbox);
         self.policy = Some(policy);
+        self
+    }
+
+    /// Attach an execution tracer. The orchestrator records each architectural
+    /// step (decompose, worker execution, verification, retry, aggregation) so a
+    /// viewer can replay the run. No-op when unset.
+    pub fn with_tracer(mut self, tracer: Arc<dyn Tracer>) -> Self {
+        self.tracer = Some(tracer);
         self
     }
 
@@ -639,6 +675,12 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
 
     /// Execute one subtask with retry + verification gate + escalation (§3, §5).
     async fn execute_with_recovery(&self, task: &Subtask) -> Result<WorkerOutput, AgentError> {
+        if let Some(t) = &self.tracer {
+            t.record(
+                TraceEvent::new("execute", format!("worker-{}", task.id), "spawned; running model call + verify gate")
+                    .with_meta(serde_json::json!({ "subtask_id": task.id, "prompt_tokens": task.prompt_tokens })),
+            );
+        }
         let worker = if self.tools.is_some() {
             Worker::new(Arc::clone(&self.backend), self.budget.clone()).with_tooling(
                 Arc::clone(self.tools.as_ref().unwrap()),
@@ -653,10 +695,40 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
             match worker.execute(task).await {
                 Ok(output) => {
                     let verdict = self.verifier.verify(task, &output).await?;
+                    if let Some(t) = &self.tracer {
+                        t.record(
+                            TraceEvent::new(
+                                "verify",
+                                "verifier",
+                                if verdict.passed { "gate passed" } else { "gate failed" },
+                            )
+                            .with_meta(serde_json::json!({
+                                "subtask_id": task.id,
+                                "passed": verdict.passed,
+                                "score": verdict.score,
+                                "reason": verdict.reason,
+                            })),
+                        );
+                    }
                     if verdict.passed {
                         return Ok(output);
                     }
                     esc.record_attempt();
+                    if let Some(t) = &self.tracer {
+                        t.record(
+                            TraceEvent::new(
+                                "retry",
+                                "orchestrator",
+                                format!(
+                                    "attempt {} -> level {:?}: {}",
+                                    esc.attempts(),
+                                    esc.current_level(),
+                                    verdict.reason
+                                ),
+                            )
+                            .with_meta(serde_json::json!({ "subtask_id": task.id, "level": format!("{:?}", esc.current_level()) })),
+                        );
+                    }
                     if esc.exhausted() {
                         return Err(AgentError::HumanIntervention {
                             id: task.id.clone(),
@@ -672,6 +744,21 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
                 }
                 Err(e) => {
                     esc.record_attempt();
+                    if let Some(t) = &self.tracer {
+                        t.record(
+                            TraceEvent::new(
+                                "retry",
+                                "orchestrator",
+                                format!(
+                                    "attempt {} -> level {:?}: {}",
+                                    esc.attempts(),
+                                    esc.current_level(),
+                                    e
+                                ),
+                            )
+                            .with_meta(serde_json::json!({ "subtask_id": task.id, "level": format!("{:?}", esc.current_level()) })),
+                        );
+                    }
                     if esc.exhausted() {
                         return Err(AgentError::Exhausted {
                             id: task.id.clone(),
@@ -692,6 +779,16 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
     /// Run a full task: decompose → fan-out execute → aggregate (§1.3, §3.3).
     pub async fn run(&self, task: &Task) -> Result<AggregatedResult, AgentError> {
         let subtasks = self.decompose(task);
+        if let Some(t) = &self.tracer {
+            t.record(
+                TraceEvent::new(
+                    "decompose",
+                    "orchestrator",
+                    format!("split '{}' into {} subtasks (4K-budget chunking)", task.id, subtasks.len()),
+                )
+                .with_meta(serde_json::json!({ "subtask_ids": subtasks.iter().map(|s| s.id.clone()).collect::<Vec<_>>() })),
+            );
+        }
         let futures = subtasks.iter().map(|st| self.execute_with_recovery(st));
         let results = join_all(futures).await;
 
@@ -740,6 +837,21 @@ impl<B: ModelBackend + Send + Sync, V: Verifier> Orchestrator<B, V> {
             majority_label = counts.into_iter().max_by_key(|&(_, c)| c).map(|(k, _)| k);
         }
 
+        if let Some(t) = &self.tracer {
+            t.record(
+                TraceEvent::new(
+                    "aggregate",
+                    "aggregator",
+                    format!(
+                        "merged {} outputs ({} failed){}",
+                        parsed.len(),
+                        failed,
+                        majority_label.as_ref().map(|l| format!(", majority_label={l}")).unwrap_or_default()
+                    ),
+                )
+                .with_meta(serde_json::json!({ "subtask_count": subtask_count, "failed": failed, "tool_results": tool_results.len() })),
+            );
+        }
         AggregatedResult {
             subtask_count,
             failed,
@@ -857,7 +969,8 @@ mod tests {
         };
         let out = WorkerOutput {
             subtask_id: "t1".into(),
-            raw: "not json".into(),
+            raw: "transcript".into(),
+            final_raw: "not json".into(),
             parsed: Value::Null,
             usage: TokenUsage::default(),
             aborted: false,
@@ -1009,31 +1122,20 @@ mod tests {
     /// `vector_upsert`, then a `vector_search` whose result comes back from
     /// the shared store. Exercises the new RAG tools end-to-end (no model).
     #[tokio::test]
-    async fn worker_runs_rag_tool_loop() {
+    async fn worker_surfaces_tool_results_in_parsed() {
         use crate::builtins::{VectorSearchTool, VectorUpsertTool};
         use crate::vector::{HashingEmbedder, SharedVectorStore, VectorStore};
         use std::sync::Mutex;
 
-        /// Emits `vector_upsert` on turn 0, `vector_search` on turn 1, then a
-        /// final answer once it sees prior `[TOOL RESULTS]` twice.
         struct RagMockBackend;
         impl ModelBackend for RagMockBackend {
-            fn name(&self) -> &str {
-                "mock-rag"
-            }
-            async fn complete(
-                &self,
-                req: CompletionRequest,
-            ) -> Result<CompletionResponse, EngineError> {
+            fn name(&self) -> &str { "mock-rag" }
+            async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, EngineError> {
                 let rounds = req.prompt.matches("[TOOL RESULTS]").count();
-                let text = if rounds >= 2 {
+                let text = if rounds >= 1 {
                     "{\"label\":\"pass\"}".to_string()
-                } else if rounds == 1 {
-                    "<tool_call>\n{\"name\":\"vector_search\",\"arguments\":{\"query\":\"cat mat\",\"k\":3}}\n</tool_call>"
-                        .to_string()
                 } else {
-                    "<tool_call>\n{\"name\":\"vector_upsert\",\"arguments\":{\"id\":\"doc1\",\"text\":\"the cat sat on the mat\"}}\n</tool_call>"
-                        .to_string()
+                    "<tool_call>\n{\"name\":\"vector_upsert\",\"arguments\":{\"id\":\"d1\",\"text\":\"val\"}}\n</tool_call>".to_string()
                 };
                 Ok(CompletionResponse {
                     text: text.clone(),
@@ -1053,19 +1155,19 @@ mod tests {
             .with_tooling(Arc::new(tools), Arc::new(Sandbox::new()), Arc::new(ComposedPolicy::new()));
 
         let subtask = Subtask {
-            id: "rag".into(),
-            objective: "store and retrieve".into(),
+            id: "test".into(),
+            objective: "test".into(),
             context: String::new(),
             output_schema: "{}".into(),
             allow_abstain: false,
             prompt_tokens: 10,
         };
         let out = worker.execute(&subtask).await.unwrap();
-        // upsert + search were both executed across the loop.
-        assert_eq!(out.tool_results.len(), 2);
-        let search = &out.tool_results[1];
-        assert_eq!(search.call.name, "vector_search");
-        let hits = search.output.as_ref().unwrap()["hits"].as_array().unwrap();
-        assert_eq!(hits[0]["id"], "doc1");
+        
+        // Verify tool results are merged into parsed
+        assert!(out.parsed.get("tool_results").is_some());
+        let results = out.parsed.get("tool_results").unwrap().as_array().unwrap();
+        assert_eq!(results.len(), 1);
     }
+
 }

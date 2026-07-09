@@ -79,12 +79,20 @@ impl VectorStore {
                 got: vec.len(),
             });
         }
+        // Replace any prior entry with this id to keep the index authoritative.
+        self.entries.retain(|e| e.id != id);
         self.entries.push(Entry {
             id: id.to_string(),
             vec,
             payload,
         });
         Ok(())
+    }
+
+    /// Remove the entry with `id` (if present). Used by conflict resolution
+    /// when a newer memory supersedes/deletes an older one.
+    pub fn remove(&mut self, id: &str) {
+        self.entries.retain(|e| e.id != id);
     }
 
     /// Top-`k` nearest neighbours by cosine similarity (exact, descending).
