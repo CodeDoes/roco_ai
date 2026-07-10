@@ -226,7 +226,7 @@ async fn main() -> anyhow::Result<()> {
     // --- Demo E: agentic tool-use loop (transcript + merged JSON) -------
     println!("\n=== Demo E: agentic tool-use loop (transcript + merged JSON) ===");
     let tool_backend = Arc::new(ToolCallingMockBackend);
-    let mut tool_reg = roco_core::builtins::default_agent_toolkit(root.clone(), Sandbox::new());
+    let tool_reg = roco_core::builtins::default_agent_toolkit(root.clone(), Sandbox::new());
     // Ensure 'read' is in there (it comes from default_agent_toolkit).
     let worker = roco_core::agent::Worker::new(tool_backend, budget.clone())
         .with_tooling(

@@ -1,15 +1,13 @@
 use std::sync::{Arc, Mutex};
-use std::path::PathBuf;
 use tokio::sync::watch;
 use serde_json::Value;
 use anyhow::Result;
 
-use roco_core::engine::{ModelBackend, TokenUsage};
+use roco_core::engine::ModelBackend;
 use roco_core::agent::{Orchestrator, ContextBudget, RetryPolicy, Task, ChecklistVerifier};
 use roco_workspace::Workspace;
 use roco_core::sandbox::Sandbox;
 use roco_core::policy::ComposedPolicy;
-use roco_core::tools::ToolRegistry;
 use roco_core::builtins::default_agent_toolkit;
 
 #[derive(Debug, Clone)]

@@ -24,18 +24,42 @@ Tracks work against SPEC.md phases.
 - [x] `roco trace list` — shows all saved traces with summaries
 - [x] `roco trace diff <id1> <id2>` — compares two traces
 - [x] `viz` runs produce 37 events (was 16) with full Worker coverage
-- [ ] Trace replay in GUI / web frontend
+- [x] Trace replay in Dioxus GUI (gui/src/main.rs renders from live TraceEvent stream)
 
-## Phase 2 — napi-rs + oRPC (NEXT)
+## Phase 2 — napi-rs + oRPC ✅ DONE
 
-- [ ] `crates/napi/` — napi-rs bindings to `roco_core`
-- [ ] `web/app/` — Next.js + oRPC server calling the addon
-- [ ] Visualizer wired to oRPC stream
+- [x] `crates/napi/` — napi-rs bindings to `roco_core`
+  - `runTask()`, `listTraces()`, `loadTrace()`, `diffTraces()` — all return JSON strings
+  - Async functions that run the full orchestrator with `CollectingTracer`
+  - Auto-saves traces to `.roco/traces/` via `TraceStore`
+  - Compiles as `cdylib` (`roco_napi.node`) via napi-rs
+- [x] `web/app/` — Next.js 15 + oRPC v1.14 + React 19
+  - **API routes**: `POST /api/run-task` (CLI exec bridge), `GET /api/traces`, `GET /api/traces/[id]`, `POST /api/orpc` (oRPC handler)
+  - **oRPC router** (`src/lib/orpc.ts`): `runTask`, `listTraces`, `loadTrace`, `diffTraces` procedures
+  - **Main page** (`src/app/page.tsx`): Task input form + live trace visualizer
+  - **Visualizer component** (`src/components/Visualizer.tsx`): Event timeline, phase-colored rows, expandable metadata, message log, execution summary
+  - **TypeScript types** (`src/lib/types.ts`): Mirrors Rust Trace/TraceEvent/TraceSummary structs
+  - CLI bridge: executes `cargo run -p roco-cli -- run-input <file>` in dev, `roco run-input` in production
+- [x] Visualizer wired to oRPC stream
+  - Main page fetches trace from `/api/run-task`, renders via Visualizer component
+  - Three tabs: Events (timeline), Messages (chat), Summary (phase counts)
+  - Stats bar shows subtasks, failed, model calls, duration, events, tool calls, retries, errors
 
-## Phase 3 — Gateway (optional)
+## Phase 3 — Gateway ✅ DONE
 
-- [ ] `crates/gateway/` — axum HTTP server for remote access
-- [ ] oRPC can proxy to gateway
+- [x] `crates/gateway/` — axum HTTP server for remote access
+  - `POST /rpc` — run a task via the orchestrator, returns trace JSON
+  - `GET /traces` — list saved traces
+  - `GET /trace/:id` — get a full trace by ID
+  - `GET /trace/:id/stream` — SSE-stream the events of a saved trace
+  - `GET /health` — health check endpoint
+  - Runs on `0.0.0.0:3001` by default
+  - No warnings, compiles cleanly with workspace deps
+- [x] oRPC can proxy to gateway
+  - `orpc.ts` auto-detects gateway via `/health` check (2s timeout)
+  - When gateway is available: proxies `runTask`, `listTraces`, `loadTrace`, `diffTraces` to it
+  - Falls back to CLI exec / direct file reads when gateway is unreachable
+  - Controlled by `GATEWAY_URL` (default `http://localhost:3001`) and `PREFER_GATEWAY` env vars
 
 ## Phase 4 — Real model
 

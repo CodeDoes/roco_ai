@@ -5,3 +5,8 @@ target/*
 .devenv/
 # runtime artifact root (eval results, logs, traces)
 .roco/
+# web app
+node_modules/
+*.tsbuildinfo
+.next/
+web/app/.env.local

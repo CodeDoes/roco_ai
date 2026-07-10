@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use futures::future::join_all;
 use serde_json::Value;
 use thiserror::Error;
@@ -446,6 +447,7 @@ pub struct VerificationVerdict {
 
 /// A verification gate. Implementations: deterministic checklist (no model) and
 /// LLM-as-judge (separate small model).
+#[async_trait]
 pub trait Verifier {
     async fn verify(
         &self,
@@ -458,6 +460,7 @@ pub trait Verifier {
 /// is always safe to use as a first-pass gate.
 pub struct ChecklistVerifier;
 
+#[async_trait]
 impl Verifier for ChecklistVerifier {
     async fn verify(
         &self,
@@ -528,6 +531,7 @@ impl<B: ModelBackend + Send + Sync> JudgeVerifier<B> {
     }
 }
 
+#[async_trait]
 impl<B: ModelBackend + Send + Sync> Verifier for JudgeVerifier<B> {
     async fn verify(
         &self,

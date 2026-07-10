@@ -2,51 +2,34 @@
 
 ## Where we are
 
-✅ **Phase 0 complete** — Cargo workspace with 5 crates, compiles, all demos pass:
+✅ **Phase 0–3 complete** — Cargo workspace with all crates, compiles cleanly, 80 tests pass:
 
 ```
 roco_ai/
 ├── crates/core/         ← roco_core  (engine, agent, memory, tools, vector, trace, ...)
-├── crates/cli/          ← roco binary (demo harness, viz, eval)
+├── crates/cli/          ← roco binary (demo harness, viz, eval, trace, run-input)
 ├── crates/session/      ← roco_session (Engine, message queue, poll loop)
 ├── crates/workspace/    ← roco_workspace (managed filesystem)
-├── crates/gateway/      ← stub (axum HTTP, Phase 3)
+├── crates/napi/         ← roco_napi .node addon (napi-rs bindings)
+├── crates/gateway/      ← axum HTTP gateway (POST /rpc, SSE streaming)
+├── web/app/             ← Next.js 15 + oRPC v1.14 + React 19
 ├── gui/                 ← Dioxus visualizer (excluded from workspace — GTK deps)
 ├── SPEC.md              ← architecture spec
 ├── PROGRESS.md          ← phase tracker
 └── PLAN.md              ← this file
 ```
 
-## Next: the debug loop
+## The debug loop (the whole point)
 
-The SPEC says the whole point is replacing "screenshot + pass/fail" with
-"structured, diffable execution history." The trace system exists in core but
-is only exercised by `cargo run -- viz`. The next step is to make traces a
-first-class citizen:
-
-1. **Enrich the trace contract** — every agent path (decompose, verify,
-   escalate, tool-call, budget-check) emits a `TraceEvent`. Currently some
-   paths don't.
-2. **Trace persistence** — every run writes a `.roco/traces/<id>.json` so you
-   can replay it later without re-running the agent.
-3. **Trace diff** — compare two traces to see where behavior diverged.
-
-## Then: oRPC + napi-rs (SPEC Phase 2)
-
-This is where the frontend comes in:
+A **structured, replayable execution trace** is the primary artifact of every run:
 
 ```
-crates/napi/  (napi-rs addon)
-  → calls roco_core::Orchestrator::run()
-  → returns / streams TraceEvent[]
-
-Next.js app
-  → oRPC server procedure: runTask(req) → Trace
-  → visualizer subscribes to trace stream
-  → assistant-ui for chat interface
+Orchestrator → CollectingTracer → Trace → saved to .roco/traces/
+                                           → CLI: roco viz / trace list / trace diff
+                                           → GUI: Dioxus visualizer
+                                           → Web: Next.js app + oRPC → gateway or CLI
+                                           → Gateway: axum HTTP + SSE streaming
 ```
-
-### Why this matters for debugging
 
 | Before | After |
 |--------|-------|
@@ -55,13 +38,33 @@ Next.js app
 | Re-run to debug | Replay saved trace, diff against new run |
 | Unit tests only | Trace becomes regression fixture |
 
-## Proposed next steps (in order)
+## Running the stack
 
-1. **Enrich trace recording in core** — add events to agent.rs paths that
-   don't currently emit them (verification, escalation, budget checks)
-2. **Trace persistence in cli** — `roco run` and `roco viz` both save traces
-   automatically with a UUID
-3. **Trace diff CLI** — `roco diff <id1> <id2>` shows what changed
-4. **napi-rs scaffold** — `crates/napi/` that exposes `runTask()` to Node.js
-5. **Next.js + oRPC app** — minimal app with one procedure that calls the
-   addon and returns a trace
+```bash
+# 1. CLI / demos
+cargo run -p roco-cli           # demos A–F
+cargo run -p roco-cli -- viz    # HTML trace + JSON artifact
+cargo run -p roco-cli -- trace list
+cargo run -p roco-cli -- trace diff <id1> <id2>
+cargo run -p roco-cli -- run-input <file.json>
+
+# 2. Gateway (optional — faster web development)
+cargo run -p roco-gateway       # listens on 0.0.0.0:3001
+
+# 3. Web app (requires gateway or CLI fallback)
+cd web/app
+pnpm install
+pnpm dev                       # http://localhost:3000
+
+# 4. napi addon (for direct Node.js integration)
+cd crates/napi
+napi build --release
+```
+
+## Next up: Phase 4 — Real model
+
+Swap `MockBackend` for a real RWKV/SSM backend:
+
+1. Integrate `web-rwkv` crate through the existing `ModelBackend` trait
+2. Keep the mock path for tests, evals, and CI
+3. Measure quality delta between mock vs real model on the eval suite
