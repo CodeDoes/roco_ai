@@ -1,0 +1,34 @@
+# RoCo AI — full stack (gateway + web app)
+#
+# Usage:
+#   docker compose up --build
+#   open http://localhost:3000
+#
+# The web app proxies trace requests to the gateway (GATEWAY_URL).
+# Traces persist in the gateway's .roco/ volume.
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gateway
+    ports:
+      - "3001:3001"
+    volumes:
+      - gateway-data:/app/.roco
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "3000:3000"
+    environment:
+      GATEWAY_URL: http://gateway:3001
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  gateway-data:

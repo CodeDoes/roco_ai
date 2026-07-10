@@ -1,0 +1,28 @@
+# RoCo AI — Web App (Next.js 15)
+#
+# Builds the Next.js visualizer and serves it on port 3000.
+# Talks to the gateway (GATEWAY_URL) for trace data.
+
+FROM node:24-slim AS builder
+
+WORKDIR /app
+COPY web/app/package.json web/app/pnpm-lock.yaml ./
+COPY web/app/.npmrc ./
+
+RUN corepack enable && pnpm install --frozen-lockfile
+
+COPY web/app ./
+RUN pnpm build
+
+FROM node:24-slim
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV GATEWAY_URL=http://gateway:3001
+
+COPY --from=builder /app ./
+
+EXPOSE 3000
+
+CMD ["pnpm", "start"]

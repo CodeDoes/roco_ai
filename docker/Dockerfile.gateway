@@ -1,0 +1,31 @@
+# RoCo AI — Gateway (axum HTTP server)
+#
+# Builds the Rust gateway crate and runs it on 0.0.0.0:3001.
+# The gateway exposes /rpc, /traces, /trace/:id, /trace/:id/stream, /health.
+
+FROM rust:1-slim-bookworm AS builder
+
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY gui ./gui
+COPY agent ./agents
+COPY model ./model
+COPY provider ./provider
+COPY eval ./evals
+
+# Build only the gateway (avoids building the GTK-dependent gui)
+RUN cargo build --release -p roco-gateway
+
+FROM debian:bookworm-slim
+
+WORKDIR /app
+COPY --from=builder /app/target/release/roco-gateway /usr/local/bin/roco-gateway
+
+# Gateway listens here by default.
+EXPOSE 3001
+
+# Persist traces across container restarts.
+VOLUME ["/app/.roco"]
+
+CMD ["roco-gateway"]
