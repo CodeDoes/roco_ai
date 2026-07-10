@@ -45,7 +45,7 @@ Tracks work against SPEC.md phases.
   - Three tabs: Events (timeline), Messages (chat), Summary (phase counts)
   - Stats bar shows subtasks, failed, model calls, duration, events, tool calls, retries, errors
 
-## Phase 3 — Gateway ✅ DONE
+## Phase 3 — Gateway ✅ DONE (verified working)
 
 - [x] `crates/gateway/` — axum HTTP server for remote access
   - `POST /rpc` — run a task via the orchestrator, returns trace JSON
@@ -60,6 +60,13 @@ Tracks work against SPEC.md phases.
   - When gateway is available: proxies `runTask`, `listTraces`, `loadTrace`, `diffTraces` to it
   - Falls back to CLI exec / direct file reads when gateway is unreachable
   - Controlled by `GATEWAY_URL` (default `http://localhost:3001`) and `PREFER_GATEWAY` env vars
+- [x] Gateway verified end-to-end
+  - `GET /health` → `{"status":"ok","service":"roco-gateway","version":"0.1.0"}`
+  - `GET /traces` → lists saved traces (37 events, 7 subtasks, 0 failed)
+  - `POST /rpc` → runs full task, returns structured trace JSON
+- [x] Web app **builds cleanly** (`pnpm build` → 9 routes compile, type-check passes)
+  - Added `web/app/.npmrc` with `node-linker=hoisted` (pnpm 11 defaulted to
+    isolated linker, leaving node_modules empty — fixed by forcing hoisted)
 
 ## Phase 4 — Real model
 
