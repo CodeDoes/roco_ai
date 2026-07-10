@@ -13,7 +13,7 @@ the context budget was spent, where a retry cascade escalated.
 
 The fix is to make a **structured, replayable execution trace** the primary
 artifact of every run. The Rust core already has the seed for this
-(`src/trace.rs`: `TraceEvent` + `Tracer` + `CollectingTracer`). Every future
+(`crates/core/src/trace.rs`: `TraceEvent` + `Tracer` + `CollectingTracer`). Every future
 crate emits into that same trace contract, and the frontend (Dioxus/React)
 replays it. A trace is far easier to debug than a screenshot, and it doubles
 as the spec for the system's behavior.
@@ -65,7 +65,7 @@ roco_ai/                      # cargo workspace (Rust)
 | `napi` | Compiles `core` to a `.node` addon; exposes safe async functions to Node. | `runTask(req) -> Trace`, `streamTrace(id) -> AsyncIterator<TraceEvent>` |
 
 `session` and `workspace` already exist as modules inside the current blob
-(`src/session.rs`, `src/workspace.rs`) and become first-class crates here.
+(`crates/session`, `crates/workspace`) and become first-class crates here.
 
 ## 5. Frontend integration (oRPC + napi-rs)
 

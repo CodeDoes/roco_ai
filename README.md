@@ -12,22 +12,43 @@ Build a self-regulating AI system that can:
 
 ## Architecture
 
+The project is a Cargo workspace with a pure-Rust core and thin front-ends:
+
+```
+roco_ai/
+├── crates/core/       ← roco_core (engine, agent, memory, tools, vector, trace, ...)
+├── crates/cli/        ← roco binary (demo harness, viz, eval, trace, run-input)
+├── crates/session/    ← roco_session (Engine, message queue, poll loop)
+├── crates/workspace/  ← roco_workspace (managed filesystem)
+├── crates/napi/       ← roco_napi .node addon (napi-rs bindings)
+├── crates/gateway/    ← axum HTTP gateway (POST /rpc, SSE streaming)
+├── web/app/         ← Next.js 15 + oRPC v1.14 + React 19 (trace visualizer)
+├── gui/             ← Dioxus visualizer (native desktop, excluded from workspace)
+└── specs: SPEC.md, PLAN.md, PROGRESS.md
+```
+
+### Core modules (`crates/core/src/`)
+
 | Module | Purpose |
 |--------|---------|
-| `agent.rs` | Agent orchestration, task decomposition, sub-agent spawning |
-| `engine.rs` | Core inference engine: RWKV / SSM / RNN backends |
+| `agent.rs` | Orchestrator-Worker: 4K `ContextBudget`, schema-first `Worker`, verification gates, escalation cascade, retry circuit breakers, fan-out + aggregation |
+| `engine.rs` | `ModelBackend` seam + `MockBackend`, token budgeting |
+| `backends.rs` | HTTP backends (NVIDIA, Kilo) + `LocalRwkvBackend` placeholder; gated behind `http-backends` |
 | `infer.rs` | Token generation, sampling strategies, batching |
-| `train.rs` | Training loop, fine-tuning, RLHF scaffolding |
+| `train.rs` | Training loop, fine-tuning scaffolding |
 | `policy.rs` | Self-regulation, safety constraints, decision policies |
-| `grammar.rs` | Constrained decoding, structured output generation |
-| `sandbox.rs` | Code execution sandbox for tool-use / coding agents |
-| `tools.rs` | Tool registry, function calling, external API integration |
+| `grammar.rs` | Constrained decoding, GBNF/XML grammar generation for tool calls |
+| `sandbox.rs` | Timeout-bounded command runner + `GuardPolicy` (deny/allowlist) |
+| `tools.rs` | `Tool` trait + `ToolRegistry` (register/lookup/schemas/validate/dispatch) |
 | `builtins.rs` | Concrete tools: `read`/`write`/`list`/`bash` + RAG (`vector_upsert`/`vector_search`) + audio (`stt`/`tts`) |
-| `vector.rs` | FAISS-style in-memory cosine index + dependency-free `HashingEmbedder` (RAG) |
-| `audio.rs` | STT/TTS backend seam (`StubAudioBackend`, `CommandAudioBackend` shelling to local binaries) |
-| `eval.rs` | Benchmarking, evaluation harnesses |
-| `rwkv.rs` | RWKV-specific linear attention implementation |
-| `main.rs` | CLI entry point |
+| `vector.rs` | FAISS-style in-memory cosine index + `HashingEmbedder` (RAG) |
+| `memory.rs` | RNN memory processor (Mem0 + Honcho + Letta + Zep) |
+| `capacity.rs` | Capacity model + `CapacityPool` + backend routing (`BackendKind`, `select`) |
+| `config.rs` | `Config` (provider selection, capacity, retry, context) from `model/*_config` |
+| `trace.rs` | Execution trace contract: `TraceEvent`, `CollectingTracer`, `TraceStore` (save/load/list/diff) |
+| `visualizer.rs` | Render traces to HTML + JSON (the durable contract for the web frontend) |
+| `rwkv.rs` | Empty placeholder for future RWKV linear-attention backend |
+| `main.rs` | CLI entry point (in `crates/cli`, not core) |
 
 ## Key Design Decisions
 
@@ -43,7 +64,8 @@ Foundation phase. See `REPORT.md` for the full research and design document.
 ### Implemented foundation (compiles & tested without a model)
 
 The orchestration layer is built and exercisable via a `MockBackend`; swap in a
-real 3B `ModelBackend` once the model is downloaded.
+real 3B `ModelBackend` (NVIDIA, Kilo, or local RWKV) via `Config`. See
+`PROGRESS.md` for the phase tracker.
 
 | Module | Purpose | Status |
 |--------|---------|--------|
@@ -64,9 +86,54 @@ real 3B `ModelBackend` once the model is downloaded.
 Design patterns follow `models/small_model_agent_patterns.md`. Run the smoke test with:
 
 ```bash
-cargo run --bin roco
-cargo test
+cargo run -p roco-cli      # demos A–F (mock-backed orchestration)
+cargo test --workspace --exclude roco-gui
 ```
+
+## Quick Start
+
+### 1. Rust core + CLI
+
+```bash
+cargo run -p roco-cli -- viz          # → .roco/traces/roco_trace.{html,json}
+cargo run -p roco-cli -- trace list    # list saved traces
+cargo run -p roco-cli -- trace diff <id1> <id2>
+cargo run -p roco-cli -- run-input task.json
+```
+
+### 2. HTTP gateway (optional)
+
+```bash
+cargo run -p roco-gateway          # listens on 0.0.0.0:3001
+# POST /rpc            run a task, returns trace JSON
+# GET  /traces         list traces
+# GET  /trace/:id      get a full trace
+# GET  /trace/:id/stream  SSE-stream trace events
+# GET  /health         health check
+```
+
+### 3. Web visualizer (Next.js)
+
+```bash
+cd web/app && pnpm install
+pnpm dev                          # http://localhost:3000
+# Run a task → see live trace
+# /traces   browse saved traces
+# /traces/:id  view one trace
+# /diff      compare two traces
+```
+
+The web app talks to the gateway when it is reachable (auto-detected
+via `/health`); otherwise it falls back to the CLI exec bridge. Control
+with `GATEWAY_URL` (default `http://localhost:3001`) and `PREFER_GATEWAY`.
+
+### 4. napi-rs addon (Node.js)
+
+```bash
+cd crates/napi && napi build --release   # → roco_napi.node
+```
+
+See `Makefile` for a full list of build/test/dev targets.
 
 ### Real model backends (feature-gated)
 
@@ -114,7 +181,7 @@ implementation: <https://github.com/cryscan/web-rwkv>.
 
 ### Configuration
 
-Provider, capacity, retry, and context settings are driven by `src/config.rs`,
+Provider, capacity, retry, and context settings are driven by `crates/core/src/config.rs`,
 loaded from `model/default_config` (JSON). The default provider is **NVIDIA**;
 set `"provider": "kilo"` (or `"mock"`) to switch. Provider descriptors live in
 `provider/*_adapter` and per-role settings in `model/{worker,orchestrator,verifier}_config`.
