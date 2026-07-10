@@ -19,13 +19,16 @@ const TABS: &[(&str, &str)] = &[
 // ---- data shapes ---------------------------------------------------------
 #[derive(Clone, Debug)]
 struct Trace {
+    #[allow(dead_code)]
     messages: Vec<Msg>,
     events: Vec<TraceEvent>,
     memory: Vec<Vec<String>>,
 }
 #[derive(Clone, Debug)]
 struct Msg {
+    #[allow(dead_code)]
     role: String,
+    #[allow(dead_code)]
     content: String,
 }
 
@@ -131,19 +134,19 @@ fn App() -> Element {
     let mut speed = use_signal(|| 1.0f32);
     let time = use_signal(|| 0.0f64);
 
-    // Animation loop: advance `time` while playing, on a background thread
-    // (native desktop build — no WASM timers needed).
+    // Animation loop: advance `time` while playing.
+    // Uses Dioxus async spawn instead of std::thread::spawn to avoid Send issues.
+    use dioxus::prelude::spawn;
     let _ = use_effect(move || {
         if !playing() {
             return;
         }
-        let time = time;
+        let mut time = time;
         let playing = playing;
         let speed = speed;
-        std::thread::spawn(move || {
-            let mut time = time;
+        spawn(async move {
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(16));
+                tokio::time::sleep(std::time::Duration::from_millis(16)).await;
                 if !playing() {
                     break;
                 }
@@ -249,8 +252,8 @@ fn StatefulScene(time: f64) -> Element {
             // O(1) state block (left)
             rect {
                 x: "240", y: "200",
-                width: { (104.0 * (1.0 + 0.04 * (time * 2.0).sin() as f32)).to_string() },
-                height: { (70.0 * (1.0 + 0.04 * (time * 2.0).sin() as f32)).to_string() },
+                width: (104.0 * (1.0 + 0.04 * (time * 2.0).sin() as f32)).to_string(),
+                height: (70.0 * (1.0 + 0.04 * (time * 2.0).sin() as f32)).to_string(),
                 rx: "10", fill: "#122a33", stroke: "#38f0ff", "stroke_width": "1.5",
             }
             text { x: "290", y: "232", fill: "#dfe7ff", "font_size": "12", "text_anchor": "middle", "STATE" }

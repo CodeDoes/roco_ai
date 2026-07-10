@@ -15,3 +15,7 @@ dioxus = { version = "0.7", features = ["desktop"] }
 # real (mock-backed) orchestration directly and renders the recorded trace.
 roco-core = { path = "../crates/core" }
 
+# Tokio for async sleep in the animation loop (re-uses workspace dep).
+tokio = { workspace = true }
+
+
