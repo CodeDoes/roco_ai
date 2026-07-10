@@ -46,10 +46,10 @@ export default function Home() {
   }, [objective, context])
 
   const generateDemoContext = useCallback(() => {
-    const context = Array.from({ length: 80 }, (_, i) =>
+    const ctx = Array.from({ length: 80 }, (_, i) =>
       `Fact ${i}: the orchestrator routes subtask ${i} through a verification gate. `
     ).join('')
-    setContext(context)
+    setContext(ctx)
   }, [])
 
   return (
@@ -57,16 +57,20 @@ export default function Home() {
       {/* Header */}
       <header className="px-6 py-3 border-b border-slate-800 bg-slate-900 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-blue-400">RoCo AI</h1>
+          <a href="/" className="text-xl font-bold text-blue-400 hover:text-blue-300">RoCo AI</a>
           <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded">
             Trace Visualizer
           </span>
         </div>
-        {traceId && (
-          <span className="text-xs text-slate-400 font-mono">
-            trace: {traceId}
-          </span>
-        )}
+        <nav className="flex items-center gap-4 text-sm">
+          <a href="/" className="text-blue-400 hover:text-blue-300 font-medium">Run</a>
+          <a href="/traces" className="text-slate-400 hover:text-slate-200">Traces</a>
+          {traceId && (
+            <span className="text-xs text-slate-500 font-mono ml-2">
+              {traceId}
+            </span>
+          )}
+        </nav>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -120,9 +124,10 @@ export default function Home() {
           )}
 
           {!loading && !trace && (
-            <div className="text-xs text-slate-500 mt-4">
-              <p className="mb-2">Enter a task objective and context, then click <strong>Run Task</strong>.</p>
-              <p>The orchestrator decomposes the task into 4K-budget subtasks, executes them, and returns a structured trace.</p>
+            <div className="text-xs text-slate-500 mt-4 space-y-2">
+              <p>Enter a task objective and context, then click <strong>Run Task</strong>.</p>
+              <p>The orchestrator decomposes the task into 4K-budget subtasks, executes them via workers, verifies outputs, and returns a structured trace.</p>
+              <p className="pt-2">Or browse <a href="/traces" className="text-blue-400 hover:underline">saved traces</a>.</p>
             </div>
           )}
         </aside>
