@@ -300,6 +300,44 @@ impl ModelBackend for KiloBackend {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Local RWKV — placeholder for Phase 4 (web-rwkv integration)
+// ---------------------------------------------------------------------------
+
+/// Placeholder backend for local RWKV/SSM inference via `web-rwkv`.
+///
+/// Returns a clear error until the real backend is wired in. See
+/// `provider/local_rwkv_adapter` for the planned integration.
+pub struct LocalRwkvBackend {
+    pub model_size: String,
+    pub exec_mode: String,
+}
+
+impl LocalRwkvBackend {
+    pub fn new(model_size: impl Into<String>, exec_mode: impl Into<String>) -> Self {
+        Self {
+            model_size: model_size.into(),
+            exec_mode: exec_mode.into(),
+        }
+    }
+}
+
+impl ModelBackend for LocalRwkvBackend {
+    fn name(&self) -> &str {
+        "local-rwkv"
+    }
+    fn complete(&self, _req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+        Box::pin(async move {
+            Err(EngineError::Backend(
+                "local RWKV backend not yet implemented — use Mock, Nvidia, or Kilo. \
+                 See provider/local_rwkv_adapter and https://github.com/cryscan/web-rwkv \
+                 for the planned integration."
+                    .into(),
+            ))
+        })
+    }
+}
+
 /// A provider-agnostic backend that dispatches to the configured concrete
 /// backend. Lets the `Orchestrator` be built from a `Config` selection without
 /// needing `dyn ModelBackend` (native async traits are not dyn-compatible).
@@ -307,6 +345,8 @@ pub enum AnyBackend {
     Mock(MockBackend),
     Nvidia(NvidiaBackend),
     Kilo(KiloBackend),
+    /// Local RWKV inference (Phase 4 — returns error until wired).
+    LocalRwkv(LocalRwkvBackend),
 }
 
 impl ModelBackend for AnyBackend {
@@ -315,6 +355,7 @@ impl ModelBackend for AnyBackend {
             AnyBackend::Mock(b) => b.name(),
             AnyBackend::Nvidia(b) => b.name(),
             AnyBackend::Kilo(b) => b.name(),
+            AnyBackend::LocalRwkv(b) => b.name(),
         }
     }
     fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
@@ -323,6 +364,7 @@ impl ModelBackend for AnyBackend {
                 AnyBackend::Mock(b) => b.complete(req).await,
                 AnyBackend::Nvidia(b) => b.complete(req).await,
                 AnyBackend::Kilo(b) => b.complete(req).await,
+                AnyBackend::LocalRwkv(b) => b.complete(req).await,
             }
         })
     }

@@ -19,6 +19,9 @@ pub enum Provider {
     Nvidia,
     Kilo,
     Mock,
+    /// Local RWKV/SSM inference via `web-rwkv` (Phase 4 — see
+    /// `provider/local_rwkv_adapter`). Returns an error until wired in.
+    LocalRwkv,
 }
 
 /// Capacity pool, in the same units as [`crate::capacity::Capacity`].
@@ -213,16 +216,33 @@ impl Config {
     }
 
     /// Build the configured backend. Requires the `http-backends` feature
-    /// (except for `Mock`).
+    /// (except for `Mock` and `LocalRwkv` which return errors / placeholders).
     #[cfg(feature = "http-backends")]
     pub fn build_backend(&self) -> Result<crate::backends::AnyBackend> {
-        use crate::backends::{AnyBackend, KiloBackend, NvidiaBackend};
+        use crate::backends::{AnyBackend, KiloBackend, LocalRwkvBackend, NvidiaBackend};
         use crate::engine::MockBackend;
         match self.provider {
             Provider::Mock => Ok(AnyBackend::Mock(MockBackend::default())),
             Provider::Nvidia => Ok(AnyBackend::Nvidia(NvidiaBackend::from_env()?)),
             Provider::Kilo => Ok(AnyBackend::Kilo(KiloBackend::from_env()?)),
+            // Phase 4 placeholder — returns an error until web-rwkv is wired.
+            Provider::LocalRwkv => Ok(AnyBackend::LocalRwkv(LocalRwkvBackend::new(
+                self.resolved_rwkv_size(),
+                self.resolved_rwkv_mode(),
+            ))),
         }
+    }
+
+    /// Resolve the RWKV model size from config (defaults to 2.9B — fits the
+    /// 4GB GPU cache pool).
+    pub fn resolved_rwkv_size(&self) -> String {
+        // Pull from the orchestrator_config if present; otherwise default.
+        std::env::var("RWKV_SIZE").unwrap_or_else(|_| "rwkv7_g1g_2_9b".into())
+    }
+
+    /// Resolve the RWKV execution mode (defaults to GPU-direct-quantized).
+    pub fn resolved_rwkv_mode(&self) -> String {
+        std::env::var("RWKV_EXEC_MODE").unwrap_or_else(|_| "gpu_direct_quantized".into())
     }
 }
 
