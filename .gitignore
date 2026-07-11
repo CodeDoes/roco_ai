@@ -9,4 +9,6 @@ target/*
 node_modules/
 *.tsbuildinfo
 .next/
+dist/
+.vite/
 web/app/.env.local

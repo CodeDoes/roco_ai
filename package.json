@@ -1,0 +1,12 @@
+{
+  "name": "roco-ai",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.11.0",
+  "scripts": {
+    "dev:next": "pnpm --filter @roco/web dev",
+    "dev:visualizer": "pnpm --filter @roco/visualizer dev",
+    "build:visualizer": "pnpm --filter @roco/visualizer build",
+    "preview:visualizer": "pnpm --filter @roco/visualizer preview"
+  }
+}

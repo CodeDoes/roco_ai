@@ -1,0 +1,10 @@
+packages:
+  - "web/app"
+  - "apps/*"
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+allowBuilds:
+  esbuild: set this to true or false
+  sharp: set this to true or false
