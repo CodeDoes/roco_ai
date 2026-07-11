@@ -217,7 +217,7 @@ impl Config {
 
     /// Build the configured backend. Requires the `http-backends` feature
     /// (except for `Mock` and `LocalRwkv` which return errors / placeholders).
-    #[cfg(feature = "http-backends")]
+    #[cfg(all(feature = "http-backends", not(feature = "local-rwkv")))]
     pub fn build_backend(&self) -> Result<crate::backends::AnyBackend> {
         use crate::backends::{AnyBackend, KiloBackend, LocalRwkvBackend, NvidiaBackend};
         use crate::engine::MockBackend;
@@ -225,11 +225,73 @@ impl Config {
             Provider::Mock => Ok(AnyBackend::Mock(MockBackend::default())),
             Provider::Nvidia => Ok(AnyBackend::Nvidia(NvidiaBackend::from_env()?)),
             Provider::Kilo => Ok(AnyBackend::Kilo(KiloBackend::from_env()?)),
-            // Phase 4 placeholder — returns an error until web-rwkv is wired.
             Provider::LocalRwkv => Ok(AnyBackend::LocalRwkv(LocalRwkvBackend::new(
                 self.resolved_rwkv_size(),
                 self.resolved_rwkv_mode(),
             ))),
+        }
+    }
+
+    /// Build the configured backend with `http-backends` + `local-rwkv`.
+    #[cfg(all(feature = "http-backends", feature = "local-rwkv"))]
+    pub fn build_backend(&self) -> Result<crate::backends::AnyBackend> {
+        use crate::backends::{AnyBackend, KiloBackend, LocalRwkvBackend, NvidiaBackend};
+        use crate::engine::MockBackend;
+        match self.provider {
+            Provider::Mock => Ok(AnyBackend::Mock(MockBackend::default())),
+            Provider::Nvidia => Ok(AnyBackend::Nvidia(NvidiaBackend::from_env()?)),
+            Provider::Kilo => Ok(AnyBackend::Kilo(KiloBackend::from_env()?)),
+            Provider::LocalRwkv => {
+                // Try to find a converted .st model (prefer -converted.st, fall back to .st)
+                let model = std::env::var("RWKV_MODEL").ok().or_else(|| {
+                    let dir = std::env::current_dir().ok()?;
+                    let c = dir.join("models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st");
+                    if c.exists() { Some(c.to_string_lossy().to_string()) } else { None }
+                });
+                let vocab = std::env::var("RWKV_VOCAB").ok().or_else(|| {
+                    let dir = std::env::current_dir().ok()?;
+                    let v = dir.join("assets/vocab/rwkv_vocab_v20230424.json");
+                    if v.exists() { Some(v.to_string_lossy().to_string()) } else { None }
+                });
+                if model.is_some() && vocab.is_some() {
+                    let backend = crate::rwkv_backend::RwkvBackend::from_env()
+                        .map_err(|e| anyhow::anyhow!("RWKV backend init failed: {e}"))?;
+                    Ok(AnyBackend::RwkvBackend(backend))
+                } else {
+                    Ok(AnyBackend::LocalRwkv(LocalRwkvBackend::new(
+                        self.resolved_rwkv_size(),
+                        self.resolved_rwkv_mode(),
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Build the configured backend with `local-rwkv` only (no HTTP backends).
+    #[cfg(all(not(feature = "http-backends"), feature = "local-rwkv"))]
+    pub fn build_backend(&self) -> Result<crate::backends::AnyBackend> {
+        use crate::backends::{AnyBackend, LocalRwkvBackend};
+        use crate::engine::MockBackend;
+        match self.provider {
+            Provider::Mock => Ok(AnyBackend::Mock(MockBackend::default())),
+            Provider::LocalRwkv => {
+                let model = std::env::var("RWKV_MODEL").ok();
+                let vocab = std::env::var("RWKV_VOCAB").ok();
+                if model.is_some() && vocab.is_some() {
+                    let backend = crate::rwkv_backend::RwkvBackend::from_env()
+                        .map_err(|e| anyhow::anyhow!("RWKV backend init failed: {e}"))?;
+                    Ok(AnyBackend::RwkvBackend(backend))
+                } else {
+                    Ok(AnyBackend::LocalRwkv(LocalRwkvBackend::new(
+                        self.resolved_rwkv_size(),
+                        self.resolved_rwkv_mode(),
+                    )))
+                }
+            }
+            Provider::Nvidia | Provider::Kilo => Err(anyhow::anyhow!(
+                "Provider {:?} requires the `http-backends` feature",
+                self.provider
+            )),
         }
     }
 

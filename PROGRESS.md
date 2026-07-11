@@ -68,7 +68,25 @@ Tracks work against SPEC.md phases.
   - Added `web/app/.npmrc` with `node-linker=hoisted` (pnpm 11 defaulted to
     isolated linker, leaving node_modules empty — fixed by forcing hoisted)
 
-## Phase 4 — Real model
+## Phase 4 — Real model (integrated ⚠️ model conversion required)
 
-- [ ] Swap `MockBackend` for `web-rwkv` via napi bridge
-- [ ] Keep mock path for tests/traces
+- [x] `RwkvBackend` — full `web-rwkv` inference via actor thread (handles non-Send GPU types)
+- [x] Feature flag `local-rwkv` with `web-rwkv`, `wgpu`, `half`, `memmap2`, `safetensors`
+- [x] Model converter: `scripts/pth_to_st_converter/convert.py` (PTH ↔ SafeTensors, bidirectional)
+- [x] `AnyBackend::RwkvBackend` variant + config wiring
+- [x] NF4 quantization support (`RWKV_QUANT=all|half|none`, default `all` for 4 GB VRAM)
+- [x] Actor pattern: dedicated OS thread with LocalSet for non-Send web-rwkv futures
+- [ ] End-to-end inference verified on target hardware
+- [ ] Eval suite: mock vs real model quality comparison
+
+### Model conversion (one-time)
+
+The raw `.pth` weights must be converted to web-rwkv's SafeTensors layout:
+
+```bash
+python3 scripts/pth_to_st_converter/convert.py \
+  -i models/rwkv7-g1g-2.9b-20260526-ctx8192.pth \
+  -o models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st
+```
+
+Converter is bidirectional: `--reverse` restores ST → PTH.

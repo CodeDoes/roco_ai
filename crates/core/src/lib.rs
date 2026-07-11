@@ -24,5 +24,8 @@ pub mod trace;
 pub mod vector;
 pub mod visualizer;
 
-#[cfg(feature = "http-backends")]
+#[cfg(any(feature = "http-backends", feature = "local-rwkv"))]
 pub mod backends;
+
+#[cfg(feature = "local-rwkv")]
+pub mod rwkv_backend;

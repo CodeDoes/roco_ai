@@ -19,7 +19,22 @@ tracing-subscriber.workspace = true
 futures.workspace = true
 reqwest = { workspace = true, optional = true }
 dotenvy = { workspace = true, optional = true }
+# Phase 4: local RWKV inference via WebGPU
+half = { version = "2.7", optional = true }
+memmap2 = { version = "0.9", optional = true }
+safetensors = { version = "0.6", optional = true }
+fastrand = { version = "2.3", optional = true }
+web-rwkv = { version = "0.10", default-features = false, features = ["native"], optional = true }
+wgpu = { version = "29.0", optional = true }
 
 [features]
 default = []
 http-backends = ["dep:reqwest", "dep:dotenvy"]
+local-rwkv = [
+    "dep:half",
+    "dep:memmap2",
+    "dep:safetensors",
+    "dep:fastrand",
+    "dep:web-rwkv",
+    "dep:wgpu",
+]
