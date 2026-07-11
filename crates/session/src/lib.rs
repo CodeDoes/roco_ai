@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use anyhow::Result;
 
@@ -10,7 +11,9 @@ use roco_core::sandbox::Sandbox;
 use roco_core::policy::ComposedPolicy;
 use roco_core::builtins::default_agent_toolkit;
 
-#[derive(Debug, Clone)]
+pub mod store;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: String,
     pub content: String,
@@ -64,6 +67,17 @@ impl Engine {
         });
     }
 
+    /// Restore a set of messages into the engine (used when resuming a session).
+    pub fn restore_messages(&self, messages: Vec<Message>) {
+        let mut msgs = self.messages.lock().unwrap();
+        *msgs = messages;
+    }
+
+    /// Get a snapshot of all messages (owned copy).
+    pub fn message_snapshot(&self) -> Vec<Message> {
+        self.messages.lock().unwrap().clone()
+    }
+
     pub async fn poll(&self) -> Result<()> {
         let msgs = self.messages.lock().unwrap().clone();
         let last_msg = msgs.last().ok_or_else(|| anyhow::anyhow!("no messages"))?;
@@ -73,7 +87,7 @@ impl Engine {
             id: format!("step-{}", msgs.len()),
             objective: last_msg.content.clone(),
             context: msgs.iter().map(|m| format!("{}: {}", m.role, m.content)).collect::<Vec<_>>().join("\n"),
-            output_schema: r#"{"answer": "string"}"#.into(),
+            output_schema: r#"{"result": "string"}"#.into(),
             allow_abstain: true,
         };
 
@@ -81,11 +95,19 @@ impl Engine {
         
         let result = self.orchestrator.run(&task).await?;
         
-        // Log the answer back to messages
+        // Log the answer back to messages — try common keys, then fall back to raw text
         let answer = result.outputs.first()
-            .and_then(|v| v.get("answer"))
+            .and_then(|v| {
+                v.get("result").or_else(|| v.get("answer"))
+                    .or_else(|| v.get("text"))
+                    .or_else(|| v.get("output"))
+            })
             .and_then(|a| a.as_str())
-            .unwrap_or("No answer produced.");
+            .or_else(|| {
+                // Try the raw field or the parsed text
+                result.outputs.first().and_then(|v| v.as_str())
+            })
+            .unwrap_or("The task ran but produced no structured output.");
 
         self.messages.lock().unwrap().push(Message {
             role: "assistant".to_string(),

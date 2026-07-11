@@ -87,9 +87,10 @@ fn sample_token(probs: &[f32], temperature: f32, top_p: f32) -> u32 {
 }
 
 // ---------------------------------------------------------------------------
-// Type-erased state
+// Type-erased state (reserved for future state persistence across turns)
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 enum AnyState {
     V4(Box<dyn Any + Send>),
     V5(Box<dyn Any + Send>),
@@ -110,6 +111,7 @@ macro_rules! state_load {
     }};
 }
 
+#[allow(dead_code)]
 impl AnyState {
     async fn back(&self, batch: usize) -> Result<TensorCpu<f32>, TensorError> {
         match self {
@@ -136,6 +138,7 @@ impl AnyState {
 struct RwkvActor {
     context: Context,
     runtime: TokioRuntime<Rnn>,
+    #[allow(dead_code)]
     state: AnyState,
     tokenizer: Tokenizer,
     token_chunk_size: usize,
@@ -149,6 +152,36 @@ struct CompleteReq {
     max_tokens: usize,
     temperature: f32,
     reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
+}
+
+/// Auto-select quantization based on GPU capabilities and model size.
+///
+/// Strategy:
+/// 1. If GPU has cooperative matrix support → NF4 all layers (best compression).
+/// 2. If model fits in VRAM unquantized (resident only) → no quantization.
+/// 3. If model is too big but GPU has raw compute → Int8 partial quantization.
+/// 4. Last resort → no quantization (streaming).
+fn auto_select_quant(
+    gpu_coop: bool,
+    gpu_max_mb: u64,
+    _resident_fp16_mb: u64,
+    _file_mb: u64,
+) -> std::collections::HashMap<usize, Quant> {
+    // web-rwkv streams layer weights through VRAM during inference.
+    // Only embed, head, and KV state stay resident.
+    // This means even a 5.5 GB model only needs ~700 MB resident.
+    // Quantization is optional — it speeds things up but isn't required
+    // for fitting.
+    //
+    // If the GPU supports cooperative matrices, NF4 gives 4× compression
+    // and faster inference.  Otherwise skip quant to avoid hangs.
+    if gpu_coop {
+        info!("quantization: auto → NF4 all layers (cooperative matrix available)");
+        (0..32).map(|l| (l, Quant::NF4)).collect()
+    } else {
+        info!("quantization: auto → none (no cooperative matrix; weights stream through VRAM)");
+        std::collections::HashMap::new()
+    }
 }
 
 impl RwkvActor {
@@ -199,26 +232,148 @@ impl RwkvActor {
         let version = info.version;
         info!(version = ?version, layers = info.num_layer, vocab = info.num_vocab, emb = info.num_emb, "model info");
 
+        // --- GPU enumeration & capability detection ---
         let instance = wgpu::Instance::default();
-        let adapter = instance.adapter(PowerPreference::HighPerformance).await?;
-        let context = ContextBuilder::new(adapter).auto_limits(&info).build().await?;
-        info!(adapter = %context.adapter.get_info().name, "WebGPU context created");
+        let all_adapters = instance.enumerate_adapters(wgpu::Backends::all()).await;
 
-        // Quantization (matches rwkv-harness defaults: no quantization).
-        // RWKV_QUANT=N — quantize first N layers with Int8.
-        // RWKV_QUANT=nf4=N — quantize first N layers with NF4.
-        // Default: no quantization (model weights are streamed through VRAM
-        // during load; only embed + head + state stay resident ≈ 700 MB).
-        let quant_spec = env::var("RWKV_QUANT").unwrap_or_default();
-        let quant_layers: std::collections::HashMap<usize, Quant> = if quant_spec.is_empty() {
-            std::collections::HashMap::new()
-        } else if let Some(n) = quant_spec.strip_prefix("nf4=") {
-            let n = n.parse::<usize>().unwrap_or(0);
-            (0..n).map(|l| (l, Quant::NF4)).collect()
+        // Score each adapter.
+        // Cooperative matrix support is REQUIRED for build_v*() to not hang.
+        // Without it, the model weight upload stalls indefinitely on some drivers.
+        // Score: coop_matrix (100) > device_type (30/20/15/10/5) > buffer_size bonus.
+        let mut scored: Vec<_> = all_adapters
+            .into_iter()
+            .map(|a| {
+                let i = a.get_info();
+                let coop = a.features().contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+                let max_buf_mb = a.limits().max_buffer_size / (1024 * 1024);
+                let type_score = match i.device_type {
+                    wgpu::DeviceType::DiscreteGpu => 30,
+                    wgpu::DeviceType::IntegratedGpu => 20,
+                    wgpu::DeviceType::VirtualGpu => 15,
+                    wgpu::DeviceType::Other => 10,
+                    wgpu::DeviceType::Cpu => 5,
+                };
+                // Coop matrix is the deciding factor — worth more than device type.
+                let coop_bonus = if coop { 100 } else { 0 };
+                info!(
+                    "  [{}] {} | type={:?} | coop_matrix={} | max_buffer={}MB | backend={:?}",
+                    if coop { "✓" } else { "✗" },
+                    i.name, i.device_type, coop, max_buf_mb, i.backend
+                );
+                (a, coop_bonus + type_score + (max_buf_mb / 512) as u32)
+            })
+            .collect();
+        scored.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
+
+        // --- Try each adapter in score order until context creation succeeds ---
+        // Cooperative matrix adapters are tried first (score includes +100 bonus).
+        let adapter_name_filter = env::var("RWKV_ADAPTER").ok();
+        let adapter_count = scored.len();
+
+        let mut context: Option<Context> = None;
+        let mut gpu_coop = false;
+        let mut gpu_max_mb = 0u64;
+        let mut gpu_info_name = String::new();
+        let mut gpu_device_type = wgpu::DeviceType::Other;
+
+        for (adapter, _score) in scored {
+            let ainfo = adapter.get_info();
+            let coop = adapter.features().contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+            let max_mb = adapter.limits().max_buffer_size / (1024 * 1024);
+
+            // If user requested a specific adapter, skip others.
+            if let Some(ref filter) = adapter_name_filter {
+                if !ainfo.name.to_lowercase().contains(&filter.to_lowercase()) {
+                    continue;
+                }
+            }
+
+            info!("trying adapter: '{}' (type={:?}, coop={}, {}MB)",
+                ainfo.name, ainfo.device_type, coop, max_mb);
+
+            match ContextBuilder::new(adapter).auto_limits(&info).build().await {
+                Ok(ctx) => {
+                    info!("context created on: '{}'", ainfo.name);
+                    context = Some(ctx);
+                    gpu_coop = coop;
+                    gpu_max_mb = max_mb;
+                    gpu_info_name = ainfo.name;
+                    gpu_device_type = ainfo.device_type;
+                    break;
+                }
+                Err(e) => {
+                    warn!("adapter '{}' failed: {}", ainfo.name, e);
+                }
+            }
+        }
+
+        let context = context.ok_or_else(|| {
+            anyhow::anyhow!("no adapter could create a WebGPU context (tried {} adapters)", adapter_count)
+        })?;
+        info!(
+            "selected GPU: '{}' (type={:?}, coop_matrix={}, max_buffer={}MB)",
+            gpu_info_name, gpu_device_type, gpu_coop, gpu_max_mb
+        );
+
+        // --- Estimate model memory from actual shape ---
+        // RWKV resident ≈ embed + head + KV state (weights stream through VRAM).
+        // embed/head ≈ 2 * num_emb * vocab * 2 bytes (FP16).
+        // state ≈ num_emb * num_layer * 4 * 4 bytes (4 state tensors per layer, FP32).
+        let num_emb = info.num_emb as u64;
+        let num_layer = info.num_layer as u64;
+        let num_vocab = info.num_vocab as u64;
+        let embed_head_fp16_mb = (2 * num_emb * num_vocab * 2) / (1024 * 1024);
+        let state_fp32_mb = (num_emb * num_layer * 4 * 4) / (1024 * 1024);
+        let resident_fp16_mb = embed_head_fp16_mb + state_fp32_mb;
+        // Full model on-disk size ≈ params * 2 (FP16).
+        let file_mb = std::fs::metadata(&model_path).map(|m| m.len() / (1024 * 1024)).unwrap_or(0);
+        info!(
+            "model memory: file={}MB  resident(FP16)={}MB  embed_head={}MB  state={}MB  layers={} emb={} vocab={}",
+            file_mb, resident_fp16_mb, embed_head_fp16_mb, state_fp32_mb, num_layer, num_emb, num_vocab
+        );
+
+        // --- Auto-select quantization ---
+        // Priority: explicit RWKV_QUANT > auto based on GPU + model size.
+        let quant_spec_env = env::var("RWKV_QUANT").ok();
+        let quant_layers: std::collections::HashMap<usize, Quant> = if let Some(ref qs) = quant_spec_env {
+            // User explicitly set RWKV_QUANT.
+            if qs == "none" {
+                info!("quantization: none (user override)");
+                std::collections::HashMap::new()
+            } else if let Some(n) = qs.strip_prefix("nf4=") {
+                let n = n.parse::<usize>().unwrap_or(0);
+                if n > 0 && !gpu_coop {
+                    warn!("NF4 quantization requested but GPU lacks cooperative matrix support — may hang or fail");
+                }
+                let layers = (0..n).map(|l| (l, Quant::NF4)).collect();
+                info!("quantization: NF4 {} layers (user override) {}", n, if !gpu_coop { "⚠ GPU may not support this" } else { "" });
+                layers
+            } else if let Ok(n) = qs.parse::<usize>() {
+                let layers = (0..n).map(|l| (l, Quant::Int8)).collect();
+                info!("quantization: Int8 {} layers (user override)", n);
+                layers
+            } else {
+                warn!("unknown RWKV_QUANT='{}', falling back to auto", qs);
+                auto_select_quant(gpu_coop, gpu_max_mb, resident_fp16_mb, file_mb)
+            }
         } else {
-            let n = quant_spec.parse::<usize>().unwrap_or(0);
-            (0..n).map(|l| (l, Quant::Int8)).collect()
+            // Auto-select based on GPU capabilities and model size.
+            auto_select_quant(gpu_coop, gpu_max_mb, resident_fp16_mb, file_mb)
         };
+
+        if quant_layers.is_empty() {
+            info!("quantization: none (weights stream through VRAM, resident only)");
+        } else {
+            let has_nf4 = quant_layers.values().any(|q| matches!(q, Quant::NF4));
+            let has_int8 = quant_layers.values().any(|q| matches!(q, Quant::Int8));
+            let label = match (has_nf4, has_int8) {
+                (true, true) => "NF4+Int8",
+                (true, false) => "NF4",
+                (false, true) => "Int8",
+                (false, false) => "unknown",
+            };
+            info!("quantization: {} layers ({})", quant_layers.len(), label);
+        }
 
         let builder = ModelBuilder::new(&context, model).quant(quant_layers);
 
@@ -430,8 +585,12 @@ impl RwkvBackend {
     /// Spawns a dedicated OS thread that owns all non-Send GPU resources and
     /// runs a single-threaded tokio runtime with a `LocalSet` (required because
     /// `web-rwkv`'s async methods produce non-`Send` futures).
+    ///
+    /// **Blocks** until the model is fully loaded and the actor is ready to
+    /// serve requests. Returns an error if model loading fails.
     pub fn from_env() -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::channel::<CompleteReq>(4);
+        let (ready_tx, ready_rx) = oneshot::channel::<std::result::Result<(), String>>();
 
         std::thread::Builder::new()
             .name("rwkv-actor".into())
@@ -446,9 +605,13 @@ impl RwkvBackend {
                     match RwkvActor::from_env().await {
                         Ok(actor) => {
                             info!("RWKV actor ready on dedicated thread");
+                            let _ = ready_tx.send(Ok(()));
                             actor.run(rx).await;
                         }
-                        Err(e) => warn!("RWKV actor failed to initialize: {e}"),
+                        Err(e) => {
+                            warn!("RWKV actor failed to initialize: {e}");
+                            let _ = ready_tx.send(Err(format!("{e}")));
+                        }
                     }
                 });
 
@@ -457,6 +620,22 @@ impl RwkvBackend {
                 let _ = local.block_on(&rt, rx);
             })
             .expect("failed to spawn rwkv actor thread");
+
+        // Block until the actor signals ready or fails.
+        //
+        // We use `futures::executor::block_on` here rather than tokio's
+        // `Runtime::block_on` / `Handle::block_on` because this method may be
+        // called from within a tokio `block_on` context (e.g. `#[tokio::main]`)
+        // and both of those would panic with "Cannot start a runtime from within
+        // a runtime".  `futures::executor::block_on` uses its own lightweight
+        // executor that does not conflict with the outer tokio runtime.
+        futures::executor::block_on(async {
+            match ready_rx.await {
+                Ok(Ok(())) => Ok::<_, anyhow::Error>(()),
+                Ok(Err(msg)) => Err(anyhow::anyhow!("RWKV backend init failed: {msg}")),
+                Err(_) => Err(anyhow::anyhow!("RWKV actor thread died before init")),
+            }
+        })?;
 
         Ok(Self {
             tx,

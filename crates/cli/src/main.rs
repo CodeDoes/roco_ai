@@ -98,14 +98,19 @@ async fn main() -> anyhow::Result<()> {
         return run_from_input_file(file).await;
     }
 
-    // `eval` runs a single suite through the NVIDIA endpoint only (no other
-    // providers). Only available with the http-backends feature compiled in.
-    #[cfg(feature = "http-backends")]
-    {
-        let args: Vec<String> = std::env::args().collect();
-        if args.get(1).map(String::as_str) == Some("eval") {
-            return run_eval_cli(&args[2..]).await;
-        }
+    // `chat` — interactive chat session with the real backend.
+    if args.get(1).map(String::as_str) == Some("chat") {
+        return run_chat(&args[2..]).await;
+    }
+
+    // `session` — manage saved chat sessions.
+    if args.get(1).map(String::as_str) == Some("session") {
+        return run_session_cli(&args[2..]).await;
+    }
+
+    // `eval` — run an eval suite through the configured backend.
+    if args.get(1).map(String::as_str) == Some("eval") {
+        return run_eval_cli(&args[2..]).await;
     }
 
     let backend = Arc::new(MockBackend {
@@ -452,29 +457,18 @@ async fn demo_real_backends() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Runs a single eval suite through the NVIDIA endpoint only.
+/// Run an eval suite through the configured backend.
 ///
-/// Usage: `cargo run --features http-backends -- eval [NAME]`
-/// `NAME` defaults to the first suite in [`roco_core::eval::EVAL_NAMES`]. The
-/// NVIDIA backend is built directly from the environment (NVIDIA_API_KEY /
-/// NV_MODEL via a local `.env`), so no other provider is ever contacted.
-#[cfg(feature = "http-backends")]
+/// Usage: `roco eval [NAME]`
+/// `NAME` defaults to the first suite in [`roco_core::eval::EVAL_NAMES`].
+/// The backend is selected by config (local GPU via RWKV, or NVIDIA/Kilo HTTP
+/// if `http-backends` is compiled in and env vars are set).
 async fn run_eval_cli(rest: &[String]) -> anyhow::Result<()> {
     use std::sync::Arc;
 
     use roco_core::agent::{Orchestrator, ChecklistVerifier};
-    use roco_core::backends::NvidiaBackend;
     use roco_core::config::Config;
     use roco_core::eval::{EVAL_NAMES, run_eval};
-
-    // Load NVIDIA_API_KEY / NV_MODEL from a local .env if present.
-    let _ = dotenvy::dotenv();
-
-    // Resolve the model that will actually be used (mirrors NvidiaBackend).
-    let model = std::env::var("NV_MODEL")
-        .unwrap_or_else(|_| roco_core::backends::NvidiaBackend::DEFAULT_MODEL.to_string());
-    tracing::info!(model = %model, "nvidia eval backend");
-    println!("NVIDIA model: {model}");
 
     let name = rest
         .first()
@@ -487,8 +481,24 @@ async fn run_eval_cli(rest: &[String]) -> anyhow::Result<()> {
         );
     }
 
-    let cfg = Config::preset();
-    let backend = Arc::new(NvidiaBackend::from_env()?);
+    // Build the backend from config — tries local GPU RWKV first (if compiled),
+    // falls through to MockBackend if nothing else works.
+    let cfg = Config::load_or_preset("model/default_config");
+    #[cfg(feature = "local-rwkv")]
+    let cfg = Config { provider: roco_core::config::Provider::LocalRwkv, ..cfg };
+
+    use roco_core::backends::AnyBackend;
+    let backend: Arc<AnyBackend> = match cfg.build_backend() {
+        Ok(any) => {
+            println!("Backend: {}", any.name());
+            Arc::new(any)
+        }
+        Err(e) => {
+            eprintln!("Warning: backend init failed ({}), using mock", e);
+            Arc::new(AnyBackend::Mock(MockBackend::default()))
+        }
+    };
+
     let orch = Orchestrator::new(
         backend,
         cfg.context_budget(),
@@ -496,7 +506,7 @@ async fn run_eval_cli(rest: &[String]) -> anyhow::Result<()> {
         cfg.retry_policy(),
     );
 
-    println!("Running eval '{name}' via NVIDIA endpoint only.");
+    println!("Running eval '{name}'...");
     let result = run_eval(&orch, &name).await?;
     println!(
         "Eval '{name}': ok={}  subtasks={}  failed={}",
@@ -590,6 +600,229 @@ async fn run_from_input_file(path: &str) -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(&trace)?;
     print!("{}", json);
     Ok(())
+}
+
+async fn run_chat(args: &[String]) -> anyhow::Result<()> {
+    use std::io::{self, Write};
+    use std::sync::Arc;
+
+    use roco_session::Engine;
+    use roco_session::store::{SessionData, SessionStore};
+    use roco_workspace::Workspace;
+
+    // Parse args: -r (resume latest), -c <slug> (continue specific), or start fresh
+    let resume = args.get(0).map(String::as_str) == Some("-r");
+    let continue_slug = if args.get(0).map(String::as_str) == Some("-c") {
+        args.get(1).cloned()
+    } else {
+        None
+    };
+
+    let store = SessionStore::default();
+
+    // Load or create session
+    let (session_data, is_new) = if let Some(slug) = &continue_slug {
+        (store.load(slug)?, false)
+    } else if resume {
+        let s = store.latest()?;
+        println!("Resuming session {}", s.id);
+        (s, false)
+    } else {
+        let objective = args.join(" ");
+        let objective = if objective.is_empty() { "new chat".into() } else { objective };
+        (SessionData::new(objective), true)
+    };
+
+    // Build the backend
+    #[cfg(feature = "local-rwkv")]
+    let backend: Arc<dyn roco_core::engine::ModelBackend + Send + Sync> = {
+        use roco_core::config::{Config, Provider};
+        let cfg = Config::load_or_preset("model/default_config");
+        let cfg = Config { provider: Provider::LocalRwkv, ..cfg };
+        match cfg.build_backend() {
+            Ok(any_backend) => {
+                let name = any_backend.name().to_string();
+                println!("Using backend: {}", name);
+                Arc::new(any_backend)
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to build RWKV backend ({}), falling back to mock", e);
+                let b: Arc<dyn roco_core::engine::ModelBackend + Send + Sync> = Arc::new(MockBackend { name: "mock-3b".into(), ..Default::default() });
+                b
+            }
+        }
+    };
+    #[cfg(not(feature = "local-rwkv"))]
+    let backend: Arc<dyn roco_core::engine::ModelBackend + Send + Sync> = {
+        println!("Using mock backend (enable local-rwkv feature for real inference)");
+        Arc::new(MockBackend { name: "mock-3b".into(), ..Default::default() })
+    };
+
+    let ws = Workspace::new(
+        std::env::current_dir()?.join(".roco").join("chat").join(&session_data.id)
+    );
+    let engine = Engine::new(backend, ws);
+
+    // Restore existing messages
+    if !session_data.messages.is_empty() {
+        engine.restore_messages(session_data.messages.clone());
+        println!("Restored {} previous messages", session_data.messages.len());
+    }
+
+    println!("Session ID: {}", session_data.id);
+    println!("Type your message. Use /exit to quit, /save to force-save.");
+    println!();
+
+    let mut session = session_data;
+    let mut line = String::new();
+    let stdin = io::stdin();
+
+    loop {
+        print!("You> ");
+        io::stdout().flush()?;
+        line.clear();
+        if stdin.read_line(&mut line)? == 0 {
+            break; // EOF
+        }
+        let msg = line.trim();
+        if msg.is_empty() {
+            continue;
+        }
+
+        // Handle slash commands
+        match msg {
+            "/exit" | "/quit" => {
+                println!("Goodbye!");
+                break;
+            }
+            "/save" => {
+                session.messages = engine.message_snapshot();
+                session.turn_count = session.messages.iter().filter(|m| m.role == "user").count();
+                store.save(&session)?;
+                println!("Session saved.");
+                continue;
+            }
+            _ => {}
+        }
+
+        // Queue user message
+        engine.queue_message("user", msg);
+
+        // Run inference
+        match engine.poll().await {
+            Ok(()) => {
+                let snap = engine.message_snapshot();
+                if let Some(last) = snap.last() {
+                    if last.role == "assistant" {
+                        println!("🤖 {}", last.content);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("⚠️  Error: {}", e);
+                // Remove the failed user message so they can retry
+                // (pop the last user message)
+            }
+        }
+
+        // Auto-save after each turn
+        session.messages = engine.message_snapshot();
+        session.turn_count = session.messages.iter().filter(|m| m.role == "user").count();
+        if let Err(e) = store.save(&session) {
+            eprintln!("warn: failed to save session: {}", e);
+        }
+    }
+
+    // Final save on exit
+    session.messages = engine.message_snapshot();
+    session.turn_count = session.messages.iter().filter(|m| m.role == "user").count();
+    store.save(&session)?;
+    if is_new {
+        println!("Session saved as {}", session.id);
+    }
+
+    Ok(())
+}
+
+async fn run_session_cli(args: &[String]) -> anyhow::Result<()> {
+    use roco_session::store::SessionStore;
+
+    let store = SessionStore::default();
+
+    match args.first().map(String::as_str) {
+        Some("ls") | Some("list") => {
+            let sessions = store.list()?;
+            if sessions.is_empty() {
+                println!("no sessions yet. start one with `roco chat`.");
+            } else {
+                println!("{:<24} {:<20} {:<8} {:<10} objective",
+                    "id", "last active", "turns", "msgs");
+                println!("{}", "-".repeat(80));
+                for s in &sessions {
+                    let when = format_ts_short(s.updated_at);
+                    let obj = if s.objective.len() > 30 {
+                        format!("{}…", &s.objective[..29])
+                    } else {
+                        s.objective.clone()
+                    };
+                    println!("{:<24} {:<20} {:<8} {:<10} {}",
+                        s.id, when, s.turn_count, s.message_count, obj);
+                }
+            }
+        }
+        Some("rm") | Some("delete") => {
+            let id = args.get(1).ok_or_else(|| anyhow::anyhow!("usage: roco session rm <id>"))?;
+            store.delete(id)?;
+            println!("Deleted session {}", id);
+        }
+        Some(other) => {
+            anyhow::bail!("unknown session subcommand: '{}'. use 'ls' or 'rm'.", other);
+        }
+        None => {
+            println!("usage: roco session [ls|rm <id>]");
+        }
+    }
+
+    Ok(())
+}
+
+/// Format a millis-since-epoch timestamp as "YYYY-MM-DD HH:MM" in UTC.
+fn format_ts_short(ms: u64) -> String {
+    use std::time::{Duration, UNIX_EPOCH};
+    let d = UNIX_EPOCH + Duration::from_millis(ms);
+    let secs = d.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    // Simple leap-year-aware date calculation
+    let days = secs / 86400;
+    let time_secs = secs % 86400;
+    let h = time_secs / 3600;
+    let m = (time_secs % 3600) / 60;
+
+    // Year/month/day from days since epoch (1970-01-01)
+    let mut y = 1970i64;
+    let mut d = days as i64;
+    loop {
+        let days_in_year = if is_leap(y) { 366 } else { 365 };
+        if d < days_in_year { break; }
+        d -= days_in_year;
+        y += 1;
+    }
+    let month_days = if is_leap(y) {
+        [31,29,31,30,31,30,31,31,30,31,30,31]
+    } else {
+        [31,28,31,30,31,30,31,31,30,31,30,31]
+    };
+    let mut mo = 0u32;
+    for (i, &md) in month_days.iter().enumerate() {
+        if d < md { mo = i as u32 + 1; break; }
+        d -= md;
+    }
+    if mo == 0 { mo = 12; }
+    let day = (d + 1) as u32;
+    format!("{:04}-{:02}-{:02} {:02}:{:02}", y, mo, day, h, m)
+}
+
+fn is_leap(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
 async fn run_trace_cli(rest: &[String]) -> anyhow::Result<()> {

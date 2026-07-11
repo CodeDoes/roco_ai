@@ -1,0 +1,95 @@
+:root {
+  --bg: #05060c;
+  --bg2: #0a0d1a;
+  --panel: rgba(20, 26, 48, 0.55);
+  --panel-border: rgba(120, 160, 255, 0.18);
+  --ink: #dfe7ff;
+  --muted: #8a96c4;
+  --cyan: #38f0ff;
+  --violet: #b07bff;
+  --magenta: #ff5cc8;
+  --green: #46f7a5;
+  --amber: #ffce5c;
+  --red: #ff6b6b;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  background:
+    radial-gradient(1200px 700px at 80% -10%, rgba(176, 123, 255, 0.18), transparent 60%),
+    radial-gradient(1000px 600px at -10% 110%, rgba(56, 240, 255, 0.14), transparent 55%),
+    linear-gradient(180deg, var(--bg), var(--bg2));
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100%;
+}
+
+#main { max-width: 1180px; margin: 0 auto; padding: 28px 22px 60px; }
+
+.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.logo {
+  width: 44px; height: 44px; border-radius: 13px; flex: none;
+  background: conic-gradient(from 210deg, var(--cyan), var(--violet), var(--magenta), var(--cyan));
+  box-shadow: 0 0 26px rgba(120, 160, 255, 0.5);
+  position: relative;
+}
+.logo::after { content: ""; position: absolute; inset: 6px; border-radius: 9px; background: var(--bg2); }
+.logo::before {
+  content: "\25E7"; position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--cyan); font-size: 20px; z-index: 2; text-shadow: 0 0 12px var(--cyan);
+}
+h1 { font-size: 25px; margin: 0; letter-spacing: 0.4px; }
+h1 .grad {
+  background: linear-gradient(90deg, var(--cyan), var(--violet), var(--magenta));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.tag { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.controls { display: flex; gap: 10px; align-items: center; }
+
+.btn {
+  background: var(--panel); border: 1px solid var(--panel-border); color: var(--ink);
+  padding: 9px 14px; border-radius: 10px; font-size: 13px; cursor: pointer; font-family: var(--sans);
+  transition: all 0.18s ease;
+}
+.btn:hover { border-color: var(--cyan); box-shadow: 0 0 18px rgba(56, 240, 255, 0.25); transform: translateY(-1px); }
+.btn.primary { background: linear-gradient(90deg, rgba(56,240,255,0.18), rgba(176,123,255,0.18)); border-color: rgba(120,160,255,0.4); }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab {
+  background: var(--panel); border: 1px solid var(--panel-border); color: var(--muted);
+  padding: 10px 16px; border-radius: 12px; cursor: pointer; font-size: 13.5px; transition: all 0.18s ease;
+}
+.tab:hover { color: var(--ink); }
+.tab.active {
+  color: var(--ink); border-color: transparent;
+  background: linear-gradient(90deg, rgba(56,240,255,0.22), rgba(176,123,255,0.22));
+  box-shadow: 0 0 22px rgba(120,160,255,0.3);
+}
+
+.stage {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px;
+  padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+}
+.stage h2 { margin: 0 0 4px; font-size: 18px; }
+.stage .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+
+svg { display: block; width: 100%; border-radius: 12px; background: rgba(3,5,12,0.6); }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+.stat { background: rgba(8,11,22,0.6); border: 1px solid var(--panel-border); border-radius: 12px; padding: 12px 14px; }
+.stat .k { color: var(--muted); font-size: 11.5px; letter-spacing: 0.4px; text-transform: uppercase; }
+.stat .v { font-family: var(--mono); font-size: 22px; margin-top: 4px; }
+
+.events { margin-top: 14px; max-height: 180px; overflow-y: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.events .e { display: flex; gap: 8px; }
+.events .p { color: var(--cyan); }
+
+.footer { margin-top: 26px; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.7; }
+.footer code { font-family: var(--mono); color: var(--cyan); }

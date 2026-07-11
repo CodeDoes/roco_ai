@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="style.css" />
+    <title>RoCo AI — Visualizer</title>
+  </head>
+  <body>
+    <div id="main">
+      <div class="hero">
+        <div class="brand">
+          <div class="logo"></div>
+          <div>
+            <h1>RoCo <span class="grad">AI</span> — Visualizer</h1>
+            <div class="tag">RNN · RWKV · SSM agents — zero-dependency web UI</div>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="play" class="btn primary">❚❚ Pause</button>
+          <span>speed</span>
+          <input id="speed" type="range" min="0.3" max="2.5" step="0.1" value="1" />
+          <span id="speed-val">1.0×</span>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active">Stateful Core</div>
+        <div class="tab">Fan-out</div>
+        <div class="tab">ContextBudget</div>
+        <div class="tab">CapacityPool</div>
+      </div>
+
+      <div class="stage">
+        <h2 id="stage-title"></h2>
+        <p class="sub" id="stage-sub"></p>
+        <div id="scene"></div>
+        <div class="stats" id="stats"></div>
+      </div>
+
+      <div class="events" id="events"></div>
+
+      <div class="footer">
+        Built as a zero-dependency web visualizer (HTML / CSS / JS) — open
+        <code>index.html</code> directly in any browser. Data: ported
+        <code>default_trace()</code> from <code>roco_core</code>.
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
