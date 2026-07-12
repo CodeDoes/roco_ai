@@ -6,7 +6,6 @@ members = [
     "crates/workspace",
     "crates/gateway",
     "crates/napi",
-    "gui",
 ]
 resolver = "2"
 

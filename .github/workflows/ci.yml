@@ -20,10 +20,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Build workspace (excl. gui)
-        run: cargo build --workspace --exclude roco-gui
+      - name: Build workspace
+        run: cargo build --workspace
       - name: Test
-        run: cargo test --workspace --exclude roco-gui
+        run: cargo test --workspace
 
   gateway:
     name: Gateway (build + smoke)
@@ -53,9 +53,33 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
       - name: Install dependencies
-        working-directory: web/app
         run: pnpm install --frozen-lockfile
-      - name: Type check
-        working-directory: web/app
+      - name: Type check (web)
+        working-directory: apps/web
         run: pnpm exec tsc --noEmit || true
+      - name: Build web app
+        working-directory: apps/web
+        run: pnpm build
+
+  visualizer:
+    name: Visualizer (install + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build visualizer
+        working-directory: apps/visualizer
+        run: pnpm build

@@ -6,15 +6,20 @@
 FROM rust:1-slim-bookworm AS builder
 
 WORKDIR /app
+
+# Copy workspace manifest and lockfile
 COPY Cargo.toml Cargo.lock ./
+
+# Copy all crates (workspace members the gateway depends on)
 COPY crates ./crates
-COPY gui ./gui
-COPY agent ./agents
+
+# Copy runtime config directories
+COPY agents ./agents
 COPY model ./model
 COPY provider ./provider
-COPY eval ./evals
+COPY evals ./evals
 
-# Build only the gateway (avoids building the GTK-dependent gui)
+# Build the gateway (workspace build resolves all deps)
 RUN cargo build --release -p roco-gateway
 
 FROM debian:bookworm-slim

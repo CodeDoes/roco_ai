@@ -4,13 +4,13 @@
 
 all: build
 
-## Build all Rust crates (excluding gui which needs GTK system deps)
+## Build all Rust crates
 build:
-	cargo build --workspace --exclude roco-gui
+	cargo build --workspace
 
-## Run all Rust tests (excluding gui)
+## Run all Rust tests
 test:
-	cargo test --workspace --exclude roco-gui
+	cargo test --workspace
 
 ## Run CLI demos A–F
 cli: build
@@ -34,7 +34,7 @@ run-input:
 
 ## Fix Rust warnings
 fix:
-	cargo fix --workspace --exclude roco-gui --allow-dirty
+	cargo fix --workspace --allow-dirty
 
 # ─── Gateway ──────────────────────────────────────────────────────────────────
 
@@ -46,19 +46,19 @@ gateway: build
 
 ## Install web app dependencies
 web-install:
-	cd web/app && pnpm install
+	cd apps/web && pnpm install
 
 ## Start the Next.js dev server (listens on localhost:3000)
 web-dev:
-	cd web/app && pnpm dev
+	cd apps/web && pnpm dev
 
 ## Build the web app for production
 web-build:
-	cd web/app && pnpm build
+	cd apps/web && pnpm build
 
 ## Start the production web server
 web-start:
-	cd web/app && pnpm start
+	cd apps/web && pnpm start
 
 # ─── napi addon ───────────────────────────────────────────────────────────────
 
@@ -74,12 +74,12 @@ fmt:
 
 ## Check for Rust compiler warnings
 check:
-	cargo check --workspace --exclude roco-gui
+	cargo check --workspace
 
 ## Clean build artifacts
 clean:
 	cargo clean
-	rm -rf web/app/.next
+	rm -rf apps/web/.next
 
 ## Show full stack startup instructions
 help:
@@ -101,3 +101,17 @@ help:
 	@echo "  Terminal 1: make gateway"
 	@echo "  Terminal 2: make web-dev"
 	@echo "  Open http://localhost:3000"
+
+# ─── Visualizer (React + Vite) ─────────────────────────────────────────────
+
+## Install visualizer dependencies
+viz-install:
+	pnpm --filter @roco/visualizer install
+
+## Start the React visualizer dev server (localhost:5173)
+viz-dev:
+	pnpm dev:visualizer
+
+## Build the visualizer for production
+viz-build:
+	pnpm build:visualizer

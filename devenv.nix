@@ -31,6 +31,8 @@
     pkgs.vulkan-loader # libvulkan.so for wgpu → web-rwkv
     pkgs.vulkan-tools   # vulkaninfo, vkcube for debugging GPU setup
     pkgs.sccache        # Rust compile cache (RUSTC_WRAPPER) — speeds up cargo builds
+    pkgs.nodejs_22
+    pkgs.corepack_22    # enables pnpm via corepack
   ];
 
   # https://devenv.sh/languages/
@@ -48,11 +50,14 @@
   };
 
   # https://devenv.sh/processes/
+  processes.roco-web.exec = "cd apps/web && pnpm dev";
+  processes.roco-gateway.exec = "cargo run -p roco-gateway";
+  processes.roco-viz.exec = "pnpm dev:visualizer";
   # processes.cargo-watch.exec = "cargo watch -x 'run --bin roco'";
 
   # https://devenv.sh/scripts/
-  scripts.check.exec = "cargo check";
-  scripts.test.exec = "cargo test";
+  scripts.check.exec = "cargo check --workspace";
+  scripts.test.exec = "cargo test --workspace";
   scripts.run.exec = "cargo run --bin roco";
   scripts.build-backends.exec = "cargo build --features http-backends";
   scripts.test-backends.exec = "cargo test --features http-backends";
@@ -73,6 +78,14 @@
     echo "  RWKV_ADAPTER=AMD roco chat      # force AMD GPU"
     echo "  RWKV_ADAPTER=llvmpipe roco chat # force CPU software renderer"
   '';
+  # web app scripts
+  scripts.web-dev.exec = "cd apps/web && pnpm dev";
+  scripts.web-build.exec = "cd apps/web && pnpm build";
+  scripts.web-install.exec = "corepack enable && pnpm install";
+  scripts.viz-dev.exec = "pnpm dev:visualizer";
+  scripts.viz-build.exec = "pnpm build:visualizer";
+  scripts.gateway.exec = "cargo run -p roco-gateway";
+  scripts.napi-build.exec = "cd crates/napi && napi build --release";
 
   # https://devenv.sh/tasks/
   # "devenv:enterShell".after = "roco:setup";
@@ -85,6 +98,9 @@
   #   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
   # To force the AMD RADV ICD (integrated GPU):
   #   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
+
+  # https://devenv.sh/integrations/dotenv/
+  dotenv.enable = true;
 
   # https://devenv.sh/tests/
   enterTest = ''
@@ -112,14 +128,28 @@
     export SCCACHE_CACHE_SIZE="20G"
 
     echo "RoCo AI — devenv ready"
-    echo "  cargo test                       # run the suite"
-    echo "  roco                  # smoke test (GPU-backed demos A-F)"
-    echo "  roco chat             # interactive chat session (GPU-backed RWKV)"
-    echo "  roco chat -r          # resume latest session"
-    echo "  roco chat -c <slug>   # continue a specific session"
-    echo "  roco session ls       # list saved sessions"
-    echo "  roco eval [NAME]      # run an eval suite on the GPU"
+    echo ""
+    echo "  ── Rust ──"
+    echo "  cargo test --workspace          # run the full test suite"
+    echo "  roco [args..]                   # run the CLI binary (GPU-backed)"
+    echo "  roco chat -r                    # resume latest session"
+    echo "  roco eval [NAME]                # run an eval suite"
     echo "  gpu-check                       # show Vulkan device + model status"
+    echo ""
+    echo "  ── Gateway ──"
+    echo "  run gateway                     # start axum gateway on :3001"
+    echo ""
+    echo "  ── Web (Next.js) ──"
+    echo "  run web-dev                     # start Next.js dev server :3000"
+    echo "  run web-build                   # production build"
+    echo ""
+    echo "  ── Visualizer (React+Vite) ──"
+    echo "  run viz-dev                     # start Vite dev server :5173"
+    echo "  run viz-build                   # production build"
+    echo ""
+    echo "  ── Monorepo ──"
+    echo "  pnpm install                    # install all npm deps"
+    echo "  run napi-build                  # build napi-rs .node addon"
     echo ""
     echo "GPU: $(vulkaninfo --summary 2>/dev/null | grep -oP 'deviceName\s*=\s*\K.*' | head -1 || echo 'no Vulkan device found')"
   '';

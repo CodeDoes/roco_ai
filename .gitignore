@@ -11,4 +11,7 @@ node_modules/
 .next/
 dist/
 .vite/
-web/app/.env.local
+apps/web/.env.local
+apps/*/node_modules/
+apps/*/dist/
+apps/*/.vite/
