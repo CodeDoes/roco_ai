@@ -131,6 +131,7 @@ fn resolve_grammar(req: &CompletionRequest) -> Option<String> {
 /// `true` return value = a token was sampled. `false` = no allowed token
 /// remained (the grammar has reached a state where nothing fits and the
 /// caller should stop generating).
+#[cfg_attr(not(feature = "grammar-rwkv"), allow(dead_code))]
 fn constrained_sample_token(
     probs: &mut [f32],
     allowed: &[bool],
@@ -234,6 +235,10 @@ struct CompleteReq {
     temperature: f32,
     /// Optional GBNF grammar; if set, every sampled token is masked by
     /// what the grammar accepts next. See `grammar-rwkv` feature.
+    /// The gateway / non-feature-rwkv builds still receive it for
+    /// future-proofing the message channel; the actor checks the inner
+    /// value and only consumes it when the feature is on.
+    #[cfg_attr(not(feature = "grammar-rwkv"), allow(dead_code))]
     grammar: Option<String>,
     reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
 }
@@ -407,7 +412,7 @@ fn default_model_path() -> anyhow::Result<PathBuf> {
             for search_dir in &search_dirs {
                 if let Ok(entries) = std::fs::read_dir(search_dir) {
                     for e in entries.flatten() {
-                        if let Some(name) = e.path().file_name().and_then(|n| n.to_str()) {
+                        if let Some(_name) = e.path().file_name().and_then(|n| n.to_str()) {
                             listing.push_str(&format!("  {} ({})\n", e.path().display(),
                                 std::fs::metadata(e.path()).map(|m| format!("{}MB", m.len()/(1024*1024))).unwrap_or_default()));
                         }
