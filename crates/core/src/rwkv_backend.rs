@@ -244,23 +244,31 @@ struct CompleteReq {
 }
 
 /// Get the path to the pipeline cache file for a given model.
+///
+/// Overridable via `RWKV_PIPELINE_CACHE_DIR=...`. When unset, falls back
+/// to the historically-used `/tmp/roco-pipeline-cache`.
 fn get_pipeline_cache_path(model_path: &str) -> std::path::PathBuf {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
-    std::path::PathBuf::from("/tmp/roco-pipeline-cache")
-        .join(format!("{:016x}.bin", hash))
+    let root = std::env::var("RWKV_PIPELINE_CACHE_DIR")
+        .unwrap_or_else(|_| "/tmp/roco-pipeline-cache".to_string());
+    std::path::PathBuf::from(root).join(format!("{:016x}.bin", hash))
 }
 
 /// Get the directory for cached quantized Int8 weights.
+///
+/// Overridable via `RWKV_QUANT_CACHE_DIR=...`. When unset, falls back to
+/// the historically-used `/tmp/roco-quant-cache`.
 fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
-    std::path::PathBuf::from("/tmp/roco-quant-cache")
-        .join(format!("{:016x}", hash))
+    let root = std::env::var("RWKV_QUANT_CACHE_DIR")
+        .unwrap_or_else(|_| "/tmp/roco-quant-cache".to_string());
+    std::path::PathBuf::from(root).join(format!("{:016x}", hash))
 }
 
 /// Auto-pick a quantization plan from the on-disk model size and GPU caps.

@@ -78,6 +78,8 @@ cargo run -p roco-core --example rwkv_test --release
 | `RWKV_QUANT` | Override auto-quant: `none`, `nf4=N`, or `N` (Int8 N layers) | Auto-picked (NF4 if file ≥ 1.5 GB and GPU has coop matrix; else Int8; else no-quant if file < 1.5 GB) |
 | `RWKV_ADAPTER` | Substring match against GPU adapter name | First Vulkan adapter with coop-matrix |
 | `RWKV_GRAMMAR` | GBNF grammar to constrain decoding (only if `grammar-rwkv` feature is on) | unset |
+| `RWKV_PIPELINE_CACHE_DIR` | Override the WGPU pipeline cache directory | `/tmp/roco-pipeline-cache` |
+| `RWKV_QUANT_CACHE_DIR` | Override the quantized-weight cache directory | `/tmp/roco-quant-cache` |
 
 ## Build with `--release` for GPU work
 
