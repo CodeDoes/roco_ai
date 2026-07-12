@@ -173,6 +173,16 @@ struct CompleteReq {
     reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
 }
 
+/// Get the path to the pipeline cache file for a given model.
+fn get_pipeline_cache_path(model_path: &str) -> std::path::PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    model_path.hash(&mut hasher);
+    let hash = hasher.finish();
+    std::path::PathBuf::from("/tmp/roco-pipeline-cache")
+        .join(format!("{:016x}.bin", hash))
+}
+
 /// Default quantization: Int8 for all layers.
 ///
 /// The 2.9B RWKV model (5.5 GB FP16) does NOT fit in 4 GB VRAM unquantized.
@@ -292,7 +302,19 @@ impl RwkvActor {
             info!("trying adapter: '{}' (type={:?}, coop={}, {}MB)",
                 ainfo.name, ainfo.device_type, coop, max_mb);
 
-            match ContextBuilder::new(adapter).auto_limits(&info).build().await {
+            // Try to load previously cached pipeline shaders (speeds up
+            // subsequent loads by ~10-15s by skipping WGPU shader recompilation).
+            let cache_path = get_pipeline_cache_path(&model_path);
+            let cached_pipelines = std::fs::read(&cache_path).ok();
+            if cached_pipelines.is_some() {
+                info!(path = ?cache_path, "found cached pipeline data");
+            }
+
+            let mut builder = ContextBuilder::new(adapter).auto_limits(&info);
+            if let Some(ref data) = cached_pipelines {
+                builder = builder.with_pipeline_cache(data.clone());
+            }
+            match builder.build().await {
                 Ok(ctx) => {
                     info!("context created on: '{}'", ainfo.name);
                     context = Some(ctx);
@@ -423,6 +445,18 @@ impl RwkvActor {
                 (r, AnyState::V7(Box::new(s)), init)
             }
         };
+
+        // Save pipeline cache for faster subsequent loads
+        if let Some(data) = context.get_pipeline_cache_data() {
+            let cache_path = get_pipeline_cache_path(&model_path);
+            if let Some(parent) = cache_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            match std::fs::write(&cache_path, &data) {
+                Ok(()) => info!(path = ?cache_path, size = data.len(), "saved pipeline cache"),
+                Err(e) => warn!(path = ?cache_path, error = %e, "failed to save pipeline cache"),
+            }
+        }
 
         info!("RWKV runtime initialized");
         Ok(Self {
