@@ -27,6 +27,8 @@ safetensors = { version = "0.6", optional = true }
 fastrand = { version = "2.3", optional = true }
 web-rwkv = { version = "0.10", default-features = false, features = ["native"], optional = true }
 wgpu = { version = "29.0", optional = true }
+# schoolmarm = GBNF grammar walker, used for grammar-constrained decoding
+schoolmarm = { version = "0.1", optional = true }
 num_cpus = "1.16"
 
 [features]
@@ -40,3 +42,6 @@ local-rwkv = [
     "dep:web-rwkv",
     "dep:wgpu",
 ]
+# Grammar-constrained decoding requires both the RWKV runtime (for vocab
+# + logits) and the schoolmarm grammar walker.
+grammar-rwkv = ["local-rwkv", "dep:schoolmarm"]

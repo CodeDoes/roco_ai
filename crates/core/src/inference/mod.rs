@@ -250,6 +250,7 @@ impl<B: crate::engine::ModelBackend + Send + Sync + 'static> InferenceEngine for
                     system,
                     prompt,
                     output_schema: None,
+                    grammar: None,
                     temperature,
                     max_tokens,
                     estimated_prompt_tokens: 0,

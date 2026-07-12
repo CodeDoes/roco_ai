@@ -40,6 +40,12 @@ pub struct CompletionRequest {
     pub prompt: String,
     /// Optional strict output schema hint used for constrained decoding (§2.2D).
     pub output_schema: Option<String>,
+    /// Optional GBNF grammar string for grammar-constrained decoding.
+    /// Backends that support it (e.g. `grammar-rwkv`) will mask logits at
+    /// each step so output is always accepted by `schoolmarm`'s walker.
+    /// Other backends may ignore this field — the eval uses the grammar
+    /// text regardless as the schema hint for the model/system prompt.
+    pub grammar: Option<String>,
     /// Sampling temperature. 0.1–0.2 for deterministic tasks (§2.2F).
     pub temperature: f32,
     /// Hard cap on generated tokens. Default 512 (§2.2F).
@@ -54,6 +60,7 @@ impl Default for CompletionRequest {
             system: String::new(),
             prompt: String::new(),
             output_schema: None,
+            grammar: None,
             temperature: 0.2,
             max_tokens: 512,
             estimated_prompt_tokens: 0,

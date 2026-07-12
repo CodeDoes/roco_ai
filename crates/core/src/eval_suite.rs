@@ -47,6 +47,12 @@ pub struct EvalCase {
     pub temperature: f32,
     /// Minimum acceptable output length in characters.
     pub min_output_chars: usize,
+    /// Optional GBNF grammar. Forwarded to the backend via
+    /// `CompletionRequest::grammar`. Backends that support grammar-constrained
+    /// decoding (e.g. RWKV with the `grammar-rwkv` feature) will mask logits
+    /// to keep every sampled token in lockstep with the grammar.
+    #[serde(default)]
+    pub grammar: Option<String>,
     /// Category for grouping in reports.
     pub category: EvalCategory,
 }
@@ -168,6 +174,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         system: case.system.clone(),
         prompt: case.prompt.clone(),
         output_schema: None,
+        grammar: case.grammar.clone(),
         temperature: case.temperature,
         max_tokens: case.max_tokens,
         estimated_prompt_tokens: 0,
@@ -385,6 +392,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 50,
             temperature: 0.1,
             min_output_chars: 1,
+            grammar: None,
             category: EvalCategory::Smoke,
         },
         EvalCase {
@@ -397,6 +405,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 30,
             temperature: 0.1,
             min_output_chars: 1,
+            grammar: None,
             category: EvalCategory::Smoke,
         },
 
@@ -411,6 +420,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 100,
             temperature: 0.2,
             min_output_chars: 20,
+            grammar: None,
             category: EvalCategory::Instruction,
         },
         EvalCase {
@@ -423,6 +433,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 100,
             temperature: 0.2,
             min_output_chars: 30,
+            grammar: None,
             category: EvalCategory::Instruction,
         },
         EvalCase {
@@ -435,6 +446,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 100,
             temperature: 0.3,
             min_output_chars: 30,
+            grammar: None,
             category: EvalCategory::Instruction,
         },
 
@@ -449,6 +461,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 150,
             temperature: 0.3,
             min_output_chars: 50,
+            grammar: None,
             category: EvalCategory::Coherence,
         },
         EvalCase {
@@ -461,6 +474,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 150,
             temperature: 0.5,
             min_output_chars: 40,
+            grammar: None,
             category: EvalCategory::Coherence,
         },
 
@@ -475,6 +489,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 100,
             temperature: 0.5,
             min_output_chars: 20,
+            grammar: None,
             category: EvalCategory::Repetition,
         },
 
@@ -489,6 +504,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 100,
             temperature: 0.1,
             min_output_chars: 20,
+            grammar: None,
             category: EvalCategory::Format,
         },
         EvalCase {
@@ -501,6 +517,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             max_tokens: 100,
             temperature: 0.3,
             min_output_chars: 30,
+            grammar: None,
             category: EvalCategory::Format,
         },
     ]
@@ -518,6 +535,7 @@ pub fn throughput_eval_cases() -> Vec<EvalCase> {
         max_tokens: 512,
         temperature: 0.4,
         min_output_chars: 100,
+        grammar: None,
         category: EvalCategory::Throughput,
     }]
 }
@@ -534,6 +552,7 @@ pub fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
         max_tokens: 200,
         temperature: 0.2,
         min_output_chars: 20,
+        grammar: None,
         category: EvalCategory::Context,
     }]
 }

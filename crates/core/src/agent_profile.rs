@@ -300,6 +300,7 @@ impl AgentProfile {
                 AgentStrategy::StructuredOutput { schema } => schema.clone(),
                 _ => None,
             },
+            grammar: None,
             temperature,
             max_tokens: max_tokens.unwrap_or(default_max),
             estimated_prompt_tokens: 0,

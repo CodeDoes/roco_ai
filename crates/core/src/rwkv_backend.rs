@@ -55,6 +55,9 @@ use web_rwkv::runtime::TokioRuntime;
 use web_rwkv::tensor::{TensorCpu, TensorError, TensorInit, TensorShape};
 use web_rwkv::tokenizer::Tokenizer;
 
+#[cfg(feature = "grammar-rwkv")]
+use schoolmarm::{Grammar, GrammarState};
+
 use crate::engine::{
     BoxFuture, CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage,
 };
@@ -98,6 +101,58 @@ fn sample_token(probs: &[f32], temperature: f32, top_p: f32) -> u32 {
         }
     }
     weighted.last().map(|(id, _)| *id as u32).unwrap_or(0)
+}
+
+/// Resolve the GBNF grammar string for a [`CompletionRequest`].
+///
+/// Sources, in priority order:
+///   1. `RWKV_GRAMMAR` environment variable (raw GBNF text).
+///      Allows eval scripts to bind a grammar without wiring it through
+///      `CompletionRequest::output_schema` (which the orchestrator already
+///      fills with JSON schemas and would conflict with the BNF source).
+///   2. Empty/missing \u2192 `None` \u2192 free-form generation.
+#[cfg(feature = "grammar-rwkv")]
+fn resolve_grammar(req: &CompletionRequest) -> Option<String> {
+    if let Some(g) = req.grammar.as_ref() {
+        if !g.trim().is_empty() {
+            return Some(g.clone());
+        }
+    }
+    match std::env::var("RWKV_GRAMMAR") {
+        Ok(g) if !g.trim().is_empty() => Some(g),
+        _ => None,
+    }
+}
+
+/// Like `sample_token`, but restrict sampling to the token indices for which
+/// `allowed[i]` is true. Disallowed logits are replaced with `NEG_INFINITY`
+/// before the existing top-p/temperature walk.
+///
+/// `true` return value = a token was sampled. `false` = no allowed token
+/// remained (the grammar has reached a state where nothing fits and the
+/// caller should stop generating).
+fn constrained_sample_token(
+    probs: &mut [f32],
+    allowed: &[bool],
+    temperature: f32,
+    top_p: f32,
+) -> Option<u32> {
+    debug_assert_eq!(probs.len(), allowed.len(), "vocab length mismatch");
+    let mut any_allowed = false;
+    for (p, &ok) in probs.iter_mut().zip(allowed) {
+        if !ok {
+            *p = f32::NEG_INFINITY;
+        } else {
+            any_allowed = true;
+        }
+    }
+    if !any_allowed {
+        return None;
+    }
+    // Filter tokens whose masked-probability is still finite for the
+    // top-p walk. `NEG_INFINITY` ranks below everything else so it won't
+    // sneak through, but we keep the rest of the original logic identical.
+    Some(sample_token(probs, temperature, top_p))
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +211,13 @@ struct RwkvActor {
     /// so no state leaks between independent inference requests.
     initial_state: TensorCpu<f32>,
     tokenizer: Tokenizer,
+    /// UTF-8 string for each token id, used by schoolmarm's `allowed_tokens`
+    /// to compute per-step masks. Built once at actor construction; non-ASCII
+    /// token bytes are mapped to the PUA range U+E000..U+E07F so that the
+    /// BPE-style tokens schoolmarm expects survive the round-trip.
+    /// `None` when the `grammar-rwkv` feature is disabled.
+    #[cfg(feature = "grammar-rwkv")]
+    token_strings: Vec<String>,
     token_chunk_size: usize,
     /// Keep model bytes alive as long as the actor exists.
     /// SafeTensors borrows from this, and ModelBuilder consumes SafeTensors
@@ -170,6 +232,9 @@ struct CompleteReq {
     prompt: String,
     max_tokens: usize,
     temperature: f32,
+    /// Optional GBNF grammar; if set, every sampled token is masked by
+    /// what the grammar accepts next. See `grammar-rwkv` feature.
+    grammar: Option<String>,
     reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
 }
 
@@ -629,12 +694,32 @@ impl RwkvActor {
         }
 
         info!("RWKV runtime initialized");
+        #[cfg(feature = "grammar-rwkv")]
+        let token_strings = {
+            let bytes = tokenizer.token_index_to_bytes();
+            bytes
+                .iter()
+                .map(|b| {
+                    let mut s = String::with_capacity(b.len());
+                    for &byte in b {
+                        if byte < 0x80 {
+                            s.push(byte as char);
+                        } else {
+                            s.push(char::from_u32(0xE000 + (byte as u32 - 0x80)).unwrap());
+                        }
+                    }
+                    s
+                })
+                .collect::<Vec<String>>()
+        };
         Ok(Self {
             context,
             runtime,
             state,
             initial_state,
             tokenizer,
+            #[cfg(feature = "grammar-rwkv")]
+            token_strings,
             token_chunk_size,
             _model_data: model_data,
         })
@@ -646,7 +731,28 @@ impl RwkvActor {
         prompt: &str,
         max_tokens: usize,
         temperature: f32,
+        #[cfg(feature = "grammar-rwkv")] grammar: Option<&str>,
     ) -> Result<(String, TokenUsage), EngineError> {
+        // Grammar setup: compile a fresh GrammarState per call. The state is
+        // single-thread by API design (schoolmarm carries no `Sync`) and only
+        // meaningful for the lifetime of this completion, so we own it here.
+        #[cfg(feature = "grammar-rwkv")]
+        let mut grammar_state: Option<GrammarState> = match grammar {
+            Some(g) if !g.trim().is_empty() => {
+                let compiled = Grammar::new(g).map_err(|e| {
+                    EngineError::Backend(format!("GBNF compile error: {e:?}"))
+                })?;
+                Some(GrammarState::new(compiled).map_err(|e| {
+                    EngineError::Backend(format!("GrammarState init error: {e:?}"))
+                })?)
+            }
+            _ => None,
+        };
+        #[cfg(feature = "grammar-rwkv")]
+        let vocab_refs: Option<Vec<&str>> = grammar_state.as_ref().map(|_| {
+            self.token_strings.iter().map(String::as_str).collect()
+        });
+
         // Reset state to blank before each completion so independent requests
         // don't leak context into each other.
         self.state
@@ -706,6 +812,26 @@ impl RwkvActor {
             let probs = softmax_one(&self.context, cpu)
                 .await
                 .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
+
+            // Sample, optionally constrained by a GBNF grammar.
+            #[cfg(feature = "grammar-rwkv")]
+            let (token, grammar_active) = {
+                let mut p = probs.data().to_vec();
+                let token: u32;
+                let active: bool;
+                if let (Some(gs), Some(vrefs)) = (grammar_state.as_mut(), vocab_refs.as_ref()) {
+                    let allowed = gs.allowed_tokens(vrefs);
+                    match constrained_sample_token(&mut p, &allowed, temperature, top_p) {
+                        Some(t) => { token = t; active = true; }
+                        None => break, // no allowed token → stop generation
+                    }
+                } else {
+                    token = sample_token(&p, temperature, top_p);
+                    active = false;
+                }
+                (token, active)
+            };
+            #[cfg(not(feature = "grammar-rwkv"))]
             let token = sample_token(probs.data(), temperature, top_p);
 
             if token == 0 { break; }
@@ -714,7 +840,18 @@ impl RwkvActor {
                 .tokenizer
                 .decode(&[token])
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
-            let word = String::from_utf8_lossy(&decoded);
+            let word = String::from_utf8_lossy(&decoded).to_string();
+
+            // Advance grammar state with the bytes of the chosen token.
+            // Tolerate failures: some BPE chunkings straddle a literal
+            // boundary; a clean termination is "grammar finished — input
+            // has nothing meaningful to add", not an error.
+            #[cfg(feature = "grammar-rwkv")]
+            if grammar_active {
+                if let Some(gs) = grammar_state.as_mut() {
+                    let _ = gs.accept_token(&word);
+                }
+            }
 
             if word == "\n\n" || word == "\nUser:" || word == "\nHuman:" {
                 break;
@@ -754,7 +891,25 @@ impl RwkvActor {
             let probs = softmax_one(&self.context, cpu)
                 .await
                 .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
-            let token = sample_token(probs.data(), temperature, top_p);
+            // Sample, optionally constrained by a GBNF grammar.
+            #[cfg(feature = "grammar-rwkv")]
+            let token_opt: Option<u32> = {
+                let mut p = probs.data().to_vec();
+                if let (Some(gs), Some(vrefs)) = (grammar_state.as_mut(), vocab_refs.as_ref()) {
+                    let allowed = gs.allowed_tokens(vrefs);
+                    constrained_sample_token(&mut p, &allowed, temperature, top_p)
+                } else {
+                    Some(sample_token(&p, temperature, top_p))
+                }
+            };
+            #[cfg(not(feature = "grammar-rwkv"))]
+            let token_opt: Option<u32> =
+                Some(sample_token(probs.data(), temperature, top_p));
+
+            let token = match token_opt {
+                Some(t) => t,
+                None => break,
+            };
 
             if token == 0 { break; }
 
@@ -762,7 +917,13 @@ impl RwkvActor {
                 .tokenizer
                 .decode(&[token])
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
-            let word = String::from_utf8_lossy(&decoded);
+            let word = String::from_utf8_lossy(&decoded).to_string();
+
+            // Advance grammar state with the bytes of the sampled token.
+            #[cfg(feature = "grammar-rwkv")]
+            if let Some(gs) = grammar_state.as_mut() {
+                let _ = gs.accept_token(&word);
+            }
 
             if word == "\n\n" || word == "\nUser:" || word == "\nHuman:" {
                 break;
@@ -796,7 +957,14 @@ impl RwkvActor {
     async fn run(mut self, mut rx: mpsc::Receiver<CompleteReq>) {
         while let Some(req) = rx.recv().await {
             let result = self
-                .handle_complete(&req.system, &req.prompt, req.max_tokens, req.temperature)
+                .handle_complete(
+                    &req.system,
+                    &req.prompt,
+                    req.max_tokens,
+                    req.temperature,
+                    #[cfg(feature = "grammar-rwkv")]
+                    req.grammar.as_deref(),
+                )
                 .await;
             let _ = req.reply.send(result);
         }
@@ -912,11 +1080,17 @@ impl ModelBackend for RwkvBackend {
         Box::pin(async move {
             let started = Instant::now();
             let (reply_tx, reply_rx) = oneshot::channel();
+            // Resolve the grammar *before* moving the request fields into
+            // `CompleteReq` so we don't partially-borrow by accident.
+            #[cfg(feature = "grammar-rwkv")]
+            let grammar = resolve_grammar(&req);
             tx.send(CompleteReq {
                 system: req.system,
                 prompt: req.prompt,
                 max_tokens: req.max_tokens,
                 temperature: req.temperature,
+                #[cfg(feature = "grammar-rwkv")]
+                grammar,
                 reply: reply_tx,
             })
             .await
