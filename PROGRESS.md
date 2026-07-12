@@ -83,10 +83,11 @@ strategy context that survives across multiple working sessions.
 
 - The "amateur cleanup segfault" at process exit — wgpu resources
   dropped on the wrong thread. Doesn't affect inference quality.
-- Should we delete the scaffolding modules (`audio`, `infer`, `capacity`,
-  `resource`) or carry them as future-proofing for a second engine?
+- Should we delete the remaining low-traffic scaffolding modules
+  (`audio`) or carry them as future-proofing for a second engine?
   Decision can wait until we know whether we're going to pursue a
-  non-rwkv7 FFN backend.
+  non-rwkv7 FFN backend. (`resource` and `infer` already removed
+  since they had no callers.)
 
 ## Run book (commands that currently work)
 
