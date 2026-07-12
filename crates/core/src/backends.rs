@@ -1,5 +1,9 @@
 //! HTTP model backends (OpenAI-compatible chat completions).
 //!
+//! THESE ARE OPTIONAL — the local-first philosophy means RWKV and other local
+//! models are the backbone. API backends are supplements for tasks that need
+//! more capability than local hardware can provide.
+//!
 //! Both NVIDIA's free developer API and Kilo-AI expose OpenAI-compatible
 //! `/chat/completions` endpoints, so they share one client. API keys come from
 //! the environment; everything is gated behind the `http-backends` cargo
@@ -185,12 +189,23 @@ pub struct NvidiaBackend {
 #[cfg(feature = "http-backends")]
 impl NvidiaBackend {
     pub const DEFAULT_BASE_URL: &'static str = "https://integrate.api.nvidia.com/v1";
-    pub const DEFAULT_MODEL: &'static str = "nvidia/nemotron-3-super-120b-a12b";
+    // minimax-m3 is the only reliably free model on build.nvidia.com as of
+    // 2026-07-12. The others rotate in and out of free tier or have rate
+    // limits that make them unreliable for agentic workflows.
+    //
+    // To discover currently available free models:
+    //   curl -s 'https://integrate.api.nvidia.com/v1/models' | jq '.data[] | select(.id | test("free|community")) | .id'
+    //
+    // NVIDIA's free tier: https://build.nvidia.com/explore/discover
+    pub const DEFAULT_MODEL: &'static str = "minimaxai/minimax-m3";
     pub const MODELS: &'static [&'static str] = &[
+        "minimaxai/minimax-m3",         // ✅ reliable free, good for reasoning
+        // The following are sometimes free but not guaranteed:
         "qwen/qwen3-next-80b-a3b-instruct",
         "nvidia/nemotron-3-super-120b-a12b",
         "z-ai/glm-5.2",
-        "minimaxai/minimax-m3",
+        // Check for newly added free models periodically:
+        //   curl -s 'https://integrate.api.nvidia.com/v1/models' | jq '.data[].id'
     ];
 
     pub fn from_env() -> Result<Self, EngineError> {
@@ -353,11 +368,10 @@ mod tests {
 
     #[test]
     fn nvidia_curated_models_present() {
-        assert!(NvidiaBackend::MODELS.contains(&"qwen/qwen3-next-80b-a3b-instruct"));
-        assert!(NvidiaBackend::MODELS.contains(&"nvidia/nemotron-3-super-120b-a12b"));
-        assert!(NvidiaBackend::MODELS.contains(&"z-ai/glm-5.2"));
+        // minimax-m3 must always be in the list (it's the reliable one)
         assert!(NvidiaBackend::MODELS.contains(&"minimaxai/minimax-m3"));
-        assert!(NvidiaBackend::MODELS.contains(&NvidiaBackend::DEFAULT_MODEL));
+        // DEFAULT_MODEL should match the most reliable free model
+        assert_eq!(NvidiaBackend::DEFAULT_MODEL, "minimaxai/minimax-m3");
     }
 
     #[test]

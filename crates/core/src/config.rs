@@ -206,7 +206,7 @@ impl Config {
     pub fn resolved_nvidia_model(&self) -> String {
         self.nvidia_model
             .clone()
-            .unwrap_or_else(|| "qwen/qwen3-next-80b-a3b-instruct".into())
+            .unwrap_or_else(|| "minimaxai/minimax-m3".into())
     }
 
     pub fn resolved_kilo_model(&self) -> String {

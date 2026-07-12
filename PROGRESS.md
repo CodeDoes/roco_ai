@@ -32,28 +32,48 @@ hw query → model load strategy → keep in memory via inference-api → lock f
 - **Keep in memory**: loaded models stay warm behind a lightweight inference API (HTTP or IPC). No per-request load/unload overhead.
 - **Lock files**: a `.lock` file per model at e.g. `/tmp/roco-models/<model-hash>.lock`. Removed on clean shutdown. On restart, stale locks are cleaned up. This prevents double-loading and lets other processes know what's resident.
 
-### Why not just RWKV?
+### Local-First Ethos
 
-RWKV is great (fast, small footprint, local), but we may need:
+APIs are a crutch. The backbone is **local inference** — RWKV and other small
+models that fit in 4GB VRAM with Int8 quant. API models (NVIDIA, Kilo) are
+optional supplements for tasks that exceed local capability, not the default.
 
-| Need | Model Type | Location |
-|---|---|---|
-| Fast generation, low latency | RWKV, Phi, TinyLlama, Qwen2.5-Coder-0.5B | `~/Documents/models/` (fast models) |
-| Deep reasoning, planning | Larger Llama, Qwen, DeepSeek (CPU offload) | CPU inference, slower but smarter |
-| Code-specific | DeepSeek-Coder, StarCoder, Qwen2.5-Coder | GPU if fits, CPU otherwise |
-| Research / long context | Gemma-2, Mistral, Yi-34B | CPU or multi-GPU |
+### What Fits on Hardware (4GB VRAM NVIDIA RTX 2050 / AMD RADV RENOIR)
 
-**Fast models** (<=3B params) go on GPU for interactive tasks. **Smart models** (7B+) run on CPU if GPU VRAM is limited — they direct the fast models via critique + task decomposition.
+| Model | Size | Quant | VRAM | Status |
+|---|---|---|---|---|
+| RWKV 2.9B | 5.5 GB FP16 | Int8 | ~2.75 GB | ✅ Working (16 tok/s) |
+| Qwen2.5-Coder 1.5B | 3 GB FP16 | Int8 | ~1.5 GB | ⏳ Should work |
+| TinyLlama 1.1B | 2.2 GB FP16 | Int8 | ~1.1 GB | ⏳ Should work |
+| Phi-3-mini 3.8B | 7.6 GB FP16 | Int8 | ~3.8 GB | ⚠️ Tight fit, needs testing |
 
-### Critiquing Output & Model Assignment
+**Fast models** (<=3B) go on GPU. **Smart models** (7B+) run on CPU via
+llama.cpp/candle when deeper reasoning is needed.
 
-Each model's output should be critiqued (by a second model or heuristic), and models should be assigned to tasks they're strong at:
+### Model Assignment (Realistic for Local Hardware)
 
-- **RWKV 2.9B**: fast prose, storytelling drafts, chat, system monitor narration. Weak at: deep coding, math, long-range coherence.
-- **Phi-3 / Phi-3.5**: good at reasoning for its size, coding, structured output. Weak at: creative writing (too stiff).
-- **Qwen2.5-Coder 1.5B**: decent code completion, fast. Weak at: anything non-code.
-- **DeepSeek-Coder 6.7B** (CPU): proper code generation, refactoring. Weak at: latency.
-- **Llama-3 8B** (CPU): general reasoning, planning, orchestration. Weak at: speed.
+| Profile | Model | Strategy | Temperature | Best At |
+|---|---|---|---|---|
+| `storyteller/fast` | RWKV 2.9B (GPU) | FastIterative | 0.6 | Prose, storytelling, chat |
+| `coder/fast` | Qwen2.5-Coder 1.5B (GPU) | StructuredOutput | 0.1 | Code generation |
+| `coder/review` | TinyLlama 1.1B (GPU) | StepByStep | 0.1 | Quick code review |
+| `orchestrator/cpu` | 7B CPU model | ChainOfThought | 0.2 | Planning, decomposition |
+| `assistant/fast` | RWKV 2.9B (GPU) | FastIterative | 0.4 | Chat, quick answers |
+| `meta/theorist` | RWKV 2.9B (GPU) | Debate | 0.5 | Brainstorming, what-if |
+| `meta/critic` | RWKV 2.9B (GPU) | StepByStep | 0.2 | Logical critique |
+
+### NVIDIA Free API (Optional Supplement)
+
+Only **`minimaxai/minimax-m3`** is reliably free on build.nvidia.com.
+Other models (qwen, nemotron, glm) rotate in and out of free tier.
+To discover currently available free models:
+
+```bash
+curl -s 'https://integrate.api.nvidia.com/v1/models' | \
+  jq '.data[] | select(.id | test("free|community")) | .id'
+```
+
+NVIDIA's free tier: https://build.nvidia.com/explore/discover
 
 ---
 
@@ -154,13 +174,16 @@ pub struct AgentProfile {
 
 | Profile | Model | Strategy | Temperature | Best At |
 |---|---|---|---|---|
-| `storyteller/fast` | RWKV 2.9B | FastIterative | 0.6 | Creative prose, drafting |
-| `coder/fast` | Qwen-Coder 1.5B | StructuredOutput | 0.1 | Code generation |
-| `coder/review` | DeepSeek-Coder 6.7B | StepByStep | 0.1 | Code review, security |
-| `orchestrator/smart` | Llama-3 8B | ChainOfThought | 0.2 | Planning, decomposition |
-| `assistant/fast` | RWKV 2.9B | FastIterative | 0.4 | Chat, quick answers |
-| `meta/theorist` | RWKV 2.9B | Debate | 0.5 | Brainstorming, what-if |
-| `meta/critic` | Phi-3.5 | StepByStep | 0.2 | Logical critique |
+| `storyteller/fast` | RWKV 2.9B (GPU) | FastIterative | 0.6 | Creative prose, drafting |
+| `coder/fast` | Qwen2.5-Coder 1.5B (GPU) | StructuredOutput | 0.1 | Code generation |
+| `coder/review` | TinyLlama 1.1B (GPU) | StepByStep | 0.1 | Quick code review |
+| `orchestrator/cpu` | 7B CPU model | ChainOfThought | 0.2 | Planning, decomposition |
+| `assistant/fast` | RWKV 2.9B (GPU) | FastIterative | 0.4 | Chat, quick answers |
+| `meta/theorist` | RWKV 2.9B (GPU) | Debate | 0.5 | Brainstorming, what-if |
+| `meta/critic` | RWKV 2.9B (GPU) | StepByStep | 0.2 | Logical critique |
+
+**Local-first**: all GPU models fit in 4GB VRAM with Int8 quant. No API calls
+required. CPU model is optional for deep reasoning when GPU is occupied.
 
 ### Grouping & Routing
 
@@ -209,8 +232,9 @@ This would allow per-task specialization without duplicating the full model.
 - [x] `AgentStrategy` variants: FastIterative, StepByStep, StructuredOutput, CoT, Debate, Escalate
 - [x] `AgentGroup` with routing: FirstAvailable, Ensemble, EscalateOnFailure, ByCapability, RoundRobin
 - [x] `AgentProfileRegistry` with profile lifecycle + backend attachment
-- [x] 7 built-in presets (storyteller, coder, reviewer, orchestrator, assistant, theorist, critic)
+- [x] 7 built-in presets — all local-first (storyteller/rwkv, coder/qwen, reviewer/tinyllama, orchestrator/cpu, assistant/rwkv, theorist/rwkv, critic/rwkv)
 - [x] JSON serialization for save/load from config files
+- [x] Local-first ethos: no API-reliant presets. All GPU models fit in 4GB VRAM with Int8 quant
 - [ ] Wire profiles into `Orchestrator` (use profile's strategy settings)
 - [ ] Wire profiles into `roco-infer` (profile → model → backend mapping)
 - [ ] Profile hot-reload from config changes

@@ -16,13 +16,18 @@
 //! foundation model. For example:
 //!
 //! ```text
-//! orchestrator/fast   → RWKV 2.9B (quick drafting, high throughput)
-//! orchestrator/smart  → Llama-3 8B on CPU (deep reasoning, slower)
-//! worker/code         → Qwen2.5-Coder 1.5B (fast code completions)
-//! worker/code-review  → DeepSeek-Coder 6.7B on CPU (thorough review)
-//! critic/creative     → RWKV 2.9B (style critique)
-//! critic/logical      → Phi-3.5 (reasoning critique)
+//! storyteller/fast    → RWKV 2.9B on GPU (fast prose, drafting)
+//! coder/fast          → Qwen2.5-Coder 1.5B on GPU (fast code completions)
+//! coder/review        → TinyLlama 1.1B on GPU (quick code review)
+//! orchestrator/cpu    → 7B-class model on CPU (deep reasoning, slow)
+//! assistant/fast      → RWKV 2.9B (chat, quick answers)
+//! meta/theorist       → RWKV 2.9B (brainstorming, what-if)
+//! meta/critic         → RWKV 2.9B (logical critique)
 //! ```
+//!
+//! **Local-first ethos**: the backbone is RWKV and other small models that fit
+//! in 4GB VRAM with Int8 quant. API models (NVIDIA, Kilo) are optional
+//! supplements for tasks that exceed local capability — not a crutch.
 //!
 //! ## Grouping & Routing
 //!
@@ -613,41 +618,41 @@ pub mod presets {
         .with_weaknesses(vec!["creative", "explanation"])
     }
 
-    /// A thorough code reviewer (DeepSeek-Coder 6.7B on CPU).
-    pub fn code_reviewer_thorough() -> AgentProfile {
+    /// A tiny code reviewer (TinyLlama 1.1B — fits in VRAM alongside RWKV).
+    pub fn coder_review_tiny() -> AgentProfile {
         AgentProfile::new(
             "coder/review",
-            "Code Reviewer (DeepSeek-Coder)",
+            "Code Reviewer (TinyLlama)",
             AgentRole::Verifier,
-            "deepseek-coder-6.7b",
-            "You are a thorough code reviewer. Check for: correctness, \
-             edge cases, performance issues, security vulnerabilities, \
-             and style consistency. Provide specific, actionable feedback.",
+            "tinyllama-1.1b",
+            "You are a code reviewer. Check for correctness, edge cases, \
+             and style. Be concise. Output specific issues as a bullet list.",
         )
         .with_strategy(AgentStrategy::StepByStep {
             temperature: 0.1,
         })
-        .with_capabilities(vec!["code-review", "security", "refactoring"])
-        .with_weaknesses(vec!["speed"])
+        .with_capabilities(vec!["code-review", "style-check"])
+        .with_weaknesses(vec!["deep-reasoning", "security-audit"])
     }
 
-    /// A deep reasoning orchestrator (Llama-3 8B on CPU).
-    pub fn orchestrator_smart() -> AgentProfile {
+    /// A CPU-based orchestrator for deep reasoning (needs llama.cpp/candle backend).
+    /// Falls back gracefully when GPU VRAM is occupied by worker models.
+    pub fn orchestrator_cpu() -> AgentProfile {
         AgentProfile::new(
-            "orchestrator/smart",
-            "Orchestrator (Llama-3)",
+            "orchestrator/cpu",
+            "Orchestrator (CPU)",
             AgentRole::Orchestrator,
-            "llama-3-8b",
+            "cpu-model-7b",
             "You are a strategic planner. Break down complex tasks into \
              clear, executable steps. Assign each step to the right specialist. \
              Verify results before accepting them. Think step by step.",
         )
         .with_strategy(AgentStrategy::ChainOfThought {
             temperature: 0.2,
-            self_consistency: true,
+            self_consistency: false,
         })
         .with_capabilities(vec!["planning", "decomposition", "reasoning"])
-        .with_weaknesses(vec!["speed", "real-time"])
+        .with_weaknesses(vec!["speed", "real-time", "gpu-required"])
     }
 
     /// A fast, chatty assistant (RWKV 2.9B).
@@ -686,13 +691,13 @@ pub mod presets {
         .with_weaknesses(vec!["practicality", "grounding"])
     }
 
-    /// A sharp critic for the debate.
+    /// A sharp critic for the debate (uses RWKV — the local workhorse).
     pub fn critic() -> AgentProfile {
         AgentProfile::new(
             "meta/critic",
-            "Critic",
+            "Critic (RWKV)",
             AgentRole::Critic,
-            "phi-3.5",
+            "rwkv-2.9b",
             "You are a sharp, logical critic. Identify flaws in arguments, \
              point out assumptions, demand evidence. Be constructive but rigorous.",
         )
@@ -700,7 +705,7 @@ pub mod presets {
             temperature: 0.2,
         })
         .with_capabilities(vec!["critique", "logic", "analysis"])
-        .with_weaknesses(vec!["creativity"])
+        .with_weaknesses(vec!["speed"])
     }
 
     /// Return all preset profiles.
@@ -708,8 +713,8 @@ pub mod presets {
         vec![
             storyteller_rwkv(),
             coder_fast(),
-            code_reviewer_thorough(),
-            orchestrator_smart(),
+            coder_review_tiny(),
+            orchestrator_cpu(),
             assistant_fast(),
             theorist(),
             critic(),
@@ -728,7 +733,7 @@ pub mod presets {
                     on_failure: "coder/review".into(),
                 }),
             AgentGroup::new("orchestration", "Task planning and decomposition")
-                .with_profiles(vec!["orchestrator/smart"])
+                .with_profiles(vec!["orchestrator/cpu"])
                 .with_routing(RoutingStrategy::FirstAvailable),
             AgentGroup::new("assistance", "General chat and quick tasks")
                 .with_profiles(vec!["assistant/fast"])
@@ -848,7 +853,7 @@ mod tests {
         let mut reg = AgentProfileRegistry::new();
         reg.register(storyteller_rwkv());  // Worker
         reg.register(coder_fast());        // Worker
-        reg.register(orchestrator_smart());// Orchestrator
+        reg.register(orchestrator_cpu());// Orchestrator
         reg.register(assistant_fast());    // Worker
         reg.register(theorist());          // Critic
 
@@ -883,7 +888,7 @@ mod tests {
     fn test_select_from_group_by_capability() {
         let mut reg = AgentProfileRegistry::new();
         reg.register(coder_fast());
-        reg.register(code_reviewer_thorough());
+        reg.register(coder_review_tiny());
         reg.register(storyteller_rwkv());
 
         reg.register_group(
