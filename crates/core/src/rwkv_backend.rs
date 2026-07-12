@@ -685,7 +685,7 @@ impl RwkvActor {
                 .runtime
                 .infer(input)
                 .await
-                .map_err(|e| EngineError::Backend(format!("RWKV inference: {e}")))?;
+                .map_err(|e| EngineError::Backend(format!("RWKV inference (first token): {e:?}")))?;
             inference = input;
 
             // Still processing prompt tokens — continue flushing
@@ -741,7 +741,7 @@ impl RwkvActor {
                 .runtime
                 .infer(input)
                 .await
-                .map_err(|e| EngineError::Backend(format!("RWKV inference: {e}")))?;
+                .map_err(|e| EngineError::Backend(format!("RWKV inference (gen step): {e:?}")))?;
             inference = input;
 
             let ot = output[0].0.clone();
