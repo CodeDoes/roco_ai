@@ -113,9 +113,23 @@ things".
 
 ## Next things
 
-See AGENTS.md "Next things". They intentionally live there rather than
-duplicating here — AGENTS.md is the operator's view, this file is for
-strategy context that survives across multiple working sessions.
+Lives in AGENTS.md under "Next things to consider". Kept out
+of this file by design: AGENTS.md is the operator's view (build
+flags, env vars, run commands); this file is the *strategy* context
+that survives across sessions. Dragging one into the other creates
+drift on every commit. If something here contradicts AGENTS.md,
+AGENTS.md wins — it's the one we read more often when something
+is broken.
+
+Top three currently (from AGENTS.md, verbatim):
+
+1. JSON-Schema → GBNF converter + `eval_suite::grammar_eval_cases()`
+   so the `grammar-rwkv` feature gets exercised end-to-end.
+2. GGUF → ST shape fix in `scripts/gguf_to_st_converter/`
+   (`a0/k_a/k_k/v0/w0/x_*` to `[1,1,emb]`, `r_k` to
+   `(clock_count,head_dim)`).
+3. Decide whether `audio` stays or gets removed now that
+   `resource` and `infer` are gone.
 
 ## Open questions / unresolved
 
