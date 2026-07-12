@@ -33,6 +33,44 @@ hardware scan → resolve model path → quantize for VRAM → build context →
 - **Pipeline caches** under `/tmp/roco-pipeline-cache/` keyed by model
   hash speed up subsequent loads.
 
+## Architecture map (the rwkv critical path)
+
+Concrete request flow on the current code, end-to-end.
+
+```
+clap / napi / axum (entries)
+        |
+        v
+crates/core/src/eval_suite::run_suite           <- 10 default cases live here
+crates/core/src/engine::ModelBackend::complete   <- trait, code-path-agnostic
+        |
+        v
+crates/core/src/rwkv_backend::RwkvBackend::complete
+   sends CompleteReq over mpsc::Sender
+        |
+        v
+RwkvActor thread (LocalSet + current-thread tokio)
+   owns Context, TokioRuntime<Rnn>, AnyState, token_strings
+   * compiles grammar (schoolmarm) if Grammar is Some
+   * resets State before each completion (no leak between requests)
+   * prompt tokens -> softmax_one -> sample_token
+        + grammar_state.allowed_tokens masks disallowed indices to -inf
+        + accept_token(word) advances state after each sample
+   * decodes via web_rwkv::Tokenizer
+        |
+        v
+CompletionResponse.text -> caller
+```
+
+The actor-thread split exists because `web-rwkv`'s async methods
+produce non-`Send` futures (they embed wgpu resources). The
+`build_v7` weight upload happens once at thread spawn; afterwards
+the actor is a request server. `mpsc::Sender::send` from the calling
+thread is `Send`, so callers can be anywhere.
+
+If you ever write Rust that touches wgpu directly from outside this
+file, you're probably picking the wrong layer.
+
 ## What fits on this hardware
 
 Real-world measurements on the dev-kit (NVIDIA RTX 2050, 4 GB VRAM):
