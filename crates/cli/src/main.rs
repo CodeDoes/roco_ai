@@ -426,7 +426,7 @@ async fn demo_real_backends() -> anyhow::Result<()> {
     // Load API keys from a local .env file (e.g. NVIDIA_API_KEY, KILO_API_KEY).
     let _ = dotenvy::dotenv();
 
-    let cfg = Config::load_or_preset("model/default_config");
+    let cfg = Config::load_or_preset("model/default_config.json");
     println!("\n=== Demo: config-driven backend (provider={:?}) ===", cfg.provider);
 
     let backend: AnyBackend = match cfg.build_backend() {
@@ -483,7 +483,7 @@ async fn run_eval_cli(rest: &[String]) -> anyhow::Result<()> {
 
     // Build the backend from config — tries local GPU RWKV first (if compiled),
     // falls through to MockBackend if nothing else works.
-    let cfg = Config::load_or_preset("model/default_config");
+    let cfg = Config::load_or_preset("model/default_config.json");
     #[cfg(feature = "local-rwkv")]
     let cfg = Config { provider: roco_core::config::Provider::LocalRwkv, ..cfg };
 
@@ -637,7 +637,7 @@ async fn run_chat(args: &[String]) -> anyhow::Result<()> {
     #[cfg(feature = "local-rwkv")]
     let backend: Arc<dyn roco_core::engine::ModelBackend + Send + Sync> = {
         use roco_core::config::{Config, Provider};
-        let cfg = Config::load_or_preset("model/default_config");
+        let cfg = Config::load_or_preset("model/default_config.json");
         let cfg = Config { provider: Provider::LocalRwkv, ..cfg };
         match cfg.build_backend() {
             Ok(any_backend) => {

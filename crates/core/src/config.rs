@@ -1,6 +1,6 @@
 //! Configuration for provider selection, capacity, and orchestration.
 //!
-//! Drives the system from a config file (e.g. `model/default_config`) instead
+//! Drives the system from a config file (e.g. `model/default_config.json`) instead
 //! of hardcoded values. The default provider is **NVIDIA** (see `Config::preset`).
 
 use std::path::Path;
@@ -20,7 +20,7 @@ pub enum Provider {
     Kilo,
     Mock,
     /// Local RWKV/SSM inference via `web-rwkv` (Phase 4 — see
-    /// `provider/local_rwkv_adapter`). Returns an error until wired in.
+    /// `provider/local_rwkv_adapter.json`). Returns an error until wired in.
     LocalRwkv,
 }
 

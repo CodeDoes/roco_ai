@@ -21,7 +21,7 @@
 //! The CPU execution paths are *future* (no backend implemented yet); this
 //! module only models the capacity and routing decision.
 //!
-//! Local RWKV execution modes (future — see `provider/local_rwkv_adapter` and
+//! Local RWKV execution modes (future — see `provider/local_rwkv_adapter.json` and
 //! <https://github.com/cryscan/web-rwkv>):
 //! - **gpu_direct_quantized**: quantized weights loaded straight onto the GPU
 //!   from disk (costs `local_gpu` + `local_cache`).
