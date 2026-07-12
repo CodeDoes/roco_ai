@@ -240,10 +240,18 @@ cargo run -p roco-core --features grammar-rwkv --example rwkv_test --release
 - Conversational eval under `crates/core/examples/eval_suite.rs`
   finishes with `free(): invalid size` segfault at exit. Inference
   result is correct; the segfault is in shutdown ordering of
-  wgpu-on-the-actor-thread vs. main thread.
-- `RWKV_PIPELINE_CACHE_DIR=/tmp/...` env override is *not* honored
-  yet — cache path is hard-coded.
+  wgpu-on-the-actor-thread vs. main thread. See
+  `Things we tried that didn't work` for the descriptive details.
+- `RWKV_PIPELINE_CACHE_DIR` env override is *not* honored yet — cache
+  path is hard-coded to `/tmp/roco-pipeline-cache/`. Same with
+  `RWKV_QUANT_CACHE_DIR` and `/tmp/roco-quant-cache/`. Trivial to
+  fix; not done.
+- `crates/cli/src/main.rs` is 922 LOC; only a fraction runs in
+  the rwkv path today. Worth keeping until we know which subcommand
+  surface is real.
 - Web frontend (`apps/web`) compiles; gateway (`crates/gateway`)
   ships axum; neither has been exercised against the live rwkv
-  path in this checkout.
+  path in current checkout.
+- 0.1 B / 1.5 B rwkv7 models can't be inference-tested; only the
+  2.9 B works end-to-end on disk. Converter bug — see AGENTS.md.
 </content>
