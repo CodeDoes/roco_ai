@@ -111,7 +111,7 @@ async function gatewayAvailable(): Promise<boolean> {
 // oRPC procedures
 // ---------------------------------------------------------------------------
 
-const router = os.router({
+export const router = os.router({
   runTask: os
     .input(
       z.object({
