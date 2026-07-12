@@ -6,6 +6,7 @@ members = [
     "crates/workspace",
     "crates/gateway",
     "crates/napi",
+    "crates/infer",
 ]
 resolver = "2"
 
@@ -26,6 +27,7 @@ futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 dotenvy = "0.15"
 axum = { version = "0.8", features = ["ws"] }
+clap = { version = "4", features = ["derive"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 

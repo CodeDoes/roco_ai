@@ -1,0 +1,23 @@
+[package]
+name = "roco-infer"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "roco-infer"
+path = "src/main.rs"
+
+[dependencies]
+roco-core = { path = "../core" }
+axum.workspace = true
+tokio = { workspace = true, features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+futures.workspace = true
+clap.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

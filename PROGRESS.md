@@ -127,6 +127,132 @@ RWKV models ship as `.pth` (PyTorch). We have `scripts/pth_to_st_converter/`. Ne
 
 ---
 
+## Inference Server (`roco-infer`)
+
+A background daemon that manages model lifecycle, RAM/VRAM, and serves an OpenAI-compatible API.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    roco-infer                           │
+│                                                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │
+│  │  Model   │  │  Model   │  │   Memory Manager     │  │
+│  │ Registry │  │  Loader  │  │  (RAM / VRAM budget) │  │
+│  └──────────┘  └──────────┘  └──────────────────────┘  │
+│         │              │               │                │
+│         ▼              ▼               ▼                │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │           HTTP API (axum)                        │   │
+│  │  GET  /health                                    │   │
+│  │  GET  /v1/models          — list loaded models   │   │
+│  │  POST /v1/models/load    — load a model          │   │
+│  │  POST /v1/models/unload  — unload a model        │   │
+│  │  POST /v1/completions    — generate              │   │
+│  │  POST /v1/chat/completions — chat completions    │   │
+│  │  GET  /v1/memory         — memory usage report   │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                         │
+│  Lock file protocol: /tmp/roco-infer/<model-hash>.lock  │
+│  Removed on process stop. Stale locks cleaned on boot.  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Lock File Protocol
+
+```
+/tmp/roco-infer/
+  ├── rwkv7-2b9.st.lock       # pid=12345
+  ├── qwen2.5-coder-1.5b.st.lock  # pid=12345
+  └── deepseek-coder-6.7b.gguf.lock # pid=23456
+```
+
+- Each model gets a `.lock` file named after its model hash/filename.
+- Content: `pid=<process_id>`.
+- On startup: scan lock dir, check each PID with `kill(pid, 0)` (Unix).
+  If process is dead, remove the stale lock and load the model.
+- On shutdown: remove all lock files owned by this process.
+- On crash: stale locks remain, cleaned on next startup.
+- If two processes want the same model: second one sees the lock and either
+  queues (if config says shared) or errors (if config says exclusive).
+
+### Memory Management
+
+| Setting | Flag | Behavior |
+|---|---|---|
+| Max VRAM | `--max-vram-gb` | Auto-detect GPU VRAM, refuse loads that exceed budget |
+| Max RAM | `--max-ram-gb` | Soft limit; warns when exceeded |
+| Auto-unload | (future) | Least-recently-used model evicted when budget exceeded |
+
+### Current Status
+
+- [x] Crate scaffold: `crates/infer/` with axum server
+- [x] Endpoints: health, list/load/unload models, completions, memory report
+- [x] Lock file protocol with stale cleanup
+- [x] CLI args for binding, pre-load, limits
+- [ ] Wire up real model loading (mock backend placeholder currently)
+- [ ] GPU VRAM detection on startup
+- [ ] Auto-unload LRU policy
+- [ ] Shared model access between processes
+
+---
+
+## Eval Framework (`eval_suite`)
+
+Standalone model evaluation that tests backends **directly** (not through the
+orchestrator pipeline). Runs configurable test cases and produces structured
+JSON reports.
+
+### Why not the existing `eval.rs`?
+
+The existing `eval.rs` runs evals through the full orchestrator + verifier
+pipeline. That's useful for integration testing but slow and requires a fully
+configured agent loop. `eval_suite` tests the bare model backend on specific
+capabilities: instruction following, coherence, repetition, format compliance.
+
+### Eval Categories
+
+| Category | What it tests | Example case |
+|---|---|---|
+| Smoke | Does the backend respond at all? | "Say 'hello'" |
+| Instruction | Does the model follow constraints? | Multi-step instruction, negative instruction |
+| Coherence | Is the output sensible and on-topic? | Explain a concept, write a story |
+| Repetition | Does the model loop? | List 5 items, check for unique sentences |
+| Throughput | Tokens/second | Generate 512 tokens, measure wall time |
+| Format | Output structure compliance | JSON, numbered lists |
+| Context | Long input handling | Answer question about a long passage |
+
+### Running
+
+```bash
+# Mock backend (no model needed)
+cargo run --example eval_suite
+
+# Local RWKV
+cargo run --example eval_suite --release -- --backend rwkv
+
+# NVIDIA API
+cargo run --example eval_suite -- --backend nvidia --filter coherence
+
+# JSON report
+cargo run --example eval_suite -- --output evals/results/latest.json
+```
+
+### Current Status
+
+- [x] `eval_suite.rs` module in `roco-core`
+- [x] 12 built-in eval cases across all categories
+- [x] JSON report writer
+- [x] Human-readable summary printer
+- [x] Example runner binary with CLI
+- [ ] Per-model expected scores (calibrate against known-good models)
+- [ ] Visual diff of output vs expected
+- [ ] Regression tracking over time
+- [ ] Integration with CI
+
+---
+
 ## Open Questions / Blockers
 
 - [ ] Cleanup segfault at exit (wgpu resource drop ordering)
@@ -139,3 +265,5 @@ RWKV models ship as `.pth` (PyTorch). We have `scripts/pth_to_st_converter/`. Ne
 - [ ] Memory format: what does cross-session memory look like? Vector store? Structured logs? SQLite?
 - [ ] Scraping infra: RSS readers, API wrappers, browser automation for trends/news monitoring
 - [ ] Scheduled task engine: cron-like agent loop that persists and executes on schedule
+- [ ] `roco-infer`: wire up real model loading (RwkvBackend, candle, llama.cpp subprocess)
+- [ ] `eval_suite`: calibrate expected scores per model, add regression tracking

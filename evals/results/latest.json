@@ -1,0 +1,512 @@
+{
+  "suite_name": "roco-eval-suite",
+  "backend_name": "mock-3b",
+  "total": 10,
+  "passed": 5,
+  "failed": 5,
+  "total_latency_ms": 0,
+  "results": [
+    {
+      "name": "smoke_basic_reply",
+      "description": "Basic smoke test: model responds to a simple prompt",
+      "category": "smoke",
+      "passed": true,
+      "output": "{\"result\":\"[mock-3b] Say the word 'hello' and nothing else.\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 61 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "61 >= 1 chars"
+        },
+        {
+          "name": "hint: hello",
+          "passed": true,
+          "detail": "found 'hello' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "smoke_empty_system",
+      "description": "Smoke test with empty system prompt",
+      "category": "smoke",
+      "passed": true,
+      "output": "{\"result\":\"[mock-3b] Respond with the number 42.\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 50 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "50 >= 1 chars"
+        },
+        {
+          "name": "hint: 42",
+          "passed": true,
+          "detail": "found '42' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_format_constraint",
+      "description": "Model follows a strict output format instruction",
+      "category": "instruction",
+      "passed": true,
+      "output": "{\"result\":\"[mock-3b] List three colors in JSON format like this: {\\\"co\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 72 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "72 >= 20 chars"
+        },
+        {
+          "name": "hint: colors",
+          "passed": true,
+          "detail": "found 'colors' in output"
+        },
+        {
+          "name": "hint: [",
+          "passed": true,
+          "detail": "found '[' in output"
+        },
+        {
+          "name": "hint: ]",
+          "passed": true,
+          "detail": "found ']' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_step_by_step",
+      "description": "Model follows multi-step instruction",
+      "category": "instruction",
+      "passed": false,
+      "output": "{\"result\":\"[mock-3b] Follow these steps exactly:\\n1. Say 'Step 1 compl\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 72 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "72 >= 30 chars"
+        },
+        {
+          "name": "hint: Step 1",
+          "passed": true,
+          "detail": "found 'Step 1' in output"
+        },
+        {
+          "name": "hint: Step 2",
+          "passed": false,
+          "detail": "expected 'Step 2' not found in output"
+        },
+        {
+          "name": "hint: All steps",
+          "passed": false,
+          "detail": "expected 'All steps' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_negative",
+      "description": "Model follows a negative instruction (what NOT to do)",
+      "category": "instruction",
+      "passed": true,
+      "output": "{\"result\":\"[mock-3b] Tell me about the weather, but do NOT mention ra\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 71 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "71 >= 30 chars"
+        },
+        {
+          "name": "hint: weather",
+          "passed": true,
+          "detail": "found 'weather' in output"
+        },
+        {
+          "name": "forbidden: rain",
+          "passed": true,
+          "detail": "'rain' not found (good)"
+        },
+        {
+          "name": "forbidden: snow",
+          "passed": true,
+          "detail": "'snow' not found (good)"
+        },
+        {
+          "name": "forbidden: temperature",
+          "passed": true,
+          "detail": "'temperature' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_explain",
+      "description": "Model produces coherent explanation of a simple concept",
+      "category": "coherence",
+      "passed": false,
+      "output": "{\"result\":\"[mock-3b] Explain what a variable is in programming in one\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 71 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "71 >= 50 chars"
+        },
+        {
+          "name": "hint: variable",
+          "passed": true,
+          "detail": "found 'variable' in output"
+        },
+        {
+          "name": "hint: value",
+          "passed": false,
+          "detail": "expected 'value' not found in output"
+        },
+        {
+          "name": "hint: store",
+          "passed": false,
+          "detail": "expected 'store' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_story",
+      "description": "Model tells a short coherent story",
+      "category": "coherence",
+      "passed": false,
+      "output": "{\"result\":\"[mock-3b] Write a 3-sentence story about a robot learning \"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 71 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "71 >= 40 chars"
+        },
+        {
+          "name": "hint: robot",
+          "passed": true,
+          "detail": "found 'robot' in output"
+        },
+        {
+          "name": "hint: paint",
+          "passed": false,
+          "detail": "expected 'paint' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "repetition_avoidance",
+      "description": "Model avoids repeating the same phrase multiple times",
+      "category": "repetition",
+      "passed": true,
+      "output": "{\"result\":\"[mock-3b] List 5 different animals. Write each on a new li\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 71 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "71 >= 20 chars"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_json",
+      "description": "Model outputs valid JSON when asked",
+      "category": "format",
+      "passed": false,
+      "output": "{\"result\":\"[mock-3b] Output a JSON object with keys: name, age, city.\"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 71 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "71 >= 20 chars"
+        },
+        {
+          "name": "hint: \"name\"",
+          "passed": false,
+          "detail": "expected '\"name\"' not found in output"
+        },
+        {
+          "name": "hint: \"age\"",
+          "passed": false,
+          "detail": "expected '\"age\"' not found in output"
+        },
+        {
+          "name": "hint: \"city\"",
+          "passed": false,
+          "detail": "expected '\"city\"' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_list",
+      "description": "Model outputs a numbered list when asked",
+      "category": "format",
+      "passed": false,
+      "output": "{\"result\":\"[mock-3b] List 3 things you need for a picnic, numbered 1 \"}",
+      "latency_ms": 0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 16
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 71 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "71 >= 30 chars"
+        },
+        {
+          "name": "hint: 1.",
+          "passed": false,
+          "detail": "expected '1.' not found in output"
+        },
+        {
+          "name": "hint: 2.",
+          "passed": false,
+          "detail": "expected '2.' not found in output"
+        },
+        {
+          "name": "hint: 3.",
+          "passed": false,
+          "detail": "expected '3.' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "0.0 tok/s (16 tokens in 0ms)"
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "category_breakdown": [
+    {
+      "category": "coherence",
+      "total": 2,
+      "passed": 0
+    },
+    {
+      "category": "format",
+      "total": 2,
+      "passed": 0
+    },
+    {
+      "category": "instruction",
+      "total": 3,
+      "passed": 2
+    },
+    {
+      "category": "repetition",
+      "total": 1,
+      "passed": 1
+    },
+    {
+      "category": "smoke",
+      "total": 2,
+      "passed": 2
+    }
+  ]
+}
