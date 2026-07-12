@@ -77,6 +77,84 @@ NVIDIA's free tier: https://build.nvidia.com/explore/discover
 
 ---
 
+## Unified Inference System (`inference/`)
+
+The goal: **load anything, run anywhere**. A single trait + registry that
+combines multiple backends:
+
+| Backend | Model Types | Runtime | Status |
+|---|---|---|---|
+| web-rwkv | RWKV (RNN) | WGPU (Rust) | ✅ Working |
+| candle | FFN Transformers (safetensors) | WGPU/CUDA (Rust) | 🚧 Stub |
+| LiteRT | LLM, S2T, T2S, VLM, Diffusion, Embeddings | C++ (CPU/GPU/NPU) | 🚧 Stub |
+| llama.cpp | GGUF models | C (CPU/GPU) | 🚧 Stub |
+| whisper.cpp | Speech-to-text | C (CPU) | 🚧 Stub |
+
+### Theoretical Performance Estimates (Before Testing)
+
+Based on architecture analysis + literature:
+
+| Model | Arch | Params | VRAM | Est. Load | Est. tok/s | Source |
+|---|---|---|---|---|---|---|
+| RWKV 2.9B (Int8) | RNN | 2.9B | 2.75 GB | 18s | 16-26 | 📊 Measured |
+| MiniCPM5-1B (FP16) | FFN | 1.0B | 2.1 GB | 8-12s | 20-40 | 📐 Estimated (candle) |
+| Qwen2.5-0.5B (FP16) | FFN | 0.5B | 1.0 GB | 5-8s | 30-60 | 📐 Estimated (candle) |
+| TinyLlama-1.1B (Int8) | FFN | 1.1B | 1.1 GB | 3-5s | 20-35 | 📐 Estimated (llama.cpp) |
+| SmolLM2-360M (FP16) | FFN | 0.36B | 720 MB | 2-4s | 10-25 | 📐 Estimated (LiteRT) |
+| whisper-tiny | Speech | 0.039B | 150 MB | <1s | Real-time | 📐 Estimated (whisper.cpp) |
+| embeddinggemma-300m | Embed | 0.3B | 600 MB | 2-3s | Batch | 📐 Estimated (LiteRT) |
+| FLUX.2-klein-4B | Diff | 4.0B | 8 GB | 10-15s | 2-5 it/s | 📐 Estimated (LiteRT) |
+
+### Bottleneck Analysis
+
+The dominant load-time factor is **WGPU shader compilation** (~10-15s), not disk
+I/O (NVMe reads 5.5GB in ~1.6s) or PCIe upload (2.75GB in ~0.5s). This means:
+- First load is slow regardless of model size
+- Keeping models warm (loaded) avoids re-compilation
+- Subsequent loads of the same model are fast (~0.5-2s)
+- The inference server (`roco-infer`) should keep a warm pool
+
+### Load-Anything Strategy
+
+1. **Auto-detect hardware**: GPU VRAM, CPU cores, RAM, SSD speed
+2. **Estimate fit**: does model fit in VRAM? RAM? What quant needed?
+3. **Pick best engine**: RWKV→web-rwkv, FFN→candle/LiteRT, S2T→whisper
+4. **Load + cache**: keep warm for reuse, LRU eviction when full
+5. **Route requests**: match task type to best loaded model
+
+### Models Available via litert-community (HF)
+
+| Category | Model | Size | Est. Load |
+|---|---|---|---|
+| 🎤 S2T | whisper-tiny | 75 MB | <1s |
+| 🔊 T2S | parakeet-tdt-0.6b | 1.2 GB | 2-3s |
+| 💬 LLM | SmolLM2-360M | 720 MB | 2-4s |
+| 💬 LLM | Qwen2.5-0.5B | 1 GB | 3-5s |
+| 💬 LLM | Qwen2.5-1.5B | 3 GB | 5-8s |
+| 💬 LLM | Phi-4-mini | 7.6 GB | 10-15s |
+| 👁 Vision | FastVLM-0.5B | 1 GB | 3-5s |
+| 📐 Embedding | embeddinggemma-300m | 600 MB | 2-3s |
+| 🤖 Function | functiongemma-270m | 540 MB | 2-3s |
+| 🎨 Diffusion | FLUX.2-klein-4B | 8 GB | 10-15s |
+
+**Total download**: ~25 GB across all categories
+
+### Current Status
+
+- [x] `InferenceEngine` trait + `BackendAdapter` for existing backends
+- [x] `InferenceRegistry` — engine lifecycle, routing, queries
+- [x] `HardwareCapabilities` — auto-detect GPU/CPU/RAM/SSD
+- [x] `PerformanceProfile` — theoretical estimates from architecture + literature
+- [x] `ModelEntry` + downloader — HF CLI integration for fetching models
+- [x] 10 suggested litert-community models covering all categories
+- [ ] Wire up candle backend for FFN transformers
+- [ ] Wire up LiteRT backend for community models
+- [ ] Wire up whisper.cpp for S2T
+- [ ] Download and test actual models to replace estimates with measured data
+- [ ] LRU eviction policy for warm model pool
+
+---
+
 ## Infrastructure Needs
 
 ### FFN / Transformer Inference Engine
