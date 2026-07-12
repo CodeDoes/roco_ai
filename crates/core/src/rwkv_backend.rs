@@ -193,35 +193,167 @@ fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
         .join(format!("{:016x}", hash))
 }
 
-/// Default quantization: Int8 for all layers.
+/// Auto-pick a quantization plan from the loaded model's shape + the GPU.
 ///
-/// The 2.9B RWKV model (5.5 GB FP16) does NOT fit in 4 GB VRAM unquantized.
-/// Int8 halves the size (~2.75 GB resident + 0.3 GB head = ~3 GB).
-/// NF4 requires cooperative matrix support (most GPUs lack this).
+/// Replaces the old hardcoded `(0..32, Int8)` constant. The model declares
+/// its own `num_layer` and `num_emb` via `Loader::info`, so we use those —
+/// not a guess. We estimate the **FP16 total** weight size (proportional to
+/// the param count ≈ 2·num_emb·num_vocab + (num_emb² + 2·num_emb·ffn_hidden)·num_layer)
+/// and decide:
 ///
-/// Override with `RWKV_QUANT`: "none", "nf4=N", or a number (Int8 N layers).
-fn default_quant() -> std::collections::HashMap<usize, Quant> {
-    (0..32).map(|l| (l, Quant::Int8)).collect()
+/// * **None** if FP16 total fits in `gpu_max_mb` with a safety margin
+///   (the 0.1B and 1.5B fit in 4 GB easily; the 2.9B doesn't).
+/// * **NF4** if FP16 doesn't fit AND `gpu_coop` (cooperative matrix) is
+///   available — NF4 is ~0.5× the FP16 size and faster mat-mul.
+/// * **Int8** otherwise — slower but universally supported.
+///
+/// `RWKV_QUANT` env var still overrides: "none", "nf4=N", "N" (Int8 N layers).
+fn auto_quant(info: &web_rwkv::runtime::model::ModelInfo, gpu_coop: bool, gpu_max_mb: u64) -> std::collections::HashMap<usize, Quant> {
+    let num_layer = info.num_layer as u64;
+    let num_emb = info.num_emb as u64;
+    let num_vocab = info.num_vocab as u64;
+    // Common RWKV convention: ffn_hidden = num_emb * 4 (or sometimes
+    // num_emb * 3.5 for gated). We use *4 as a conservative upper bound.
+    let ffn_hidden = num_emb * 4;
+
+    // Approximate model param count:
+    //   embed ≈ num_emb * num_vocab
+    //   per layer: num_emb * num_emb (QKV-like) + 2 * num_emb * ffn_hidden (gated FFN)
+    // For RWKV the Attention path uses some LoRA-like low-rank factors, so this
+    // is a slightly-high estimate; binding to params means we'll lean toward
+    // quantizing at the same weight thresholds the harness benchmarked.
+    let params = (num_emb * num_vocab) + num_layer * (num_emb * num_emb + 2 * num_emb * ffn_hidden);
+    let fp16_total_mb = (params * 2) / (1024 * 1024);
+
+    if fp16_total_mb < gpu_max_mb.saturating_sub(256) {
+        info!(
+            fp16_total_mb = fp16_total_mb,
+            gpu_max_mb = gpu_max_mb,
+            num_layer = num_layer,
+            num_emb = num_emb,
+            "FP16 weights fit in GPU VRAM (with margin) — no quantization"
+        );
+        return std::collections::HashMap::new();
+    }
+
+    // Otherwise quantize the body. Prefer NF4 (faster, smaller) when the
+    // GPU has the cooperative-matrix ops to accelerate it; otherwise Int8.
+    let q = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
+    let label = if gpu_coop { "NF4" } else { "Int8" };
+    let n_layers = info.num_layer;
+    info!(
+        fp16_total_mb = fp16_total_mb,
+        gpu_max_mb = gpu_max_mb,
+        gpu_coop = gpu_coop,
+        num_layer = num_layer,
+        "FP16 weights don't fit — auto-quantizing all layers as {label}"
+    );
+    (0..n_layers).map(|l| (l, q)).collect()
+}
+
+/// Resolve the default model path when `RWKV_MODEL` env var is unset.
+///
+/// Strategy:
+/// 1. If the user pinned a path with `RWKV_MODEL`, use it verbatim.
+/// 2. Otherwise scan `<cwd>/models/` (or `<cwd>/../models/` via the symlink)
+///    for any SafeTensors file matching `rwkv7-*` and pick the best one.
+/// 3. Prefer the `-converted.st` variant (3D shapes ready for web-rwkv v7)
+///    over raw `.st` (1D reshape needed).
+/// 4. If no `.st` is found, error and list candidates the user could fetch.
+///
+/// This way the backend works **for any rwkv7 size** — 0.1B / 1.5B / 2.9B / 13B —
+/// without code changes, as long as the matching SafeTensors file is present.
+fn default_model_path() -> anyhow::Result<PathBuf> {
+    let dir = std::env::current_dir().unwrap_or_default();
+
+    // Try the project's local models dir, then the parent models dir (the
+    // repo has a `models/` symlink). Skip if neither exists.
+    let mut search_dirs: Vec<PathBuf> = Vec::new();
+    for candidate in ["models", "../models"] {
+        let p = dir.join(candidate);
+        if p.is_dir() {
+            search_dirs.push(p);
+        }
+    }
+    if search_dirs.is_empty() {
+        anyhow::bail!(
+            "no models/ directory found (tried {dir:?}models and {dir:?}../models). \
+             Set $RWKV_MODEL explicitly or place a rwkv7 .st file in models/."
+        );
+    }
+
+    // Collect all rwkv7 .st files, scored:
+    //   -converted.st         = 100 (the proven harness format, 3D shapes)
+    //   -converted-*.st       =  90 (any converted variant)
+    //   raw .st with rwkv7 in name = 50 (1D shapes, will mismatch web-rwkv)
+    let mut best: Option<(i32, PathBuf)> = None;
+    for search_dir in &search_dirs {
+        let entries = match std::fs::read_dir(search_dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for e in entries.flatten() {
+            let path = e.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            if !name.starts_with("rwkv7") || !name.ends_with(".st") {
+                continue;
+            }
+            let score = if name.contains("-converted") {
+                if name.contains("-converted.") || name == "model.st" { 100 } else { 100 }
+            } else if name.ends_with("-converted.st") {
+                100
+            } else if name.contains("converted") {
+                90
+            } else if name.contains(".st") {
+                50
+            } else {
+                0
+            };
+            if score == 0 { continue; }
+            match &best {
+                Some((s, _)) if *s >= score => {}
+                _ => best = Some((score, path)),
+            }
+        }
+    }
+
+    match best {
+        Some((_score, path)) => Ok(path),
+        None => {
+            // No ST file yet — give a helpful error listing what we saw.
+            let mut listing = String::new();
+            for search_dir in &search_dirs {
+                if let Ok(entries) = std::fs::read_dir(search_dir) {
+                    for e in entries.flatten() {
+                        if let Some(name) = e.path().file_name().and_then(|n| n.to_str()) {
+                            listing.push_str(&format!("  {} ({})\n", e.path().display(),
+                                std::fs::metadata(e.path()).map(|m| format!("{}MB", m.len()/(1024*1024))).unwrap_or_default()));
+                        }
+                    }
+                }
+            }
+            anyhow::bail!(
+                "no rwkv7 .st file found in any of {:?}.\n\
+                 Models on disk:\n{listing}\n\
+                 Hint: convert a GGUF to SafeTensors first (scripts/convert_gguf_to_st.py), \
+                 or set $RWKV_MODEL explicitly.",
+                search_dirs
+            )
+        }
+    }
 }
 
 impl RwkvActor {
     async fn from_env() -> anyhow::Result<Self> {
-        // Default: prefer the converted model file (scripts/pth_to_st_converter/convert.py).
-        // Fallback: the raw .pth-converted .st file.
-        let model_path = env::var("RWKV_MODEL").unwrap_or_else(|_| {
-            let dir = std::env::current_dir().unwrap_or_default();
-            let candidates = [
-                "models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st",
-                "models/rwkv7-g1g-2.9b-20260526-ctx8192.st",
-            ];
-            for c in &candidates {
-                let p = dir.join(c);
-                if p.exists() {
-                    return p.to_string_lossy().to_string();
-                }
-            }
-            dir.join(candidates[0]).to_string_lossy().to_string()
-        });
+        // Resolve model path: explicit override (RWKV_MODEL) wins; otherwise
+        // auto-pick the best rwkv7 *.st file present on disk. See default_model_path.
+        let model_path: PathBuf = match env::var("RWKV_MODEL") {
+            Ok(p) => PathBuf::from(p),
+            Err(_) => default_model_path()?,
+        };
+        // The rest of the pipeline expects `String` (interpolation,
+        // tokio::fs::read_to_string, etc.). Convert once.
+        let model_path = model_path.to_string_lossy().to_string();
         let vocab_path = env::var("RWKV_VOCAB").unwrap_or_else(|_| {
             let dir = std::env::current_dir().unwrap_or_default();
             let candidates = [
@@ -366,8 +498,8 @@ impl RwkvActor {
         );
 
         // --- Quantization ---
-        // Default: Int8 for all 32 layers (model is 5.5 GB FP16, doesn't fit in 4 GB VRAM).
         // Override with RWKV_QUANT env var: "none", "nf4=N", or "N" (Int8 N layers).
+        // If unset, auto-pick from model shape + GPU capabilities (see auto_quant).
         let quant_spec_env = env::var("RWKV_QUANT").ok();
         let quant_layers: std::collections::HashMap<usize, Quant> = if let Some(ref qs) = quant_spec_env {
             if qs == "none" {
@@ -375,24 +507,28 @@ impl RwkvActor {
                 std::collections::HashMap::new()
             } else if let Some(n) = qs.strip_prefix("nf4=") {
                 let n = n.parse::<usize>().unwrap_or(0);
+                let n = n.min(info.num_layer);
                 if n > 0 && !gpu_coop {
                     warn!("NF4 quantization requested but GPU lacks cooperative matrix support — may hang or fail");
                 }
                 let layers = (0..n).map(|l| (l, Quant::NF4)).collect();
-                info!("quantization: NF4 {} layers (user override){}", n,
-                    if !gpu_coop { " — GPU may not support this" } else { "" });
+                info!(
+                    "quantization: NF4 {n} of {} layers (user override){}",
+                    info.num_layer,
+                    if !gpu_coop { " — GPU may not support this" } else { "" }
+                );
                 layers
             } else if let Ok(n) = qs.parse::<usize>() {
+                let n = n.min(info.num_layer);
                 let layers = (0..n).map(|l| (l, Quant::Int8)).collect();
-                info!("quantization: Int8 {} layers (user override)", n);
+                info!("quantization: Int8 {n} of {info_num} layers (user override)", info_num = info.num_layer);
                 layers
             } else {
-                warn!("unknown RWKV_QUANT='{}', using default Int8 32", qs);
-                default_quant()
+                warn!("unknown RWKV_QUANT='{qs}', falling back to auto-quant from model shape");
+                auto_quant(&info, gpu_coop, gpu_max_mb)
             }
         } else {
-            info!("quantization: Int8 32 layers (default)");
-            default_quant()
+            auto_quant(&info, gpu_coop, gpu_max_mb)
         };
 
         if quant_layers.is_empty() {
