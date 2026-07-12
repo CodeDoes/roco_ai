@@ -51,8 +51,27 @@ Built-in categories: smoke, instruction following, coherence,
 repetition, throughput, format, context. The example binary takes
 `--backend` and `--filter` flags.
 
-Saved an artifact at the end of a previous session in this repo's
-`.roco/evals/`.
+Per-each-call runtime artifacts land under `.roco/evals/<name>/result.json`
+(via `crates/core/src/eval.rs::run_eval`). At the time of writing only
+`.roco/evals/delegate/` is populated — anchor for a future where this
+fills up.
+
+### Grammar-constrained variant (in progress)
+
+`rococore::engine::CompletionRequest::grammar: Option<String>` is wired
+through end-to-end when the `grammar-rwkv` feature is enabled:
+- `crates/core/src/rwkv_backend.rs` compiles the GBNF via `schoolmarm`,
+  masks logits at every sample step, and advances the state through
+  `accept_token`.
+- `RWKV_GRAMMAR` env var is the fallback for scripts that don't want to
+  thread a grammar explicitly.
+- `crates/core/src/eval_suite.rs::EvalCase` carries a `grammar: Option<String>`
+  slot so future grammar-pinning eval cases can ship as data.
+
+What's still missing: a JSON-Schema → GBNF converter
+(so eval cases can pin a JSON Schema and have GBNF generated for them)
+plus a `grammar_eval_cases()` fixture. Tracked in AGENTS.md "Next
+things".
 
 ## Next things
 
@@ -68,7 +87,4 @@ strategy context that survives across multiple working sessions.
   `resource`) or carry them as future-proofing for a second engine?
   Decision can wait until we know whether we're going to pursue a
   non-rwkv7 FFN backend.
-- How do we expose a single GBNF-constrained eval fixture + report
-  cycle via `RWKV_GRAMMAR` so degradations to grammar-following
-  capacity are visible in daily eval runs?
 </content>
