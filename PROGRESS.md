@@ -87,4 +87,48 @@ strategy context that survives across multiple working sessions.
   `resource`) or carry them as future-proofing for a second engine?
   Decision can wait until we know whether we're going to pursue a
   non-rwkv7 FFN backend.
+
+## Run book (commands that currently work)
+
+Verified on the dev-kit on rtk 2026-07-13. Don't trust these against
+later commits without re-checking.
+
+```bash
+# Build everything
+cargo build --workspace --release
+
+# Run all tests (98 expected, 0 failures)
+cargo test --workspace --release
+
+# Spot-check GPU adapters + cooperative matrix availability
+cargo run -p roco-core --features local-rwkv --example gpu_check
+
+# Load the 2.9 B rwkv7 with stage-by-stage timeouts; deduplicated
+# by /tmp/roco-pipeline-cache/key.bin on subsequent runs
+cargo run -p roco-core --features local-rwkv --example rwkv_load_test --release
+
+# Smoke-test: ask the 2.9 B model "capital of France?"
+cargo run -p roco-core --features local-rwkv --example rwkv_test --release
+
+# Run the eval suite against the same backend (writes JSON report)
+cargo run -p roco-core --features local-rwkv --example eval_suite --release -- --backend rwkv
+
+# Grammar-constrained smoke: feed the model a GBNF and confirm it
+# never breaks the grammar (uses RWKV_GRAMMAR env var once a grammar
+# file exists)
+RWKV_GRAMMAR="$(cat path/to/grammar.gbnf)" \
+cargo run -p roco-core --features grammar-rwkv --example rwkv_test --release
+```
+
+### What's not yet working (and the failure mode)
+
+- Conversational eval under `crates/core/examples/eval_suite.rs`
+  finishes with `free(): invalid size` segfault at exit. Inference
+  result is correct; the segfault is in shutdown ordering of
+  wgpu-on-the-actor-thread vs. main thread.
+- `RWKV_PIPELINE_CACHE_DIR=/tmp/...` env override is *not* honored
+  yet — cache path is hard-coded.
+- Web frontend (`apps/web`) compiles; gateway (`crates/gateway`)
+  ships axum; neither has been exercised against the live rwkv
+  path in this checkout.
 </content>
