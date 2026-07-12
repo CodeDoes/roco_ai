@@ -193,22 +193,25 @@ fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
         .join(format!("{:016x}", hash))
 }
 
-/// Auto-pick a quantization plan from the loaded model's shape + the GPU.
+/// Auto-pick a quantization plan from the on-disk model size and GPU caps.
 ///
 /// Replaces the old hardcoded `(0..32, Int8)` constant. The model declares
-/// its own `num_layer` and `num_emb` via `Loader::info`, so we use those —
-/// not a guess. We estimate the **FP16 total** weight size (proportional to
-/// the param count ≈ 2·num_emb·num_vocab + (num_emb² + 2·num_emb·ffn_hidden)·num_layer)
-/// and decide:
+/// its own `num_layer` and `num_emb` via `Loader::info`; we don't pin a
+/// layer count anywhere.
 ///
-/// * **None** if FP16 total fits in `gpu_max_mb` with a safety margin
-///   (the 0.1B and 1.5B fit in 4 GB easily; the 2.9B doesn't).
-/// * **NF4** if FP16 doesn't fit AND `gpu_coop` (cooperative matrix) is
-///   available — NF4 is ~0.5× the FP16 size and faster mat-mul.
-/// * **Int8** otherwise — slower but universally supported.
+/// Policy:
+/// * **None** if FP16 file < 1.5 GB on disk — fits on any GPU
+///   (0.1B / 1.5B; ~ 200 MB / 1.34 GB).
+/// * **NF4** if file ≥ 1.5 GB AND GPU has cooperative-matrix ops (NVIDIA
+///   RTX 2050, AMD with coop support). NF4 is ~0.5× FP16 and faster matmul.
+/// * **Int8** otherwise — universal safety net.
 ///
 /// `RWKV_QUANT` env var still overrides: "none", "nf4=N", "N" (Int8 N layers).
-fn auto_quant(info: &web_rwkv::runtime::model::ModelInfo, gpu_coop: bool, gpu_max_mb: u64) -> std::collections::HashMap<usize, Quant> {
+///
+/// `model_path` is used to read the on-disk file size (ground truth — wgpu's
+/// `max_buffer_size` is unreliable: NVIDIA RTX 2050 reports 1 TB though it
+/// actually has 4 GB).
+fn auto_quant(info: &web_rwkv::runtime::model::ModelInfo, model_path: &str, gpu_coop: bool, _gpu_max_mb: u64) -> std::collections::HashMap<usize, Quant> {
     let num_layer = info.num_layer as u64;
     let num_emb = info.num_emb as u64;
     let num_vocab = info.num_vocab as u64;
@@ -225,28 +228,42 @@ fn auto_quant(info: &web_rwkv::runtime::model::ModelInfo, gpu_coop: bool, gpu_ma
     let params = (num_emb * num_vocab) + num_layer * (num_emb * num_emb + 2 * num_emb * ffn_hidden);
     let fp16_total_mb = (params * 2) / (1024 * 1024);
 
-    if fp16_total_mb < gpu_max_mb.saturating_sub(256) {
+    let on_disk_mb = std::fs::metadata(model_path)
+        .map(|m| m.len() / (1024 * 1024))
+        .unwrap_or(fp16_total_mb);
+
+    // Quantization policy for the rwkv7 family:
+    //
+    //   models < 1.5 GB on disk  → no quantization (model fits in any GPU)
+    //   models ≥ 1.5 GB on disk  → quantize (most consumer GPUs have ≤ 4 GB VRAM
+    //                               and wgpu's `max_buffer_size` is unreliable)
+    //
+    // We pick the quant type by GPU capability:
+    //   NF4 cooperative-matrix available  → NF4 (faster matmul, ~0.5× size)
+    //   otherwise                           → Int8 (universal safety net)
+    //
+    // `RWKV_QUANT` env var still overrides: "none", "nf4=N", "N" (Int8 N layers).
+    let quantize_threshold_mb = 1536;
+
+    if on_disk_mb < quantize_threshold_mb {
         info!(
-            fp16_total_mb = fp16_total_mb,
-            gpu_max_mb = gpu_max_mb,
+            on_disk_mb = on_disk_mb,
             num_layer = num_layer,
             num_emb = num_emb,
-            "FP16 weights fit in GPU VRAM (with margin) — no quantization"
+            "small model (FP16 file {on_disk_mb}MB < {quantize_threshold_mb}MB) — no quantization"
         );
         return std::collections::HashMap::new();
     }
 
-    // Otherwise quantize the body. Prefer NF4 (faster, smaller) when the
-    // GPU has the cooperative-matrix ops to accelerate it; otherwise Int8.
     let q = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
     let label = if gpu_coop { "NF4" } else { "Int8" };
     let n_layers = info.num_layer;
     info!(
-        fp16_total_mb = fp16_total_mb,
-        gpu_max_mb = gpu_max_mb,
+        on_disk_mb = on_disk_mb,
         gpu_coop = gpu_coop,
         num_layer = num_layer,
-        "FP16 weights don't fit — auto-quantizing all layers as {label}"
+        "large model (FP16 file {on_disk_mb}MB >= {quantize_threshold_mb}MB) — \
+         auto-quantizing all layers as {label} (wgpu VRAM reports are unreliable here)"
     );
     (0..n_layers).map(|l| (l, q)).collect()
 }
@@ -525,10 +542,10 @@ impl RwkvActor {
                 layers
             } else {
                 warn!("unknown RWKV_QUANT='{qs}', falling back to auto-quant from model shape");
-                auto_quant(&info, gpu_coop, gpu_max_mb)
+                auto_quant(&info, &model_path, gpu_coop, gpu_max_mb)
             }
         } else {
-            auto_quant(&info, gpu_coop, gpu_max_mb)
+            auto_quant(&info, &model_path, gpu_coop, gpu_max_mb)
         };
 
         if quant_layers.is_empty() {
