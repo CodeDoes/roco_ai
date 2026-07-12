@@ -14,6 +14,7 @@ pub mod config;
 pub mod engine;
 pub mod eval;
 pub mod eval_suite;
+pub mod inference;
 pub mod grammar;
 pub mod infer;
 pub mod logger;
