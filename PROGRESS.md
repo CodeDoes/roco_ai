@@ -71,6 +71,22 @@ thread is `Send`, so callers can be anywhere.
 If you ever write Rust that touches wgpu directly from outside this
 file, you're probably picking the wrong layer.
 
+### Decisions baked into the rwkv critical path
+
+Non-obvious choices that sit in the file and the next contributor
+would otherwise re-litigate:
+
+| Decision | Why |
+|---|---|
+| `std::fs::read`, not `memmap2` | Mmap crashed producer on the AMD iGPU; Vec is small by 2026 budgets and disk-cache makes re-reads effectively free. |
+| `LocalSet` + current-thread tokio on a dedicated OS thread | web-rwkv's async methods produce non-Send futures (they embed `wgpu::Device`). `mpsc::Sender` is Send across threads, so callers can be anywhere. |
+| State reset on every `complete()` | Independent evaluations need clean state. Cheaper than running a per-call session tracker on the actor. |
+| Grammar state is fresh per `complete()` (no caching) | `schoolmarm::GrammarState` isn't `Sync` and only meaningful for one turn. Trying to cache complicates the API without measurable benefit. |
+| Bytes -> UTF-8 PUA mapping (`U+E000..U+E07F`) | Schoolmarm expects UTF-8 strings for tokens; non-ASCII BPE bytes only round-trip through that PUA range. Matches what rwkv-harness' schoolmarm consumer does. |
+| NF4 / Int8 / no-quant policy driven by on-disk file size | wgpu's `max_buffer_size` over-reports (200x on RTX 2050); on-disk size is ground truth. |
+| Filter tokens with `logits[i] = NEG_INFINITY` and `sample_token` unchanged | Avoids a second sample implementation; `-inf` rank-orders below any real probability. |
+| Allow passthrough on `schoolmarm::accept_token` failure | BPE chunkings straddle literal boundaries; the right semantics is "didn't advance", not fatal. |
+
 ## What fits on this hardware
 
 Real-world measurements on the dev-kit (NVIDIA RTX 2050, 4 GB VRAM):
