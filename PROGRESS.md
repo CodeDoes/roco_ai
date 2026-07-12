@@ -127,6 +127,97 @@ RWKV models ship as `.pth` (PyTorch). We have `scripts/pth_to_st_converter/`. Ne
 
 ---
 
+## Agent Profiles (`agent_profile.rs`)
+
+An agent is not just a model — it's a **role + model + system prompt + few-shot
++ strategy + state** bundle. Different foundation models behave radically
+differently, so each needs its own strategy, not just a generic "agent".
+
+### Architecture
+
+```rust
+pub struct AgentProfile {
+    pub id: String,              // "orchestrator/smart", "coder/fast"
+    pub name: String,
+    pub role: AgentRole,         // Orchestrator | Worker | Verifier | Critic | Memory
+    pub model_ref: String,       // key into model registry
+    pub system_prompt: String,   // personality + instruction
+    pub few_shot_examples: Vec<FewShotExample>,
+    pub strategy: AgentStrategy, // FastIterative | StepByStep | StructuredOutput | CoT | Debate
+    pub capabilities: Vec<String>,  // "code", "creative", "reasoning"
+    pub weaknesses: Vec<String>,
+    pub state: AgentState,       // conversation, memory, tokens used
+}
+```
+
+### Key Insight: Different Models Need Different Strategies
+
+| Profile | Model | Strategy | Temperature | Best At |
+|---|---|---|---|---|
+| `storyteller/fast` | RWKV 2.9B | FastIterative | 0.6 | Creative prose, drafting |
+| `coder/fast` | Qwen-Coder 1.5B | StructuredOutput | 0.1 | Code generation |
+| `coder/review` | DeepSeek-Coder 6.7B | StepByStep | 0.1 | Code review, security |
+| `orchestrator/smart` | Llama-3 8B | ChainOfThought | 0.2 | Planning, decomposition |
+| `assistant/fast` | RWKV 2.9B | FastIterative | 0.4 | Chat, quick answers |
+| `meta/theorist` | RWKV 2.9B | Debate | 0.5 | Brainstorming, what-if |
+| `meta/critic` | Phi-3.5 | StepByStep | 0.2 | Logical critique |
+
+### Grouping & Routing
+
+Profiles are organized into **groups** with a routing strategy:
+
+```text
+writing group (FirstAvailable):
+  ├── storyteller/fast       ← uses this one
+
+coding group (EscalateOnFailure):
+  ├── coder/fast              ← try first (fast)
+  └── coder/review            ← escalate if code quality fails (thorough)
+
+meta group (Ensemble BestOfN):
+  ├── meta/theorist           ← proposes
+  └── meta/critic             ← critiques
+```
+
+### Fast Swap
+
+- Profiles reference a `model_ref` (string key). Change the ref to swap
+  foundation models without changing the prompt/strategy.
+- Backends are attached/detached independently via `AgentProfileRegistry::attach_backend()`
+  and `detach_backend()`.
+- The `roco-infer` server handles the actual VRAM/RAM management — profiles
+  just say which model they want.
+
+### On-Device Fine-Tuning & LoRA (Future)
+
+Each profile could eventually carry a **LoRA adapter** or **fine-tuned delta**
+that gets applied on top of the base model:
+
+```rust
+pub struct ProfileLoRA {
+    pub adapter_path: PathBuf,
+    pub target_modules: Vec<String>,  // "q_proj", "v_proj", etc.
+    pub scale: f32,
+}
+```
+
+This would allow per-task specialization without duplicating the full model.
+
+### Current Status
+
+- [x] `AgentProfile` with role, model_ref, system prompt, few-shot, strategy, state
+- [x] `AgentStrategy` variants: FastIterative, StepByStep, StructuredOutput, CoT, Debate, Escalate
+- [x] `AgentGroup` with routing: FirstAvailable, Ensemble, EscalateOnFailure, ByCapability, RoundRobin
+- [x] `AgentProfileRegistry` with profile lifecycle + backend attachment
+- [x] 7 built-in presets (storyteller, coder, reviewer, orchestrator, assistant, theorist, critic)
+- [x] JSON serialization for save/load from config files
+- [ ] Wire profiles into `Orchestrator` (use profile's strategy settings)
+- [ ] Wire profiles into `roco-infer` (profile → model → backend mapping)
+- [ ] Profile hot-reload from config changes
+- [ ] LoRA/fine-tune adapter support
+
+---
+
 ## Inference Server (`roco-infer`)
 
 A background daemon that manages model lifecycle, RAM/VRAM, and serves an OpenAI-compatible API.

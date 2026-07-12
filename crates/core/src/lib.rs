@@ -6,6 +6,7 @@
 //! the real engine directly.
 
 pub mod agent;
+pub mod agent_profile;
 pub mod audio;
 pub mod builtins;
 pub mod capacity;
