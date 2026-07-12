@@ -89,6 +89,52 @@ strategy context that survives across multiple working sessions.
   non-rwkv7 FFN backend. (`resource` and `infer` already removed
   since they had no callers.)
 
+## Things we tried that didn't work
+
+A log of dead-ends so we don't repeat the experiment. Written for the
+next contributor who shows up with the same instinct.
+
+### Debug-mode rwkv build hangs
+
+`build_v7()` hangs indefinitely in **debug** on most consumer GPUs
+(RTX 2050 / AMD RADV RENOIR confirmed). Cause is wgpu's
+debug-build validation layers + slow unoptimized shader compilation
+interacting with the GPU driver's Timeout Detection & Recovery. We
+print a warning at runtime offering `--release`, which is the only
+fix. `RWKV_ADAPTER=llvmpipe` is a usable debug fallback (extremely
+slow, ~0.5 tok/s on the 2.9B), but not a debugging experience.
+
+### 2.9B at FP16 OOMs the RTX 2050
+
+The model's FP16 file is 5.6 GB; the card has 4 GB VRAM. We initially
+trusted wgpu's `max_buffer_size` to drive the auto-quant heuristic.
+The RTX 2050 reports `1048576` (1 TB) — clearly wrong, but can't be
+overridden per-adapter. We now read **on-disk file size** as the
+source of truth: files ≥ 1.5 GB always quantize (NF4 with coop-matrix,
+Int8 otherwise). The 2.9B loads cleanly end-to-end after this change
+("capital of France?" → "Paris", ~20 tok/s).
+
+### GGUF → ST converter drops 3-D / matrix shapes
+
+`scripts/gguf_to_st_converter/convert.py` (vendored from rwkv-harness)
+converts the 0.1 B / 1.5 B model files into SafeTensors, but the
+resulting tensors carry 1-D vectors where web-rwkv expects 3-D
+`[1, 1, emb]` matrices for `a0 / k_a / k_k / v0 / w0 / x_*`, and flat
+`[emb]` where web-rwkv expects `(clock_count, head_dim)` for `r_k`.
+Inference blows up with
+`TensorError(Shape([emb,1,1,1]), Shape([1,emb,1,1]))`. Ad-lib can be
+cleanly fixed upstream with a `rwkv7.embedding_length` +
+`rwkv7.wkv.head_size` read from GGUF metadata, but it's a separate
+small change. The 2.9B `.st` shipped on disk *is* in the right layout —
+that's why the 2.9B path works end-to-end today.
+
+### mmap-based model load crashed producer on AMD iGPU
+
+`memmap2` Mmap of the 5 GB model file worked on NVIDIA but hung or
+segfaulted on the AMD RADV iGPU. Switched to `std::fs::read`. The
+8 MB loaded file is still small by 2026 standards and disk-resident
+caching makes subsequent reads effectively free.
+
 ## Run book (commands that currently work)
 
 Verified on the dev-kit on rtk 2026-07-13. Don't trust these against
