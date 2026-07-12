@@ -368,6 +368,7 @@ async fn completions(
         system: sys,
         prompt: req.prompt,
         output_schema: None,
+        grammar: None,
         temperature: req.temperature,
         max_tokens: req.max_tokens,
         estimated_prompt_tokens: 0,

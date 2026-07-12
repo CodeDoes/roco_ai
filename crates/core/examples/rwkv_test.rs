@@ -21,6 +21,7 @@ async fn main() -> anyhow::Result<()> {
         system: "You are a helpful assistant.".into(),
         prompt: "The capital of France is".into(),
         output_schema: None,
+        grammar: None,
         temperature: 0.5,
         max_tokens: 32,
         estimated_prompt_tokens: 8,

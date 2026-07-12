@@ -387,6 +387,7 @@ mod tests {
             system: "sys".into(),
             prompt: "hi".into(),
             output_schema: None,
+            grammar: None,
             temperature: 0.2,
             max_tokens: 512,
             estimated_prompt_tokens: 4,

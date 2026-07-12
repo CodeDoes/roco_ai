@@ -1082,14 +1082,19 @@ impl ModelBackend for RwkvBackend {
             let (reply_tx, reply_rx) = oneshot::channel();
             // Resolve the grammar *before* moving the request fields into
             // `CompleteReq` so we don't partially-borrow by accident.
+            //
+            // The grammar field is unconditional on `CompleteReq`; we
+            // populate `None` when the `grammar-rwkv` feature is off so
+            // the actor's `handle_complete` signature stays uniform.
             #[cfg(feature = "grammar-rwkv")]
             let grammar = resolve_grammar(&req);
+            #[cfg(not(feature = "grammar-rwkv"))]
+            let grammar: Option<String> = None;
             tx.send(CompleteReq {
                 system: req.system,
                 prompt: req.prompt,
                 max_tokens: req.max_tokens,
                 temperature: req.temperature,
-                #[cfg(feature = "grammar-rwkv")]
                 grammar,
                 reply: reply_tx,
             })
