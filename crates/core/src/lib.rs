@@ -19,6 +19,7 @@ pub mod grammar;
 pub mod infer;
 pub mod logger;
 pub mod memory;
+pub mod resource;
 pub mod policy;
 pub mod sandbox;
 pub mod toolcall;
