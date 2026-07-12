@@ -104,7 +104,6 @@ fn sample_token(probs: &[f32], temperature: f32, top_p: f32) -> u32 {
 // Type-erased state (reserved for future state persistence across turns)
 // ---------------------------------------------------------------------------
 
-#[allow(dead_code)]
 enum AnyState {
     V4(Box<dyn Any + Send>),
     V5(Box<dyn Any + Send>),
@@ -125,8 +124,8 @@ macro_rules! state_load {
     }};
 }
 
-#[allow(dead_code)]
 impl AnyState {
+    #[allow(dead_code)]
     async fn back(&self, batch: usize) -> Result<TensorCpu<f32>, TensorError> {
         match self {
             AnyState::V4(s) => state_back!(s, web_rwkv::runtime::v4::State, batch),
@@ -152,8 +151,10 @@ impl AnyState {
 struct RwkvActor {
     context: Context,
     runtime: TokioRuntime<Rnn>,
-    #[allow(dead_code)]
     state: AnyState,
+    /// Saved initial (blank) state tensor. Loaded before each `complete()` call
+    /// so no state leaks between independent inference requests.
+    initial_state: TensorCpu<f32>,
     tokenizer: Tokenizer,
     token_chunk_size: usize,
     /// Keep model bytes alive as long as the actor exists.
@@ -388,34 +389,38 @@ impl RwkvActor {
              If this hangs, rebuild with `--release`."
         );
 
-        let (runtime, state) = match version {
+        let (runtime, state, initial_state) = match version {
             ModelVersion::V4 => {
                 let m = builder.build_v4().await?;
                 let b = web_rwkv::runtime::v4::Bundle::<f16>::new(m, 1);
                 let s = b.state();
+                let init = s.init();
                 let r = TokioRuntime::new(b).await;
-                (r, AnyState::V4(Box::new(s)))
+                (r, AnyState::V4(Box::new(s)), init)
             }
             ModelVersion::V5 => {
                 let m = builder.build_v5().await?;
                 let b = web_rwkv::runtime::v5::Bundle::<f16>::new(m, 1);
                 let s = b.state();
+                let init = s.init();
                 let r = TokioRuntime::new(b).await;
-                (r, AnyState::V5(Box::new(s)))
+                (r, AnyState::V5(Box::new(s)), init)
             }
             ModelVersion::V6 => {
                 let m = builder.build_v6().await?;
                 let b = web_rwkv::runtime::v6::Bundle::<f16>::new(m, 1);
                 let s = b.state();
+                let init = s.init();
                 let r = TokioRuntime::new(b).await;
-                (r, AnyState::V6(Box::new(s)))
+                (r, AnyState::V6(Box::new(s)), init)
             }
             ModelVersion::V7 => {
                 let m = builder.build_v7().await?;
                 let b = v7::Bundle::<f16>::new(m, 1);
                 let s = b.state();
+                let init = s.init();
                 let r = TokioRuntime::new(b).await;
-                (r, AnyState::V7(Box::new(s)))
+                (r, AnyState::V7(Box::new(s)), init)
             }
         };
 
@@ -424,6 +429,7 @@ impl RwkvActor {
             context,
             runtime,
             state,
+            initial_state,
             tokenizer,
             token_chunk_size,
             _model_data: model_data,
@@ -437,7 +443,19 @@ impl RwkvActor {
         max_tokens: usize,
         temperature: f32,
     ) -> Result<(String, TokenUsage), EngineError> {
-        let full = format!("{system}\n\n{prompt}");
+        // Reset state to blank before each completion so independent requests
+        // don't leak context into each other.
+        self.state
+            .load(self.initial_state.clone(), 0)
+            .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
+
+        // RWKV-7 Chat models are trained on User:/Assistant: format.
+        // System prompt goes first, then User:, then the model completes as Assistant:.
+        let full = if system.is_empty() {
+            format!("User: {prompt}\n\nAssistant:")
+        } else {
+            format!("{system}\n\nUser: {prompt}\n\nAssistant:")
+        };
         let prompt_tokens = self
             .tokenizer
             .encode(full.as_bytes())

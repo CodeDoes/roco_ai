@@ -1,0 +1,467 @@
+{
+  "suite_name": "rwkv-2.9b-baseline",
+  "backend_name": "rwkv",
+  "total": 10,
+  "passed": 1,
+  "failed": 9,
+  "total_latency_ms": 8953,
+  "results": [
+    {
+      "name": "smoke_basic_reply",
+      "description": "Basic smoke test: model responds to a simple prompt",
+      "category": "smoke",
+      "passed": false,
+      "output": "",
+      "latency_ms": 668,
+      "token_usage": {
+        "prompt_tokens": 17,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 1 chars"
+        },
+        {
+          "name": "hint: hello",
+          "passed": false,
+          "detail": "expected 'hello' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "smoke_empty_system",
+      "description": "Smoke test with empty system prompt",
+      "category": "smoke",
+      "passed": false,
+      "output": "",
+      "latency_ms": 234,
+      "token_usage": {
+        "prompt_tokens": 8,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 1 chars"
+        },
+        {
+          "name": "hint: 42",
+          "passed": false,
+          "detail": "expected '42' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_format_constraint",
+      "description": "Model follows a strict output format instruction",
+      "category": "instruction",
+      "passed": false,
+      "output": ".",
+      "latency_ms": 731,
+      "token_usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 1
+      },
+      "tokens_per_sec": 1.3679890560875512,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "1 < 20 chars"
+        },
+        {
+          "name": "hint: colors",
+          "passed": false,
+          "detail": "expected 'colors' not found in output"
+        },
+        {
+          "name": "hint: [",
+          "passed": false,
+          "detail": "expected '[' not found in output"
+        },
+        {
+          "name": "hint: ]",
+          "passed": false,
+          "detail": "expected ']' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_step_by_step",
+      "description": "Model follows multi-step instruction",
+      "category": "instruction",
+      "passed": false,
+      "output": "",
+      "latency_ms": 398,
+      "token_usage": {
+        "prompt_tokens": 39,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 30 chars"
+        },
+        {
+          "name": "hint: Step 1",
+          "passed": false,
+          "detail": "expected 'Step 1' not found in output"
+        },
+        {
+          "name": "hint: Step 2",
+          "passed": false,
+          "detail": "expected 'Step 2' not found in output"
+        },
+        {
+          "name": "hint: All steps",
+          "passed": false,
+          "detail": "expected 'All steps' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_negative",
+      "description": "Model follows a negative instruction (what NOT to do)",
+      "category": "instruction",
+      "passed": false,
+      "output": "",
+      "latency_ms": 625,
+      "token_usage": {
+        "prompt_tokens": 24,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 30 chars"
+        },
+        {
+          "name": "hint: weather",
+          "passed": false,
+          "detail": "expected 'weather' not found in output"
+        },
+        {
+          "name": "forbidden: rain",
+          "passed": true,
+          "detail": "'rain' not found (good)"
+        },
+        {
+          "name": "forbidden: snow",
+          "passed": true,
+          "detail": "'snow' not found (good)"
+        },
+        {
+          "name": "forbidden: temperature",
+          "passed": true,
+          "detail": "'temperature' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_explain",
+      "description": "Model produces coherent explanation of a simple concept",
+      "category": "coherence",
+      "passed": false,
+      "output": "",
+      "latency_ms": 480,
+      "token_usage": {
+        "prompt_tokens": 18,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 50 chars"
+        },
+        {
+          "name": "hint: variable",
+          "passed": false,
+          "detail": "expected 'variable' not found in output"
+        },
+        {
+          "name": "hint: value",
+          "passed": false,
+          "detail": "expected 'value' not found in output"
+        },
+        {
+          "name": "hint: store",
+          "passed": false,
+          "detail": "expected 'store' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_story",
+      "description": "Model tells a short coherent story",
+      "category": "coherence",
+      "passed": false,
+      "output": "",
+      "latency_ms": 555,
+      "token_usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 40 chars"
+        },
+        {
+          "name": "hint: robot",
+          "passed": false,
+          "detail": "expected 'robot' not found in output"
+        },
+        {
+          "name": "hint: paint",
+          "passed": false,
+          "detail": "expected 'paint' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "repetition_avoidance",
+      "description": "Model avoids repeating the same phrase multiple times",
+      "category": "repetition",
+      "passed": true,
+      "output": "\nAssistant: <think>\nOkay, the user wants me to list five different animals, each on a new line. Let me think of some common ones. Maybe start with something like a dog, then a cat. Wait, but those are pretty common. Maybe include some less common ones to make it more interesting. Let's see... a wolf, a penguin, a giraffe, a koala, and a sloth. That should work. Let me check if they're",
+      "latency_ms": 3966,
+      "token_usage": {
+        "prompt_tokens": 19,
+        "completion_tokens": 100
+      },
+      "tokens_per_sec": 25.214321734745337,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 387 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "387 >= 20 chars"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 9"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "25.2 tok/s (100 tokens in 3966ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_json",
+      "description": "Model outputs valid JSON when asked",
+      "category": "format",
+      "passed": false,
+      "output": "",
+      "latency_ms": 743,
+      "token_usage": {
+        "prompt_tokens": 29,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 20 chars"
+        },
+        {
+          "name": "hint: \"name\"",
+          "passed": false,
+          "detail": "expected '\"name\"' not found in output"
+        },
+        {
+          "name": "hint: \"age\"",
+          "passed": false,
+          "detail": "expected '\"age\"' not found in output"
+        },
+        {
+          "name": "hint: \"city\"",
+          "passed": false,
+          "detail": "expected '\"city\"' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_list",
+      "description": "Model outputs a numbered list when asked",
+      "category": "format",
+      "passed": false,
+      "output": "",
+      "latency_ms": 547,
+      "token_usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 0
+      },
+      "tokens_per_sec": 0.0,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": false,
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 30 chars"
+        },
+        {
+          "name": "hint: 1.",
+          "passed": false,
+          "detail": "expected '1.' not found in output"
+        },
+        {
+          "name": "hint: 2.",
+          "passed": false,
+          "detail": "expected '2.' not found in output"
+        },
+        {
+          "name": "hint: 3.",
+          "passed": false,
+          "detail": "expected '3.' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 0"
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "category_breakdown": [
+    {
+      "category": "coherence",
+      "total": 2,
+      "passed": 0
+    },
+    {
+      "category": "format",
+      "total": 2,
+      "passed": 0
+    },
+    {
+      "category": "instruction",
+      "total": 3,
+      "passed": 0
+    },
+    {
+      "category": "repetition",
+      "total": 1,
+      "passed": 1
+    },
+    {
+      "category": "smoke",
+      "total": 2,
+      "passed": 0
+    }
+  ]
+}

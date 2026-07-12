@@ -1,0 +1,502 @@
+{
+  "suite_name": "rwkv-2.9b-v2",
+  "backend_name": "rwkv",
+  "total": 10,
+  "passed": 9,
+  "failed": 1,
+  "total_latency_ms": 23092,
+  "results": [
+    {
+      "name": "smoke_basic_reply",
+      "description": "Basic smoke test: model responds to a simple prompt",
+      "category": "smoke",
+      "passed": true,
+      "output": " Hello",
+      "latency_ms": 732,
+      "token_usage": {
+        "prompt_tokens": 23,
+        "completion_tokens": 1
+      },
+      "tokens_per_sec": 1.366120218579235,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 6 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "6 >= 1 chars"
+        },
+        {
+          "name": "hint: hello",
+          "passed": true,
+          "detail": "found 'hello' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "smoke_empty_system",
+      "description": "Smoke test with empty system prompt",
+      "category": "smoke",
+      "passed": true,
+      "output": " 42",
+      "latency_ms": 367,
+      "token_usage": {
+        "prompt_tokens": 12,
+        "completion_tokens": 1
+      },
+      "tokens_per_sec": 2.7247956403269753,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 3 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "3 >= 1 chars"
+        },
+        {
+          "name": "hint: 42",
+          "passed": true,
+          "detail": "found '42' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_format_constraint",
+      "description": "Model follows a strict output format instruction",
+      "category": "instruction",
+      "passed": true,
+      "output": " <think>\nOkay, the user wants me to list three colors in JSON format. Let me check the previous interaction. They asked for a list of three colors in JSON, and I provided {\"colors\": [\"red\", \"green\", \"blue\"]}. Now they're repeating the same request.\nI need to make sure the JSON is correctly formatted. The keys should be \"colors\" and the value is an array with three elements. The user might be testing if I can handle the same",
+      "latency_ms": 3791,
+      "token_usage": {
+        "prompt_tokens": 33,
+        "completion_tokens": 100
+      },
+      "tokens_per_sec": 26.37826431020839,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 427 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "427 >= 20 chars"
+        },
+        {
+          "name": "hint: colors",
+          "passed": true,
+          "detail": "found 'colors' in output"
+        },
+        {
+          "name": "hint: [",
+          "passed": true,
+          "detail": "found '[' in output"
+        },
+        {
+          "name": "hint: ]",
+          "passed": true,
+          "detail": "found ']' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 7"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "26.4 tok/s (100 tokens in 3791ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_step_by_step",
+      "description": "Model follows multi-step instruction",
+      "category": "instruction",
+      "passed": true,
+      "output": " Step 1 complete\nStep 2 complete\nAll steps done",
+      "latency_ms": 931,
+      "token_usage": {
+        "prompt_tokens": 45,
+        "completion_tokens": 11
+      },
+      "tokens_per_sec": 11.815252416756177,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 47 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "47 >= 30 chars"
+        },
+        {
+          "name": "hint: Step 1",
+          "passed": true,
+          "detail": "found 'Step 1' in output"
+        },
+        {
+          "name": "hint: Step 2",
+          "passed": true,
+          "detail": "found 'Step 2' in output"
+        },
+        {
+          "name": "hint: All steps",
+          "passed": true,
+          "detail": "found 'All steps' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "11.8 tok/s (11 tokens in 931ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_negative",
+      "description": "Model follows a negative instruction (what NOT to do)",
+      "category": "instruction",
+      "passed": true,
+      "output": " The current weather conditions are characterized by a moderate level of humidity, with a slight breeze present. The air feels fresh and invigorating, providing a pleasant atmosphere for outdoor activities. The sky is clear and blue, with a few wispy clouds scattered across the horizon. Overall, the weather is quite favorable, making it an ideal day for various outdoor pursuits.",
+      "latency_ms": 3345,
+      "token_usage": {
+        "prompt_tokens": 30,
+        "completion_tokens": 73
+      },
+      "tokens_per_sec": 21.82361733931241,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 381 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "381 >= 30 chars"
+        },
+        {
+          "name": "hint: weather",
+          "passed": true,
+          "detail": "found 'weather' in output"
+        },
+        {
+          "name": "forbidden: rain",
+          "passed": true,
+          "detail": "'rain' not found (good)"
+        },
+        {
+          "name": "forbidden: snow",
+          "passed": true,
+          "detail": "'snow' not found (good)"
+        },
+        {
+          "name": "forbidden: temperature",
+          "passed": true,
+          "detail": "'temperature' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "21.8 tok/s (73 tokens in 3345ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_explain",
+      "description": "Model produces coherent explanation of a simple concept",
+      "category": "coherence",
+      "passed": true,
+      "output": " In programming, a variable is a named storage location that holds a value. It is a fundamental concept that allows programmers to store and manipulate data within their programs. Variables are used to represent different types of data, such as numbers, strings, or objects. They can be assigned values using various methods, such as assignment statements or function calls. Variables can be used to store temporary or permanent data, and they can be accessed and modified throughout the program's execution. They are essential for organizing and managing data in a program, allowing for flexibility and reusability.",
+      "latency_ms": 4615,
+      "token_usage": {
+        "prompt_tokens": 24,
+        "completion_tokens": 113
+      },
+      "tokens_per_sec": 24.48537378114843,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 616 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "616 >= 50 chars"
+        },
+        {
+          "name": "hint: variable",
+          "passed": true,
+          "detail": "found 'variable' in output"
+        },
+        {
+          "name": "hint: value",
+          "passed": true,
+          "detail": "found 'value' in output"
+        },
+        {
+          "name": "hint: store",
+          "passed": true,
+          "detail": "found 'store' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "24.5 tok/s (113 tokens in 4615ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_story",
+      "description": "Model tells a short coherent story",
+      "category": "coherence",
+      "passed": true,
+      "output": " The robot, named ArtBot, was programmed to learn the art of painting. It started by mimicking human brushstrokes, but soon began to develop its own unique style. Its paintings became so lifelike that they were mistaken for human creations.",
+      "latency_ms": 2445,
+      "token_usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 50
+      },
+      "tokens_per_sec": 20.449897750511248,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 240 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "240 >= 40 chars"
+        },
+        {
+          "name": "hint: robot",
+          "passed": true,
+          "detail": "found 'robot' in output"
+        },
+        {
+          "name": "hint: paint",
+          "passed": true,
+          "detail": "found 'paint' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "20.4 tok/s (50 tokens in 2445ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "repetition_avoidance",
+      "description": "Model avoids repeating the same phrase multiple times",
+      "category": "repetition",
+      "passed": true,
+      "output": " 1. Elephant\n2. Giraffe\n3. Lion\n4. Dolphin\n5. Penguin",
+      "latency_ms": 1408,
+      "token_usage": {
+        "prompt_tokens": 25,
+        "completion_tokens": 22
+      },
+      "tokens_per_sec": 15.625,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 53 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "53 >= 20 chars"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "15.6 tok/s (22 tokens in 1408ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_json",
+      "description": "Model outputs valid JSON when asked",
+      "category": "format",
+      "passed": false,
+      "output": " <think>We are given a task to output a JSON object with keys: name, age, city.\n We are to use example values.\n Let's choose example values:\n   name: \"John Doe\"\n   age: 30\n   city: \"New York\"\n We must output the JSON object in a valid format.\n Note: The user said \"Output a JSON object with keys: name, age, city. Use example values.\"\n So we'll create a JSON object with",
+      "latency_ms": 3849,
+      "token_usage": {
+        "prompt_tokens": 35,
+        "completion_tokens": 100
+      },
+      "tokens_per_sec": 25.98077422707197,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 370 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "370 >= 20 chars"
+        },
+        {
+          "name": "hint: \"name\"",
+          "passed": false,
+          "detail": "expected '\"name\"' not found in output"
+        },
+        {
+          "name": "hint: \"age\"",
+          "passed": false,
+          "detail": "expected '\"age\"' not found in output"
+        },
+        {
+          "name": "hint: \"city\"",
+          "passed": false,
+          "detail": "expected '\"city\"' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "26.0 tok/s (100 tokens in 3849ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_list",
+      "description": "Model outputs a numbered list when asked",
+      "category": "format",
+      "passed": true,
+      "output": " 1. A blanket to sit on\n2. A cooler with drinks and snacks\n3. A basket or bag to carry everything",
+      "latency_ms": 1605,
+      "token_usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 26
+      },
+      "tokens_per_sec": 16.1993769470405,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 97 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "97 >= 30 chars"
+        },
+        {
+          "name": "hint: 1.",
+          "passed": true,
+          "detail": "found '1.' in output"
+        },
+        {
+          "name": "hint: 2.",
+          "passed": true,
+          "detail": "found '2.' in output"
+        },
+        {
+          "name": "hint: 3.",
+          "passed": true,
+          "detail": "found '3.' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "16.2 tok/s (26 tokens in 1605ms)"
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "category_breakdown": [
+    {
+      "category": "coherence",
+      "total": 2,
+      "passed": 2
+    },
+    {
+      "category": "format",
+      "total": 2,
+      "passed": 1
+    },
+    {
+      "category": "instruction",
+      "total": 3,
+      "passed": 3
+    },
+    {
+      "category": "repetition",
+      "total": 1,
+      "passed": 1
+    },
+    {
+      "category": "smoke",
+      "total": 2,
+      "passed": 2
+    }
+  ]
+}
