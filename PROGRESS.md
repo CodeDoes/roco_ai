@@ -98,7 +98,7 @@ later commits without re-checking.
 # Build everything
 cargo build --workspace --release
 
-# Run all tests (98 expected, 0 failures)
+# Run all tests (84 expected, 0 failures)
 cargo test --workspace --release
 
 # Spot-check GPU adapters + cooperative matrix availability
