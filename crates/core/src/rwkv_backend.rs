@@ -183,6 +183,16 @@ fn get_pipeline_cache_path(model_path: &str) -> std::path::PathBuf {
         .join(format!("{:016x}.bin", hash))
 }
 
+/// Get the directory for cached quantized Int8 weights.
+fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    model_path.hash(&mut hasher);
+    let hash = hasher.finish();
+    std::path::PathBuf::from("/tmp/roco-quant-cache")
+        .join(format!("{:016x}", hash))
+}
+
 /// Default quantization: Int8 for all layers.
 ///
 /// The 2.9B RWKV model (5.5 GB FP16) does NOT fit in 4 GB VRAM unquantized.
@@ -399,7 +409,14 @@ impl RwkvActor {
             info!("quantization: {} layers ({})", quant_layers.len(), label);
         }
 
-        let builder = ModelBuilder::new(&context, model).quant(quant_layers);
+        // Set up quant cache directory for faster subsequent loads.
+        // Pre-quantized Int8 weights will be saved here after first GPU quantize,
+        // then loaded directly on future runs (skipping GPU quantize entirely).
+        let quant_cache_dir = get_quant_cache_dir(&model_path);
+        std::fs::create_dir_all(&quant_cache_dir).ok();
+        let builder = ModelBuilder::new(&context, model)
+            .quant(quant_layers)
+            .quant_cache(quant_cache_dir);
 
         // --- Build the model (GPU weight upload) ---
         // ⚠ Debug builds: wgpu validation + unoptimized CPU code can cause GPU

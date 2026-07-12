@@ -1037,6 +1037,7 @@ fn dispatch_header<F: Float>(
 
 impl<R: Reader> ModelBuilder<R> {
     pub async fn build_v7(self) -> Result<Model, LoaderError> {
+        let quant_cache_dir = self.quant_cache_dir.clone();
         let ModelBuilder {
             context,
             model,
@@ -1055,6 +1056,7 @@ impl<R: Reader> ModelBuilder<R> {
             context: context.clone(),
             model,
             lora,
+            quant_cache_dir,
         };
 
         let embed = Embed {
@@ -1236,6 +1238,7 @@ pub async fn read_state<R: Reader>(
         context: context.clone(),
         model,
         lora: vec![],
+        quant_cache_dir: None,
     };
 
     let head_size = info.num_emb / info.num_head;

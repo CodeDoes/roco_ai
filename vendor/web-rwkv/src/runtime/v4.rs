@@ -842,6 +842,7 @@ impl<R: Reader> ModelBuilder<R> {
             context: context.clone(),
             model,
             lora,
+        quant_cache_dir: None,
         };
 
         let rescale = rescale.unwrap_or(Model::DEFAULT_RESCALE);

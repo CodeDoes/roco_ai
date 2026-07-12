@@ -1011,6 +1011,7 @@ impl<R: Reader> ModelBuilder<R> {
             context: context.clone(),
             model,
             lora,
+        quant_cache_dir: None,
         };
 
         let embed = Embed {
@@ -1182,6 +1183,7 @@ pub async fn read_state<R: Reader>(
         context: context.clone(),
         model,
         lora: vec![],
+        quant_cache_dir: None,
     };
 
     let head_size = info.num_emb / info.num_head;

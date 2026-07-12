@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf, fs};
 
 use half::f16;
 use itertools::Itertools;
@@ -202,6 +202,7 @@ pub struct Loader<R> {
     pub context: Context,
     pub model: R,
     pub lora: Vec<Lora<R>>,
+    pub quant_cache_dir: Option<PathBuf>,
 }
 
 impl<R: Reader> Loader<R> {
@@ -706,15 +707,85 @@ impl<R: Reader> Loader<R> {
         Ok(tensor)
     }
 
-    pub fn load_matrix(&self, name: String, quant: Quant) -> Result<Matrix, LoaderError> {
-        let context = &self.context;
+    /// Check the quant cache for a pre-quantized matrix.
+    /// `original_shape` must be the shape of the original FP16 tensor.
+    fn load_matrix_from_cache(&self, name: &str, quant: Quant, original_shape: Shape) -> Option<Matrix> {
+        use bytemuck::cast_slice;
+        let dir = self.quant_cache_dir.as_ref()?;
+        if !dir.exists() {
+            return None;
+        }
+        let safe = name.replace(['.', '/', '\\', ':'], "_");
+        let q_path = dir.join(format!("{safe}_q.bin"));
+        let m_path = dir.join(format!("{safe}_m.bin"));
+        let q_data = fs::read(&q_path).ok()?;
+        let m_bytes = fs::read(&m_path).ok()?;
+
         match quant {
-            Quant::None => Ok(Matrix::Fp16(self.load_matrix_f16(name)?)),
+            Quant::Int8 => {
+                // The quantized w has the SAME shape as the original FP16 tensor
+                // (same element count, but u8 instead of f16)
+                let w_shape = original_shape;
+                let m_len = m_bytes.len() / 2;
+                let m_shape = Shape::new(m_len, 1, 1, 1);
+                let m_f16: Vec<f16> = cast_slice(&m_bytes).to_vec();
+                let w = self.context.tensor_from_data(
+                    w_shape,
+                    Cow::Owned(q_data),
+                ).ok()?;
+                let m = self.context.tensor_from_data(
+                    m_shape,
+                    Cow::Owned(m_f16),
+                ).ok()?;
+                Some(Matrix::Int8 { w, m })
+            }
+            _ => None,
+        }
+    }
+
+    /// Save a quantized matrix to the cache for future loads.
+    fn save_matrix_to_cache(&self, name: &str, matrix: &Matrix) {
+        use bytemuck::cast_slice;
+        let dir = match self.quant_cache_dir {
+            Some(ref d) => d.clone(),
+            None => return,
+        };
+        let safe = name.replace(['.', '/', '\\', ':'], "_");
+        let _ = fs::create_dir_all(&dir);
+
+        match matrix {
+            Matrix::Int8 { w, m } => {
+                let w_cpu = w.back_in_place();
+                let m_cpu = m.back_in_place();
+                if w_cpu.data().len() > 0 && m_cpu.data().len() > 0 {
+                    let q_path = dir.join(format!("{safe}_q.bin"));
+                    let m_path = dir.join(format!("{safe}_m.bin"));
+                    let _ = fs::write(&q_path, cast_slice(&w_cpu.data()[..]));
+                    let _ = fs::write(&m_path, cast_slice(&m_cpu.data()[..]));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn load_matrix(&self, name: String, quant: Quant) -> Result<Matrix, LoaderError> {
+        let tensor_shape = self.tensor_shape(&name)?;
+
+        // Check cache first
+        if let Some(cached) = self.load_matrix_from_cache(&name, quant, tensor_shape) {
+            return Ok(cached);
+        }
+
+        let context = &self.context;
+        let result = match quant {
+            Quant::None => Ok(Matrix::Fp16(self.load_matrix_f16(name.clone())?)),
             Quant::Int8 => {
                 let shape = self.tensor_shape(&name)?;
                 let buffer = context.tensor_init(shape);
                 self.load_in_place_matrix_f16(&buffer, &name)?;
-                Ok(Matrix::quant_u8(&buffer)?)
+                let matrix = Matrix::quant_u8(&buffer)?;
+                self.save_matrix_to_cache(&name, &matrix);
+                Ok(matrix)
             }
             Quant::NF4 => {
                 let shape = self.tensor_shape(&name)?;
@@ -728,7 +799,8 @@ impl<R: Reader> Loader<R> {
                 self.load_in_place_matrix_f16(&buffer, &name)?;
                 Ok(Matrix::quant_sf4(&buffer, 5.0)?)
             }
-        }
+        };
+        result
     }
 
     pub fn load_matrix_discount(
@@ -737,27 +809,41 @@ impl<R: Reader> Loader<R> {
         quant: Quant,
         discount: f32,
     ) -> Result<Matrix, LoaderError> {
+        let tensor_shape = self.tensor_shape(&name)?;
+
+        // Check cache first
+        if let Some(cached) = self.load_matrix_from_cache(&name, quant, tensor_shape) {
+            return Ok(cached);
+        }
+
         let context = &self.context;
-        match quant {
-            Quant::None => Ok(Matrix::Fp16(self.load_matrix_f16_discount(name, discount)?)),
+        let result = match quant {
+            Quant::None => Ok(Matrix::Fp16(self.load_matrix_f16_discount(name.clone(), discount)?)),
             Quant::Int8 => {
                 let shape = self.tensor_shape(&name)?;
                 let buffer = context.tensor_init(shape);
                 self.load_in_place_matrix_f16_discount(&buffer, &name, discount)?;
-                Ok(Matrix::quant_u8(&buffer)?)
+                let matrix = Matrix::quant_u8(&buffer)?;
+                self.save_matrix_to_cache(&name, &matrix);
+                Ok(matrix)
             }
             Quant::NF4 => {
                 let shape = self.tensor_shape(&name)?;
                 let buffer = context.tensor_init(shape);
                 self.load_in_place_matrix_f16_discount(&buffer, &name, discount)?;
-                Ok(Matrix::quant_nf4(&buffer)?)
+                let matrix = Matrix::quant_nf4(&buffer)?;
+                self.save_matrix_to_cache(&name, &matrix);
+                Ok(matrix)
             }
             Quant::SF4 => {
                 let shape = self.tensor_shape(&name)?;
                 let buffer = context.tensor_init(shape);
                 self.load_in_place_matrix_f16_discount(&buffer, &name, discount)?;
-                Ok(Matrix::quant_sf4(&buffer, 5.0)?)
+                let matrix = Matrix::quant_sf4(&buffer, 5.0)?;
+                self.save_matrix_to_cache(&name, &matrix);
+                Ok(matrix)
             }
-        }
+        };
+        result
     }
 }

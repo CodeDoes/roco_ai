@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap};
+use std::{any::Any, collections::HashMap, path::PathBuf};
 
 #[cfg(not(target_arch = "wasm32"))]
 use futures::future::BoxFuture;
@@ -141,6 +141,8 @@ pub struct ModelBuilder<R: Reader> {
     pub sep: Option<usize>,
     pub lora: Vec<Lora<R>>,
     pub quant: HashMap<usize, Quant>,
+    /// Directory to cache quantized weights for faster subsequent loads.
+    pub quant_cache_dir: Option<PathBuf>,
 }
 
 impl<R: Reader> ModelBuilder<R> {
@@ -152,7 +154,14 @@ impl<R: Reader> ModelBuilder<R> {
             sep: None,
             lora: vec![],
             quant: Default::default(),
+            quant_cache_dir: None,
         }
+    }
+
+    /// Enable disk caching of quantized weights for faster subsequent loads.
+    pub fn quant_cache(mut self, dir: PathBuf) -> Self {
+        self.quant_cache_dir = Some(dir);
+        self
     }
 
     /// Half the layer and activation every `value` layers.
