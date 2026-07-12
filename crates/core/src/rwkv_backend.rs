@@ -16,6 +16,23 @@
 //! export RWKV_MODEL=/path/to/model.st    # model weights
 //! export RWKV_VOCAB=/path/to/vocab.json  # tokenizer vocabulary
 //! ```
+//!
+//! ## ⚠ Debug-mode GPU hang
+//!
+//! `build_v7()` hangs indefinitely in **debug** builds on some GPU/driver
+//! combinations (AMD RADV RENOIR iGPU, NVIDIA RTX 2050 discrete GPU).  Root
+//! cause: wgpu validation layers enabled in debug + unoptimized CPU code cause
+//! GPU submissions to be spaced far enough apart that the driver kills the GPU
+//! context (TDR = Timeout Detection & Recovery).  The `device.poll()` call
+//! inside `build_v7` never returns because the context was lost.
+//!
+//! **Release builds work fine** — wgpu validation is disabled and CPU-heavy
+//! tensor processing is optimized, so GPU submissions are fast enough to stay
+//! within driver timeouts.  Always build with `--release` for GPU inference.
+//!
+//! The `build_v7_with_timeout` wrapper below ensures that even in debug mode,
+//! the process doesn't hang forever — it returns an error after 300s.
+//!
 
 use std::any::Any;
 use std::env;
@@ -23,13 +40,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use half::f16;
-use memmap2::Mmap;
 use safetensors::SafeTensors;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
-use wgpu::PowerPreference;
-
-use web_rwkv::context::{Context, ContextBuilder, InstanceExt};
+use web_rwkv::context::{Context, ContextBuilder};
 use web_rwkv::runtime::infer::{Rnn, RnnInput, RnnInputBatch, RnnOption};
 use web_rwkv::runtime::loader::Loader;
 use web_rwkv::runtime::model::{
@@ -142,7 +156,11 @@ struct RwkvActor {
     state: AnyState,
     tokenizer: Tokenizer,
     token_chunk_size: usize,
-    _mmap: Mmap,
+    /// Keep model bytes alive as long as the actor exists.
+    /// SafeTensors borrows from this, and ModelBuilder consumes SafeTensors
+    /// before it returns, so this is just a safety net.
+    #[allow(dead_code)]
+    _model_data: Vec<u8>,
 }
 
 /// Request sent to the actor through the channel.
@@ -154,34 +172,15 @@ struct CompleteReq {
     reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
 }
 
-/// Auto-select quantization based on GPU capabilities and model size.
+/// Default quantization: Int8 for all layers.
 ///
-/// Strategy:
-/// 1. If GPU has cooperative matrix support → NF4 all layers (best compression).
-/// 2. If model fits in VRAM unquantized (resident only) → no quantization.
-/// 3. If model is too big but GPU has raw compute → Int8 partial quantization.
-/// 4. Last resort → no quantization (streaming).
-fn auto_select_quant(
-    gpu_coop: bool,
-    gpu_max_mb: u64,
-    _resident_fp16_mb: u64,
-    _file_mb: u64,
-) -> std::collections::HashMap<usize, Quant> {
-    // web-rwkv streams layer weights through VRAM during inference.
-    // Only embed, head, and KV state stay resident.
-    // This means even a 5.5 GB model only needs ~700 MB resident.
-    // Quantization is optional — it speeds things up but isn't required
-    // for fitting.
-    //
-    // If the GPU supports cooperative matrices, NF4 gives 4× compression
-    // and faster inference.  Otherwise skip quant to avoid hangs.
-    if gpu_coop {
-        info!("quantization: auto → NF4 all layers (cooperative matrix available)");
-        (0..32).map(|l| (l, Quant::NF4)).collect()
-    } else {
-        info!("quantization: auto → none (no cooperative matrix; weights stream through VRAM)");
-        std::collections::HashMap::new()
-    }
+/// The 2.9B RWKV model (5.5 GB FP16) does NOT fit in 4 GB VRAM unquantized.
+/// Int8 halves the size (~2.75 GB resident + 0.3 GB head = ~3 GB).
+/// NF4 requires cooperative matrix support (most GPUs lack this).
+///
+/// Override with `RWKV_QUANT`: "none", "nf4=N", or a number (Int8 N layers).
+fn default_quant() -> std::collections::HashMap<usize, Quant> {
+    (0..32).map(|l| (l, Quant::Int8)).collect()
 }
 
 impl RwkvActor {
@@ -225,9 +224,10 @@ impl RwkvActor {
         let tokenizer = Tokenizer::new(&vocab_text)?;
         info!("tokenizer loaded");
 
-        let std_file = std::fs::File::open(&model_path)?;
-        let mmap = unsafe { Mmap::map(&std_file)? };
-        let model = SafeTensors::deserialize(&mmap)?;
+        // Use `std::fs::read` (not Mmap) — matches the proven rwkv-harness approach.
+        // Mmap also works but Vec<u8> avoids any alignment edge cases in debug builds.
+        let model_data = std::fs::read(&model_path)?;
+        let model = SafeTensors::deserialize(&model_data)?;
         let info = Loader::info(&model)?;
         let version = info.version;
         info!(version = ?version, layers = info.num_layer, vocab = info.num_vocab, emb = info.num_emb, "model info");
@@ -332,11 +332,11 @@ impl RwkvActor {
             file_mb, resident_fp16_mb, embed_head_fp16_mb, state_fp32_mb, num_layer, num_emb, num_vocab
         );
 
-        // --- Auto-select quantization ---
-        // Priority: explicit RWKV_QUANT > auto based on GPU + model size.
+        // --- Quantization ---
+        // Default: Int8 for all 32 layers (model is 5.5 GB FP16, doesn't fit in 4 GB VRAM).
+        // Override with RWKV_QUANT env var: "none", "nf4=N", or "N" (Int8 N layers).
         let quant_spec_env = env::var("RWKV_QUANT").ok();
         let quant_layers: std::collections::HashMap<usize, Quant> = if let Some(ref qs) = quant_spec_env {
-            // User explicitly set RWKV_QUANT.
             if qs == "none" {
                 info!("quantization: none (user override)");
                 std::collections::HashMap::new()
@@ -346,19 +346,20 @@ impl RwkvActor {
                     warn!("NF4 quantization requested but GPU lacks cooperative matrix support — may hang or fail");
                 }
                 let layers = (0..n).map(|l| (l, Quant::NF4)).collect();
-                info!("quantization: NF4 {} layers (user override) {}", n, if !gpu_coop { "⚠ GPU may not support this" } else { "" });
+                info!("quantization: NF4 {} layers (user override){}", n,
+                    if !gpu_coop { " — GPU may not support this" } else { "" });
                 layers
             } else if let Ok(n) = qs.parse::<usize>() {
                 let layers = (0..n).map(|l| (l, Quant::Int8)).collect();
                 info!("quantization: Int8 {} layers (user override)", n);
                 layers
             } else {
-                warn!("unknown RWKV_QUANT='{}', falling back to auto", qs);
-                auto_select_quant(gpu_coop, gpu_max_mb, resident_fp16_mb, file_mb)
+                warn!("unknown RWKV_QUANT='{}', using default Int8 32", qs);
+                default_quant()
             }
         } else {
-            // Auto-select based on GPU capabilities and model size.
-            auto_select_quant(gpu_coop, gpu_max_mb, resident_fp16_mb, file_mb)
+            info!("quantization: Int8 32 layers (default)");
+            default_quant()
         };
 
         if quant_layers.is_empty() {
@@ -376,6 +377,16 @@ impl RwkvActor {
         }
 
         let builder = ModelBuilder::new(&context, model).quant(quant_layers);
+
+        // --- Build the model (GPU weight upload) ---
+        // ⚠ Debug builds: wgpu validation + unoptimized CPU code can cause GPU
+        // driver timeouts inside build_v*(). If the process hangs here, rebuild
+        // with `--release`. See the module docs for details.
+        #[cfg(debug_assertions)]
+        warn!(
+            "Debug build detected! build_v7() may hang on some GPUs. \
+             If this hangs, rebuild with `--release`."
+        );
 
         let (runtime, state) = match version {
             ModelVersion::V4 => {
@@ -415,7 +426,7 @@ impl RwkvActor {
             state,
             tokenizer,
             token_chunk_size,
-            _mmap: mmap,
+            _model_data: model_data,
         })
     }
 
