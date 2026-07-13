@@ -78,7 +78,7 @@ would otherwise re-litigate:
 
 | Decision | Why |
 |---|---|
-| `std::fs::read`, not `memmap2` | Mmap crashed producer on the AMD iGPU; Vec is small by 2026 budgets and disk-cache makes re-reads effectively free. |
+| `std::fs::read`, not `memmap2` | Mmap crashed producer on the AMD iGPU. The 5.5 GB FP16 read is hot-path but cached by the kernel page cache, so a second launch from RAM hits the same wall-clock budget as Mmap would. |
 | `LocalSet` + current-thread tokio on a dedicated OS thread | web-rwkv's async methods produce non-Send futures (they embed `wgpu::Device`). `mpsc::Sender` is Send across threads, so callers can be anywhere. |
 | State reset on every `complete()` | Independent evaluations need clean state. Cheaper than running a per-call session tracker on the actor. |
 | Grammar state is fresh per `complete()` (no caching) | `schoolmarm::GrammarState` isn't `Sync` and only meaningful for one turn. Trying to cache complicates the API without measurable benefit. |
