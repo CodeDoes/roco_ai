@@ -206,18 +206,12 @@ Top three currently (from AGENTS.md, verbatim):
 
 ## Open questions / unresolved
 
-- The cleanup-time `free(): invalid size` segfault at process exit is
-  documented under "Things we tried that didn't work" below. Doesn't
-  affect inference — output is correct before the segfault fires.
-- `RWKV_PIPELINE_CACHE_DIR` and `RWKV_QUANT_CACHE_DIR` env overrides
-  are now honored (overridable fallbacks to `/tmp/roco-pipeline-cache`
-  and `/tmp/roco-quant-cache`); we used to have to `rm -rf` those
-  paths by hand to redirect caching elsewhere.
-- Should we delete the remaining low-traffic scaffolding module
-  (`audio`) or carry it as future-proofing for a second engine?
-  Decision can wait until we know whether we're going to pursue a
-  non-rwkv7 FFN backend. (`resource` and `infer` already removed
-  since they had no callers.)
+Just one and it's already in the Next-things list:
+
+- Keep `crates/core/src/audio.rs` (test-only, single consumer) as
+  future-proofing, or remove it once we've decided we're not
+  pursuing a non-rwkv7 FFN backend. (`resource` and `infer` already
+  removed since they had no callers.)
 
 ## Things we tried that didn't work
 
