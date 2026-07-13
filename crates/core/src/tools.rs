@@ -44,7 +44,7 @@ pub trait Tool: Send + Sync {
 }
 
 /// Registry of available tools, keyed by name.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ToolRegistry {
     tools: BTreeMap<String, Arc<dyn Tool>>,
 }
@@ -210,6 +210,63 @@ impl Tool for AddTool {
     }
 }
 
+/// Lists all registered tools with their names, descriptions, and
+/// input-schema summaries.  The model can call this to discover what
+/// tools are available at runtime.
+pub struct ListToolsTool {
+    /// Reference to the registry so this tool can enumerate the others.
+    registry: ToolRegistry,
+}
+
+impl ListToolsTool {
+    pub fn new(registry: ToolRegistry) -> Self {
+        Self { registry }
+    }
+}
+
+#[async_trait]
+impl Tool for ListToolsTool {
+    fn name(&self) -> &str {
+        "list_tools"
+    }
+    fn description(&self) -> &str {
+        "List all available tools with their names, descriptions, and input schemas."
+    }
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "verbose": {
+                    "type": "boolean",
+                    "description": "If true, include full input schemas"
+                }
+            }
+        })
+    }
+    async fn run(&self, _input: Value) -> Result<Value, ToolError> {
+        let verbose = _input.get("verbose").and_then(|v| v.as_bool()).unwrap_or(false);
+        let tools: Vec<Value> = self.registry
+            .all_tools()
+            .iter()
+            .map(|t| {
+                if verbose {
+                    serde_json::json!({
+                        "name": t.name(),
+                        "description": t.description(),
+                        "input_schema": t.input_schema(),
+                    })
+                } else {
+                    serde_json::json!({
+                        "name": t.name(),
+                        "description": t.description(),
+                    })
+                }
+            })
+            .collect();
+        Ok(serde_json::json!({"tools": tools}))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +275,17 @@ mod tests {
         let mut r = ToolRegistry::new();
         r.register(Arc::new(EchoTool));
         r.register(Arc::new(AddTool));
+        r
+    }
+
+    fn sample_registry_with_list() -> ToolRegistry {
+        let mut r = ToolRegistry::new();
+        r.register(Arc::new(EchoTool));
+        r.register(Arc::new(AddTool));
+        // Clone the registry first (without list_tools), so ListToolsTool
+        // can enumerate all tools including itself.
+        let reg_for_list = r.clone();
+        r.register(Arc::new(ListToolsTool::new(reg_for_list)));
         r
     }
 
@@ -252,6 +320,49 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out["sum"], 6.5);
+    }
+
+    #[tokio::test]
+    async fn list_tools_tool_lists_all_tools() {
+        let r = sample_registry_with_list();
+        let out = r
+            .dispatch("list_tools", serde_json::json!({}))
+            .await
+            .unwrap();
+        let tools = out["tools"].as_array().expect("tools should be an array");
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        assert!(names.contains(&"echo"), "should include echo: {names:?}");
+        assert!(
+            names.contains(&"add"),
+            "should include add: {names:?}"
+        );
+        // list_tools captures the registry at construction time (before it's
+        // registered), so it does *not* appear in its own output.
+        // Non-verbose: descriptions present, no input_schema.
+        for t in tools.iter() {
+            assert!(
+                t["description"].as_str().is_some(),
+                "tool should have description: {t}"
+            );
+            assert!(
+                t.get("input_schema").is_none(),
+                "non-verbose should omit schema: {t}"
+            );
+        }
+
+        // Verbose mode includes input_schema.
+        let out_v = r
+            .dispatch("list_tools", serde_json::json!({"verbose": true}))
+            .await
+            .unwrap();
+        let tools_v = out_v["tools"].as_array().unwrap();
+        assert!(
+            tools_v[0].get("input_schema").is_some(),
+            "verbose should include schema"
+        );
     }
 
     #[tokio::test]
