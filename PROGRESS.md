@@ -130,6 +130,17 @@ this commit tree and produced the output we cite above.
 The Run book below is the executable ground truth for re-running any
 of these.
 
+### Verification notes
+
+When the grammar_smoke default (`root ::= "yes" | "no"`) lands in
+the invalid walker state at temperature 1.0, that's typically a
+prompt+grammar mismatch — the model's preferred first tokens don't
+line up with `"yes" | "no"`. Better prompts (binary options the
+model has been seen in training) + a no_leading_space variant
+grammar (eg `root ::= " answer" | " is") tend to produce
+visible constrained output. The example is shipping as a binding
+test, not as a happy-path demo.
+
 ## Eval framework (`eval_suite.rs`)
 
 `crates/core/src/eval_suite.rs` + `crates/core/examples/eval_suite.rs`.
