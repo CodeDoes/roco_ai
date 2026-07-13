@@ -1,9 +1,9 @@
 //! RoCo AI — core library.
 //!
-//! The orchestration layer (stateful RNN/RWKV/SSM agentic behavior) lives here
-//! as a library so other crates — e.g. `roco-session`, `roco-cli`, the
-//! `roco-gui` Dioxus visualizer, or a napi-rs addon — can depend on it and run
-//! the real engine directly.
+//! The local-RWKV inference engine (RWKV-7 via `web-rwkv` + WGPU) lives here,
+//! along with the eval harness and grammar-constrained decoding plumbing.
+//! The only active path is `rwkv_backend.rs`; see `crates/core/examples`
+//! for the runnable entry points (`eval_suite`, `rwkv_test`, `grammar_smoke`).
 
 pub mod agent;
 pub mod agent_profile;

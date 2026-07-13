@@ -1,5 +1,5 @@
 {
-  description = "RoCo AI — Rust agent framework with Dioxus GUI";
+  description = "RoCo AI — local RWKV inference (Rust + WGPU)";
 
   inputs = {
     nixpkgs.url = "nixpkgs";

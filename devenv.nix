@@ -101,7 +101,7 @@
     export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig"
 
     # sccache: cache compiled Rust crate artifacts across builds so repeated
-    # `cargo build`/`cargo check` (and the heavy first Dioxus compile) are fast.
+    # `cargo build`/`cargo check` are fast (sccache warms across builds).
     # This is what actually addresses slow cargo builds — cachix does not.
     export RUSTC_WRAPPER=sccache
     export SCCACHE_DIR="/home/kit/.cache/sccache"
