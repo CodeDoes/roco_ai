@@ -11,6 +11,11 @@
 //! quantifiers (`*`, `+`, `?`) are inline as in llama.cpp's GBNF
 //! dialect.
 //!
+//! For tool-call GBNF (`<tool_call> { "name": …, "arguments": … } </tool_call>`)
+//! see [`crate::grammar`]; that's a separate generator for tool-call
+//! envelopes, and they don't share an output. This module is for
+//! JSON-Schema-constrained natural output.
+//!
 //! Errors are bar-shaped: [`GbnfError::BadSchema`] for shapes we
 //! can't comfortably express, [`GbnfError::Other`] as a passthrough
 //! so callers don't have to enumerate.
