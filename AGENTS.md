@@ -64,7 +64,7 @@ The `crates/core/src/` tree holds everything in one flat directory:
 `goals/` is the product roadmap, organized as numbered layers that mirror the
 build order from the local RWKV-7 engine up to a full agent:
 
-- `1_infer/` — inference engine (model, quant, state, decoding)
+- `1_infer/` — inference engine (model, quant, state, decoding, structured output)
 - `2_message/` — chat protocol (instructions, formatting, tool calls)
 - `3_workspace/` — the environment the agent acts in
 - `4_agent/` — the autonomous agent loop and its capabilities
