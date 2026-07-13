@@ -146,9 +146,10 @@ async fn main() {
 
     // Print human-readable summary
     eval_suite::print_report(&report);
-    println!("Report written to: {}", args.output.display());
+    println!("Report written to:  {}", args.output.display());
     if let Some(ref trace_path) = trace_path {
-        println!("Trace written to:  {}", trace_path.display());
+        println!("Trace written to:   {}", trace_path.display());
+        eval_suite::write_sidecars(&report, trace_path);
     }
 
     // Exit with code if any evals failed

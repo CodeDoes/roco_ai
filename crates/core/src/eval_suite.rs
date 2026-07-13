@@ -125,6 +125,9 @@ pub struct EvalResult {
     pub tokens_per_sec: f64,
     pub checks: Vec<CheckResult>,
     pub errors: Vec<String>,
+    /// Oracle text this eval's output was compared against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oracle: Option<String>,
 }
 
 /// Full report from running a suite of evals.
@@ -392,6 +395,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 tokens_per_sec,
                 checks,
                 errors,
+                oracle: case.oracle.clone(),
             }
         }
         Err(e) => {
@@ -409,6 +413,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 tokens_per_sec: 0.0,
                 checks,
                 errors,
+                oracle: case.oracle.clone(),
             }
         }
     }
@@ -468,6 +473,63 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
         results,
         category_breakdown,
     }
+}
+
+/// Write sidecar files alongside a trace: mismatches and oracle JSON.
+pub fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) {
+    // Derive sidecar paths from the trace path.
+    // e.g. latest_trace.txt → latest.mismatches.txt, latest.oracle.json
+    let parent = trace_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let stem = trace_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("latest")
+        .strip_suffix("_trace")
+        .unwrap_or("latest");
+
+    let mismatches_path = parent.join(format!("{stem}.mismatches.txt"));
+    let oracle_path = parent.join(format!("{stem}.oracle.json"));
+
+    // Mismatches file
+    let mismatches: Vec<&EvalResult> = report
+        .results
+        .iter()
+        .filter(|r| {
+            if let Some(ref oracle) = r.oracle {
+                !r.output.contains(oracle.as_str())
+            } else {
+                false
+            }
+        })
+        .collect();
+
+    let mut body = String::new();
+    if mismatches.is_empty() {
+        body.push_str("✓ no oracle mismatches\n");
+    } else {
+        for res in &mismatches {
+            body.push_str(&format!("--- {} ---\n", res.name));
+            body.push_str(&format!("  actual: {}\n", res.output.trim()));
+            if let Some(ref oracle) = res.oracle {
+                body.push_str(&format!("  oracle: {}\n", oracle.trim()));
+            }
+            body.push('\n');
+        }
+    }
+    let _ = std::fs::create_dir_all(parent);
+    let _ = std::fs::write(&mismatches_path, &body);
+    println!("Mismatches:       {}", mismatches_path.display());
+
+    // Oracle JSON map: { name: oracle, … }
+    let mut oracle_map = serde_json::Map::new();
+    for r in &report.results {
+        if let Some(ref oracle) = r.oracle {
+            oracle_map.insert(r.name.clone(), serde_json::Value::String(oracle.clone()));
+        }
+    }
+    let oracle_json = serde_json::to_string_pretty(&oracle_map).unwrap_or_default();
+    let _ = std::fs::write(&oracle_path, &oracle_json);
+    println!("Oracles:          {}", oracle_path.display());
 }
 
 // ---------------------------------------------------------------------------
@@ -852,6 +914,39 @@ pub fn write_report(path: impl AsRef<std::path::Path>, report: &EvalReport) -> R
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, json)
+}
+
+/// Write a sidecar mismatches file — only evals whose output diverges from
+/// the oracle.  Empty if none failed, so a `cat` shows nothing or a "no
+/// mismatches" line.
+pub fn write_mismatches(report: &EvalReport, path: impl AsRef<std::path::Path>) -> Result<(), std::io::Error> {
+    let path = path.as_ref();
+    let mismatches: Vec<&EvalResult> = report
+        .results
+        .iter()
+        .filter(|r| !r.passed || r.errors.iter().any(|e| e.contains("oracle")))
+        .collect();
+
+    let mut body = String::new();
+    if mismatches.is_empty() {
+        body.push_str("✓ no oracle mismatches\n");
+    } else {
+        for res in &mismatches {
+            body.push_str(&format!("--- {} ---\n", res.name));
+            body.push_str(&format!("Assistant: {}\n", res.output.trim()));
+            body.push_str("✗ MISMATCH\n");
+            // We no longer have the oracle text here directly — it lives on
+            // EvalCase, not EvalResult.  We'll include the raw output instead
+            // so the user can compare against the trace.
+            body.push_str(&format!("  actual: {}\n", res.output.trim()));
+            body.push('\n');
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, body)
 }
 
 /// Print a human-readable summary of a report.
