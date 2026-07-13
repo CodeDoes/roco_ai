@@ -210,7 +210,7 @@ caching makes subsequent reads effectively free.
 
 ## Run book (commands that currently work)
 
-Verified on the dev-kit on Fri 2026-07-13. Don't trust these against
+Verified on the dev-kit on Mon 2026-07-13. Don't trust these against
 later commits without re-checking.
 
 ```bash
