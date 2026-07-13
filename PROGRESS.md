@@ -110,6 +110,14 @@ this commit tree and produced the output we cite above.
   grammar-rwkv --example rwkv_test --release` →
   `RWKV runtime initialized`, `rwkv complete ms=787 prompt=18
   completion=2 snippet=" Paris."`. The 2.9B answers in 0.6–1.5 s.
+- **End-to-end eval**: `cargo run -p roco-core --features local-rwkv
+  --example eval_suite --release -- --backend rwkv --filter
+  smoke_basic_reply` → `Eval Report: roco-eval-suite. Backend:
+  rwkv. Results: 1/1 passed (100%). Total time: 777ms`. The
+  harness loads the model, runs the smoke case, writes the JSON
+  report to `evals/results/latest.json`, and reports per-case
+  breakdown + throughput. The cleanup-time `free(): invalid size`
+  fires at exit but doesn't affect evaluation output.
 - **Pipeline-cache speedup**: ~25 s cold / ~5 s warm.
 - **Tests**: `cargo test -p roco-core --features grammar-rwkv
   --release` → 87 passing, 0 failing.
