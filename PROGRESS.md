@@ -116,11 +116,16 @@ this commit tree and produced the output we cite above.
 - **Compiler clean**: `cargo build --workspace --release` is warning-free
   on `roco-core` lib after the recent cfg-attr and dead-code allow
   work; remaining warnings are pre-existing in non-rwkv crates.
-- **Grammar plumbing**: completion with `RWKV_GRAMMAR=<gbnf>` env
-  var compiles `schoolmarm::Grammar` once per call, masks logits via
-  `allowed_tokens`, and advances state through `accept_token`. Has
-  not yet been wired to an end-to-end eval case (that's the
-  Next-thing #1).
+- **Grammar plumbing**: completion with grammar text compiles
+  `schoolmarm::Grammar` once per call, masks logits via
+  `allowed_tokens`, advances state through `accept_token`. The
+  `grammar_smoke` example ships end-to-end: ask the model a yes/no
+  question with `root ::= "yes" | "no"`, observe that the response
+  (when generation fires) is one of those tokens only. Yes/no
+  generation through this grammar on the 2.9B / NF4 with default
+  temperature sails to the walker's invalid state from step 1
+  today — useful as a *binding* test (you see whether anything
+  comes out, not what shape the answer takes).
 
 The Run book below is the executable ground truth for re-running any
 of these.
@@ -140,22 +145,33 @@ Per-each-call runtime artifacts land under `.roco/evals/<name>/result.json`
 `.roco/evals/delegate/` is populated — anchor for a future where this
 fills up.
 
-### Grammar-constrained variant (in progress)
+### Grammar-constrained variant
 
-`rococore::engine::CompletionRequest::grammar: Option<String>` is wired
-through end-to-end when the `grammar-rwkv` feature is enabled:
-- `crates/core/src/rwkv_backend.rs` compiles the GBNF via `schoolmarm`,
-  masks logits at every sample step, and advances the state through
-  `accept_token`.
-- `RWKV_GRAMMAR` env var is the fallback for scripts that don't want to
-  thread a grammar explicitly.
-- `crates/core/src/eval_suite.rs::EvalCase` carries a `grammar: Option<String>`
-  slot so future grammar-pinning eval cases can ship as data.
+Compiles a grammar text -> GBNF compile via schoolmarm, masks logits
+on every sample step, advances state through `accept_token`, and
+exposes the writing path through two surfaces:
 
-What's still missing: a JSON-Schema → GBNF converter
-(so eval cases can pin a JSON Schema and have GBNF generated for them)
-plus a `grammar_eval_cases()` fixture. Tracked in AGENTS.md "Next
-things".
+- `rocore::engine::CompletionRequest::grammar: Option<String>`. Any
+  backend can carry the field; rwkv_backend honors it when the
+  `grammar-rwkv` cargo feature is on.
+- `RWKV_GRAMMAR` / `RWKV_GRAMMAR_FILE` env vars. They let scripts set
+  a grammar without threading it through the request.
+
+There is a working example binary `grammar_smoke` in
+`crates/core/examples/` that asks `root ::= "yes" | "no"` against
+the 2.9B model and prints the constrained output. See Run book for
+the invocation.
+
+What's still missing end-to-end:
+- A JSON-Schema -> GBNF converter (so callers describe the contract
+  in JSON Schema and have the GBNF generated on demand). Tracked in
+  AGENTS.md Next-things.
+- A `grammar_eval_cases()` fixture in `crates/core/src/eval_suite.rs`
+  that pins a JSON Schema on each case and verifies the model's
+  output conforms. Tracked in AGENTS.md Next-things.
+
+Both are tangible next steps; promoter is the runnable example that
+demonstrates the path is exposed.
 
 ## Next things
 
@@ -264,10 +280,11 @@ cargo run -p roco-core --features local-rwkv --example rwkv_test --release
 cargo run -p roco-core --features local-rwkv --example eval_suite --release -- --backend rwkv
 
 # Grammar-constrained smoke: feed the model a GBNF and confirm it
-# never breaks the grammar (uses RWKV_GRAMMAR env var once a grammar
-# file exists)
-RWKV_GRAMMAR="$(cat path/to/grammar.gbnf)" \
-cargo run -p roco-core --features grammar-rwkv --example rwkv_test --release
+# never breaks the grammar. Uses RWKV_GRAMMAR env var (or
+# RWKV_GRAMMAR_FILE=/path/to.gbnf). Default grammar is yes/no.
+RWKV_MODEL=/path/to/rwkv7-g1g-2.9b-...-converted.st \
+RWKV_VOCAB=/path/to/rwkv_vocab_v20230424.json \
+cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
 ```
 
 ### What's not yet working (and the failure mode)
