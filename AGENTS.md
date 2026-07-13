@@ -67,6 +67,7 @@ cargo test --workspace                  # 98 tests, all passing as of last commi
 cargo run -p roco-core                  # choose a subcommand
 cargo run -p roco-core --example eval_suite --release -- --backend rwkv
 cargo run -p roco-core --example rwkv_test --release
+cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
 ```
 
 ## RWKV env vars (read by `rwkv_backend::from_env`)
