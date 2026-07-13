@@ -198,11 +198,20 @@ Top three currently (from AGENTS.md, verbatim):
 
 1. JSON-Schema → GBNF converter + `eval_suite::grammar_eval_cases()`
    so the `grammar-rwkv` feature gets exercised end-to-end.
+   *Plumbing* is shipped (CompletionRequest::grammar, actor compile
+   on every call, `grammar_smoke` example); what's missing is the
+   JSON-Schema → GBNF *converter* and an *eval-driven* fixture
+   that uses `RWKV_GRAMMAR` to pin a grammar in the eval case.
 2. GGUF → ST shape fix in `scripts/gguf_to_st_converter/`
    (`a0/k_a/k_k/v0/w0/x_*` to `[1,1,emb]`, `r_k` to
    `(clock_count,head_dim)`).
 3. Decide whether `audio` stays or gets removed now that
    `resource` and `infer` are gone.
+
+Drag-through target: each item here should eventually move
+either into the **Status verification** block (resolved and
+run-able) or **Things we tried that didn't work** (resolved as
+rejected hypothesis).
 
 ## Open questions / unresolved
 
