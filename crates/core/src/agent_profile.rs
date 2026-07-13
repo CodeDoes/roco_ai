@@ -304,6 +304,7 @@ impl AgentProfile {
             temperature,
             max_tokens: max_tokens.unwrap_or(default_max),
             estimated_prompt_tokens: 0,
+            thinking: false,
         }
     }
 

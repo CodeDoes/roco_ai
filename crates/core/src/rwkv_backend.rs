@@ -1143,6 +1143,7 @@ impl ModelBackend for RwkvBackend {
                 text,
                 usage,
                 parsed,
+                think_trace: None,
             })
         })
     }

@@ -52,6 +52,9 @@ pub struct CompletionRequest {
     pub max_tokens: usize,
     /// Caller-supplied prompt token estimate (filled via [`TokenCounter`]).
     pub estimated_prompt_tokens: usize,
+    /// Enable chain-of-thought: model emits `<think>...</think>` before answer.
+    /// The think trace is extracted into [`CompletionResponse::think_trace`].
+    pub thinking: bool,
 }
 
 impl Default for CompletionRequest {
@@ -64,6 +67,7 @@ impl Default for CompletionRequest {
             temperature: 0.2,
             max_tokens: 512,
             estimated_prompt_tokens: 0,
+            thinking: false,
         }
     }
 }
@@ -85,6 +89,8 @@ pub struct CompletionResponse {
     pub usage: TokenUsage,
     /// Parsed JSON when the output was valid JSON / constrained.
     pub parsed: Option<serde_json::Value>,
+    /// Extracted `<think>...</think>` trace when the request had `thinking: true`.
+    pub think_trace: Option<String>,
 }
 
 /// Cheap heuristic tokenizer used until a real BPE/tiktoken backend is wired in.
@@ -135,6 +141,15 @@ impl ModelBackend for MockBackend {
             let text = serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) })
                 .to_string();
             let parsed = serde_json::from_str(&text).ok();
+
+            // When thinking is enabled, wrap the response in a think tag.
+            let (text, think_trace) = if req.thinking {
+                let trace = format!("thinking about '{}'...", snippet);
+                (format!("<think>{}</think>\n{}", trace, text), Some(trace))
+            } else {
+                (text, None)
+            };
+
             Ok(CompletionResponse {
                 text,
                 usage: TokenUsage {
@@ -142,6 +157,7 @@ impl ModelBackend for MockBackend {
                     completion_tokens: 16,
                 },
                 parsed,
+                think_trace,
             })
         })
     }
@@ -163,5 +179,25 @@ mod tests {
         let resp = b.complete(CompletionRequest::new("sys", "do the thing")).await.unwrap();
         assert!(resp.parsed.is_some());
         assert!(resp.text.contains("mock") || resp.text.contains("result"));
+    }
+
+    #[tokio::test]
+    async fn mock_backend_thinking_extracts_trace() {
+        let b = MockBackend::default();
+
+        // Thinking disabled: no trace.
+        let resp = b.complete(CompletionRequest::new("sys", "hello")).await.unwrap();
+        assert!(resp.think_trace.is_none(), "no trace when thinking=false");
+
+        // Thinking enabled: trace present and text wraps in <think>.
+        let mut req = CompletionRequest::new("sys", "do the thing");
+        req.thinking = true;
+        let resp = b.complete(req).await.unwrap();
+        let trace = resp.think_trace.expect("think_trace should be Some when thinking=true");
+        assert!(!trace.is_empty(), "trace should be non-empty");
+        assert!(resp.text.starts_with("<think>"), "text should start with <think>");
+        assert!(resp.text.contains("</think>"), "text should contain </think>");
+        // The trace content matches what is between <think>...</think>
+        assert!(resp.text.contains(&trace), "text should embed the trace");
     }
 }

@@ -253,6 +253,7 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
                 temperature: 0.2,
                 max_tokens: 512,
                 estimated_prompt_tokens: task.prompt_tokens,
+                thinking: false,
             };
             if let Some(t) = &self.tracer {
                 t.record(TraceEvent::new(
@@ -555,6 +556,7 @@ impl<B: ModelBackend + Send + Sync> Verifier for JudgeVerifier<B> {
             temperature: 0.1,
             max_tokens: 256,
             estimated_prompt_tokens: est,
+            thinking: false,
         };
         let resp = self.backend.complete(req).await?;
         let v: Value = serde_json::from_str(&resp.text).map_err(|e| {
@@ -1120,6 +1122,7 @@ let text = if req.prompt.contains("[TOOL RESULTS]") {
                     text: text.clone(),
                     usage: TokenUsage::default(),
                     parsed: serde_json::from_str(&text).ok(),
+                    think_trace: None,
                 })
             })
         }
@@ -1148,6 +1151,7 @@ let rounds = req.prompt.matches("[TOOL RESULTS]").count();
                     text: text.clone(),
                     usage: TokenUsage::default(),
                     parsed: serde_json::from_str(&text).ok(),
+                    think_trace: None,
                 })
             })
         }
@@ -1234,6 +1238,7 @@ let rounds = req.prompt.matches("[TOOL RESULTS]").count();
                     text: text.clone(),
                     usage: TokenUsage::default(),
                     parsed: serde_json::from_str(&text).ok(),
+                    think_trace: None,
                 })
                 })
             }

@@ -489,6 +489,7 @@ impl MemoryProcessor {
                 temperature: 0.1,
                 max_tokens: 512,
                 estimated_prompt_tokens: text.len() / 4,
+                thinking: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -526,6 +527,7 @@ impl MemoryProcessor {
                 temperature: 0.0,
                 max_tokens: 128,
                 estimated_prompt_tokens: est,
+                thinking: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -581,6 +583,7 @@ impl MemoryProcessor {
                 temperature: 0.2,
                 max_tokens: 512,
                 estimated_prompt_tokens: est,
+                thinking: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -642,6 +645,7 @@ impl MemoryProcessor {
                 temperature: 0.0,
                 max_tokens: 512,
                 estimated_prompt_tokens: text.len() / 4,
+                thinking: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -1059,6 +1063,7 @@ let text = if req.system.contains("conflict resolver") {
                     text: text.clone(),
                     usage: crate::engine::TokenUsage::default(),
                     parsed: serde_json::from_str(&text).ok(),
+                    think_trace: None,
                 })
             })
         }

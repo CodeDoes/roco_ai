@@ -152,7 +152,7 @@ mod http {
                         snippet = %text.chars().take(200).collect::<String>(),
                         "http ok"
                     );
-                    Ok(CompletionResponse { text, usage, parsed })
+                    Ok(CompletionResponse { text, usage, parsed, think_trace: None })
                 }
                 Err(e) => {
                     error!(

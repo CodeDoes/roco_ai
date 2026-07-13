@@ -178,6 +178,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         temperature: case.temperature,
         max_tokens: case.max_tokens,
         estimated_prompt_tokens: 0,
+        thinking: false,
     };
 
     let start = Instant::now();
