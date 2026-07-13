@@ -14,10 +14,12 @@ local RWKV model as far as we can.
 
 - **Inference**: works end-to-end on `RWKV-7 g1g 2.9B` (FP16 SafeTensors
   → quantized to NF4 at runtime on RTX 2050 / AMD iGPU).
-- **Grammar-constrained decoding**: scaffolding in place
+- **Grammar-constrained decoding**: plumbing in place
   (`grammar-rwkv` feature on `roco-core` → schoolmarm GBNF walker
-  restricts logits at every sample step). End-to-end eval passes
-  once a JSON-Schema→GBNF helper + grammar-eval cases land.
+  restricts logits at every sample step). Three hand-written GBNF
+  eval cases (`eval_suite::grammar_eval_cases()`) plus a
+  `grammar_smoke` example binary. JSON-Schema -> GBNF converter
+  is the remaining piece (see Next things).
 - **Model loading**: `crates/core/src/rwkv_backend.rs` auto-detects
   model shape from `Loader::info`, picks a quantization plan from
   on-disk file size, and resolves model paths from
@@ -96,9 +98,13 @@ CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
 
 ## Next things to consider
 
-1. Add a JSON-Schema → GBNF converter (`crates/core/src/jsonschema_to_gbnf.rs`)
-   and `eval_suite::grammar_eval_cases()` so the `grammar-rwkv` feature
-   gets exercised end-to-end.
+1. Add a JSON-Schema → GBNF converter
+   (`crates/core/src/jsonschema_to_gbnf.rs`). The plumbing already
+   exists — `eval_suite::grammar_eval_cases()` ships three
+   hand-written GBNFs and a unit test that parses them through
+   schoolmarm. The converter plus one new test that does
+   `schema_to_gbnf(...) → Grammar::new(...) → EvalCase.grammar = ...`
+   closes the loop.
 2. The 0.1B / 1.5B GGUF→ST shape mismatch in `scripts/gguf_to_st_converter/`
    (`a0/k_a/k_k/v0/w0/x_*` need `[1,1,emb]`, `r_k` needs `(clock_count,head_dim)`).
    Upstream patch needed; without it only the 2.9B works.
