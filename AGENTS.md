@@ -41,6 +41,7 @@ roco_ai/
 ├── models/                 # RWKV .st files; on-disk truth for model resolution (gitignored)
 ├── assets/vocab/           # rwkv_vocab_v20230424.json (the tokenizer)
 ├── scripts/                # pth_to_st/ and gguf_to_st/ model converters
+├── goals/                  # product roadmap, numbered by prerequisite (see goals/README.md)
 ├── evals/results/          # rwkv benchmark JSON outputs
 ├── devenv.{yaml,nix}       # Nix dev shell (rust + Vulkan)
 ├── Makefile                # rwkv-focused dev targets
@@ -57,6 +58,26 @@ The `crates/core/src/` tree holds everything in one flat directory:
 | `grammar.rs` | GBNF grammar generation from tool schemas (the *receiving* half of grammar-constrained decoding). |
 | `agent.rs` / `eval.rs` | Orchestrator pipeline + the wider eval suite (tests via the orchestrator, not just the model). Compiles, runs, but is **not the focus** right now. |
 | everything else | Compiled, sometimes exercised by tests. Mostly scaffolding from earlier experiments. Safe to delete on a case-by-case basis — none of it is on the rwkv critical path. |
+
+## Goals
+
+`goals/` is the product roadmap, organized as numbered layers that mirror the
+build order from the local RWKV-7 engine up to a full agent:
+
+- `1_infer/` — inference engine (model, quant, state, decoding)
+- `2_message/` — chat protocol (instructions, formatting, tool calls)
+- `3_workspace/` — the environment the agent acts in
+- `4_agent/` — the autonomous agent loop and its capabilities
+- `5_browser_use/` — driving a real browser
+- `9_coder/` — **(future)** the agent's own develop/test/lint loop in a controlled sandbox
+
+Each file is `NN_name.md`; the numeric prefix is **prerequisite order** — a
+file's dependencies come before it (e.g. `tokenization` precedes `inference`;
+`tool_catelogue` precedes `tool_calling`; in `9_coder`, `human_approval` is `01`
+because the gate must exist before the devloop can run). Files may carry a
+`User:` section with notes/constraints added during planning (model variants to
+try, tokenizer gotchas, Camoufox for stealth browsing, etc.). `goals/README.md`
+is the index. Layers `6`–`8` are intentionally reserved for future categories.
 
 ## Quickstart
 
