@@ -17,6 +17,12 @@ stack inherits `rwkv_backend.rs` unchanged and adds grammar-constrained
 generation on top. We don't currently pursue non-rwkv7 engines (candle,
 llama.cpp, mistral.rs, LiteRT).
 
+The product roadmap now lives in `goals/` — indexed by AGENTS.md — as
+numbered, prerequisite-ordered layers `1_infer` → `2_message` →
+`3_workspace` → `4_agent` → `5_browser_use`, plus future `9_coder`.
+This file stays the strategy/context layer (the "why", dead-ends, run
+book); the actionable roadmap is `goals/`.
+
 ## Model loading strategy
 
 ```
@@ -118,8 +124,9 @@ this commit tree and produced the output we cite above.
   for ~107 / ~79 completion tokens. The harness loads the model,
   runs the case, writes the JSON report to
   `evals/results/latest.json`, and reports per-case breakdown +
-  throughput. The cleanup-time `free(): invalid size` fires at
-  exit but doesn't affect evaluation output.
+  throughput. (The cleanup-time `free(): invalid size` segfault that
+  previously fired at exit is now fixed — see AGENTS.md; evaluation
+  output was never affected.)
 - **Pipeline-cache speedup**: ~25 s cold / ~5 s warm.
 - **Tests**: `cargo test -p roco-core --features grammar-rwkv
   --release` → 87 passing, 0 failing.
@@ -227,15 +234,16 @@ What's still missing end-to-end (and now might or might-not-be-worth-the-cycles)
 
 ## Next things
 
-Lives in AGENTS.md under "Next things to consider". Kept out
-of this file by design: AGENTS.md is the operator's view (build
-flags, env vars, run commands); this file is the *strategy* context
-that survives across sessions. Dragging one into the other creates
-drift on every commit. If something here contradicts AGENTS.md,
+The live product roadmap is `goals/` (AGENTS.md indexes it) — numbered,
+prerequisite-ordered layers from the inference engine up to a full agent,
+plus future `9_coder`. AGENTS.md remains the operator's view (build
+flags, env vars, run commands); this file is the *strategy* context that
+survives across sessions. If something here contradicts AGENTS.md,
 AGENTS.md wins — it's the one we read more often when something
 is broken.
 
-Top three currently (from AGENTS.md, verbatim):
+The old "Next things to consider" list from AGENTS.md is now largely
+closed:
 
 1. ✅  JSON-Schema → GBNF converter + `eval_suite::grammar_eval_cases()`:
    ships as `rocore::jsonschema_to_gbnf` and
@@ -243,23 +251,34 @@ Top three currently (from AGENTS.md, verbatim):
    `grammar_eval_cases()` for hand-written GBNFs. Closed.
 2. GGUF → ST shape fix in `scripts/gguf_to_st_converter/`
    (`a0/k_a/k_k/v0/w0/x_*` to `[1,1,emb]`, `r_k` to
-   `(clock_count,head_dim)`).
-3. Decide whether `audio` stays or gets removed now that
-   `resource` and `infer` are gone.
+   `(clock_count,head_dim)`) — **tracked as a goal**:
+   `goals/1_infer/15_gguf_st_converter.md`.
+3. ✅  `audio` removal — `crates/core/src/audio.rs` removed. Closed.
 
-Drag-through target: each item here should eventually move
-either into the **Status verification** block (resolved and
-run-able) or **Things we tried that didn't work** (resolved as
-rejected hypothesis).
+Drag-through target: each goals item should eventually move either into
+the **Status verification** block (resolved and run-able) or **Things we
+tried that didn't work** (resolved as rejected hypothesis).
+
+### Roadmap alignment (PROGRESS ↔ goals/)
+
+Which PROGRESS sections back which `goals/` layers, and which goals are
+currently blocked:
+
+- `1_infer/*` ← Architecture map / Model loading strategy / What fits on
+  this hardware. **Blocked:** 0.1B / 1.5B by the GGUF→ST shape bug
+  (tracked as `goals/1_infer/15_gguf_st_converter.md`).
+- `2_message/*` ← Eval framework (grammar) + the GBNF converter (Done).
+  `07_structured_output` has a forward extension (objects/arrays) at
+  `goals/1_infer/08_structured_output_objects.md`.
+- `3_workspace`, `4_agent`, `5_browser_use`, `9_coder` ← forward-looking;
+  not yet in code.
 
 ## Open questions / unresolved
 
-Just one and it's already in the Next-things list:
-
-- Keep `crates/core/src/audio.rs` (test-only, single consumer) as
-  future-proofing, or remove it once we've decided we're not
-  pursuing a non-rwkv7 FFN backend. (`resource` and `infer` already
-  removed since they had no callers.)
+None outstanding. The prior open question — keep or remove
+`crates/core/src/audio.rs` — is **resolved**: `audio.rs` was removed
+(AGENTS.md Next-thing #3, Done). (`resource` and `infer` already
+removed earlier.)
 
 ## Things we tried that didn't work
 
@@ -342,16 +361,16 @@ cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
 
 ### What's not yet working (and the failure mode)
 
-- Conversational eval under `crates/core/examples/eval_suite.rs`
-  finishes with `free(): invalid size` segfault at exit. Inference
-  result is correct; the segfault is in shutdown ordering of
-  wgpu-on-the-actor-thread vs. main thread. See
-  `Things we tried that didn't work` for the descriptive details.
+- ~~Conversational eval `free(): invalid size` segfault at exit~~
+  **Resolved** — root-caused and fixed in `rwkv_backend.rs` (the actor
+  thread now joins in `RwkvBackend::Drop`; wgpu/tokio drop in-order).
+  Evaluation was never affected. See AGENTS.md status.
 - The orchestrator CLI (`crates/cli`, ~922 LOC) and the web/gateway
   frontends were removed during the repo slim-down; git history
   preserves them. The rwkv path lives in `crates/core` + its examples.
 - (frontends removed) — see above; the rwkv path is exercised via
   `crates/core/examples` (`eval_suite`, `rwkv_test`, `grammar_smoke`).
 - 0.1 B / 1.5 B rwkv7 models can't be inference-tested; only the
-  2.9 B works end-to-end on disk. Converter bug — see AGENTS.md.
+  2.9 B works end-to-end on disk. Converter bug — tracked as
+  `goals/1_infer/15_gguf_st_converter.md`.
 </content>
