@@ -249,16 +249,39 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
             };
 
             // Append oracle comparison to trace after output completes.
+            // MATCH is a single checkmark line. MISMATCH shows both sides
+            // side-by-side so divergence is immediately obvious.
             if let Some(trace_path) = trace_path {
                 if let Some(ref oracle) = case.oracle {
                     use std::io::Write;
-                    let verdict = if output.contains(oracle) { "MATCH" } else { "MISMATCH" };
-                    let note = format!("\n--- oracle ({verdict}) ---\n{oracle}\n\n");
-                    let _ = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(trace_path)
-                        .and_then(|mut f| f.write_all(note.as_bytes()));
+                    if output.contains(oracle) {
+                        let note = format!("\n✓ oracle matches\n");
+                        let _ = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(trace_path)
+                            .and_then(|mut f| f.write_all(note.as_bytes()));
+                    } else {
+                        // Truncate long actual/oracle for display.
+                        let trunc = |s: &str| -> String {
+                            let s = s.trim();
+                            if s.len() > 120 {
+                                format!("{}…", &s[..120])
+                            } else {
+                                s.to_string()
+                            }
+                        };
+                        let note = format!(
+                            "\n✗ MISMATCH\n  actual: {}\n  oracle: {}\n",
+                            trunc(&output),
+                            trunc(oracle),
+                        );
+                        let _ = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(trace_path)
+                            .and_then(|mut f| f.write_all(note.as_bytes()));
+                    }
                 }
             }
 
