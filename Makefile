@@ -28,15 +28,15 @@ fix:
 
 ## Smoke-test the RWKV backend (requires a .st model; --release for GPU)
 rwkv:
-	cargo run -p roco-core --features grammar-rwkv --example rwkv_test --release
+	cargo run -p roco-core --example rwkv_test --release
 
 ## Grammar-constrained decode smoke test
 grammar:
-	cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
+	cargo run -p roco-core --example grammar_smoke --release
 
 ## Run the rwkv eval suite
 eval:
-	cargo run -p roco-core --features grammar-rwkv --example eval_suite --release -- --backend rwkv
+	cargo run -p roco-core --example eval_suite --release -- --backend rwkv
 
 ## Show Vulkan device + model/vocab status
 gpu-check:

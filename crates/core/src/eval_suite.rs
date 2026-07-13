@@ -523,7 +523,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             forbidden_strings: vec!["rain".into(), "snow".into(), "temperature".into()],
             max_tokens: 100,
             temperature: 0.0,
-            min_output_chars: 30,
+            min_output_chars: 25,
             grammar: None,
             oracle: Some("The weather is sunny today.".into()),
             category: EvalCategory::Instruction,

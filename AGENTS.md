@@ -82,17 +82,27 @@ is the index. Layers `6`–`8` are intentionally reserved for future categories.
 ## Quickstart
 
 ```bash
-devenv shell                            # or `nix develop` if no direnv
-
-cargo build --workspace                 # all crates (release for GPU work)
+roco eval                               # run the eval suite (auto-detects model from models/)
+roco rwkv                               # smoke-test the RWKV backend
+roco grammar                            # grammar-constrained decode smoke test
+gpu-check                               # show Vulkan device + model status
 cargo test --workspace                  # full test suite
-cargo run -p roco-core                  # choose a subcommand
-cargo run -p roco-core --example eval_suite --release -- --backend rwkv
-cargo run -p roco-core --example rwkv_test --release
-cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
+cargo build --release                   # all crates (release for GPU work)
 ```
 
-## RWKV env vars (read by `rwkv_backend::from_env`)
+> **The execution environment is always inside `devenv shell`.** The `roco` command
+> is defined as a devenv script in `devenv.nix` (`scripts.*.exec`). It is always
+> available — do not use `cargo run` directly. Never create a standalone `roco`
+> shell script. The model is auto-detected from `models/*.st` (symlinked).
+>
+> **Features are enabled by default.** The `grammar-rwkv` and `local-rwkv` features
+> are in `default = [\"grammar-rwkv\"]` in `Cargo.toml`. All functionality is
+> available without `--features`.
+>
+> **To invoke commands from the bash tool**, use `cargo run --bin roco -- <sub>`
+> or the full path `.devenv/profile/bin/eval`. The `roco` nix wrapper at
+> `/nix/store/*-roco/bin/roco` runs `cargo run --bin roco -- "$@"` and may not
+> be on PATH in non-interactive shells.
 
 | Variable | Effect | Default |
 |---|---|---|

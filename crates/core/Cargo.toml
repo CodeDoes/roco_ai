@@ -7,6 +7,11 @@ edition.workspace = true
 name = "roco_core"
 path = "src/lib.rs"
 
+[[bin]]
+name = "roco"
+path = "src/bin/roco.rs"
+required-features = ["grammar-rwkv"]
+
 [dependencies]
 tokio.workspace = true
 serde.workspace = true
@@ -32,7 +37,7 @@ schoolmarm = { version = "0.1", optional = true }
 num_cpus = "1.16"
 
 [features]
-default = []
+default = ["grammar-rwkv"]
 http-backends = ["dep:reqwest", "dep:dotenvy"]
 local-rwkv = [
     "dep:half",

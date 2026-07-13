@@ -55,9 +55,9 @@
   scripts.test-backends.exec = "cargo test --features http-backends";
   # Build the local RWKV backend (requires --release for GPU work; see
   # rwkv_backend.rs module docs — debug builds can hang on some drivers).
-  scripts.rwkv.exec = "cargo run -p roco-core --features grammar-rwkv --example rwkv_test --release";
-  scripts.grammar.exec = "cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release";
-  scripts.eval.exec = "cargo run -p roco-core --features grammar-rwkv --example eval_suite --release -- --backend rwkv";
+  scripts.rwkv.exec = "cargo run -p roco-core --example rwkv_test --release";
+  scripts.grammar.exec = "cargo run -p roco-core --example grammar_smoke --release";
+  scripts.eval.exec = "cargo run -p roco-core --example eval_suite --release -- --backend rwkv";
   scripts.gpu-check.exec = ''
     echo "=== Vulkan devices ==="
     vulkaninfo --summary 2>&1 | grep -E "(GPU[0-9]|deviceName|deviceType|driverID|driverInfo)" || true
