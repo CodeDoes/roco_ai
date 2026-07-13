@@ -53,12 +53,15 @@ User: Write a 3-sentence story about a robot learning to paint.
 Assistant: A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.
 ✓ oracle matches
 --- repetition_avoidance ---
-System: You are a helpful assistant.
+System: You are a helpful assistant. Do not think out loud. Just answer directly.
 
-User: List 5 different animals. Write each on a new line.
+User: List 5 different animals. Write each on a new line numbered 1 to 5.
 
-Assistant: <think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.
-First, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover
+Assistant: 1. Elephant
+2. Lion
+3. Dolphin
+4. Penguin
+5. Kangaroo
 ✓ oracle matches
 --- format_json ---
 System: You are a data formatter. Always output valid JSON.

@@ -80,10 +80,15 @@ fn cmd_bless(extra: &[&str]) {
     let obj = snap.as_object().expect("snapshot must be a JSON object");
 
     // Read eval_suite.rs, update oracle lines, write back.
-    let source_path = PathBuf::from(
-        std::env::var("CARGO_MANIFEST_DIR")
-            .unwrap_or_else(|_| ".".into())
-    ).join("src/eval_suite.rs");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| ".".into());
+    let source_path = if PathBuf::from(&manifest_dir).join("src/eval_suite.rs").exists() {
+        PathBuf::from(&manifest_dir).join("src/eval_suite.rs")
+    } else if PathBuf::from(&manifest_dir).join("crates/core/src/eval_suite.rs").exists() {
+        PathBuf::from(&manifest_dir).join("crates/core/src/eval_suite.rs")
+    } else {
+        PathBuf::from(".").join("crates/core/src/eval_suite.rs")
+    };
 
     let content = std::fs::read_to_string(&source_path)
         .expect("eval_suite.rs not found");

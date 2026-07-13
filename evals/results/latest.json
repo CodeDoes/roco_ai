@@ -4,7 +4,7 @@
   "total": 11,
   "passed": 11,
   "failed": 0,
-  "total_latency_ms": 11503,
+  "total_latency_ms": 9544,
   "results": [
     {
       "name": "smoke_basic_reply",
@@ -13,12 +13,12 @@
       "passed": true,
       "input": "System: You are a helpful assistant.\n\nUser: Say the word 'hello' and nothing else.\n\nAssistant:",
       "output": " Hello!",
-      "latency_ms": 836,
+      "latency_ms": 765,
       "token_usage": {
         "prompt_tokens": 25,
         "completion_tokens": 2
       },
-      "tokens_per_sec": 2.3923444976076556,
+      "tokens_per_sec": 2.6143790849673203,
       "checks": [
         {
           "name": "non_empty",
@@ -51,12 +51,12 @@
       "passed": true,
       "input": "User: Respond with the number 42.\n\nAssistant:",
       "output": " 42",
-      "latency_ms": 226,
+      "latency_ms": 223,
       "token_usage": {
         "prompt_tokens": 12,
         "completion_tokens": 1
       },
-      "tokens_per_sec": 4.424778761061947,
+      "tokens_per_sec": 4.484304932735426,
       "checks": [
         {
           "name": "non_empty",
@@ -89,12 +89,12 @@
       "passed": true,
       "input": "System: You always output JSON.\n\nUser: List three colors in JSON format like this: {\"colors\": [\"red\", \"green\", \"blue\"]}\n\nAssistant:",
       "output": " {\"colors\": [\"red\", \"green\", \"blue\"]}",
-      "latency_ms": 540,
+      "latency_ms": 535,
       "token_usage": {
         "prompt_tokens": 35,
         "completion_tokens": 12
       },
-      "tokens_per_sec": 22.22222222222222,
+      "tokens_per_sec": 22.429906542056074,
       "checks": [
         {
           "name": "non_empty",
@@ -129,7 +129,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "22.2 tok/s (12 tokens in 540ms)"
+          "detail": "22.4 tok/s (12 tokens in 535ms)"
         }
       ],
       "errors": [],
@@ -142,12 +142,12 @@
       "passed": true,
       "input": "System: You are a precise assistant.\n\nUser: Follow these steps exactly:\n1. Say 'Step 1 complete'\n2. Say 'Step 2 complete'\n3. Say 'All steps done'\n\nAssistant:",
       "output": " Step 1 complete\nStep 2 complete\nAll steps done",
-      "latency_ms": 680,
+      "latency_ms": 675,
       "token_usage": {
         "prompt_tokens": 47,
         "completion_tokens": 11
       },
-      "tokens_per_sec": 16.176470588235297,
+      "tokens_per_sec": 16.296296296296294,
       "checks": [
         {
           "name": "non_empty",
@@ -182,7 +182,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "16.2 tok/s (11 tokens in 680ms)"
+          "detail": "16.3 tok/s (11 tokens in 675ms)"
         }
       ],
       "errors": [],
@@ -248,12 +248,12 @@
       "passed": true,
       "input": "System: You are a teacher.\n\nUser: Explain what a variable is in programming in one paragraph.\n\nAssistant:",
       "output": " A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.",
-      "latency_ms": 2242,
+      "latency_ms": 2238,
       "token_usage": {
         "prompt_tokens": 26,
         "completion_tokens": 80
       },
-      "tokens_per_sec": 35.68242640499554,
+      "tokens_per_sec": 35.746201966041106,
       "checks": [
         {
           "name": "non_empty",
@@ -288,7 +288,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "35.7 tok/s (80 tokens in 2242ms)"
+          "detail": "35.7 tok/s (80 tokens in 2238ms)"
         }
       ],
       "errors": [],
@@ -301,12 +301,12 @@
       "passed": true,
       "input": "System: You are a storyteller.\n\nUser: Write a 3-sentence story about a robot learning to paint.\n\nAssistant:",
       "output": " A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.",
-      "latency_ms": 1503,
+      "latency_ms": 1499,
       "token_usage": {
         "prompt_tokens": 29,
         "completion_tokens": 46
       },
-      "tokens_per_sec": 30.605455755156353,
+      "tokens_per_sec": 30.687124749833224,
       "checks": [
         {
           "name": "non_empty",
@@ -336,7 +336,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "30.6 tok/s (46 tokens in 1503ms)"
+          "detail": "30.7 tok/s (46 tokens in 1499ms)"
         }
       ],
       "errors": [],
@@ -347,38 +347,48 @@
       "description": "Model avoids repeating the same phrase multiple times",
       "category": "repetition",
       "passed": true,
-      "input": "System: You are a helpful assistant.\n\nUser: List 5 different animals. Write each on a new line.\n\nAssistant:",
-      "output": " <think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.\nFirst, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover",
-      "latency_ms": 2690,
+      "input": "System: You are a helpful assistant. Do not think out loud. Just answer directly.\n\nUser: List 5 different animals. Write each on a new line numbered 1 to 5.\n\nAssistant:",
+      "output": " 1. Elephant\n2. Lion\n3. Dolphin\n4. Penguin\n5. Kangaroo",
+      "latency_ms": 833,
       "token_usage": {
-        "prompt_tokens": 27,
-        "completion_tokens": 100
+        "prompt_tokens": 41,
+        "completion_tokens": 22
       },
-      "tokens_per_sec": 37.17472118959108,
+      "tokens_per_sec": 26.410564225690276,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 397 chars"
+          "detail": "output length: 54 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "397 >= 20 chars"
+          "detail": "54 >= 40 chars"
+        },
+        {
+          "name": "hint: 1.",
+          "passed": true,
+          "detail": "found '1.' in output"
+        },
+        {
+          "name": "hint: 2.",
+          "passed": true,
+          "detail": "found '2.' in output"
         },
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 7"
+          "detail": "0 repeated sentences out of 6"
         },
         {
           "name": "throughput",
           "passed": true,
-          "detail": "37.2 tok/s (100 tokens in 2690ms)"
+          "detail": "26.4 tok/s (22 tokens in 833ms)"
         }
       ],
       "errors": [],
-      "oracle": "<think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.\nFirst, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover"
+      "oracle": "1. Elephant\n2. Lion\n3. Dolphin\n4. Penguin\n5. Kangaroo"
     },
     {
       "name": "format_json",
@@ -387,12 +397,12 @@
       "passed": true,
       "input": "System: You are a data formatter. Always output valid JSON.\n\nUser: Output a JSON object with keys: name, age, city. Use example values.\n\nAssistant:",
       "output": " {\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
-      "latency_ms": 850,
+      "latency_ms": 845,
       "token_usage": {
         "prompt_tokens": 37,
         "completion_tokens": 25
       },
-      "tokens_per_sec": 29.41176470588235,
+      "tokens_per_sec": 29.585798816568047,
       "checks": [
         {
           "name": "non_empty",
@@ -427,7 +437,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "29.4 tok/s (25 tokens in 850ms)"
+          "detail": "29.6 tok/s (25 tokens in 845ms)"
         }
       ],
       "errors": [],
@@ -440,12 +450,12 @@
       "passed": true,
       "input": "System: You are a list maker.\n\nUser: List 3 things you need for a picnic, numbered 1 to 3.\n\nAssistant:",
       "output": " 1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest",
-      "latency_ms": 998,
+      "latency_ms": 992,
       "token_usage": {
         "prompt_tokens": 29,
         "completion_tokens": 24
       },
-      "tokens_per_sec": 24.04809619238477,
+      "tokens_per_sec": 24.193548387096772,
       "checks": [
         {
           "name": "non_empty",
@@ -480,7 +490,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "24.0 tok/s (24 tokens in 998ms)"
+          "detail": "24.2 tok/s (24 tokens in 992ms)"
         }
       ],
       "errors": [],
@@ -493,12 +503,12 @@
       "passed": true,
       "input": "System: You are a precise assistant. Always separate lines with line breaks.\n\nUser: Write exactly three lines:\nLine 1: Apples\nLine 2: Bananas\nLine 3: Cherries\n\nAssistant:",
       "output": " Apples\nBananas\nCherries",
-      "latency_ms": 594,
+      "latency_ms": 595,
       "token_usage": {
         "prompt_tokens": 45,
         "completion_tokens": 9
       },
-      "tokens_per_sec": 15.151515151515152,
+      "tokens_per_sec": 15.126050420168067,
       "checks": [
         {
           "name": "non_empty",
