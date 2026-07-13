@@ -824,12 +824,13 @@ impl RwkvActor {
                 .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
         }
 
-        // RWKV-7 Chat models are trained on User:/Assistant: format.
-        // System prompt goes first, then User:, then the model completes as Assistant:.
+        // RWKV-7 Chat models are trained on role-prefixed dialogue
+        // (System:/User:/Assistant:). Keep the full conversation history
+        // with explicit role markers.
         let full = if system.is_empty() {
             format!("User: {prompt}\n\nAssistant:")
         } else {
-            format!("{system}\n\nUser: {prompt}\n\nAssistant:")
+            format!("System: {system}\n\nUser: {prompt}\n\nAssistant:")
         };
         let prompt_tokens = self
             .tokenizer
