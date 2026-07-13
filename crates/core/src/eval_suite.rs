@@ -55,6 +55,12 @@ pub struct EvalCase {
     pub grammar: Option<String>,
     /// Category for grouping in reports.
     pub category: EvalCategory,
+    /// Expected ideal output for comparison ("oracle"). When set, the trace
+    /// shows the oracle alongside the actual output so you can judge quality
+    /// at a glance. The automated checks still use `expected_hints` for pass/
+    /// fail.
+    #[serde(default)]
+    pub oracle: Option<String>,
 }
 
 /// Categories of evaluation.
@@ -110,6 +116,8 @@ pub struct EvalResult {
     pub description: String,
     pub category: EvalCategory,
     pub passed: bool,
+    /// The prompt that was sent to the model (with role prefixes).
+    pub input: String,
     pub output: String,
     pub latency_ms: u64,
     pub token_usage: TokenUsage,
@@ -163,12 +171,55 @@ impl EvalReport {
 // ---------------------------------------------------------------------------
 
 /// Run a single eval case against a backend.
+///
+/// If `trace_path` is `Some`, the full input is written to the file before
+/// inference starts, and every generated token is appended as it arrives.
 pub async fn run_eval<B: ModelBackend + Send + Sync>(
     backend: &B,
     case: &EvalCase,
+    trace_path: Option<&std::path::Path>,
 ) -> EvalResult {
     let mut errors: Vec<String> = Vec::new();
     let mut checks: Vec<CheckResult> = Vec::new();
+
+    // Build the full input prompt the model will see (matches backend format).
+    let full_input = if case.system.is_empty() {
+        format!("User: {}\n\nAssistant:", case.prompt)
+    } else {
+        format!("System: {}\n\nUser: {}\n\nAssistant:", case.system, case.prompt)
+    };
+
+    // Streaming trace: write header + input, then append each token as it's
+    // generated. Also print tokens to stderr so the user sees live output.
+    let on_token: Option<Box<dyn Fn(&str) + Send + Sync>> = match trace_path {
+        Some(path) => {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let header = format!("--- {} ---\n{}", case.name, full_input);
+            use std::io::Write;
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .and_then(|mut f| f.write_all(header.as_bytes()));
+
+            let dest = path.to_path_buf();
+            Some(Box::new(move |word: &str| {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&dest)
+                {
+                    let _ = f.write_all(word.as_bytes());
+                    let _ = f.flush();
+                }
+                let _ = std::io::stderr().write_all(word.as_bytes());
+            }))
+        }
+        None => None,
+    };
 
     let request = CompletionRequest {
         system: case.system.clone(),
@@ -179,7 +230,8 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         max_tokens: case.max_tokens,
         estimated_prompt_tokens: 0,
         thinking: false,
-            preserve_state: false,
+        preserve_state: false,
+        on_token,
     };
 
     let start = Instant::now();
@@ -195,6 +247,20 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
             } else {
                 0.0
             };
+
+            // Append oracle comparison to trace after output completes.
+            if let Some(trace_path) = trace_path {
+                if let Some(ref oracle) = case.oracle {
+                    use std::io::Write;
+                    let verdict = if output.contains(oracle) { "MATCH" } else { "MISMATCH" };
+                    let note = format!("\n--- oracle ({verdict}) ---\n{oracle}\n\n");
+                    let _ = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(trace_path)
+                        .and_then(|mut f| f.write_all(note.as_bytes()));
+                }
+            }
 
             // --- Checks --- //
 
@@ -296,6 +362,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 description: case.description.clone(),
                 category: case.category,
                 passed,
+                input: full_input.clone(),
                 output,
                 latency_ms,
                 token_usage: usage,
@@ -312,6 +379,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 description: case.description.clone(),
                 category: case.category,
                 passed: false,
+                input: full_input.clone(),
                 output: String::new(),
                 latency_ms,
                 token_usage: TokenUsage::default(),
@@ -324,11 +392,15 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
 }
 
 /// Run a suite of eval cases against a backend.
+///
+/// If `trace_path` is `Some`, each eval result streams tokens to that file
+/// and to stderr in real time.
 pub async fn run_suite<B: ModelBackend + Send + Sync>(
     suite_name: &str,
     backend: &B,
     cases: &[EvalCase],
     filter: Option<&str>,
+    trace_path: Option<&std::path::Path>,
 ) -> EvalReport {
     let mut results = Vec::new();
     let start = Instant::now();
@@ -339,7 +411,7 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
                 continue;
             }
         }
-        let result = run_eval(backend, case).await;
+        let result = run_eval(backend, case, trace_path).await;
         results.push(result);
     }
 
@@ -395,6 +467,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.1,
             min_output_chars: 1,
             grammar: None,
+            oracle: Some("Hello!".into()),
             category: EvalCategory::Smoke,
         },
         EvalCase {
@@ -408,6 +481,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.1,
             min_output_chars: 1,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Smoke,
         },
 
@@ -423,6 +497,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.2,
             min_output_chars: 20,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Instruction,
         },
         EvalCase {
@@ -436,6 +511,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.2,
             min_output_chars: 30,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Instruction,
         },
         EvalCase {
@@ -449,6 +525,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.3,
             min_output_chars: 30,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Instruction,
         },
 
@@ -464,6 +541,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.3,
             min_output_chars: 50,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Coherence,
         },
         EvalCase {
@@ -477,6 +555,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.5,
             min_output_chars: 40,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Coherence,
         },
 
@@ -492,6 +571,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.5,
             min_output_chars: 20,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Repetition,
         },
 
@@ -507,6 +587,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.1,
             min_output_chars: 20,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Format,
         },
         EvalCase {
@@ -520,6 +601,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.3,
             min_output_chars: 30,
             grammar: None,
+            oracle: None,
             category: EvalCategory::Format,
         },
     ]
@@ -538,7 +620,8 @@ pub fn throughput_eval_cases() -> Vec<EvalCase> {
         temperature: 0.4,
         min_output_chars: 100,
         grammar: None,
-        category: EvalCategory::Throughput,
+        oracle: None,
+            category: EvalCategory::Throughput,
     }]
 }
 
@@ -555,7 +638,8 @@ pub fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
         temperature: 0.2,
         min_output_chars: 20,
         grammar: None,
-        category: EvalCategory::Context,
+        oracle: None,
+            category: EvalCategory::Context,
     }]
 }
 
@@ -599,6 +683,7 @@ pub fn grammar_eval_cases() -> Vec<EvalCase> {
             temperature: 0.5,
             min_output_chars: 2,
             grammar: Some(yes_no.to_string()),
+            oracle: None,
             category: EvalCategory::Format,
         },
         EvalCase {
@@ -612,6 +697,7 @@ pub fn grammar_eval_cases() -> Vec<EvalCase> {
             temperature: 0.5,
             min_output_chars: 1,
             grammar: Some(digit.to_string()),
+            oracle: None,
             category: EvalCategory::Format,
         },
         EvalCase {
@@ -625,6 +711,7 @@ pub fn grammar_eval_cases() -> Vec<EvalCase> {
             temperature: 0.5,
             min_output_chars: 5,
             grammar: Some(paren_lit.to_string()),
+            oracle: None,
             category: EvalCategory::Format,
         },
     ]
@@ -676,6 +763,7 @@ pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
             temperature: 0.4,
             min_output_chars: 4,
             grammar: Some(bool_grammar),
+            oracle: None,
             category: EvalCategory::Format,
         },
         EvalCase {
@@ -690,6 +778,7 @@ pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
             temperature: 0.4,
             min_output_chars: 3,
             grammar: Some(layer_grammar),
+            oracle: None,
             category: EvalCategory::Format,
         },
         EvalCase {
@@ -703,6 +792,7 @@ pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
             temperature: 0.4,
             min_output_chars: 1,
             grammar: Some(int_grammar),
+            oracle: None,
             category: EvalCategory::Format,
         },
     ]

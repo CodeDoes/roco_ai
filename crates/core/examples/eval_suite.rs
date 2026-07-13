@@ -24,9 +24,6 @@ use tracing_subscriber::EnvFilter;
 use roco_core::engine::MockBackend;
 use roco_core::eval_suite::{self, EvalReport};
 
-#[cfg(feature = "http-backends")]
-use roco_core::backends::{NvidiaBackend, KiloBackend};
-
 #[cfg(feature = "local-rwkv")]
 use roco_core::rwkv_backend::RwkvBackend;
 
@@ -75,7 +72,7 @@ fn parse_args() -> Args {
                 println!("Usage: cargo run --example eval_suite [OPTIONS]");
                 println!();
                 println!("Options:");
-                println!("  --backend STR    Backend to use: mock, nvidia, kilo, rwkv [default: mock]");
+                println!("  --backend STR    Backend to use: mock, rwkv [default: mock]");
                 println!("  --filter STR     Filter eval cases by name or category");
                 println!("  --output PATH    Output path for JSON report [default: evals/results/latest.json]");
                 println!("  --suite STR      Suite name for the report [default: roco-eval-suite]");
@@ -109,6 +106,12 @@ async fn main() {
     let args = parse_args();
 
     // Build the backend
+    let trace_path: Option<std::path::PathBuf> = {
+        let stem = args.output.file_stem().map(|s| format!("{}_trace.txt", s.to_string_lossy()))
+            .unwrap_or_else(|| "eval_trace.txt".to_string());
+        Some(args.output.with_file_name(stem))
+    };
+
     let report: EvalReport = match args.backend.as_str() {
         "mock" => {
             let backend = MockBackend {
@@ -116,37 +119,7 @@ async fn main() {
                 ..Default::default()
             };
             let cases = eval_suite::default_eval_suite();
-            eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref()).await
-        }
-
-        #[cfg(feature = "http-backends")]
-        "nvidia" => {
-            match NvidiaBackend::from_env() {
-                Ok(backend) => {
-                    let cases = eval_suite::default_eval_suite();
-                    eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref()).await
-                }
-                Err(e) => {
-                    eprintln!("ERROR: Nvidia backend not available: {e}");
-                    eprintln!("Set NVIDIA_API_KEY or NVAPI_KEY in your environment.");
-                    std::process::exit(1);
-                }
-            }
-        }
-
-        #[cfg(feature = "http-backends")]
-        "kilo" => {
-            match KiloBackend::from_env() {
-                Ok(backend) => {
-                    let cases = eval_suite::default_eval_suite();
-                    eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref()).await
-                }
-                Err(e) => {
-                    eprintln!("ERROR: Kilo backend not available: {e}");
-                    eprintln!("Set KILO_API_KEY in your environment.");
-                    std::process::exit(1);
-                }
-            }
+            eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref(), trace_path.as_deref()).await
         }
 
         #[cfg(feature = "local-rwkv")]
@@ -157,11 +130,11 @@ async fn main() {
                 std::process::exit(1);
             });
             let cases = eval_suite::default_eval_suite();
-            eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref()).await
+            eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref(), trace_path.as_deref()).await
         }
 
         other => {
-            eprintln!("Unknown backend: {other}. Choose: mock, nvidia, kilo, rwkv");
+            eprintln!("Unknown backend: {other}. Choose: mock, rwkv");
             std::process::exit(1);
         }
     };
@@ -174,6 +147,9 @@ async fn main() {
     // Print human-readable summary
     eval_suite::print_report(&report);
     println!("Report written to: {}", args.output.display());
+    if let Some(ref trace_path) = trace_path {
+        println!("Trace written to:  {}", trace_path.display());
+    }
 
     // Exit with code if any evals failed
     if report.failed > 0 {

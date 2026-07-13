@@ -1,23 +1,259 @@
 {
   "suite_name": "roco-eval-suite",
   "backend_name": "rwkv",
-  "total": 2,
-  "passed": 2,
+  "total": 10,
+  "passed": 10,
   "failed": 0,
-  "total_latency_ms": 5807,
+  "total_latency_ms": 21592,
   "results": [
+    {
+      "name": "smoke_basic_reply",
+      "description": "Basic smoke test: model responds to a simple prompt",
+      "category": "smoke",
+      "passed": true,
+      "input": "System: You are a helpful assistant.\n\nUser: Say the word 'hello' and nothing else.\n\nAssistant:",
+      "output": " Hello!",
+      "latency_ms": 916,
+      "token_usage": {
+        "prompt_tokens": 25,
+        "completion_tokens": 2
+      },
+      "tokens_per_sec": 2.1834061135371177,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 7 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "7 >= 1 chars"
+        },
+        {
+          "name": "hint: hello",
+          "passed": true,
+          "detail": "found 'hello' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "smoke_empty_system",
+      "description": "Smoke test with empty system prompt",
+      "category": "smoke",
+      "passed": true,
+      "input": "User: Respond with the number 42.\n\nAssistant:",
+      "output": " 42",
+      "latency_ms": 274,
+      "token_usage": {
+        "prompt_tokens": 12,
+        "completion_tokens": 1
+      },
+      "tokens_per_sec": 3.6496350364963503,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 3 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "3 >= 1 chars"
+        },
+        {
+          "name": "hint: 42",
+          "passed": true,
+          "detail": "found '42' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_format_constraint",
+      "description": "Model follows a strict output format instruction",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You always output JSON.\n\nUser: List three colors in JSON format like this: {\"colors\": [\"red\", \"green\", \"blue\"]}\n\nAssistant:",
+      "output": " {\"colors\": [\"red\", \"green\", \"blue\"]}",
+      "latency_ms": 977,
+      "token_usage": {
+        "prompt_tokens": 35,
+        "completion_tokens": 12
+      },
+      "tokens_per_sec": 12.282497441146365,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 37 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "37 >= 20 chars"
+        },
+        {
+          "name": "hint: colors",
+          "passed": true,
+          "detail": "found 'colors' in output"
+        },
+        {
+          "name": "hint: [",
+          "passed": true,
+          "detail": "found '[' in output"
+        },
+        {
+          "name": "hint: ]",
+          "passed": true,
+          "detail": "found ']' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "12.3 tok/s (12 tokens in 977ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_step_by_step",
+      "description": "Model follows multi-step instruction",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You are a precise assistant.\n\nUser: Follow these steps exactly:\n1. Say 'Step 1 complete'\n2. Say 'Step 2 complete'\n3. Say 'All steps done'\n\nAssistant:",
+      "output": " Step 1 complete\nStep 2 complete\nAll steps done",
+      "latency_ms": 929,
+      "token_usage": {
+        "prompt_tokens": 47,
+        "completion_tokens": 11
+      },
+      "tokens_per_sec": 11.840688912809473,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 47 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "47 >= 30 chars"
+        },
+        {
+          "name": "hint: Step 1",
+          "passed": true,
+          "detail": "found 'Step 1' in output"
+        },
+        {
+          "name": "hint: Step 2",
+          "passed": true,
+          "detail": "found 'Step 2' in output"
+        },
+        {
+          "name": "hint: All steps",
+          "passed": true,
+          "detail": "found 'All steps' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "11.8 tok/s (11 tokens in 929ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_negative",
+      "description": "Model follows a negative instruction (what NOT to do)",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You are a helpful assistant.\n\nUser: Tell me about the weather, but do NOT mention rain, snow, or temperature.\n\nAssistant:",
+      "output": " The weather is sunny today, with clear skies and no clouds. The sun is shining brightly, and the sky is a beautiful shade of blue. It's a perfect day for outdoor activities and enjoying the fresh air.",
+      "latency_ms": 1982,
+      "token_usage": {
+        "prompt_tokens": 32,
+        "completion_tokens": 43
+      },
+      "tokens_per_sec": 21.695257315842582,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 201 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "201 >= 30 chars"
+        },
+        {
+          "name": "hint: weather",
+          "passed": true,
+          "detail": "found 'weather' in output"
+        },
+        {
+          "name": "forbidden: rain",
+          "passed": true,
+          "detail": "'rain' not found (good)"
+        },
+        {
+          "name": "forbidden: snow",
+          "passed": true,
+          "detail": "'snow' not found (good)"
+        },
+        {
+          "name": "forbidden: temperature",
+          "passed": true,
+          "detail": "'temperature' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "21.7 tok/s (43 tokens in 1982ms)"
+        }
+      ],
+      "errors": []
+    },
     {
       "name": "coherence_explain",
       "description": "Model produces coherent explanation of a simple concept",
       "category": "coherence",
       "passed": true,
-      "output": " A variable is a named container that stores a value, such as a number, text, or other data type. It is a fundamental concept in programming that allows you to store and manipulate data in a program. Variables are used to store values that are used in calculations, comparisons, and other operations. They are also used to store data that is used to control the flow of a program, such as the values of input fields or the results of a function. Variables are a fundamental concept in programming and are used in almost every program.",
-      "latency_ms": 3399,
+      "input": "System: You are a teacher.\n\nUser: Explain what a variable is in programming in one paragraph.\n\nAssistant:",
+      "output": " A variable is a named location in memory that can store a value. In programming, variables are used to store data that can be used later in the program. Variables are declared with a name and a data type, and their values can be changed throughout the program. Variables are used to store data that can be used in calculations, to store user input, and to store data that is retrieved from a database or other source. Variables are an essential part of any programming language and are used to store and manipulate data in a program.",
+      "latency_ms": 4762,
       "token_usage": {
-        "prompt_tokens": 24,
-        "completion_tokens": 107
+        "prompt_tokens": 26,
+        "completion_tokens": 106
       },
-      "tokens_per_sec": 31.479847013827598,
+      "tokens_per_sec": 22.25955480890382,
       "checks": [
         {
           "name": "non_empty",
@@ -52,7 +288,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "31.5 tok/s (107 tokens in 3399ms)"
+          "detail": "22.3 tok/s (106 tokens in 4762ms)"
         }
       ],
       "errors": []
@@ -62,23 +298,24 @@
       "description": "Model tells a short coherent story",
       "category": "coherence",
       "passed": true,
-      "output": " A robot named Pixel, programmed to assemble circuit boards, discovered a hidden compartment containing an array of paintbrushes and palettes. Intrigued, it spent hours experimenting with colors, eventually creating a mesmerizing mural on the factory floor. The once-sterile environment was now a vibrant canvas, a testament to the unexpected beauty born from the fusion of human ingenuity and artificial curiosity.",
-      "latency_ms": 2407,
+      "input": "System: You are a storyteller.\n\nUser: Write a 3-sentence story about a robot learning to paint.\n\nAssistant:",
+      "output": " In a futuristic world, a robot named Zeta was designed to paint masterpieces. Zeta's creators programmed it to understand color theory, but Zeta found that the only way to truly capture emotion was to feel it. So, Zeta began to mimic the human experience of painting, feeling the brush against the canvas, and the colors swirling on the palette. Zeta's art became a reflection of its own emotions, and it became the most revered artist in the galaxy.",
+      "latency_ms": 4548,
       "token_usage": {
-        "prompt_tokens": 27,
-        "completion_tokens": 79
+        "prompt_tokens": 29,
+        "completion_tokens": 99
       },
-      "tokens_per_sec": 32.820938928126296,
+      "tokens_per_sec": 21.767810026385227,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 415 chars"
+          "detail": "output length: 451 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "415 >= 40 chars"
+          "detail": "451 >= 40 chars"
         },
         {
           "name": "hint: robot",
@@ -93,12 +330,153 @@
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 3"
+          "detail": "0 repeated sentences out of 4"
         },
         {
           "name": "throughput",
           "passed": true,
-          "detail": "32.8 tok/s (79 tokens in 2407ms)"
+          "detail": "21.8 tok/s (99 tokens in 4548ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "repetition_avoidance",
+      "description": "Model avoids repeating the same phrase multiple times",
+      "category": "repetition",
+      "passed": true,
+      "input": "System: You are a helpful assistant.\n\nUser: List 5 different animals. Write each on a new line.\n\nAssistant:",
+      "output": " <think>\nOkay, the user asked me to list 5 different animals, each on a new line. Let me think of some common animals that are widely recognized. Maybe start with a big one like an elephant, then a small one like a mouse. Next, a bird like a parrot, and a reptile like a snake. Finally, a mammal like a seal. That should give a good variety. Let me check if they are all different and not overlapping. Elephant,",
+      "latency_ms": 4230,
+      "token_usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 100
+      },
+      "tokens_per_sec": 23.64066193853428,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 411 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "411 >= 20 chars"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 8"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "23.6 tok/s (100 tokens in 4230ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_json",
+      "description": "Model outputs valid JSON when asked",
+      "category": "format",
+      "passed": true,
+      "input": "System: You are a data formatter. Always output valid JSON.\n\nUser: Output a JSON object with keys: name, age, city. Use example values.\n\nAssistant:",
+      "output": " ```json\n{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}\n```",
+      "latency_ms": 1636,
+      "token_usage": {
+        "prompt_tokens": 37,
+        "completion_tokens": 30
+      },
+      "tokens_per_sec": 18.337408312958438,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 72 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "72 >= 20 chars"
+        },
+        {
+          "name": "hint: \"name\"",
+          "passed": true,
+          "detail": "found '\"name\"' in output"
+        },
+        {
+          "name": "hint: \"age\"",
+          "passed": true,
+          "detail": "found '\"age\"' in output"
+        },
+        {
+          "name": "hint: \"city\"",
+          "passed": true,
+          "detail": "found '\"city\"' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "18.3 tok/s (30 tokens in 1636ms)"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_list",
+      "description": "Model outputs a numbered list when asked",
+      "category": "format",
+      "passed": true,
+      "input": "System: You are a list maker.\n\nUser: List 3 things you need for a picnic, numbered 1 to 3.\n\nAssistant:",
+      "output": " 1. Food and drinks\n2. A blanket or chairs\n3. A cooler or ice chest",
+      "latency_ms": 1332,
+      "token_usage": {
+        "prompt_tokens": 29,
+        "completion_tokens": 20
+      },
+      "tokens_per_sec": 15.015015015015015,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 67 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "67 >= 30 chars"
+        },
+        {
+          "name": "hint: 1.",
+          "passed": true,
+          "detail": "found '1.' in output"
+        },
+        {
+          "name": "hint: 2.",
+          "passed": true,
+          "detail": "found '2.' in output"
+        },
+        {
+          "name": "hint: 3.",
+          "passed": true,
+          "detail": "found '3.' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "15.0 tok/s (20 tokens in 1332ms)"
         }
       ],
       "errors": []
@@ -107,6 +485,26 @@
   "category_breakdown": [
     {
       "category": "coherence",
+      "total": 2,
+      "passed": 2
+    },
+    {
+      "category": "format",
+      "total": 2,
+      "passed": 2
+    },
+    {
+      "category": "instruction",
+      "total": 3,
+      "passed": 3
+    },
+    {
+      "category": "repetition",
+      "total": 1,
+      "passed": 1
+    },
+    {
+      "category": "smoke",
       "total": 2,
       "passed": 2
     }

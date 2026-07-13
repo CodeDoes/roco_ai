@@ -53,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
         estimated_prompt_tokens: 32,
         thinking: false,
             preserve_state: false,
+        on_token: None,
     };
 
     println!("prompting…");

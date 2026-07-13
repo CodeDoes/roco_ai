@@ -32,7 +32,7 @@ impl TokenUsage {
 }
 
 /// A completion request to a model backend.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// System / instruction block (role, output schema, do_nothing). See §2.2.
     pub system: String,
@@ -59,6 +59,45 @@ pub struct CompletionRequest {
     /// instead of being reset to blank — enabling continue-inference from the
     /// previous turn's hidden state.
     pub preserve_state: bool,
+    /// Optional callback invoked for every decoded token during generation.
+    /// The backend calls this synchronously on its actor thread as tokens
+    /// are produced, enabling streaming trace output.
+    #[serde(skip)]
+    pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
+}
+
+impl Clone for CompletionRequest {
+    fn clone(&self) -> Self {
+        Self {
+            system: self.system.clone(),
+            prompt: self.prompt.clone(),
+            output_schema: self.output_schema.clone(),
+            grammar: self.grammar.clone(),
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            estimated_prompt_tokens: self.estimated_prompt_tokens,
+            thinking: self.thinking,
+            preserve_state: self.preserve_state,
+            on_token: None, // callbacks cannot be cloned
+        }
+    }
+}
+
+impl std::fmt::Debug for CompletionRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompletionRequest")
+            .field("system", &self.system)
+            .field("prompt", &self.prompt)
+            .field("output_schema", &self.output_schema)
+            .field("grammar", &self.grammar)
+            .field("temperature", &self.temperature)
+            .field("max_tokens", &self.max_tokens)
+            .field("estimated_prompt_tokens", &self.estimated_prompt_tokens)
+            .field("thinking", &self.thinking)
+            .field("preserve_state", &self.preserve_state)
+            .field("on_token", &self.on_token.as_ref().map(|_| "<callback>"))
+            .finish()
+    }
 }
 
 impl Default for CompletionRequest {
@@ -73,6 +112,7 @@ impl Default for CompletionRequest {
             estimated_prompt_tokens: 0,
             thinking: false,
             preserve_state: false,
+            on_token: None,
         }
     }
 }
@@ -276,6 +316,7 @@ pub async fn bake_persona(
             thinking: false,
             preserve_state: i > 0,
             output_schema: None,
+            on_token: None,
         };
         backend.complete(req).await?;
         let req_assistant = CompletionRequest {
@@ -288,6 +329,7 @@ pub async fn bake_persona(
             thinking: false,
             preserve_state: true,
             output_schema: None,
+            on_token: None,
         };
         backend.complete(req_assistant).await?;
     }

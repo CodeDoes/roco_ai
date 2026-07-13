@@ -278,6 +278,9 @@ struct CompleteReq {
     /// When true, skip the state-reset step so the recurrent hidden
     /// state carries over from the previous call.
     preserve_state: bool,
+    /// Called on the actor thread for every decoded token as it is generated.
+    /// Passed through from [`CompletionRequest::on_token`].
+    on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
 }
 
 enum ActorMessage {
@@ -794,6 +797,7 @@ impl RwkvActor {
         max_tokens: usize,
         temperature: f32,
         preserve_state: bool,
+        on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
         #[cfg(feature = "grammar-rwkv")] grammar: Option<&str>,
     ) -> Result<(String, TokenUsage), EngineError> {
         // Grammar setup: compile a fresh GrammarState per call. The state is
@@ -914,6 +918,11 @@ impl RwkvActor {
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
             let word = String::from_utf8_lossy(&decoded).to_string();
 
+            // Notify the streaming callback if one was provided.
+            if let Some(ref cb) = on_token {
+                cb(&word);
+            }
+
             // Advance grammar state with the bytes of the chosen token.
             // Tolerate failures: some BPE chunkings straddle a literal
             // boundary; a clean termination is "grammar finished — input
@@ -994,6 +1003,11 @@ impl RwkvActor {
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
             let word = String::from_utf8_lossy(&decoded).to_string();
 
+            // Notify the streaming callback if one was provided.
+            if let Some(ref cb) = on_token {
+                cb(&word);
+            }
+
             // Advance grammar state with the bytes of the sampled token.
             #[cfg(feature = "grammar-rwkv")]
             if let Some(gs) = grammar_state.as_mut() {
@@ -1042,6 +1056,7 @@ impl RwkvActor {
                             req.max_tokens,
                             req.temperature,
                             req.preserve_state,
+                            req.on_token,
                             #[cfg(feature = "grammar-rwkv")]
                             req.grammar.as_deref(),
                         )
@@ -1194,6 +1209,7 @@ impl ModelBackend for RwkvBackend {
                 grammar,
                 reply: reply_tx,
                 preserve_state: req.preserve_state,
+                on_token: req.on_token,
             }.into())
             .await
             .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
