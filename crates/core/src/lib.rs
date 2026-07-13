@@ -27,6 +27,7 @@ pub mod visualizer;
 #[cfg(any(feature = "http-backends", feature = "local-rwkv"))]
 pub mod backends;
 
+pub mod handler;
+pub mod handler_tools;
 #[cfg(feature = "local-rwkv")]
 pub mod rwkv_backend;
-pub mod handler;

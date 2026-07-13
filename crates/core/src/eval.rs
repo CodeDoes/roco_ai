@@ -85,7 +85,10 @@ where
     let agg = orch.run(&task).await?;
     let result = EvalResult::from_agg(name, &agg);
     // Persist under .roco/ (artifact root), not the tracked eval-definitions tree.
-    let path = Path::new(".roco").join("evals").join(name).join("result.json");
+    let path = Path::new(".roco")
+        .join("evals")
+        .join(name)
+        .join("result.json");
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             tracing::warn!("could not create {}: {e}", parent.display());

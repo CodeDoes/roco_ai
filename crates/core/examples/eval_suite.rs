@@ -88,14 +88,18 @@ fn parse_args() -> Args {
         i += 1;
     }
 
-    Args { backend, filter, output, suite }
+    Args {
+        backend,
+        filter,
+        output,
+        suite,
+    }
 }
 
 fn setup_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info"))
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
 }
@@ -107,7 +111,10 @@ async fn main() {
 
     // Build the backend
     let trace_path: Option<std::path::PathBuf> = {
-        let stem = args.output.file_stem().map(|s| format!("{}_trace.txt", s.to_string_lossy()))
+        let stem = args
+            .output
+            .file_stem()
+            .map(|s| format!("{}_trace.txt", s.to_string_lossy()))
             .unwrap_or_else(|| "eval_trace.txt".to_string());
         Some(args.output.with_file_name(stem))
     };
@@ -119,7 +126,14 @@ async fn main() {
                 ..Default::default()
             };
             let cases = eval_suite::default_eval_suite();
-            eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref(), trace_path.as_deref()).await
+            eval_suite::run_suite(
+                &args.suite,
+                &backend,
+                &cases,
+                args.filter.as_deref(),
+                trace_path.as_deref(),
+            )
+            .await
         }
 
         #[cfg(feature = "local-rwkv")]
@@ -130,7 +144,14 @@ async fn main() {
                 std::process::exit(1);
             });
             let cases = eval_suite::default_eval_suite();
-            eval_suite::run_suite(&args.suite, &backend, &cases, args.filter.as_deref(), trace_path.as_deref()).await
+            eval_suite::run_suite(
+                &args.suite,
+                &backend,
+                &cases,
+                args.filter.as_deref(),
+                trace_path.as_deref(),
+            )
+            .await
         }
 
         other => {
@@ -141,7 +162,10 @@ async fn main() {
 
     // Write report
     eval_suite::write_report(&args.output, &report).unwrap_or_else(|e| {
-        eprintln!("WARNING: could not write report to {}: {e}", args.output.display());
+        eprintln!(
+            "WARNING: could not write report to {}: {e}",
+            args.output.display()
+        );
     });
 
     // Print human-readable summary

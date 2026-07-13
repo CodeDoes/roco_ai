@@ -198,23 +198,20 @@ mod tests {
 
     #[test]
     fn human_in_the_loop_reviews_risky_unless_auto_approve() {
-        let review = HumanInTheLoopPolicy::new(false)
-            .evaluate(&Action::RunCommand {
-                command: "echo hi".to_string(),
-            });
+        let review = HumanInTheLoopPolicy::new(false).evaluate(&Action::RunCommand {
+            command: "echo hi".to_string(),
+        });
         assert!(matches!(review, PolicyVerdict::Review(_)));
 
-        let allow = HumanInTheLoopPolicy::new(true)
-            .evaluate(&Action::RunCommand {
-                command: "echo hi".to_string(),
-            });
+        let allow = HumanInTheLoopPolicy::new(true).evaluate(&Action::RunCommand {
+            command: "echo hi".to_string(),
+        });
         assert_eq!(allow, PolicyVerdict::Allow);
 
         // Non-risky actions are allowed regardless.
-        let safe = HumanInTheLoopPolicy::new(false)
-            .evaluate(&Action::Respond {
-                text: "done".to_string(),
-            });
+        let safe = HumanInTheLoopPolicy::new(false).evaluate(&Action::Respond {
+            text: "done".to_string(),
+        });
         assert_eq!(safe, PolicyVerdict::Allow);
     }
 

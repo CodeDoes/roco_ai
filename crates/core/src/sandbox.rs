@@ -173,7 +173,10 @@ impl Sandbox {
         let start = Instant::now();
         let mut timed_out = false;
         loop {
-            match child.try_wait().map_err(|e| SandboxError::Spawn(e.to_string()))? {
+            match child
+                .try_wait()
+                .map_err(|e| SandboxError::Spawn(e.to_string()))?
+            {
                 Some(_) => break,
                 None => {
                     if start.elapsed() >= self.timeout {
@@ -198,10 +201,7 @@ impl Sandbox {
         let exit_code = if timed_out {
             -1
         } else {
-            child
-                .wait()
-                .map(|s| s.code().unwrap_or(-1))
-                .unwrap_or(-1)
+            child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1)
         };
 
         let truncated = stdout.len() > self.max_output || stderr.len() > self.max_output;

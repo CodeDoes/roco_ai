@@ -47,7 +47,8 @@ fn prop_type_gbnf(schema: &Value) -> String {
         Some("number") => "number-value".to_string(),
         Some("boolean") => "\"true\" | \"false\"".to_string(),
         Some("array") => {
-            "( string-value | number-value ) ( ws \",\" ws ( string-value | number-value ) )*".to_string()
+            "( string-value | number-value ) ( ws \",\" ws ( string-value | number-value ) )*"
+                .to_string()
         }
         Some("object") => "\"{\" [^}]* \"}\"".to_string(),
         _ => "string-value".to_string(),
@@ -60,10 +61,16 @@ fn arg_keys(schema: &Value) -> Vec<String> {
     let required: Vec<String> = schema
         .get("required")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default();
     match props {
-        Some(p) if !required.is_empty() => p.keys().filter(|k| required.contains(k)).cloned().collect(),
+        Some(p) if !required.is_empty() => {
+            p.keys().filter(|k| required.contains(k)).cloned().collect()
+        }
         Some(p) => p.keys().cloned().collect(),
         None => Vec::new(),
     }
@@ -85,7 +92,9 @@ fn tool_rules(tool: &dyn Tool) -> Vec<String> {
     let mut param_rules = Vec::new();
     for k in &keys {
         let ps = props.and_then(|p| p.get(k));
-        let ty = ps.map(prop_type_gbnf).unwrap_or_else(|| "string-value".to_string());
+        let ty = ps
+            .map(prop_type_gbnf)
+            .unwrap_or_else(|| "string-value".to_string());
         param_rules.push(format!("\"\\\"{}\\\"\" ws \":\" ws {}", k, ty));
     }
     let inner = if param_rules.is_empty() {
@@ -146,7 +155,8 @@ pub fn tools_to_gbnf_with_think(registry: &ToolRegistry) -> String {
     }
     lines.push(format!("call ::= {}", call_names.join(" | ")));
     lines.push(
-        "root ::= ws? (think-block)* (call ws? | text call ws? | call text ws?)+ (text ws?)*".to_string(),
+        "root ::= ws? (think-block)* (call ws? | text call ws? | call text ws?)+ (text ws?)*"
+            .to_string(),
     );
     lines.join("\n")
 }
@@ -172,9 +182,7 @@ pub fn message_format_gbnf(registry: Option<&ToolRegistry>, include_think: bool)
 
     // Optional thinking block.
     if include_think {
-        lines.push(
-            "think-block ::= \"<think>\" text-content \"</think>\"".to_string(),
-        );
+        lines.push("think-block ::= \"<think>\" text-content \"</think>\"".to_string());
     }
 
     // Tool call and result blocks.
@@ -189,8 +197,7 @@ pub fn message_format_gbnf(registry: Option<&ToolRegistry>, include_think: bool)
         if !call_names.is_empty() {
             lines.push(format!("tool-call ::= {}", call_names.join(" | ")));
             lines.push(
-                "tool-result ::= \"<tool_result>\" text-content \"</tool_result>\""
-                    .to_string(),
+                "tool-result ::= \"<tool_result>\" text-content \"</tool_result>\"".to_string(),
             );
         }
     }
@@ -206,10 +213,7 @@ pub fn message_format_gbnf(registry: Option<&ToolRegistry>, include_think: bool)
         segments.push("tool-result".to_string());
     }
     // root: one or more of any segment type, interleaved freely.
-    lines.push(format!(
-        "root ::= ({} ws?)+",
-        segments.join(" | ")
-    ));
+    lines.push(format!("root ::= ({} ws?)+", segments.join(" | ")));
 
     lines.join("\n")
 }
@@ -223,7 +227,11 @@ pub fn tools_to_xml(registry: &ToolRegistry) -> String {
         let required: Vec<String> = schema
             .get("required")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
         let mut params = Vec::new();
         if let Some(p) = props {
@@ -414,7 +422,10 @@ mod tests {
     #[test]
     fn generated_grammar_is_valid_and_closed() {
         let g = tools_to_gbnf(&sample_registry());
-        assert!(validate_grammar(&g).is_ok(), "grammar should validate:\n{g}");
+        assert!(
+            validate_grammar(&g).is_ok(),
+            "grammar should validate:\n{g}"
+        );
 
         let g2 = tools_to_gbnf_with_think(&sample_registry());
         assert!(
@@ -479,9 +490,7 @@ mod tests {
     fn validator_flags_undefined_rule() {
         let bad = "root ::= call\ncall ::= ghostCall";
         let errs = validate_grammar(bad).unwrap_err();
-        assert!(errs
-            .iter()
-            .any(|i| i.message.contains("ghostCall")));
+        assert!(errs.iter().any(|i| i.message.contains("ghostCall")));
     }
 
     #[test]
@@ -501,7 +510,10 @@ mod tests {
         assert!(g2.contains("tool-result"));
         assert!(g2.contains("echo"));
         assert!(g2.contains("add"));
-        assert!(validate_grammar(&g2).is_ok(), "grammar should validate: {g2}");
+        assert!(
+            validate_grammar(&g2).is_ok(),
+            "grammar should validate: {g2}"
+        );
     }
 
     #[test]

@@ -65,14 +65,18 @@ pub enum AgentRole {
 
 impl std::fmt::Display for AgentRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Self::Orchestrator => "orchestrator",
-            Self::Worker => "worker",
-            Self::Verifier => "verifier",
-            Self::Critic => "critic",
-            Self::Memory => "memory",
-            Self::Router => "router",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Orchestrator => "orchestrator",
+                Self::Worker => "worker",
+                Self::Verifier => "verifier",
+                Self::Critic => "critic",
+                Self::Memory => "memory",
+                Self::Router => "router",
+            }
+        )
     }
 }
 
@@ -89,9 +93,7 @@ pub enum AgentStrategy {
     },
     /// Careful step-by-step reasoning — low temperature, structured.
     #[serde(rename = "step_by_step")]
-    StepByStep {
-        temperature: f32,
-    },
+    StepByStep { temperature: f32 },
     /// Structured JSON/format output.
     #[serde(rename = "structured_output")]
     StructuredOutput {
@@ -283,9 +285,10 @@ impl AgentProfile {
     /// system prompt, strategy settings, and conversation state.
     pub fn build_request(&self, user_input: &str, max_tokens: Option<usize>) -> CompletionRequest {
         let (temperature, default_max) = match &self.strategy {
-            AgentStrategy::FastIterative { temperature, max_tokens } => {
-                (*temperature, *max_tokens)
-            }
+            AgentStrategy::FastIterative {
+                temperature,
+                max_tokens,
+            } => (*temperature, *max_tokens),
             AgentStrategy::StepByStep { temperature } => (*temperature, 1024),
             AgentStrategy::StructuredOutput { .. } => (0.1, 512),
             AgentStrategy::ChainOfThought { temperature, .. } => (*temperature, 2048),
@@ -306,12 +309,16 @@ impl AgentProfile {
             estimated_prompt_tokens: 0,
             thinking: false,
             preserve_state: false,
-        on_token: None,
+            on_token: None,
         }
     }
 
     /// Record a completion into this profile's state.
-    pub fn record_completion(&mut self, request: &CompletionRequest, response: &CompletionResponse) {
+    pub fn record_completion(
+        &mut self,
+        request: &CompletionRequest,
+        response: &CompletionResponse,
+    ) {
         self.state.conversation.push(Message {
             role: "user".into(),
             content: request.prompt.clone(),
@@ -343,13 +350,9 @@ pub enum RoutingStrategy {
     /// Use the first profile that's available/loaded.
     FirstAvailable,
     /// Run all profiles and combine results by voting.
-    Ensemble {
-        vote: VoteStrategy,
-    },
+    Ensemble { vote: VoteStrategy },
     /// Try the fast profile first; escalate to thorough on failure.
-    EscalateOnFailure {
-        on_failure: String,
-    },
+    EscalateOnFailure { on_failure: String },
     /// Route by capability tag (e.g., "code", "creative", "math").
     ByCapability,
     /// Round-robin across profiles.
@@ -471,7 +474,11 @@ impl AgentProfileRegistry {
 
     /// Select profiles from a group based on the routing strategy and a
     /// capability tag (used with `ByCapability` routing).
-    pub fn select_from_group(&self, group_name: &str, task_capability: Option<&str>) -> Vec<&AgentProfile> {
+    pub fn select_from_group(
+        &self,
+        group_name: &str,
+        task_capability: Option<&str>,
+    ) -> Vec<&AgentProfile> {
         let group = match self.groups.get(group_name) {
             Some(g) => g,
             None => return Vec::new(),
@@ -495,32 +502,40 @@ impl AgentProfileRegistry {
                 }
                 Vec::new()
             }
-            RoutingStrategy::Ensemble { .. } => {
-                group.profile_ids.iter()
-                    .filter_map(|id| self.profiles.get(id))
-                    .collect()
-            }
+            RoutingStrategy::Ensemble { .. } => group
+                .profile_ids
+                .iter()
+                .filter_map(|id| self.profiles.get(id))
+                .collect(),
             RoutingStrategy::EscalateOnFailure { .. } => {
                 // Return all profiles; caller escalates on failure
-                group.profile_ids.iter()
+                group
+                    .profile_ids
+                    .iter()
                     .filter_map(|id| self.profiles.get(id))
                     .collect()
             }
             RoutingStrategy::ByCapability => {
                 if let Some(cap) = task_capability {
-                    group.profile_ids.iter()
+                    group
+                        .profile_ids
+                        .iter()
                         .filter_map(|id| self.profiles.get(id))
                         .filter(|p| p.capabilities.iter().any(|c| c == cap))
                         .collect()
                 } else {
-                    group.profile_ids.iter()
+                    group
+                        .profile_ids
+                        .iter()
                         .filter_map(|id| self.profiles.get(id))
                         .collect()
                 }
             }
             RoutingStrategy::RoundRobin => {
                 // Simple: return all and let caller round-robin
-                group.profile_ids.iter()
+                group
+                    .profile_ids
+                    .iter()
                     .filter_map(|id| self.profiles.get(id))
                     .collect()
             }
@@ -543,7 +558,10 @@ impl AgentProfileRegistry {
     }
 
     /// Detach (unload) a profile's backend, freeing memory.
-    pub fn detach_backend(&mut self, profile_id: &str) -> Option<Box<dyn ModelBackend + Send + Sync>> {
+    pub fn detach_backend(
+        &mut self,
+        profile_id: &str,
+    ) -> Option<Box<dyn ModelBackend + Send + Sync>> {
         self.active_backends.remove(profile_id)
     }
 
@@ -564,7 +582,9 @@ impl AgentProfileRegistry {
 
     /// Swap a profile's model reference (does NOT reload the backend).
     pub fn swap_model_ref(&mut self, profile_id: &str, new_model_ref: &str) -> Result<(), String> {
-        let profile = self.profiles.get_mut(profile_id)
+        let profile = self
+            .profiles
+            .get_mut(profile_id)
             .ok_or_else(|| format!("profile '{profile_id}' not found"))?;
         profile.model_ref = new_model_ref.to_string();
         // Backend must be re-attached separately (or via inference server)
@@ -615,9 +635,7 @@ pub mod presets {
             "You are a precise code generator. Output only valid code. \
              Add minimal comments. Follow the requested language's conventions.",
         )
-        .with_strategy(AgentStrategy::StructuredOutput {
-            schema: None,
-        })
+        .with_strategy(AgentStrategy::StructuredOutput { schema: None })
         .with_capabilities(vec!["code", "rust", "typescript", "python"])
         .with_weaknesses(vec!["creative", "explanation"])
     }
@@ -632,9 +650,7 @@ pub mod presets {
             "You are a code reviewer. Check for correctness, edge cases, \
              and style. Be concise. Output specific issues as a bullet list.",
         )
-        .with_strategy(AgentStrategy::StepByStep {
-            temperature: 0.1,
-        })
+        .with_strategy(AgentStrategy::StepByStep { temperature: 0.1 })
         .with_capabilities(vec!["code-review", "style-check"])
         .with_weaknesses(vec!["deep-reasoning", "security-audit"])
     }
@@ -705,9 +721,7 @@ pub mod presets {
             "You are a sharp, logical critic. Identify flaws in arguments, \
              point out assumptions, demand evidence. Be constructive but rigorous.",
         )
-        .with_strategy(AgentStrategy::StepByStep {
-            temperature: 0.2,
-        })
+        .with_strategy(AgentStrategy::StepByStep { temperature: 0.2 })
         .with_capabilities(vec!["critique", "logic", "analysis"])
         .with_weaknesses(vec!["speed"])
     }
@@ -778,168 +792,5 @@ impl AgentProfile {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use super::presets::*;
-
-    #[test]
-    fn test_profile_creation() {
-        let p = storyteller_rwkv();
-        assert_eq!(p.id, "storyteller/fast");
-        assert_eq!(p.role, AgentRole::Worker);
-        assert_eq!(p.model_ref, "rwkv-2.9b");
-        assert!(p.capabilities.contains(&"creative".to_string()));
-    }
-
-    #[test]
-    fn test_coder_profile() {
-        let p = coder_fast();
-        assert_eq!(p.id, "coder/fast");
-        assert!(p.capabilities.contains(&"code".to_string()));
-        assert!(p.weaknesses.contains(&"creative".to_string()));
-    }
-
-    #[test]
-    fn test_build_system_prompt_without_examples() {
-        let p = assistant_fast();
-        let prompt = p.build_system_prompt();
-        assert!(prompt.contains("helpful assistant"));
-        assert!(!prompt.contains("--- Examples ---"));
-    }
-
-    #[test]
-    fn test_build_system_prompt_with_examples() {
-        let p = coder_fast().with_few_shot(vec![
-            FewShotExample {
-                input: "Write a function that adds two numbers".into(),
-                output: "fn add(a: i32, b: i32) -> i32 { a + b }".into(),
-                reasoning: None,
-            },
-        ]);
-        let prompt = p.build_system_prompt();
-        assert!(prompt.contains("--- Examples ---"));
-        assert!(prompt.contains("fn add"));
-    }
-
-    #[test]
-    fn test_build_request_uses_strategy_settings() {
-        let p = storyteller_rwkv();
-        let req = p.build_request("Write a story", None);
-        assert!((req.temperature - 0.6).abs() < 0.01);
-        assert_eq!(req.max_tokens, 1024);
-
-        let p2 = coder_fast();
-        let req2 = p2.build_request("Write a function", None);
-        assert!((req2.temperature - 0.1).abs() < 0.01);
-        assert_eq!(req2.max_tokens, 512);
-    }
-
-    #[test]
-    fn test_registry_basic_ops() {
-        let mut reg = AgentProfileRegistry::new();
-        assert_eq!(reg.profile_count(), 0);
-
-        reg.register(storyteller_rwkv());
-        reg.register(coder_fast());
-        assert_eq!(reg.profile_count(), 2);
-
-        assert!(reg.get("storyteller/fast").is_some());
-        assert!(reg.get("coder/fast").is_some());
-        assert!(reg.get("nonexistent").is_none());
-
-        let removed = reg.unregister("coder/fast");
-        assert!(removed.is_some());
-        assert_eq!(reg.profile_count(), 1);
-    }
-
-    #[test]
-    fn test_registry_role_filter() {
-        let mut reg = AgentProfileRegistry::new();
-        reg.register(storyteller_rwkv());  // Worker
-        reg.register(coder_fast());        // Worker
-        reg.register(orchestrator_cpu());// Orchestrator
-        reg.register(assistant_fast());    // Worker
-        reg.register(theorist());          // Critic
-
-        let workers = reg.all_profiles_for_role(AgentRole::Worker);
-        assert_eq!(workers.len(), 3);
-
-        let orchestrators = reg.all_profiles_for_role(AgentRole::Orchestrator);
-        assert_eq!(orchestrators.len(), 1);
-
-        let critics = reg.all_profiles_for_role(AgentRole::Critic);
-        assert_eq!(critics.len(), 1);
-    }
-
-    #[test]
-    fn test_registry_groups() {
-        let mut reg = AgentProfileRegistry::new();
-        for p in presets::all_presets() {
-            reg.register(p);
-        }
-
-        for g in presets::default_groups() {
-            reg.register_group(g);
-        }
-
-        assert_eq!(reg.all_groups().len(), 5);
-
-        let writing = reg.get_group("writing").unwrap();
-        assert_eq!(writing.profile_ids, vec!["storyteller/fast"]);
-    }
-
-    #[test]
-    fn test_select_from_group_by_capability() {
-        let mut reg = AgentProfileRegistry::new();
-        reg.register(coder_fast());
-        reg.register(coder_review_tiny());
-        reg.register(storyteller_rwkv());
-
-        reg.register_group(
-            AgentGroup::new("all", "All profiles")
-                .with_profiles(vec!["coder/fast", "coder/review", "storyteller/fast"])
-                .with_routing(RoutingStrategy::ByCapability),
-        );
-
-        let code_profiles = reg.select_from_group("all", Some("code"));
-        assert_eq!(code_profiles.len(), 1);
-        assert_eq!(code_profiles[0].id, "coder/fast");
-
-        let review_profiles = reg.select_from_group("all", Some("code-review"));
-        assert_eq!(review_profiles.len(), 1);
-        assert_eq!(review_profiles[0].id, "coder/review");
-    }
-
-    #[test]
-    fn test_memory_entry() {
-        let entry = MemoryEntry::new("user", "favorite_color", "blue", 0.8);
-        assert_eq!(entry.key, "favorite_color");
-        assert_eq!(entry.value, "blue");
-        assert_eq!(entry.namespace, "user");
-        assert!(entry.timestamp_ms > 0);
-    }
-
-    #[test]
-    fn test_serialization_roundtrip() {
-        let p = storyteller_rwkv();
-        let json = serde_json::to_string_pretty(&p).unwrap();
-        let deserialized: AgentProfile = serde_json::from_str(&json).unwrap();
-        assert_eq!(p.id, deserialized.id);
-        assert_eq!(p.name, deserialized.name);
-        assert_eq!(p.role, deserialized.role);
-        assert_eq!(p.model_ref, deserialized.model_ref);
-        assert_eq!(p.capabilities, deserialized.capabilities);
-    }
-
-    #[test]
-    fn test_save_load_roundtrip() {
-        let p = coder_fast();
-        let path = std::env::temp_dir().join("test_agent_profile.json");
-        p.save_to_file(&path).unwrap();
-        let loaded = AgentProfile::load_from_file(&path).unwrap();
-        assert_eq!(p.id, loaded.id);
-        assert_eq!(p.name, loaded.name);
-        assert_eq!(p.model_ref, loaded.model_ref);
-        std::fs::remove_file(path).ok();
-    }
-}
+#[path = "tests/agent_profile.rs"]
+mod tests;

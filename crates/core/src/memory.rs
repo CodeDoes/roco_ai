@@ -132,7 +132,10 @@ impl MemoryStore {
             .add(&id, vec, Some(serde_json::json!({ "text": text })))
             .ok();
         self.facts.insert(id.clone(), fact.clone());
-        self.by_user.entry(user_id.to_string()).or_default().push(id);
+        self.by_user
+            .entry(user_id.to_string())
+            .or_default()
+            .push(id);
         fact
     }
 
@@ -164,7 +167,11 @@ impl MemoryStore {
     pub fn facts_for(&self, user_id: &str) -> Vec<Fact> {
         self.by_user
             .get(user_id)
-            .map(|ids| ids.iter().filter_map(|i| self.facts.get(i).cloned()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|i| self.facts.get(i).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -385,8 +392,11 @@ impl LettaMemory {
             .unwrap_or_default()
             .into_iter()
             .filter_map(|h| {
-                h.payload
-                    .and_then(|p| p.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                h.payload.and_then(|p| {
+                    p.get("text")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string())
+                })
             })
             .collect()
     }
@@ -450,7 +460,11 @@ impl MemoryProcessor {
             let candidates = self.store.lock().unwrap().search(user_id, &f, 3);
             let decision = match self.resolve_with_model(backend, &f, &candidates).await {
                 Ok(d) => d,
-                Err(_) => self.store.lock().unwrap().deterministic_resolve(&f, &candidates),
+                Err(_) => self
+                    .store
+                    .lock()
+                    .unwrap()
+                    .deterministic_resolve(&f, &candidates),
             };
             self.store.lock().unwrap().apply(user_id, &f, &decision);
             out.push(decision.resolution);
@@ -464,7 +478,11 @@ impl MemoryProcessor {
         let mut out = Vec::new();
         for f in extract_facts_fallback(text) {
             let candidates = self.store.lock().unwrap().search(user_id, &f, 3);
-            let d = self.store.lock().unwrap().deterministic_resolve(&f, &candidates);
+            let d = self
+                .store
+                .lock()
+                .unwrap()
+                .deterministic_resolve(&f, &candidates);
             self.store.lock().unwrap().apply(user_id, &f, &d);
             out.push(d.resolution);
         }
@@ -490,8 +508,8 @@ impl MemoryProcessor {
                 max_tokens: 512,
                 estimated_prompt_tokens: text.len() / 4,
                 thinking: false,
-            preserve_state: false,
-            on_token: None,
+                preserve_state: false,
+                on_token: None,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -524,18 +542,21 @@ impl MemoryProcessor {
             .complete(CompletionRequest {
                 system: CONFLICT_SYSTEM.into(),
                 prompt,
-                output_schema: Some(r#"{"action":"<ADD|UPDATE|DELETE|NONE>","target_id":"<id|null>"}"#.into()),
+                output_schema: Some(
+                    r#"{"action":"<ADD|UPDATE|DELETE|NONE>","target_id":"<id|null>"}"#.into(),
+                ),
                 grammar: None,
                 temperature: 0.0,
                 max_tokens: 128,
                 estimated_prompt_tokens: est,
                 thinking: false,
-            preserve_state: false,
-            on_token: None,
+                preserve_state: false,
+                on_token: None,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
-        let v: Value = serde_json::from_str(&resp.text).map_err(|e| MemoryError::Parse(e.to_string()))?;
+        let v: Value =
+            serde_json::from_str(&resp.text).map_err(|e| MemoryError::Parse(e.to_string()))?;
         let action = v.get("action").and_then(|a| a.as_str()).unwrap_or("ADD");
         let target = v
             .get("target_id")
@@ -602,7 +623,11 @@ impl MemoryProcessor {
             .unwrap_or_else(|_| {
                 // Fallback: keep current state, log the transcript as an open loop.
                 let mut s = current;
-                s.open_loops = format!("{}\n{}", s.open_loops, transcript.lines().next().unwrap_or(""));
+                s.open_loops = format!(
+                    "{}\n{}",
+                    s.open_loops,
+                    transcript.lines().next().unwrap_or("")
+                );
                 s.updated_at = now_ms();
                 s
             });
@@ -652,8 +677,8 @@ impl MemoryProcessor {
                 max_tokens: 512,
                 estimated_prompt_tokens: text.len() / 4,
                 thinking: false,
-            preserve_state: false,
-            on_token: None,
+                preserve_state: false,
+                on_token: None,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -802,18 +827,21 @@ impl<B: ModelBackend + Send + Sync + 'static> Tool for MemoryIngestTool<B> {
         })
     }
     async fn run(&self, input: Value) -> Result<Value, ToolError> {
-        let user_id = input.get("user_id").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolError::InvalidInput {
+        let user_id = input
+            .get("user_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput {
                 name: "memory_ingest".into(),
                 reason: "missing 'user_id'".into(),
-            }
-        })?;
-        let text = input.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolError::InvalidInput {
-                name: "memory_ingest".into(),
-                reason: "missing 'text'".into(),
-            }
-        })?;
+            })?;
+        let text =
+            input
+                .get("text")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidInput {
+                    name: "memory_ingest".into(),
+                    reason: "missing 'text'".into(),
+                })?;
         match self.proc.ingest(self.backend.as_ref(), user_id, text).await {
             Ok(res) => Ok(serde_json::json!({ "resolutions": res })),
             Err(e) => Ok(serde_json::json!({ "ok": false, "error": e.to_string() })),
@@ -852,18 +880,21 @@ impl Tool for MemorySearchTool {
         })
     }
     async fn run(&self, input: Value) -> Result<Value, ToolError> {
-        let user_id = input.get("user_id").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolError::InvalidInput {
+        let user_id = input
+            .get("user_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput {
                 name: "memory_search".into(),
                 reason: "missing 'user_id'".into(),
-            }
-        })?;
-        let query = input.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolError::InvalidInput {
-                name: "memory_search".into(),
-                reason: "missing 'query'".into(),
-            }
-        })?;
+            })?;
+        let query =
+            input
+                .get("query")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidInput {
+                    name: "memory_search".into(),
+                    reason: "missing 'query'".into(),
+                })?;
         let k = input.get("k").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
         let facts = self.proc.retrieve(user_id, query, k);
         Ok(serde_json::json!({ "query": query, "facts": facts }))
@@ -901,12 +932,13 @@ impl<B: ModelBackend + Send + Sync + 'static> Tool for MemoryStateTool<B> {
         })
     }
     async fn run(&self, input: Value) -> Result<Value, ToolError> {
-        let user_id = input.get("user_id").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolError::InvalidInput {
+        let user_id = input
+            .get("user_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput {
                 name: "memory_state".into(),
                 reason: "missing 'user_id'".into(),
-            }
-        })?;
+            })?;
         let transcript = input
             .get("transcript")
             .and_then(|v| v.as_str())
@@ -950,12 +982,14 @@ impl<B: ModelBackend + Send + Sync + 'static> Tool for MemoryGraphTool<B> {
         })
     }
     async fn run(&self, input: Value) -> Result<Value, ToolError> {
-        let text = input.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolError::InvalidInput {
-                name: "memory_graph".into(),
-                reason: "missing 'text'".into(),
-            }
-        })?;
+        let text =
+            input
+                .get("text")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidInput {
+                    name: "memory_graph".into(),
+                    reason: "missing 'text'".into(),
+                })?;
         match self.proc.extract_triples(self.backend.as_ref(), text).await {
             Ok(edges) => {
                 let n = edges.len();
@@ -981,126 +1015,5 @@ pub fn memory_tools<B: ModelBackend + Send + Sync + 'static>(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::engine::{BoxFuture, CompletionResponse, EngineError};
-    use std::sync::Arc;
-
-    fn proc() -> Arc<MemoryProcessor> {
-        Arc::new(MemoryProcessor::new(Arc::new(crate::vector::HashingEmbedder::new(256))))
-    }
-
-    #[test]
-    fn deterministic_ingest_dedups_and_resolves() {
-        let p = proc();
-        // "Moved to Austin" and "Now living in Austin" should collide -> Update/None.
-        let r1 = p.ingest_deterministic("u1", "I just moved to Austin, TX and I love it.");
-        assert!(!r1.is_empty());
-        let before = p.retrieve("u1", "Austin", 5);
-        assert_eq!(before.len(), 1, "only one Austin fact should be stored");
-        // Contradiction by a different city -> Add (model would DELETE; fallback adds).
-        let r2 = p.ingest_deterministic("u1", "Actually I relocated to London last month.");
-        let cities = p.retrieve("u1", "city relocation", 5);
-        assert!(!cities.is_empty());
-        // Both facts retained by the deterministic fallback.
-        assert!(p.retrieve("u1", "Austin", 5).len() >= 1);
-        assert!(p.retrieve("u1", "London", 5).len() >= 1);
-        let _ = (r1, r2);
-    }
-
-    #[test]
-    fn zep_temporal_graph_closes_old_edges() {
-        let p = proc();
-        p.merge_triples(vec![TemporalEdge {
-            subject: "User".into(),
-            predicate: "lives_in".into(),
-            object: "New York".into(),
-            valid_from: 1,
-            valid_to: None,
-            source: "a".into(),
-        }]);
-        p.merge_triples(vec![TemporalEdge {
-            subject: "User".into(),
-            predicate: "lives_in".into(),
-            object: "London".into(),
-            valid_from: 2,
-            valid_to: None,
-            source: "b".into(),
-        }]);
-        let g = p.graph();
-        assert_eq!(g.len(), 2);
-        let cur = g.current_for("User");
-        assert_eq!(cur.len(), 1);
-        assert_eq!(cur[0].object, "London");
-    }
-
-    #[test]
-    fn letta_tiered_memory_pages() {
-        let p = proc();
-        p.letta_core_append("u1", "User name: Sam");
-        p.letta_core_replace("u1", "User name: Sam", "User name: Samantha");
-        p.letta_recall_append("u1", "turn 1", 10);
-        p.letta_archival_add("u1", "Sam prefers concise answers");
-        let hits = p.letta_archival_search("u1", "prefers concise", 3);
-        assert!(!hits.is_empty());
-        let m = p.letta("u1");
-        assert!(m.core.contains("Samantha"));
-        assert_eq!(m.recall.len(), 1);
-    }
-
-    /// A mock backend that returns canned JSON for the memory prompts.
-    struct MockMemoryBackend;
-    impl ModelBackend for MockMemoryBackend {
-        fn name(&self) -> &str {
-            "mock-memory"
-        }
-        fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
-            Box::pin(async move {
-let text = if req.system.contains("conflict resolver") {
-                    // Mark the new memory as an UPDATE of the first existing fact.
-                    "{\"action\": \"UPDATE\", \"target_id\": \"f0\"}".to_string()
-                } else if req.system.contains("dialectic") {
-                    "{\"identity\":\"Sam\",\"current_goals\":\"ship memory layer\",\"preferences\":\"concise\",\"open_loops\":\"\"}".to_string()
-                } else if req.system.contains("subject-predicate-object") {
-                    "[[\"User\",\"lives_in\",\"Austin\"]]".to_string()
-                } else {
-                    // Fact extraction.
-                    "[\"User moved to Austin, TX\", \"User has a dog named Barnaby\"]".to_string()
-                };
-                Ok(CompletionResponse {
-                    text: text.clone(),
-                    usage: crate::engine::TokenUsage::default(),
-                    parsed: serde_json::from_str(&text).ok(),
-                    think_trace: None,
-                })
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn model_driven_ingest_uses_conflict_resolver() {
-        let p = proc();
-        let backend: Arc<MockMemoryBackend> = Arc::new(MockMemoryBackend);
-        // Seed one fact so the resolver has something to compare against.
-        p.ingest_deterministic("u1", "User lives in Austin, TX.");
-        let res = p.ingest(backend.as_ref(), "u1", "User moved to Austin, TX.").await.unwrap();
-        // The mock resolver returns UPDATE for the colliding fact.
-        assert!(res.contains(&Resolution::Update), "expected an UPDATE, got {res:?}");
-    }
-
-    #[tokio::test]
-    async fn model_driven_state_and_graph() {
-        let p = proc();
-        let backend: Arc<MockMemoryBackend> = Arc::new(MockMemoryBackend);
-        let state = p
-            .synthesize_state(backend.as_ref(), "u1", "Sam is building an agent.")
-            .await
-            .unwrap();
-        assert_eq!(state.identity, "Sam");
-        let edges = p.extract_triples(backend.as_ref(), "Sam lives in Austin.").await.unwrap();
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].object, "Austin");
-        p.merge_triples(edges);
-        assert_eq!(p.graph().current_for("User").len(), 1);
-    }
-}
+#[path = "tests/memory.rs"]
+mod tests;

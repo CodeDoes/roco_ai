@@ -182,7 +182,8 @@ mod tests {
     #[tokio::test]
     async fn allows_and_dispatches_tool() {
         let resp = response_with(&[r#"{"name":"add","arguments":{"numbers":[1,2,3]}}"#]);
-        let results = execute_tool_calls(&resp, &registry(), &Sandbox::new(), &ComposedPolicy::new()).await;
+        let results =
+            execute_tool_calls(&resp, &registry(), &Sandbox::new(), &ComposedPolicy::new()).await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].verdict, PolicyVerdict::Allow);
         assert_eq!(results[0].output.as_ref().unwrap()["sum"], 6.0);

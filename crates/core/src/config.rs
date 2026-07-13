@@ -123,9 +123,8 @@ impl Config {
     }
 
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
-        let text = std::fs::read_to_string(path.as_ref()).with_context(|| {
-            format!("reading config {}", path.as_ref().display())
-        })?;
+        let text = std::fs::read_to_string(path.as_ref())
+            .with_context(|| format!("reading config {}", path.as_ref().display()))?;
         let cfg: Config = serde_json::from_str(&text)
             .with_context(|| format!("parsing config {}", path.as_ref().display()))?;
         Ok(cfg)
@@ -200,12 +199,20 @@ impl Config {
                 let model = std::env::var("RWKV_MODEL").ok().or_else(|| {
                     let dir = std::env::current_dir().ok()?;
                     let c = dir.join("models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st");
-                    if c.exists() { Some(c.to_string_lossy().to_string()) } else { None }
+                    if c.exists() {
+                        Some(c.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
                 });
                 let vocab = std::env::var("RWKV_VOCAB").ok().or_else(|| {
                     let dir = std::env::current_dir().ok()?;
                     let v = dir.join("assets/vocab/rwkv_vocab_v20230424.json");
-                    if v.exists() { Some(v.to_string_lossy().to_string()) } else { None }
+                    if v.exists() {
+                        Some(v.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
                 });
                 if model.is_some() && vocab.is_some() {
                     let backend = crate::rwkv_backend::RwkvBackend::from_env()
@@ -276,7 +283,8 @@ mod tests {
 
     #[test]
     fn parses_json_config() {
-        let json = r#"{"provider":"nvidia","capacity":{"nvidia_gpu":1},"retry":{"max_per_task":5}}"#;
+        let json =
+            r#"{"provider":"nvidia","capacity":{"nvidia_gpu":1},"retry":{"max_per_task":5}}"#;
         let c: Config = serde_json::from_str(json).unwrap();
         assert_eq!(c.provider, Provider::Nvidia);
         assert_eq!(c.retry_policy().max_per_task, 5);

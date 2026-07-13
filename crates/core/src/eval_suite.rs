@@ -85,15 +85,19 @@ pub enum EvalCategory {
 
 impl std::fmt::Display for EvalCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Self::Smoke => "smoke",
-            Self::Instruction => "instruction",
-            Self::Coherence => "coherence",
-            Self::Repetition => "repetition",
-            Self::Throughput => "throughput",
-            Self::Format => "format",
-            Self::Context => "context",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Smoke => "smoke",
+                Self::Instruction => "instruction",
+                Self::Coherence => "coherence",
+                Self::Repetition => "repetition",
+                Self::Throughput => "throughput",
+                Self::Format => "format",
+                Self::Context => "context",
+            }
+        )
     }
 }
 
@@ -189,7 +193,10 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let full_input = if case.system.is_empty() {
         format!("User: {}\n\nAssistant:", case.prompt)
     } else {
-        format!("System: {}\n\nUser: {}\n\nAssistant:", case.system, case.prompt)
+        format!(
+            "System: {}\n\nUser: {}\n\nAssistant:",
+            case.system, case.prompt
+        )
     };
 
     // Streaming trace: write header + input, then append each token as it's
@@ -360,17 +367,28 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 detail: if repeats <= 1 {
                     format!("{} repeated sentences out of {}", repeats, sentences.len())
                 } else {
-                    format!("{} repeated sentences out of {} — may be looping", repeats, sentences.len())
+                    format!(
+                        "{} repeated sentences out of {} — may be looping",
+                        repeats,
+                        sentences.len()
+                    )
                 },
             });
 
             // 6. Throughput check (informational — only fails if latency > 0 but throughput is zero)
             if usage.completion_tokens >= 10 {
-                let tp_ok = if latency_ms == 0 { true } else { tokens_per_sec >= 1.0 };
+                let tp_ok = if latency_ms == 0 {
+                    true
+                } else {
+                    tokens_per_sec >= 1.0
+                };
                 checks.push(CheckResult {
                     name: "throughput".into(),
                     passed: tp_ok,
-                    detail: format!("{:.1} tok/s ({} tokens in {}ms)", tokens_per_sec, usage.completion_tokens, latency_ms),
+                    detail: format!(
+                        "{:.1} tok/s ({} tokens in {}ms)",
+                        tokens_per_sec, usage.completion_tokens, latency_ms
+                    ),
                 });
             }
 
@@ -435,7 +453,10 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
 
     for case in cases {
         if let Some(filter) = filter {
-            if !case.name.contains(filter) && !case.description.contains(filter) && case.category.to_string() != filter {
+            if !case.name.contains(filter)
+                && !case.description.contains(filter)
+                && case.category.to_string() != filter
+            {
                 continue;
             }
         }
@@ -449,7 +470,8 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
     let failed = total - passed;
 
     // Category breakdown
-    let mut cat_map: std::collections::BTreeMap<String, (usize, usize)> = std::collections::BTreeMap::new();
+    let mut cat_map: std::collections::BTreeMap<String, (usize, usize)> =
+        std::collections::BTreeMap::new();
     for r in &results {
         let cat = r.category.to_string();
         let entry = cat_map.entry(cat).or_insert((0, 0));
@@ -460,7 +482,11 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
     }
     let category_breakdown: Vec<CategoryBreakdown> = cat_map
         .into_iter()
-        .map(|(category, (total, passed))| CategoryBreakdown { category, total, passed })
+        .map(|(category, (total, passed))| CategoryBreakdown {
+            category,
+            total,
+            passed,
+        })
         .collect();
 
     EvalReport {
@@ -479,7 +505,9 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
 pub fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) {
     // Derive sidecar paths from the trace path.
     // e.g. latest_trace.txt → latest.mismatches.txt, latest.oracle.json
-    let parent = trace_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let parent = trace_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let stem = trace_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -736,15 +764,22 @@ pub fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
         name: "context_long_input".into(),
         description: "Model handles a long input prompt and answers correctly about it".into(),
         system: "You are a precise reader. Answer questions about the text.".into(),
-        prompt: format!("Read this text and then answer: what is the main topic?\n\n{}", long_text),
+        prompt: format!(
+            "Read this text and then answer: what is the main topic?\n\n{}",
+            long_text
+        ),
         expected_hints: vec![],
-        forbidden_strings: vec!["I don't know".into(), "I cannot".into(), "I'm not sure".into()],
+        forbidden_strings: vec![
+            "I don't know".into(),
+            "I cannot".into(),
+            "I'm not sure".into(),
+        ],
         max_tokens: 200,
         temperature: 0.0,
         min_output_chars: 20,
         grammar: None,
         oracle: None,
-            category: EvalCategory::Context,
+        category: EvalCategory::Context,
     }]
 }
 
@@ -777,7 +812,8 @@ pub fn grammar_eval_cases() -> Vec<EvalCase> {
     vec![
         EvalCase {
             name: "grammar_yes_no".into(),
-            description: "Grammar-constrained yes/no response. Pins 'root ::= \"yes\" | \"no\"'.".into(),
+            description: "Grammar-constrained yes/no response. Pins 'root ::= \"yes\" | \"no\"'."
+                .into(),
             system: "You are a precise assistant.".into(),
             prompt: "Are you a helpful model? Answer yes or no.".into(),
             expected_hints: vec![],
@@ -793,7 +829,8 @@ pub fn grammar_eval_cases() -> Vec<EvalCase> {
         },
         EvalCase {
             name: "grammar_digit_1_to_9".into(),
-            description: "Grammar-constrained single-digit response. Pins a 9-branch alternative.".into(),
+            description: "Grammar-constrained single-digit response. Pins a 9-branch alternative."
+                .into(),
             system: "".into(),
             prompt: "Pick a digit from one to nine.".into(),
             expected_hints: vec![],
@@ -873,8 +910,8 @@ pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
         },
         EvalCase {
             name: "json_schema_enum_layer".into(),
-            description:
-                "Enum of rwkv7 layer generations (g1g / g1h / g1d) via JSON Schema.".into(),
+            description: "Enum of rwkv7 layer generations (g1g / g1h / g1d) via JSON Schema."
+                .into(),
             system: "".into(),
             prompt: "Pick one of: g1g, g1h, g1d.".into(),
             expected_hints: vec![],
@@ -908,7 +945,10 @@ pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
 // ---------------------------------------------------------------------------
 
 /// Write a report to a JSON file.
-pub fn write_report(path: impl AsRef<std::path::Path>, report: &EvalReport) -> Result<(), std::io::Error> {
+pub fn write_report(
+    path: impl AsRef<std::path::Path>,
+    report: &EvalReport,
+) -> Result<(), std::io::Error> {
     let json = serde_json::to_string_pretty(report)?;
     if let Some(parent) = path.as_ref().parent() {
         std::fs::create_dir_all(parent)?;
@@ -919,7 +959,10 @@ pub fn write_report(path: impl AsRef<std::path::Path>, report: &EvalReport) -> R
 /// Write a sidecar mismatches file — only evals whose output diverges from
 /// the oracle.  Empty if none failed, so a `cat` shows nothing or a "no
 /// mismatches" line.
-pub fn write_mismatches(report: &EvalReport, path: impl AsRef<std::path::Path>) -> Result<(), std::io::Error> {
+pub fn write_mismatches(
+    report: &EvalReport,
+    path: impl AsRef<std::path::Path>,
+) -> Result<(), std::io::Error> {
     let path = path.as_ref();
     let mismatches: Vec<&EvalResult> = report
         .results
@@ -955,8 +998,16 @@ pub fn print_report(report: &EvalReport) {
     println!("═══════════════════════════════════════════════════");
     println!("  Eval Report: {}", report.suite_name);
     println!("  Backend:      {}", report.backend_name);
-    println!("  Results:      {}/{} passed ({:.0}%)", report.passed, report.total,
-        if report.total > 0 { report.passed as f64 / report.total as f64 * 100.0 } else { 0.0 });
+    println!(
+        "  Results:      {}/{} passed ({:.0}%)",
+        report.passed,
+        report.total,
+        if report.total > 0 {
+            report.passed as f64 / report.total as f64 * 100.0
+        } else {
+            0.0
+        }
+    );
     println!("  Total time:   {}ms", report.total_latency_ms);
     println!("═══════════════════════════════════════════════════");
 
@@ -985,10 +1036,12 @@ pub fn print_report(report: &EvalReport) {
         if result.latency_ms > 0 {
             print!("         latency: {}ms", result.latency_ms);
             if result.token_usage.completion_tokens > 0 {
-                print!(", {} tok/s ({}+{} tokens)",
+                print!(
+                    ", {} tok/s ({}+{} tokens)",
                     result.tokens_per_sec.round(),
                     result.token_usage.prompt_tokens,
-                    result.token_usage.completion_tokens);
+                    result.token_usage.completion_tokens
+                );
             }
             println!();
         }
@@ -997,46 +1050,5 @@ pub fn print_report(report: &EvalReport) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn grammar_eval_cases_have_compilable_grammars() {
-        // Sanity check: grammar strings must parse as GBNF. We pull
-        // schoolmarm only when the feature is on so the lib stays
-        // buildable with default features.
-        #[cfg(feature = "grammar-rwkv")]
-        {
-            use schoolmarm::Grammar;
-            for case in grammar_eval_cases() {
-                let g = case.grammar.as_ref().expect("grammar_eval_cases pin a grammar");
-                Grammar::new(g).unwrap_or_else(|e| {
-                    panic!("grammar in eval case ‘{}’ did not parse: {e:?}", case.name)
-                });
-            }
-        }
-        // Without the feature, we just assert the static length.
-        #[cfg(not(feature = "grammar-rwkv"))]
-        assert!(grammar_eval_cases().iter().all(|c| c.grammar.is_some()));
-    }
-
-    #[cfg(feature = "grammar-rwkv")]
-    #[test]
-    fn jsonschema_eval_cases_grammars_parse_through_schoolmarm() {
-        // The whole reason jsonschema_eval_cases exists is to ensure
-        // JSON-Schema -> GBNF -> schoolmarm::Grammar is a closed
-        // chain. Verify it directly by running schoolmarm::Grammar::new
-        // on each grammar the eval cases carry.
-        use schoolmarm::Grammar;
-        for case in jsonschema_eval_cases() {
-            let g = case
-                .grammar
-                .as_ref()
-                .expect("jsonschema_eval_cases pin a grammar");
-            Grammar::new(g).unwrap_or_else(|e| {
-                panic!("grammar in eval case ‘{}’ did not parse: {e:?}", case.name)
-            });
-        }
-    }
-}
-
+#[path = "tests/eval_suite.rs"]
+mod tests;

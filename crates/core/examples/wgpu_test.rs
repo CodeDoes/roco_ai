@@ -21,8 +21,14 @@ async fn main() {
         custom: web_rwkv::runtime::model::ModelCustomInfo::None,
     };
 
-    println!("head_buffer_size: {} MB", model_info.head_buffer_size() / (1024 * 1024));
-    println!("max_non_head_buffer_size: {} MB", model_info.max_non_head_buffer_size() / (1024 * 1024));
+    println!(
+        "head_buffer_size: {} MB",
+        model_info.head_buffer_size() / (1024 * 1024)
+    );
+    println!(
+        "max_non_head_buffer_size: {} MB",
+        model_info.max_non_head_buffer_size() / (1024 * 1024)
+    );
 
     let context = ContextBuilder::new(adapter)
         .auto_limits(&model_info)
@@ -30,8 +36,10 @@ async fn main() {
         .await
         .unwrap();
     println!("Context created");
-    println!("Device max_buffer_size: {} MB", 
-        context.device.limits().max_buffer_size / (1024 * 1024));
+    println!(
+        "Device max_buffer_size: {} MB",
+        context.device.limits().max_buffer_size / (1024 * 1024)
+    );
 
     // Try allocating head.weight sized buffer
     let head_size = model_info.head_buffer_size();
@@ -54,10 +62,13 @@ async fn main() {
         timeout: Some(std::time::Duration::from_secs(10)),
     });
     println!("Head poll result: {:?}", result);
-    
+
     // Per-layer matrix
     let layer_size = model_info.max_non_head_buffer_size();
-    println!("\nCreating layer buffer ({} MB)...", layer_size / (1024 * 1024));
+    println!(
+        "\nCreating layer buffer ({} MB)...",
+        layer_size / (1024 * 1024)
+    );
     let buf2 = context.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("layer"),
         size: layer_size as u64,
@@ -65,12 +76,12 @@ async fn main() {
         mapped_at_creation: false,
     });
     println!("Layer buffer created");
-    
+
     let data2 = vec![0u8; layer_size];
     context.queue.write_buffer(&buf2, 0, &data2);
     let submission2 = context.queue.submit(None);
     println!("Submitted layer data");
-    
+
     let result2 = context.device.poll(wgpu::PollType::Wait {
         submission_index: Some(submission2),
         timeout: Some(std::time::Duration::from_secs(10)),

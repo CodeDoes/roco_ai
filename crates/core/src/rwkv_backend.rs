@@ -340,7 +340,12 @@ fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
 /// `model_path` is used to read the on-disk file size (ground truth — wgpu's
 /// `max_buffer_size` is unreliable: NVIDIA RTX 2050 reports 1 TB though it
 /// actually has 4 GB).
-fn auto_quant(info: &web_rwkv::runtime::model::ModelInfo, model_path: &str, gpu_coop: bool, _gpu_max_mb: u64) -> std::collections::HashMap<usize, Quant> {
+fn auto_quant(
+    info: &web_rwkv::runtime::model::ModelInfo,
+    model_path: &str,
+    gpu_coop: bool,
+    _gpu_max_mb: u64,
+) -> std::collections::HashMap<usize, Quant> {
     let num_layer = info.num_layer as u64;
     let num_emb = info.num_emb as u64;
     let num_vocab = info.num_vocab as u64;
@@ -440,12 +445,18 @@ fn default_model_path() -> anyhow::Result<PathBuf> {
         };
         for e in entries.flatten() {
             let path = e.path();
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
             if !name.starts_with("rwkv7") || !name.ends_with(".st") {
                 continue;
             }
             let score = if name.contains("-converted") {
-                if name.contains("-converted.") || name == "model.st" { 100 } else { 100 }
+                if name.contains("-converted.") || name == "model.st" {
+                    100
+                } else {
+                    100
+                }
             } else if name.ends_with("-converted.st") {
                 100
             } else if name.contains("converted") {
@@ -455,7 +466,9 @@ fn default_model_path() -> anyhow::Result<PathBuf> {
             } else {
                 0
             };
-            if score == 0 { continue; }
+            if score == 0 {
+                continue;
+            }
             match &best {
                 Some((s, _)) if *s >= score => {}
                 _ => best = Some((score, path)),
@@ -472,8 +485,13 @@ fn default_model_path() -> anyhow::Result<PathBuf> {
                 if let Ok(entries) = std::fs::read_dir(search_dir) {
                     for e in entries.flatten() {
                         if let Some(_name) = e.path().file_name().and_then(|n| n.to_str()) {
-                            listing.push_str(&format!("  {} ({})\n", e.path().display(),
-                                std::fs::metadata(e.path()).map(|m| format!("{}MB", m.len()/(1024*1024))).unwrap_or_default()));
+                            listing.push_str(&format!(
+                                "  {} ({})\n",
+                                e.path().display(),
+                                std::fs::metadata(e.path())
+                                    .map(|m| format!("{}MB", m.len() / (1024 * 1024)))
+                                    .unwrap_or_default()
+                            ));
                         }
                     }
                 }
@@ -514,8 +532,10 @@ impl RwkvActor {
             }
             dir.join(candidates[0]).to_string_lossy().to_string()
         });
-        let token_chunk_size: usize =
-            env::var("RWKV_CHUNK").ok().and_then(|s| s.parse().ok()).unwrap_or(128);
+        let token_chunk_size: usize = env::var("RWKV_CHUNK")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(128);
 
         info!(model_path = %model_path, vocab_path = %vocab_path, "loading RWKV model");
 
@@ -543,7 +563,9 @@ impl RwkvActor {
             .into_iter()
             .map(|a| {
                 let i = a.get_info();
-                let coop = a.features().contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+                let coop = a
+                    .features()
+                    .contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
                 let max_buf_mb = a.limits().max_buffer_size / (1024 * 1024);
                 let type_score = match i.device_type {
                     wgpu::DeviceType::DiscreteGpu => 30,
@@ -557,7 +579,11 @@ impl RwkvActor {
                 info!(
                     "  [{}] {} | type={:?} | coop_matrix={} | max_buffer={}MB | backend={:?}",
                     if coop { "✓" } else { "✗" },
-                    i.name, i.device_type, coop, max_buf_mb, i.backend
+                    i.name,
+                    i.device_type,
+                    coop,
+                    max_buf_mb,
+                    i.backend
                 );
                 (a, coop_bonus + type_score + (max_buf_mb / 512) as u32)
             })
@@ -577,7 +603,9 @@ impl RwkvActor {
 
         for (adapter, _score) in scored {
             let ainfo = adapter.get_info();
-            let coop = adapter.features().contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+            let coop = adapter
+                .features()
+                .contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
             let max_mb = adapter.limits().max_buffer_size / (1024 * 1024);
 
             // If user requested a specific adapter, skip others.
@@ -587,8 +615,10 @@ impl RwkvActor {
                 }
             }
 
-            info!("trying adapter: '{}' (type={:?}, coop={}, {}MB)",
-                ainfo.name, ainfo.device_type, coop, max_mb);
+            info!(
+                "trying adapter: '{}' (type={:?}, coop={}, {}MB)",
+                ainfo.name, ainfo.device_type, coop, max_mb
+            );
 
             // Try to load previously cached pipeline shaders (speeds up
             // subsequent loads by ~10-15s by skipping WGPU shader recompilation).
@@ -619,7 +649,10 @@ impl RwkvActor {
         }
 
         let context = context.ok_or_else(|| {
-            anyhow::anyhow!("no adapter could create a WebGPU context (tried {} adapters)", adapter_count)
+            anyhow::anyhow!(
+                "no adapter could create a WebGPU context (tried {} adapters)",
+                adapter_count
+            )
         })?;
         info!(
             "selected GPU: '{}' (type={:?}, coop_matrix={}, max_buffer={}MB)",
@@ -637,7 +670,9 @@ impl RwkvActor {
         let state_fp32_mb = (num_emb * num_layer * 4 * 4) / (1024 * 1024);
         let resident_fp16_mb = embed_head_fp16_mb + state_fp32_mb;
         // Full model on-disk size ≈ params * 2 (FP16).
-        let file_mb = std::fs::metadata(&model_path).map(|m| m.len() / (1024 * 1024)).unwrap_or(0);
+        let file_mb = std::fs::metadata(&model_path)
+            .map(|m| m.len() / (1024 * 1024))
+            .unwrap_or(0);
         info!(
             "model memory: file={}MB  resident(FP16)={}MB  embed_head={}MB  state={}MB  layers={} emb={} vocab={}",
             file_mb, resident_fp16_mb, embed_head_fp16_mb, state_fp32_mb, num_layer, num_emb, num_vocab
@@ -647,7 +682,9 @@ impl RwkvActor {
         // Override with RWKV_QUANT env var: "none", "nf4=N", or "N" (Int8 N layers).
         // If unset, auto-pick from model shape + GPU capabilities (see auto_quant).
         let quant_spec_env = env::var("RWKV_QUANT").ok();
-        let quant_layers: std::collections::HashMap<usize, Quant> = if let Some(ref qs) = quant_spec_env {
+        let quant_layers: std::collections::HashMap<usize, Quant> = if let Some(ref qs) =
+            quant_spec_env
+        {
             if qs == "none" {
                 info!("quantization: none (user override)");
                 std::collections::HashMap::new()
@@ -661,13 +698,20 @@ impl RwkvActor {
                 info!(
                     "quantization: NF4 {n} of {} layers (user override){}",
                     info.num_layer,
-                    if !gpu_coop { " — GPU may not support this" } else { "" }
+                    if !gpu_coop {
+                        " — GPU may not support this"
+                    } else {
+                        ""
+                    }
                 );
                 layers
             } else if let Ok(n) = qs.parse::<usize>() {
                 let n = n.min(info.num_layer);
                 let layers = (0..n).map(|l| (l, Quant::Int8)).collect();
-                info!("quantization: Int8 {n} of {info_num} layers (user override)", info_num = info.num_layer);
+                info!(
+                    "quantization: Int8 {n} of {info_num} layers (user override)",
+                    info_num = info.num_layer
+                );
                 layers
             } else {
                 warn!("unknown RWKV_QUANT='{qs}', falling back to auto-quant from model shape");
@@ -804,21 +848,21 @@ impl RwkvActor {
         // single-thread by API design (schoolmarm carries no `Sync`) and only
         // meaningful for the lifetime of this completion, so we own it here.
         #[cfg(feature = "grammar-rwkv")]
-        let mut grammar_state: Option<GrammarState> = match grammar {
-            Some(g) if !g.trim().is_empty() => {
-                let compiled = Grammar::new(g).map_err(|e| {
-                    EngineError::Backend(format!("GBNF compile error: {e:?}"))
-                })?;
-                Some(GrammarState::new(compiled).map_err(|e| {
-                    EngineError::Backend(format!("GrammarState init error: {e:?}"))
-                })?)
-            }
-            _ => None,
-        };
+        let mut grammar_state: Option<GrammarState> =
+            match grammar {
+                Some(g) if !g.trim().is_empty() => {
+                    let compiled = Grammar::new(g)
+                        .map_err(|e| EngineError::Backend(format!("GBNF compile error: {e:?}")))?;
+                    Some(GrammarState::new(compiled).map_err(|e| {
+                        EngineError::Backend(format!("GrammarState init error: {e:?}"))
+                    })?)
+                }
+                _ => None,
+            };
         #[cfg(feature = "grammar-rwkv")]
-        let vocab_refs: Option<Vec<&str>> = grammar_state.as_ref().map(|_| {
-            self.token_strings.iter().map(String::as_str).collect()
-        });
+        let vocab_refs: Option<Vec<&str>> = grammar_state
+            .as_ref()
+            .map(|_| self.token_strings.iter().map(String::as_str).collect());
 
         // Reset state to blank before each completion so independent requests
         // don't leak context into each other (unless `preserve_state` is set).
@@ -842,7 +886,13 @@ impl RwkvActor {
             .map_err(|e| EngineError::Backend(format!("tokenizer encode: {e}")))?;
         let prompt_len = prompt_tokens.len();
 
-        let top_p = if temperature < 0.3 { 0.8 } else if temperature < 0.7 { 0.9 } else { 0.95 };
+        let top_p = if temperature < 0.3 {
+            0.8
+        } else if temperature < 0.7 {
+            0.9
+        } else {
+            0.95
+        };
 
         let mut inference = RnnInput::new(
             vec![RnnInputBatch::new(prompt_tokens.clone(), RnnOption::Last)],
@@ -857,17 +907,18 @@ impl RwkvActor {
 
         loop {
             if self.cancel.load(Ordering::Relaxed) {
-                return Ok((text, TokenUsage {
-                    prompt_tokens: prompt_len,
-                    completion_tokens: generated.len(),
-                }));
+                return Ok((
+                    text,
+                    TokenUsage {
+                        prompt_tokens: prompt_len,
+                        completion_tokens: generated.len(),
+                    },
+                ));
             }
             let input = inference.clone();
-            let (input, output) = self
-                .runtime
-                .infer(input)
-                .await
-                .map_err(|e| EngineError::Backend(format!("RWKV inference (first token): {e:?}")))?;
+            let (input, output) = self.runtime.infer(input).await.map_err(|e| {
+                EngineError::Backend(format!("RWKV inference (first token): {e:?}"))
+            })?;
             inference = input;
 
             // Still processing prompt tokens — continue flushing
@@ -898,7 +949,10 @@ impl RwkvActor {
                 if let (Some(gs), Some(vrefs)) = (grammar_state.as_mut(), vocab_refs.as_ref()) {
                     let allowed = gs.allowed_tokens(vrefs);
                     match constrained_sample_token(&mut p, &allowed, temperature, top_p) {
-                        Some(t) => { token = t; active = true; }
+                        Some(t) => {
+                            token = t;
+                            active = true;
+                        }
                         None => break, // no allowed token → stop generation
                     }
                 } else {
@@ -910,7 +964,9 @@ impl RwkvActor {
             #[cfg(not(feature = "grammar-rwkv"))]
             let token = sample_token(probs.data(), temperature, top_p);
 
-            if token == 0 { break; }
+            if token == 0 {
+                break;
+            }
 
             let decoded = self
                 .tokenizer
@@ -946,10 +1002,13 @@ impl RwkvActor {
         }
 
         if !first_token_sampled {
-            return Ok((text, TokenUsage {
-                prompt_tokens: prompt_len,
-                completion_tokens: 0,
-            }));
+            return Ok((
+                text,
+                TokenUsage {
+                    prompt_tokens: prompt_len,
+                    completion_tokens: 0,
+                },
+            ));
         }
 
         // Generate remaining tokens
@@ -958,15 +1017,16 @@ impl RwkvActor {
                 break;
             }
             let input = inference.clone();
-            let (input, output) = self
-                .runtime
-                .infer(input)
-                .await
-                .map_err(|e| EngineError::Backend(format!("RWKV inference (gen step): {e:?}")))?;
+            let (input, output) =
+                self.runtime.infer(input).await.map_err(|e| {
+                    EngineError::Backend(format!("RWKV inference (gen step): {e:?}"))
+                })?;
             inference = input;
 
             let ot = output[0].0.clone();
-            if ot.size() == 0 { break; }
+            if ot.size() == 0 {
+                break;
+            }
 
             let data = ot.to_vec();
             let shape = ot.shape();
@@ -987,15 +1047,16 @@ impl RwkvActor {
                 }
             };
             #[cfg(not(feature = "grammar-rwkv"))]
-            let token_opt: Option<u32> =
-                Some(sample_token(probs.data(), temperature, top_p));
+            let token_opt: Option<u32> = Some(sample_token(probs.data(), temperature, top_p));
 
             let token = match token_opt {
                 Some(t) => t,
                 None => break,
             };
 
-            if token == 0 { break; }
+            if token == 0 {
+                break;
+            }
 
             let decoded = self
                 .tokenizer
@@ -1185,7 +1246,8 @@ impl ModelBackend for RwkvBackend {
         &self,
         req: CompletionRequest,
     ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
-        let tx = self.tx
+        let tx = self
+            .tx
             .clone()
             .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
@@ -1201,16 +1263,19 @@ impl ModelBackend for RwkvBackend {
             let grammar = resolve_grammar(&req);
             #[cfg(not(feature = "grammar-rwkv"))]
             let grammar: Option<String> = None;
-            tx.send(CompleteReq {
-                system: req.system,
-                prompt: req.prompt,
-                max_tokens: req.max_tokens,
-                temperature: req.temperature,
-                grammar,
-                reply: reply_tx,
-                preserve_state: req.preserve_state,
-                on_token: req.on_token,
-            }.into())
+            tx.send(
+                CompleteReq {
+                    system: req.system,
+                    prompt: req.prompt,
+                    max_tokens: req.max_tokens,
+                    temperature: req.temperature,
+                    grammar,
+                    reply: reply_tx,
+                    preserve_state: req.preserve_state,
+                    on_token: req.on_token,
+                }
+                .into(),
+            )
             .await
             .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
 

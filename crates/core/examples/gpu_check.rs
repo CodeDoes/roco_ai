@@ -31,15 +31,31 @@ fn main() {
             println!("      driver: {} {}", info.driver, info.driver_info);
             println!("      backend: {:?}", info.backend);
             println!("      limits:");
-            println!("        max_buffer_size: {} MB", limits.max_buffer_size / 1048576);
-            println!("      max_texture_dimension_1d: {}", limits.max_texture_dimension_1d);
-            println!("        max_compute_workgroup_size_x: {}", limits.max_compute_workgroup_size_x);
-            println!("        max_compute_workgroups_per_dimension: {}", limits.max_compute_workgroups_per_dimension);
+            println!(
+                "        max_buffer_size: {} MB",
+                limits.max_buffer_size / 1048576
+            );
+            println!(
+                "      max_texture_dimension_1d: {}",
+                limits.max_texture_dimension_1d
+            );
+            println!(
+                "        max_compute_workgroup_size_x: {}",
+                limits.max_compute_workgroup_size_x
+            );
+            println!(
+                "        max_compute_workgroups_per_dimension: {}",
+                limits.max_compute_workgroups_per_dimension
+            );
 
             // Check for cooperative matrix support (needed for NF4/Int8 quantization)
             let features = adapter.features();
-            let has_coop_matrix = features.contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
-            println!("      cooperative_matrix (experimental): {}", if has_coop_matrix { "YES" } else { "NO" });
+            let has_coop_matrix =
+                features.contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+            println!(
+                "      cooperative_matrix (experimental): {}",
+                if has_coop_matrix { "YES" } else { "NO" }
+            );
 
             // VRAM estimate
             let vram_mb = limits.max_buffer_size as f64 / 1048576.0;
@@ -51,12 +67,30 @@ fn main() {
             let int8_mb = model_raw_mb / 2; // ~2.75GB
 
             println!("\n      Model fit check (rwkv7 2.9B, 5.5GB raw):");
-            println!("        no quant (FP16 resident ~700MB): {}",
-                if vram_mb > 700.0 { "✓ fits" } else { "✗ too small" });
-            println!("        Int8 quant (~2.75GB): {}",
-                if vram_mb > 2750.0 { "✓ fits" } else { "✗ too small" });
-            println!("        NF4 quant (~1.4GB): {}",
-                if vram_mb > 1400.0 { "✓ fits" } else { "✗ too small" });
+            println!(
+                "        no quant (FP16 resident ~700MB): {}",
+                if vram_mb > 700.0 {
+                    "✓ fits"
+                } else {
+                    "✗ too small"
+                }
+            );
+            println!(
+                "        Int8 quant (~2.75GB): {}",
+                if vram_mb > 2750.0 {
+                    "✓ fits"
+                } else {
+                    "✗ too small"
+                }
+            );
+            println!(
+                "        NF4 quant (~1.4GB): {}",
+                if vram_mb > 1400.0 {
+                    "✓ fits"
+                } else {
+                    "✗ too small"
+                }
+            );
 
             // Recommendation
             println!("\n      Recommendation:");
@@ -74,16 +108,19 @@ fn main() {
         }
 
         // Pick best adapter
-        let discrete = all.iter().find(|a| {
-            a.get_info().device_type == wgpu::DeviceType::DiscreteGpu
-        });
+        let discrete = all
+            .iter()
+            .find(|a| a.get_info().device_type == wgpu::DeviceType::DiscreteGpu);
         let best = discrete.or(all.first()).unwrap();
         let info = best.get_info();
         let features = best.features();
         let has_coop_matrix = features.contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
 
         println!("Selected: {} ({:?})", info.name, info.device_type);
-        println!("Cooperative matrix: {}", if has_coop_matrix { "YES" } else { "NO" });
+        println!(
+            "Cooperative matrix: {}",
+            if has_coop_matrix { "YES" } else { "NO" }
+        );
 
         if has_coop_matrix {
             println!("\n✅ GPU supports cooperative matrices — NF4/Int8 quantization available.");

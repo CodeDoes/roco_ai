@@ -1,8 +1,8 @@
+use anyhow::{Context, Result};
+use serde_json::Value;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use serde_json::Value;
-use anyhow::{Result, Context};
 
 /// A simple logger that writes agent interactions to the workspace.
 pub struct Logger {
@@ -22,7 +22,7 @@ impl Logger {
             .append(true)
             .open(path)
             .context("failed to open jsonl file")?;
-        
+
         let line = serde_json::to_string(data)?;
         writeln!(file, "{}", line).context("failed to write jsonl line")?;
         Ok(())
@@ -36,7 +36,7 @@ impl Logger {
             .append(true)
             .open(path)
             .context("failed to open stream file")?;
-        
+
         write!(file, "{}", data).context("failed to write stream data")?;
         Ok(())
     }
@@ -49,7 +49,7 @@ impl Logger {
             .append(true)
             .open(path)
             .context("failed to open log file")?;
-        
+
         writeln!(file, "{}", data).context("failed to write log line")?;
         Ok(())
     }

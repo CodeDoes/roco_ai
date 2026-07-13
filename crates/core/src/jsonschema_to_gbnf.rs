@@ -134,11 +134,9 @@ fn gen_rule(name: &str, schema: &Value, rules: &mut Vec<String>) -> Result<Strin
             format!("{name}-obj")
         }
         "array" => {
-            let items = schema
-                .get("items")
-                .ok_or_else(|| GbnfError::BadSchema {
-                    detail: "array schema needs 'items'".into(),
-                })?;
+            let items = schema.get("items").ok_or_else(|| GbnfError::BadSchema {
+                detail: "array schema needs 'items'".into(),
+            })?;
             let item_name = format!("{}-item", name);
             let item_body = gen_rule(&item_name, items, rules)?;
             rules.push(format!(
@@ -191,8 +189,8 @@ fn escape_string(s: &str) -> String {
     for c in s.chars() {
         match c {
             '\\' => out.push_str("\\\\"),
-            '"'  => out.push_str("\\\""),
-            '/'  => out.push_str("\\/"),
+            '"' => out.push_str("\\\""),
+            '/' => out.push_str("\\/"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
@@ -209,9 +207,16 @@ mod tests {
 
     #[test]
     fn primitives_reference_the_library() {
-        assert_eq!(schema_to_gbnf("root", &json!({"type":"string"})).unwrap(), (PRIMITIVES.to_string() + "\nroot ::= string\n"));
-        assert!(schema_to_gbnf("root", &json!({"type":"integer"})).unwrap().contains("root ::= integer"));
-        assert!(schema_to_gbnf("root", &json!({"type":"boolean"})).unwrap().contains("root ::= boolean"));
+        assert_eq!(
+            schema_to_gbnf("root", &json!({"type":"string"})).unwrap(),
+            (PRIMITIVES.to_string() + "\nroot ::= string\n")
+        );
+        assert!(schema_to_gbnf("root", &json!({"type":"integer"}))
+            .unwrap()
+            .contains("root ::= integer"));
+        assert!(schema_to_gbnf("root", &json!({"type":"boolean"}))
+            .unwrap()
+            .contains("root ::= boolean"));
     }
 
     #[test]
@@ -228,13 +233,16 @@ mod tests {
 
     #[test]
     fn object_support() {
-        let g = schema_to_gbnf("root", &json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"}
-            }
-        }))
+        let g = schema_to_gbnf(
+            "root",
+            &json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "age": {"type": "integer"}
+                }
+            }),
+        )
         .unwrap();
         assert!(g.contains("root ::= root-obj"));
         assert!(g.contains("root-obj ::= \"{\""));
@@ -245,10 +253,13 @@ mod tests {
 
     #[test]
     fn array_support() {
-        let g = schema_to_gbnf("root", &json!({
-            "type": "array",
-            "items": {"type": "integer"}
-        }))
+        let g = schema_to_gbnf(
+            "root",
+            &json!({
+                "type": "array",
+                "items": {"type": "integer"}
+            }),
+        )
         .unwrap();
         assert!(g.contains("root ::= root-arr"));
         assert!(g.contains("root-arr ::= \"[\""));
@@ -256,13 +267,16 @@ mod tests {
 
     #[test]
     fn nested_object_and_array() {
-        let g = schema_to_gbnf("root", &json!({
-            "type": "object",
-            "properties": {
-                "id": {"type": "integer"},
-                "tags": {"type": "array", "items": {"type": "string"}}
-            }
-        }))
+        let g = schema_to_gbnf(
+            "root",
+            &json!({
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "tags": {"type": "array", "items": {"type": "string"}}
+                }
+            }),
+        )
         .unwrap();
         assert!(g.contains("root-tags-arr ::= \"[\" ( string"));
         assert!(g.contains("root-obj ::= \"{\""));
@@ -282,7 +296,10 @@ mod tests {
                 ("boolean", json!({"type":"boolean"})),
                 ("null", json!({"type":"null"})),
                 ("enum", json!({"enum":["x","y","z"]})),
-                ("object", json!({"type":"object","properties":{"a":{"type":"string"},"b":{"type":"integer"}}})),
+                (
+                    "object",
+                    json!({"type":"object","properties":{"a":{"type":"string"},"b":{"type":"integer"}}}),
+                ),
                 ("array", json!({"type":"array","items":{"type":"integer"}})),
             ] {
                 let g = schema_to_gbnf("root", &schema).unwrap_or_else(|e| {
@@ -301,4 +318,3 @@ mod tests {
         assert!(schema_to_gbnf("root", &json!({"type":"string"})).is_ok());
     }
 }
-

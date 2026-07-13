@@ -15,11 +15,11 @@ use memmap2::Mmap;
 use safetensors::SafeTensors;
 use tokio::time::timeout;
 use tracing::info;
-use wgpu::PowerPreference;
 use web_rwkv::context::{ContextBuilder, InstanceExt};
 use web_rwkv::runtime::loader::Loader;
 use web_rwkv::runtime::model::{ContextAutoLimits, ModelBuilder, Quant};
 use web_rwkv::runtime::v7;
+use wgpu::PowerPreference;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -59,23 +59,30 @@ fn main() {
 
 async fn run() -> Result<String, String> {
     // Stage 1: File access
-    let model_path = std::env::var("RWKV_MODEL").unwrap_or_else(|_| {
-        "models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st".into()
-    });
-    let vocab_path = std::env::var("RWKV_VOCAB").unwrap_or_else(|_| {
-        "assets/vocab/rwkv_vocab_v20230424.json".into()
-    });
+    let model_path = std::env::var("RWKV_MODEL")
+        .unwrap_or_else(|_| "models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st".into());
+    let vocab_path = std::env::var("RWKV_VOCAB")
+        .unwrap_or_else(|_| "assets/vocab/rwkv_vocab_v20230424.json".into());
 
-    let model_meta = tokio::fs::metadata(&model_path).await
+    let model_meta = tokio::fs::metadata(&model_path)
+        .await
         .map_err(|e| format!("1. Model file: {e}"))?;
-    info!("1. Model file OK — {:.0} MB", model_meta.len() as f64 / 1048576.0);
+    info!(
+        "1. Model file OK — {:.0} MB",
+        model_meta.len() as f64 / 1048576.0
+    );
 
-    let vocab_meta = tokio::fs::metadata(&vocab_path).await
+    let vocab_meta = tokio::fs::metadata(&vocab_path)
+        .await
         .map_err(|e| format!("1. Vocab file: {e}"))?;
-    info!("2. Vocab file OK — {:.0} KB", vocab_meta.len() as f64 / 1024.0);
+    info!(
+        "2. Vocab file OK — {:.0} KB",
+        vocab_meta.len() as f64 / 1024.0
+    );
 
     // Stage 3: SafeTensors + Loader::info
-    let file = tokio::fs::File::open(&model_path).await
+    let file = tokio::fs::File::open(&model_path)
+        .await
         .map_err(|e| format!("3. File open: {e}"))?;
     let mmap = unsafe { Mmap::map(&file) }.map_err(|e| format!("3. Mmap: {e}"))?;
     info!("3. Mmap OK");
@@ -84,8 +91,10 @@ async fn run() -> Result<String, String> {
     info!("3. SafeTensors OK");
 
     let info = Loader::info(&model).map_err(|e| format!("3. Loader::info: {e}"))?;
-    info!("3. Loader::info OK — version={:?} layers={} vocab={} emb={}",
-        info.version, info.num_layer, info.num_vocab, info.num_emb);
+    info!(
+        "3. Loader::info OK — version={:?} layers={} vocab={} emb={}",
+        info.version, info.num_layer, info.num_vocab, info.num_emb
+    );
 
     // Stage 4: WebGPU adapter
     let instance = wgpu::Instance::default();
@@ -96,14 +105,20 @@ async fn run() -> Result<String, String> {
         info!("4.   - {} ({:?})", i.name, i.device_type);
     }
 
-    let adapter = instance.adapter(PowerPreference::HighPerformance).await
+    let adapter = instance
+        .adapter(PowerPreference::HighPerformance)
+        .await
         .map_err(|e| format!("4. Adapter: {e}"))?;
     info!("4. Adapter OK — {}", adapter.get_info().name);
 
     // Stage 5: Context
-    let ctx = timeout(TIMEOUT, ContextBuilder::new(adapter).auto_limits(&info).build()).await
-        .map_err(|_| "5. Context: TIMEOUT")?
-        .map_err(|e| format!("5. Context: {e}"))?;
+    let ctx = timeout(
+        TIMEOUT,
+        ContextBuilder::new(adapter).auto_limits(&info).build(),
+    )
+    .await
+    .map_err(|_| "5. Context: TIMEOUT")?
+    .map_err(|e| format!("5. Context: {e}"))?;
     info!("5. Context OK — {}", ctx.adapter.get_info().name);
 
     // Stage 6: Quantization setup + ModelBuilder
@@ -129,7 +144,10 @@ async fn run() -> Result<String, String> {
 
     let build_result = timeout(TIMEOUT, builder.build_v7()).await;
 
-    info!("7. build_v7 returned after {:.1}s", t7.elapsed().as_secs_f64());
+    info!(
+        "7. build_v7 returned after {:.1}s",
+        t7.elapsed().as_secs_f64()
+    );
 
     match build_result {
         Ok(Ok(m)) => {
@@ -141,11 +159,10 @@ async fn run() -> Result<String, String> {
 
             Ok(format!("Model loaded into VRAM successfully"))
         }
-        Ok(Err(e)) => {
-            Err(format!("7. build_v7 failed: {e}"))
-        }
-        Err(_) => {
-            Err(format!("7. build_v7 TIMEOUT after {:.1}s — model weights NOT loading to VRAM", t7.elapsed().as_secs_f64()))
-        }
+        Ok(Err(e)) => Err(format!("7. build_v7 failed: {e}")),
+        Err(_) => Err(format!(
+            "7. build_v7 TIMEOUT after {:.1}s — model weights NOT loading to VRAM",
+            t7.elapsed().as_secs_f64()
+        )),
     }
 }

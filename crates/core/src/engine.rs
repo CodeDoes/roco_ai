@@ -165,17 +165,13 @@ pub trait ModelBackend: Send + Sync {
     /// Serialize the current model state (recurrent hidden state) to bytes.
     /// Returns `Err(EngineError::Backend("state not supported"))` by default.
     fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
-        Box::pin(async move {
-            Err(EngineError::Backend("state not supported".into()))
-        })
+        Box::pin(async move { Err(EngineError::Backend("state not supported".into())) })
     }
 
     /// Restore model state from previously saved bytes.
     /// Default implementation returns an error.
     fn load_state(&self, _state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
-        Box::pin(async move {
-            Err(EngineError::Backend("state not supported".into()))
-        })
+        Box::pin(async move { Err(EngineError::Backend("state not supported".into())) })
     }
 
     /// Blend two saved states (e.g. persona + context) with a linear ratio.
@@ -187,18 +183,14 @@ pub trait ModelBackend: Send + Sync {
         _state_b: Vec<u8>,
         _ratio: f32,
     ) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
-        Box::pin(async move {
-            Err(EngineError::Backend("state mixing not supported".into()))
-        })
+        Box::pin(async move { Err(EngineError::Backend("state mixing not supported".into())) })
     }
 
     /// Request cancellation of the current in-flight generation.
     /// The backend should abort and return a short partial result or error.
     /// Default implementation returns an error.
     fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
-        Box::pin(async move {
-            Err(EngineError::Backend("interrupt not supported".into()))
-        })
+        Box::pin(async move { Err(EngineError::Backend("interrupt not supported".into())) })
     }
 }
 
@@ -215,15 +207,18 @@ impl ModelBackend for MockBackend {
     fn name(&self) -> &str {
         &self.name
     }
-    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+    fn complete(
+        &self,
+        req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         Box::pin(async move {
             if self.latency_ms > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
             }
             let snippet: String = req.prompt.chars().take(48).collect();
             // Build valid JSON via serde_json so newlines/quotes are escaped properly.
-            let text = serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) })
-                .to_string();
+            let text =
+                serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) }).to_string();
             let parsed = serde_json::from_str(&text).ok();
 
             // When thinking is enabled, wrap the response in a think tag.
@@ -307,7 +302,11 @@ pub async fn bake_persona(
 ) -> Result<Vec<u8>, EngineError> {
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
         let req = CompletionRequest {
-            system: if i == 0 { system.to_string() } else { String::new() },
+            system: if i == 0 {
+                system.to_string()
+            } else {
+                String::new()
+            },
             prompt: user_msg.to_string(),
             grammar: None,
             temperature: 0.0,
@@ -349,7 +348,10 @@ mod tests {
     #[tokio::test]
     async fn mock_backend_returns_parseable_json() {
         let b = MockBackend::default();
-        let resp = b.complete(CompletionRequest::new("sys", "do the thing")).await.unwrap();
+        let resp = b
+            .complete(CompletionRequest::new("sys", "do the thing"))
+            .await
+            .unwrap();
         assert!(resp.parsed.is_some());
         assert!(resp.text.contains("mock") || resp.text.contains("result"));
     }
@@ -359,17 +361,28 @@ mod tests {
         let b = MockBackend::default();
 
         // Thinking disabled: no trace.
-        let resp = b.complete(CompletionRequest::new("sys", "hello")).await.unwrap();
+        let resp = b
+            .complete(CompletionRequest::new("sys", "hello"))
+            .await
+            .unwrap();
         assert!(resp.think_trace.is_none(), "no trace when thinking=false");
 
         // Thinking enabled: trace present and text wraps in <think>.
         let mut req = CompletionRequest::new("sys", "do the thing");
         req.thinking = true;
         let resp = b.complete(req).await.unwrap();
-        let trace = resp.think_trace.expect("think_trace should be Some when thinking=true");
+        let trace = resp
+            .think_trace
+            .expect("think_trace should be Some when thinking=true");
         assert!(!trace.is_empty(), "trace should be non-empty");
-        assert!(resp.text.starts_with("<think>"), "text should start with <think>");
-        assert!(resp.text.contains("</think>"), "text should contain </think>");
+        assert!(
+            resp.text.starts_with("<think>"),
+            "text should start with <think>"
+        );
+        assert!(
+            resp.text.contains("</think>"),
+            "text should contain </think>"
+        );
         // The trace content matches what is between <think>...</think>
         assert!(resp.text.contains(&trace), "text should embed the trace");
     }
@@ -406,9 +419,7 @@ mod tests {
                 &self,
                 _req: CompletionRequest,
             ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
-                Box::pin(async move {
-                    Err(EngineError::Backend("unimplemented".into()))
-                })
+                Box::pin(async move { Err(EngineError::Backend("unimplemented".into())) })
             }
         }
 
@@ -463,7 +474,10 @@ mod tests {
         // complete is a no-op (just verifies the method exists and returns Ok).
         b.interrupt().await.unwrap();
         // After interrupt, complete should still work.
-        let resp = b.complete(CompletionRequest::new("sys", "hello")).await.unwrap();
+        let resp = b
+            .complete(CompletionRequest::new("sys", "hello"))
+            .await
+            .unwrap();
         assert!(resp.text.contains("result"));
     }
 

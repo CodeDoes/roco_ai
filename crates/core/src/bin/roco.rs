@@ -18,12 +18,16 @@ fn main() {
     match sub {
         "eval" => cmd_eval(&extra),
         "bless" => cmd_bless(&extra),
-        "rwkv" => run_cargo("run", &[
-            "-p", "roco-core", "--example", "rwkv_test", "--release",
-        ], &extra),
-        "grammar" => run_cargo("run", &[
-            "-p", "roco-core", "--example", "grammar_smoke", "--release",
-        ], &extra),
+        "rwkv" => run_cargo(
+            "run",
+            &["-p", "roco-core", "--example", "rwkv_test", "--release"],
+            &extra,
+        ),
+        "grammar" => run_cargo(
+            "run",
+            &["-p", "roco-core", "--example", "grammar_smoke", "--release"],
+            &extra,
+        ),
         "gpu-check" => cmd_gpu_check(),
         _ => help(sub),
     }
@@ -35,10 +39,20 @@ fn cmd_eval(extra: &[&str]) {
     let output = parse_opt("--output", extra).unwrap_or("evals/results/latest.json");
 
     // Run eval, capture exit code.
-    let exit_code = run_cargo_get_code("run", &[
-        "-p", "roco-core", "--example", "eval_suite",
-        "--release", "--", "--backend", "rwkv",
-    ], extra);
+    let exit_code = run_cargo_get_code(
+        "run",
+        &[
+            "-p",
+            "roco-core",
+            "--example",
+            "eval_suite",
+            "--release",
+            "--",
+            "--backend",
+            "rwkv",
+        ],
+        extra,
+    );
 
     // Save snapshot regardless of pass/fail.
     let snapshot_path = snapshot_path(output);
@@ -75,23 +89,28 @@ fn cmd_bless(extra: &[&str]) {
     let snap: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&snapshot)
             .expect("snapshot file not found — run `roco eval` first"),
-    ).expect("invalid snapshot JSON");
+    )
+    .expect("invalid snapshot JSON");
 
     let obj = snap.as_object().expect("snapshot must be a JSON object");
 
     // Read eval_suite.rs, update oracle lines, write back.
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .unwrap_or_else(|_| ".".into());
-    let source_path = if PathBuf::from(&manifest_dir).join("src/eval_suite.rs").exists() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+    let source_path = if PathBuf::from(&manifest_dir)
+        .join("src/eval_suite.rs")
+        .exists()
+    {
         PathBuf::from(&manifest_dir).join("src/eval_suite.rs")
-    } else if PathBuf::from(&manifest_dir).join("crates/core/src/eval_suite.rs").exists() {
+    } else if PathBuf::from(&manifest_dir)
+        .join("crates/core/src/eval_suite.rs")
+        .exists()
+    {
         PathBuf::from(&manifest_dir).join("crates/core/src/eval_suite.rs")
     } else {
         PathBuf::from(".").join("crates/core/src/eval_suite.rs")
     };
 
-    let content = std::fs::read_to_string(&source_path)
-        .expect("eval_suite.rs not found");
+    let content = std::fs::read_to_string(&source_path).expect("eval_suite.rs not found");
 
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
     let mut changed = 0;
@@ -99,9 +118,10 @@ fn cmd_bless(extra: &[&str]) {
     for (name, out_val) in obj {
         let out_str = out_val.as_str().unwrap_or("");
         // Find the eval case block by name, then update its oracle line.
-        if let Some(name_line) = lines.iter().position(|l| {
-            l.trim() == &format!("name: \"{}\".into(),", name)
-        }) {
+        if let Some(name_line) = lines
+            .iter()
+            .position(|l| l.trim() == &format!("name: \"{}\".into(),", name))
+        {
             // Scan forward from name_line for the next `oracle:` line.
             let mut oracle_line = None;
             for i in name_line..lines.len() {
@@ -110,7 +130,9 @@ fn cmd_bless(extra: &[&str]) {
                     oracle_line = Some(i);
                     break;
                 }
-                if trimmed.starts_with("category:") || trimmed.starts_with("name:") && i != name_line {
+                if trimmed.starts_with("category:")
+                    || trimmed.starts_with("name:") && i != name_line
+                {
                     break;
                 }
             }
@@ -153,9 +175,7 @@ fn run_cargo_get_code(cmd: &str, args: &[&str], extra: &[&str]) -> i32 {
     c.arg(cmd);
     c.args(args);
     c.args(extra);
-    c.status()
-        .map(|s| s.code().unwrap_or(1))
-        .unwrap_or(1)
+    c.status().map(|s| s.code().unwrap_or(1)).unwrap_or(1)
 }
 
 fn cmd_gpu_check() {
@@ -184,9 +204,8 @@ fn help(sub: &str) {
 }
 
 fn parse_opt<'a>(name: &str, args: &'a [&str]) -> Option<&'a str> {
-    args.windows(2).find_map(|w| {
-        if w[0] == name { Some(w[1]) } else { None }
-    })
+    args.windows(2)
+        .find_map(|w| if w[0] == name { Some(w[1]) } else { None })
 }
 
 fn snapshot_path(output: &str) -> PathBuf {

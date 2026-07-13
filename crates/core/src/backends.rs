@@ -17,10 +17,8 @@
 //! # optional: KILO_BASE_URL / KILO_MODEL to override defaults
 //! ```
 
-use crate::engine::{
-    BoxFuture, CompletionRequest, CompletionResponse, EngineError, ModelBackend,
-};
 use crate::engine::MockBackend;
+use crate::engine::{BoxFuture, CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 
 // ===================================================================
 // HTTP backends — only compiled with `http-backends` feature
@@ -33,9 +31,7 @@ mod http {
     use serde_json::{json, Value};
     use tracing::{error, info, warn};
 
-    use crate::engine::{
-        CompletionRequest, CompletionResponse, EngineError, TokenUsage,
-    };
+    use crate::engine::{CompletionRequest, CompletionResponse, EngineError, TokenUsage};
 
     /// Shared OpenAI-compatible chat-completions client.
     pub struct OpenAICompat {
@@ -95,7 +91,10 @@ mod http {
             body
         }
 
-        pub async fn complete(&self, req: &CompletionRequest) -> Result<CompletionResponse, EngineError> {
+        pub async fn complete(
+            &self,
+            req: &CompletionRequest,
+        ) -> Result<CompletionResponse, EngineError> {
             let body = self.build_body(req);
             let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
             info!(
@@ -152,7 +151,12 @@ mod http {
                         snippet = %text.chars().take(200).collect::<String>(),
                         "http ok"
                     );
-                    Ok(CompletionResponse { text, usage, parsed, think_trace: None })
+                    Ok(CompletionResponse {
+                        text,
+                        usage,
+                        parsed,
+                        think_trace: None,
+                    })
                 }
                 Err(e) => {
                     error!(
@@ -171,8 +175,14 @@ mod http {
     pub fn parse_usage(v: &Value) -> TokenUsage {
         let u = v.get("usage");
         TokenUsage {
-            prompt_tokens: u.and_then(|x| x.get("prompt_tokens")).and_then(|x| x.as_u64()).unwrap_or(0) as usize,
-            completion_tokens: u.and_then(|x| x.get("completion_tokens")).and_then(|x| x.as_u64()).unwrap_or(0) as usize,
+            prompt_tokens: u
+                .and_then(|x| x.get("prompt_tokens"))
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0) as usize,
+            completion_tokens: u
+                .and_then(|x| x.get("completion_tokens"))
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0) as usize,
         }
     }
 }
@@ -199,7 +209,7 @@ impl NvidiaBackend {
     // NVIDIA's free tier: https://build.nvidia.com/explore/discover
     pub const DEFAULT_MODEL: &'static str = "minimaxai/minimax-m3";
     pub const MODELS: &'static [&'static str] = &[
-        "minimaxai/minimax-m3",         // ✅ reliable free, good for reasoning
+        "minimaxai/minimax-m3", // ✅ reliable free, good for reasoning
         // The following are sometimes free but not guaranteed:
         "qwen/qwen3-next-80b-a3b-instruct",
         "nvidia/nemotron-3-super-120b-a12b",
@@ -221,16 +231,24 @@ impl NvidiaBackend {
             Self::DEFAULT_BASE_URL,
             api_key,
             model.unwrap_or_else(|| Self::DEFAULT_MODEL.into()),
-        ).with_json_mode(true);
+        )
+        .with_json_mode(true);
         Self { inner }
     }
 }
 
 #[cfg(feature = "http-backends")]
 impl ModelBackend for NvidiaBackend {
-    fn name(&self) -> &str { "nvidia" }
-    fn supports_constrained_decoding(&self) -> bool { self.inner.json_mode }
-    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+    fn name(&self) -> &str {
+        "nvidia"
+    }
+    fn supports_constrained_decoding(&self) -> bool {
+        self.inner.json_mode
+    }
+    fn complete(
+        &self,
+        req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         Box::pin(async move { self.inner.complete(&req).await })
     }
 }
@@ -271,8 +289,13 @@ impl KiloBackend {
 
 #[cfg(feature = "http-backends")]
 impl ModelBackend for KiloBackend {
-    fn name(&self) -> &str { "kilo-ai" }
-    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+    fn name(&self) -> &str {
+        "kilo-ai"
+    }
+    fn complete(
+        &self,
+        req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         Box::pin(async move { self.inner.complete(&req).await })
     }
 }
@@ -298,8 +321,13 @@ impl LocalRwkvBackend {
 }
 
 impl ModelBackend for LocalRwkvBackend {
-    fn name(&self) -> &str { "local-rwkv" }
-    fn complete(&self, _req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+    fn name(&self) -> &str {
+        "local-rwkv"
+    }
+    fn complete(
+        &self,
+        _req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         Box::pin(async move {
             Err(EngineError::Backend(
                 "local RWKV backend not yet implemented — use Mock, Nvidia, or Kilo. \
@@ -339,7 +367,10 @@ impl ModelBackend for AnyBackend {
             AnyBackend::RwkvBackend(b) => b.name(),
         }
     }
-    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+    fn complete(
+        &self,
+        req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         Box::pin(async move {
             match self {
                 AnyBackend::Mock(b) => b.complete(req).await,

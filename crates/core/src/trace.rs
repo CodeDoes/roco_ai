@@ -220,13 +220,21 @@ impl TraceStore {
         let new_phases: Vec<_> = t2
             .events
             .iter()
-            .filter(|e| !t1.events.iter().any(|e1| e1.phase == e.phase && e1.detail == e.detail))
+            .filter(|e| {
+                !t1.events
+                    .iter()
+                    .any(|e1| e1.phase == e.phase && e1.detail == e.detail)
+            })
             .map(|e| e.phase.clone())
             .collect();
         let removed_phases: Vec<_> = t1
             .events
             .iter()
-            .filter(|e| !t2.events.iter().any(|e2| e2.phase == e.phase && e2.detail == e.detail))
+            .filter(|e| {
+                !t2.events
+                    .iter()
+                    .any(|e2| e2.phase == e.phase && e2.detail == e.detail)
+            })
             .map(|e| e.phase.clone())
             .collect();
         TraceDiff {
@@ -256,7 +264,11 @@ pub struct TraceDiff {
 impl std::fmt::Display for TraceDiff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Trace diff: {} vs {}", self.id1, self.id2)?;
-        writeln!(f, "  events: +{} / -{}", self.events_added, self.events_removed)?;
+        writeln!(
+            f,
+            "  events: +{} / -{}",
+            self.events_added, self.events_removed
+        )?;
         writeln!(f, "  subtasks: {:+}", self.subtask_delta)?;
         writeln!(f, "  failed: {:+}", self.failed_delta)?;
         writeln!(f, "  retries: {:+}", self.retries_delta)?;

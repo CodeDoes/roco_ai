@@ -261,8 +261,12 @@ impl Tool for ListToolsTool {
         })
     }
     async fn run(&self, _input: Value) -> Result<Value, ToolError> {
-        let verbose = _input.get("verbose").and_then(|v| v.as_bool()).unwrap_or(false);
-        let tools: Vec<Value> = self.registry
+        let verbose = _input
+            .get("verbose")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let tools: Vec<Value> = self
+            .registry
             .all_tools()
             .iter()
             .map(|t| {
@@ -347,15 +351,9 @@ mod tests {
             .await
             .unwrap();
         let tools = out["tools"].as_array().expect("tools should be an array");
-        let names: Vec<&str> = tools
-            .iter()
-            .filter_map(|t| t["name"].as_str())
-            .collect();
+        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
         assert!(names.contains(&"echo"), "should include echo: {names:?}");
-        assert!(
-            names.contains(&"add"),
-            "should include add: {names:?}"
-        );
+        assert!(names.contains(&"add"), "should include add: {names:?}");
         // list_tools captures the registry at construction time (before it's
         // registered), so it does *not* appear in its own output.
         // Non-verbose: descriptions present, no input_schema.
@@ -385,17 +383,17 @@ mod tests {
     #[tokio::test]
     async fn dispatch_unknown_tool_errors() {
         let r = sample_registry();
-        let err = r.dispatch("ghost", serde_json::json!({})).await.unwrap_err();
+        let err = r
+            .dispatch("ghost", serde_json::json!({}))
+            .await
+            .unwrap_err();
         assert!(matches!(err, ToolError::Unknown(_)));
     }
 
     #[tokio::test]
     async fn missing_required_field_is_rejected() {
         let r = sample_registry();
-        let err = r
-            .dispatch("echo", serde_json::json!({}))
-            .await
-            .unwrap_err();
+        let err = r.dispatch("echo", serde_json::json!({})).await.unwrap_err();
         assert!(matches!(err, ToolError::InvalidInput { .. }));
     }
 

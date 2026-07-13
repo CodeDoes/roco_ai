@@ -34,9 +34,8 @@ async fn main() -> anyhow::Result<()> {
     println!("backend: {}", backend.name());
 
     let grammar = match env::var("RWKV_GRAMMAR_FILE") {
-        Ok(p) => std::fs::read_to_string(&p).map_err(|e| {
-            anyhow::anyhow!("could not read RWKV_GRAMMAR_FILE={p}: {e}")
-        })?,
+        Ok(p) => std::fs::read_to_string(&p)
+            .map_err(|e| anyhow::anyhow!("could not read RWKV_GRAMMAR_FILE={p}: {e}"))?,
         Err(_) => env::var("RWKV_GRAMMAR").unwrap_or_else(|_| DEFAULT_GRAMMAR.to_string()),
     };
 
@@ -44,15 +43,14 @@ async fn main() -> anyhow::Result<()> {
 
     let req = CompletionRequest {
         system: "You are a helpful assistant.".into(),
-        prompt: env::var("RWKV_GRAMMAR_PROMPT")
-            .unwrap_or_else(|_| DEFAULT_PROMPT.to_string()),
+        prompt: env::var("RWKV_GRAMMAR_PROMPT").unwrap_or_else(|_| DEFAULT_PROMPT.to_string()),
         output_schema: None,
         grammar: Some(grammar.clone()),
         temperature: 1.0,
         max_tokens: 8,
         estimated_prompt_tokens: 32,
         thinking: false,
-            preserve_state: false,
+        preserve_state: false,
         on_token: None,
     };
 
@@ -85,4 +83,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
