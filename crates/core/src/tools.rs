@@ -94,6 +94,23 @@ impl ToolRegistry {
         Value::Array(arr)
     }
 
+    /// Return a new `ToolRegistry` containing only the tools whose names
+    /// match the given predicate.  Useful for gradual disclosure — the agent
+    /// can expose a curated subset of tools to the model rather than dumping
+    /// the entire catalogue at once.
+    pub fn filter<F>(&self, predicate: F) -> Self
+    where
+        F: Fn(&str) -> bool,
+    {
+        let mut filtered = ToolRegistry::new();
+        for (name, tool) in &self.tools {
+            if predicate(name) {
+                filtered.tools.insert(name.clone(), Arc::clone(tool));
+            }
+        }
+        filtered
+    }
+
     /// Validate `input` against the tool's schema (lightweight structural check).
     pub fn validate_input(&self, name: &str, input: &Value) -> Result<(), ToolError> {
         let tool = self
@@ -391,5 +408,16 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn filter_reduces_to_matching_tools() {
+        let r = sample_registry();
+        let filtered = r.filter(|name| name == "echo");
+        assert_eq!(filtered.len(), 1);
+        assert!(filtered.contains("echo"));
+        assert!(!filtered.contains("add"));
+        // Original is unmodified.
+        assert_eq!(r.len(), 2);
     }
 }
