@@ -132,6 +132,20 @@ pub trait ModelBackend: Send + Sync {
             Err(EngineError::Backend("state not supported".into()))
         })
     }
+
+    /// Blend two saved states (e.g. persona + context) with a linear ratio.
+    /// `ratio` = 0.0 → pure `state_a`, 1.0 → pure `state_b`.
+    /// Default implementation returns an error.
+    fn mix_states(
+        &self,
+        _state_a: Vec<u8>,
+        _state_b: Vec<u8>,
+        _ratio: f32,
+    ) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
+        Box::pin(async move {
+            Err(EngineError::Backend("state mixing not supported".into()))
+        })
+    }
 }
 
 /// Deterministic backend for tests / pre-model development.
@@ -194,6 +208,28 @@ impl ModelBackend for MockBackend {
             let _state: serde_json::Value = serde_json::from_slice(&state)
                 .map_err(|e| EngineError::Backend(format!("invalid mock state: {e}")))?;
             Ok(())
+        })
+    }
+
+    fn mix_states(
+        &self,
+        state_a: Vec<u8>,
+        state_b: Vec<u8>,
+        ratio: f32,
+    ) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
+        Box::pin(async move {
+            let a: serde_json::Value = serde_json::from_slice(&state_a)
+                .map_err(|e| EngineError::Backend(format!("invalid state_a: {e}")))?;
+            let b: serde_json::Value = serde_json::from_slice(&state_b)
+                .map_err(|e| EngineError::Backend(format!("invalid state_b: {e}")))?;
+            let merged = serde_json::json!({
+                "backend": a.get("backend").or_else(|| b.get("backend")),
+                "mock_state": true,
+                "mixed_ratio": ratio,
+                "source_a": a,
+                "source_b": b,
+            });
+            Ok(serde_json::to_vec(&merged).unwrap())
         })
     }
 }
@@ -285,5 +321,31 @@ mod tests {
             format!("{err:?}").contains("state not supported"),
             "should reject: {err:?}"
         );
+        let err = b.mix_states(Vec::new(), Vec::new(), 0.5).await.unwrap_err();
+        assert!(
+            format!("{err:?}").contains("state mixing not supported"),
+            "should reject: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mock_backend_mix_states() {
+        let b = MockBackend::default();
+
+        let a = b.save_state().await.unwrap();
+        let mut req_b = CompletionRequest::new("sys", "hello");
+        req_b.thinking = true;
+        let _ = b.complete(req_b).await.unwrap();
+        let b_state = b.save_state().await.unwrap();
+
+        let mixed = b.mix_states(a, b_state, 0.3).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&mixed).unwrap();
+        assert!(
+            (v["mixed_ratio"].as_f64().unwrap() - 0.3).abs() < 1e-6,
+            "ratio should be ~0.3, got {}",
+            v["mixed_ratio"]
+        );
+        assert!(v.get("source_a").is_some());
+        assert!(v.get("source_b").is_some());
     }
 }
