@@ -10,5 +10,8 @@ order it should be handled in** (lower = sooner).
 - `4_agent/` — the autonomous agent loop and its capabilities
 - `5_browser_use/` — driving a real browser
 
-Within each folder, files are numbered `NN_*` in handling order. Files may grow
-a `User:` section with notes/constraints added during planning.
+Within each folder, files are numbered `NN_*` in **prerequisite order** — a file's
+dependencies always come before it (e.g. `tokenization` precedes `inference`;
+`tool_catelogue` precedes `tool_calling`; the core `tool_execution_loop` is
+foundational). Files may grow a `User:` section with notes/constraints added
+during planning.
