@@ -17,7 +17,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::engine::{CompletionRequest, CompletionResponse, ModelBackend, TokenCounter, TokenUsage};
-use crate::grammar::{tools_to_gbnf, tools_to_gbnf_with_think};
+use crate::grammar::tools_to_gbnf_with_think;
 use crate::policy::Policy;
 use crate::sandbox::Sandbox;
 use crate::tools::ToolRegistry;

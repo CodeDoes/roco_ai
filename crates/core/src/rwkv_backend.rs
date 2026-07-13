@@ -1010,7 +1010,7 @@ impl RwkvActor {
         }
 
         let text = if generated.is_empty() {
-            String::new()
+            return Err(EngineError::EmptyResponse);
         } else {
             let decoded = self
                 .tokenizer
