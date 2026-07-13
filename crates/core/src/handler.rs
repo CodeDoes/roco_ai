@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use crate::sandbox::{GuardPolicy, Sandbox};
+use crate::sandbox::Sandbox;
 use crate::tools::ToolRegistry;
 
 /// A named handler with its system prompt and tool set.
@@ -47,8 +47,6 @@ pub struct HandlerRegistry {
 impl HandlerRegistry {
     /// Build the standard set of handlers.
     pub fn standard(root: PathBuf, sandbox: Sandbox) -> Self {
-        use crate::builtins::standard_toolkit;
-
         let mut reg = Self {
             handlers: Vec::new(),
             fallback: 0,
@@ -62,11 +60,11 @@ impl HandlerRegistry {
              prose, poetry, and narrative text. Focus on style, tone, and \
              emotional impact. Provide constructive suggestions and multiple \
              options when appropriate.",
-            ToolRegistry::new(),
+            crate::builtins::prose_writer_toolkit(),
         ));
 
         // ── coder ────────────────────────────────────────────────────
-        let coder_tools = crate::builtins::standard_toolkit(root, sandbox);
+        let coder_tools = crate::builtins::standard_toolkit(root.clone(), sandbox.clone());
         reg.add(Handler::new(
             "coder",
             "Code generation, debugging, refactor",
@@ -85,7 +83,7 @@ impl HandlerRegistry {
              from the provided material, cite sources, identify patterns, \
              and highlight uncertainties. Stay objective and note when \
              conclusions are speculative.",
-            ToolRegistry::new(),
+            crate::builtins::research_toolkit(),
         ));
 
         // ── search ───────────────────────────────────────────────────
@@ -95,7 +93,7 @@ impl HandlerRegistry {
             "You are a search specialist. Formulate precise queries, \
              evaluate source credibility, and summarise findings \
              impartially. Distinguish facts from opinions.",
-            ToolRegistry::new(),
+            crate::builtins::search_toolkit(),
         ));
 
         // ── justChatting ─────────────────────────────────────────────
@@ -117,7 +115,7 @@ impl HandlerRegistry {
              the setting, react to player actions, maintain game state, and \
              track inventory. Use dice rolls for outcomes when appropriate. \
              Keep the story immersive and responsive.",
-            ToolRegistry::new(),
+            crate::builtins::adventure_game_toolkit(),
         ));
 
         // ── trpg ─────────────────────────────────────────────────────
@@ -127,7 +125,7 @@ impl HandlerRegistry {
             "You are the Game Master for a tabletop RPG. Describe scenes, \
              control NPCs, adjudicate rules, and manage dice rolls. Track \
              character sheets and session state. Keep the story engaging and fair.",
-            ToolRegistry::new(),
+            crate::builtins::trpg_toolkit(),
         ));
 
         // ── random ───────────────────────────────────────────────────
@@ -148,7 +146,7 @@ impl HandlerRegistry {
              fictional settings — geography, history, culture, magic systems, \
              technology. Track established facts and flag contradictions. Build \
              on the user's ideas while suggesting complementary details.",
-            ToolRegistry::new(),
+            crate::builtins::world_building_toolkit(),
         ));
 
         // Fallback = justChatting (the last added, index 4)
@@ -323,5 +321,80 @@ mod tests {
         let reg = HandlerRegistry::standard(root, sandbox);
         let h = reg.get("coder").unwrap();
         assert!(h.tools.len() > 0, "coder should have standard tools");
+    }
+
+    #[test]
+    fn prose_writer_has_style_and_rewrite_tools() {
+        let reg = HandlerRegistry::standard(
+            std::path::PathBuf::from("/tmp"),
+            crate::sandbox::Sandbox::new(),
+        );
+        let h = reg.get("proseWriter").unwrap();
+        assert!(h.tools.get("style_guide").is_some(), "proseWriter should have style_guide");
+        assert!(h.tools.get("rewrite").is_some(), "proseWriter should have rewrite");
+    }
+
+    #[test]
+    fn research_has_doc_index_and_citation() {
+        let reg = HandlerRegistry::standard(
+            std::path::PathBuf::from("/tmp"),
+            crate::sandbox::Sandbox::new(),
+        );
+        let h = reg.get("research").unwrap();
+        assert!(h.tools.get("doc_index").is_some());
+        assert!(h.tools.get("citation").is_some());
+    }
+
+    #[test]
+    fn search_has_web_search() {
+        let reg = HandlerRegistry::standard(
+            std::path::PathBuf::from("/tmp"),
+            crate::sandbox::Sandbox::new(),
+        );
+        let h = reg.get("search").unwrap();
+        assert!(h.tools.get("web_search").is_some());
+    }
+
+    #[test]
+    fn adventure_game_has_state_and_inventory() {
+        let reg = HandlerRegistry::standard(
+            std::path::PathBuf::from("/tmp"),
+            crate::sandbox::Sandbox::new(),
+        );
+        let h = reg.get("adventureGame").unwrap();
+        assert!(h.tools.get("game_state").is_some());
+        assert!(h.tools.get("inventory").is_some());
+    }
+
+    #[test]
+    fn trpg_has_dice_and_character_sheet() {
+        let reg = HandlerRegistry::standard(
+            std::path::PathBuf::from("/tmp"),
+            crate::sandbox::Sandbox::new(),
+        );
+        let h = reg.get("trpg").unwrap();
+        assert!(h.tools.get("dice_roll").is_some());
+        assert!(h.tools.get("character_sheet").is_some());
+    }
+
+    #[test]
+    fn world_building_has_lore_and_consistency() {
+        let reg = HandlerRegistry::standard(
+            std::path::PathBuf::from("/tmp"),
+            crate::sandbox::Sandbox::new(),
+        );
+        let h = reg.get("worldBuilding").unwrap();
+        assert!(h.tools.get("lore_graph").is_some());
+        assert!(h.tools.get("consistency_check").is_some());
+    }
+
+    #[test]
+    fn just_chatting_and_random_have_no_tools() {
+        let reg = HandlerRegistry::standard(
+            std::path::PathBuf::from("/tmp"),
+            crate::sandbox::Sandbox::new(),
+        );
+        assert_eq!(reg.get("justChatting").unwrap().tools.len(), 0);
+        assert_eq!(reg.get("random").unwrap().tools.len(), 0);
     }
 }
