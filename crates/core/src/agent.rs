@@ -17,6 +17,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::engine::{CompletionRequest, CompletionResponse, ModelBackend, TokenCounter, TokenUsage};
+use crate::grammar::{tools_to_gbnf, tools_to_gbnf_with_think};
 use crate::policy::Policy;
 use crate::sandbox::Sandbox;
 use crate::tools::ToolRegistry;
@@ -249,12 +250,14 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
                 system: system.clone(),
                 prompt: prompt.clone(),
                 output_schema: Some(task.output_schema.clone()),
-                grammar: None,
+                grammar: self.tools.as_ref().map(|tools| {
+                    tools_to_gbnf_with_think(tools)
+                }),
                 temperature: 0.2,
                 max_tokens: 512,
                 estimated_prompt_tokens: task.prompt_tokens,
                 thinking: false,
-            preserve_state: false,
+                preserve_state: false,
             };
             if let Some(t) = &self.tracer {
                 t.record(TraceEvent::new(
