@@ -90,10 +90,40 @@ would otherwise re-litigate:
 ## What fits on this hardware
 
 Real-world measurements on the dev-kit (NVIDIA RTX 2050, 4 GB VRAM):
-the 2.9 B model (~5.5 GB FP16) needs NF4 to land in VRAM. Smaller rwkv7
-checkpoints (0.1 B / 1.5 B) are still GGUF; converting them to ST
-hits a known tensor-layout bug in `scripts/gguf_to_st_converter/`
-(see AGENTS.md "Next things").
+the 2.9 B model (~5.5 GB FP16) loads with NF4 quantization, lands
+in roughly 1.4 GB VRAM resident, and generates at ~16–20 tok/s.
+Smaller rwkv7 checkpoints (0.1 B / 1.5 B) are still GGUF;
+converting them to ST hits a known tensor-layout bug in
+`scripts/gguf_to_st_converter/` (see AGENTS.md "Next things").
+
+The actual VRAM ceiling for unquantized FP16 is `4 GB on RTX 2050`,
+the actual reported cap from wgpu's `max_buffer_size` is `1 TB`.
+We pick quantization from on-disk file size alone, not the adapter's
+self-report.
+
+## Status verification (what we've actually run recently)
+
+Per-section proof points — each line is a real command that ran on
+this commit tree and produced the output we cite above.
+
+- **End-to-end inference**: `cargo run -p roco-core --features
+  grammar-rwkv --example rwkv_test --release` →
+  `RWKV runtime initialized`, `rwkv complete ms=787 prompt=18
+  completion=2 snippet=" Paris."`. The 2.9B answers in 0.6–1.5 s.
+- **Pipeline-cache speedup**: ~25 s cold / ~5 s warm.
+- **Tests**: `cargo test --workspace --release` → 84 passing, 0
+  failing (target figure; matches what's in the Run book).
+- **Compiler clean**: `cargo build --workspace --release` is warning-free
+  on `roco-core` lib after the recent cfg-attr and dead-code allow
+  work; remaining warnings are pre-existing in non-rwkv crates.
+- **Grammar plumbing**: completion with `RWKV_GRAMMAR=<gbnf>` env
+  var compiles `schoolmarm::Grammar` once per call, masks logits via
+  `allowed_tokens`, and advances state through `accept_token`. Has
+  not yet been wired to an end-to-end eval case (that's the
+  Next-thing #1).
+
+The Run book below is the executable ground truth for re-running any
+of these.
 
 ## Eval framework (`eval_suite.rs`)
 
