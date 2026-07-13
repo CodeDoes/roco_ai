@@ -1,9 +1,13 @@
 //! JSON Schema -> GBNF grammar conversion (compact).
 //!
-//! Ships the *small* shape that's actually useful today: primitives
-//! (`string`, `integer`, `number`, `boolean`, `null`) and `enum`.
-//! Anything more complex stays out until a concrete eval case
-//! demands it; we don't need a faithful JSON Schema implementation.
+//! Ships the compact shape that's useful today: primitives
+//! (`string`, `integer`, `number`, `boolean`, `null`), `enum`, and
+//! `object` / `array` (recursively, emitting inline KV rules).
+//! Limitations by design: every listed property is required and
+//! emitted in order; `required`/`optional` nuance, tuples, and
+//! combined/`$ref` schemas are out of scope. Good enough to give a
+//! small JSON object a small, useful GBNF for constraint flow on the
+//! local RWKV model.
 //!
 //! The output is schoolmarm-compatible GBNF: rules are emitted in
 //! topological order, rule names are bare identifiers, literals
@@ -50,24 +54,32 @@ null ::= \"null\"\n\
 ";
 
 /// Build a single-rule grammar from a JSON Schema value. The rule
-/// is emitted under `root_name`. Primitive schemas return a rule
-/// that references the library directly (eg `string`), enum schemas
-/// return a rule that alternates between literal strings, and
-/// everything else returns `BadSchema`.
+/// is emitted under `root_name`. Primitive and enum schemas inline
+/// their body; `object` / `array` schemas emit a companion rule
+/// (`<root_name>_obj` / `<root_name>_arr`) and reference it.
 ///
-/// The forward goal isn't to pass arbitrary JSON Schemas — it's
-/// to give a small JSON object a small, useful GBNF representation
-/// for testing constraint flow on the local RWKV model.
+/// The goal isn't to pass arbitrary JSON Schemas — it's to give a
+/// small JSON object a small, useful GBNF representation for testing
+/// constraint flow on the local RWKV model.
 pub fn schema_to_gbnf(root_name: &str, schema: &Value) -> Result<String, GbnfError> {
-    let body = body_for(schema)?;
+    let mut rules: Vec<String> = Vec::new();
+    let body = gen_rule(root_name, schema, &mut rules)?;
     let mut out = String::new();
     out.push_str(PRIMITIVES);
     out.push('\n');
+    for r in &rules {
+        out.push_str(r);
+        out.push('\n');
+    }
     out.push_str(&format!("{root_name} ::= {body}\n"));
     Ok(out)
 }
 
-fn body_for(schema: &Value) -> Result<String, GbnfError> {
+/// Recursively turn `schema` into a GBNF body expression, appending
+/// any companion rules (for objects/arrays) to `rules`. The returned
+/// string is either a bare reference to a library rule (`string`), an
+/// inline alternation (enums), or a reference to a generated rule.
+fn gen_rule(name: &str, schema: &Value, rules: &mut Vec<String>) -> Result<String, GbnfError> {
     if !schema.is_object() {
         return Err(GbnfError::BadSchema {
             detail: "schema must be an object".into(),
@@ -99,21 +111,59 @@ fn body_for(schema: &Value) -> Result<String, GbnfError> {
         "integer" => "integer".to_string(),
         "number" => "number".to_string(),
         "boolean" => "boolean".to_string(),
-        "null" => "\"null\"".to_string(),
-        "object" | "array" => {
-            return Err(GbnfError::BadSchema {
-                detail: format!(
-                    "object/array schemas not in this compact converter \
-                     (type={ty:?}). Use a hand-written GBNF for those."
-                ),
-            });
+        "null" => "null".to_string(),
+        "object" => {
+            let props = schema
+                .get("properties")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| GbnfError::BadSchema {
+                    detail: "object schema needs 'properties'".into(),
+                })?;
+            if props.is_empty() {
+                rules.push(format!("{name}-obj ::= \"{{\" \"}}\""));
+                return Ok(format!("{name}-obj"));
+            }
+            let mut members: Vec<String> = Vec::with_capacity(props.len());
+            for (key, sub) in props {
+                let sub_name = format!("{}-{}", name, sanitize(key));
+                let sub_body = gen_rule(&sub_name, sub, rules)?;
+                members.push(format!("{} \":\" {}", quote(key), sub_body));
+            }
+            let body = members.join(" \",\" ");
+            rules.push(format!("{name}-obj ::= \"{{\" {body} \"}}\""));
+            format!("{name}-obj")
+        }
+        "array" => {
+            let items = schema
+                .get("items")
+                .ok_or_else(|| GbnfError::BadSchema {
+                    detail: "array schema needs 'items'".into(),
+                })?;
+            let item_name = format!("{}-item", name);
+            let item_body = gen_rule(&item_name, items, rules)?;
+            rules.push(format!(
+                "{name}-arr ::= \"[\" ( {item_body} ( \",\" {item_body} )* )? \"]\""
+            ));
+            format!("{name}-arr")
         }
         other => {
             return Err(GbnfError::BadSchema {
-                detail: format!("unknown primitive type {other:?}"),
+                detail: format!("unknown type {other:?}"),
             });
         }
     })
+}
+
+/// Wrap `s` in JSON double quotes for use as a GBNF string literal.
+fn quote(s: &str) -> String {
+    format!("\"{s}\"")
+}
+
+/// Turn a JSON property name into a valid GBNF rule identifier.
+fn sanitize(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
 }
 
 /// Emit a single JSON value as a GBNF literal branch.
@@ -173,16 +223,49 @@ mod tests {
     #[test]
     fn null_qualifier_emitted() {
         let g = schema_to_gbnf("root", &json!({"type":"null"})).unwrap();
-        assert!(g.contains("root ::= \"null\""));
+        assert!(g.contains("root ::= null"));
     }
 
     #[test]
-    fn object_rejection() {
-        let res = schema_to_gbnf("root", &json!({
-            "type":"object",
-            "properties":{"a":{"type":"string"}}
-        }));
-        assert!(matches!(res, Err(GbnfError::BadSchema { .. })));
+    fn object_support() {
+        let g = schema_to_gbnf("root", &json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"}
+            }
+        }))
+        .unwrap();
+        assert!(g.contains("root ::= root-obj"));
+        assert!(g.contains("root-obj ::= \"{\""));
+        assert!(g.contains("\"name\""));
+        assert!(g.contains("\"age\""));
+        assert!(g.contains("integer"));
+    }
+
+    #[test]
+    fn array_support() {
+        let g = schema_to_gbnf("root", &json!({
+            "type": "array",
+            "items": {"type": "integer"}
+        }))
+        .unwrap();
+        assert!(g.contains("root ::= root-arr"));
+        assert!(g.contains("root-arr ::= \"[\""));
+    }
+
+    #[test]
+    fn nested_object_and_array() {
+        let g = schema_to_gbnf("root", &json!({
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer"},
+                "tags": {"type": "array", "items": {"type": "string"}}
+            }
+        }))
+        .unwrap();
+        assert!(g.contains("root-tags-arr ::= \"[\" ( string"));
+        assert!(g.contains("root-obj ::= \"{\""));
     }
 
     #[test]
@@ -199,7 +282,12 @@ mod tests {
                 ("boolean", json!({"type":"boolean"})),
                 ("null", json!({"type":"null"})),
                 ("enum", json!({"enum":["x","y","z"]})),
+                ("object", json!({"type":"object","properties":{"a":{"type":"string"},"b":{"type":"integer"}}})),
+                ("array", json!({"type":"array","items":{"type":"integer"}})),
             ] {
+                let g = schema_to_gbnf("root", &schema).unwrap_or_else(|e| {
+                    panic!("{label}: convert error: {e}");
+                });
                 let g = schema_to_gbnf("root", &schema).unwrap_or_else(|e| {
                     panic!("{label}: convert error: {e}");
                 });
