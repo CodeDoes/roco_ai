@@ -37,6 +37,8 @@
 use std::any::Any;
 use std::env;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use half::f16;
@@ -255,6 +257,8 @@ struct RwkvActor {
     /// before it returns, so this is just a safety net.
     #[allow(dead_code)]
     _model_data: Vec<u8>,
+    /// Set to `true` to request cancellation of the current generation.
+    cancel: Arc<AtomicBool>,
 }
 
 /// Request sent to the actor through the channel.
@@ -271,6 +275,17 @@ struct CompleteReq {
     #[cfg_attr(not(feature = "grammar-rwkv"), allow(dead_code))]
     grammar: Option<String>,
     reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
+}
+
+enum ActorMessage {
+    Complete(CompleteReq),
+    Cancel,
+}
+
+impl From<CompleteReq> for ActorMessage {
+    fn from(req: CompleteReq) -> Self {
+        Self::Complete(req)
+    }
 }
 
 /// Get the path to the pipeline cache file for a given model.
@@ -765,6 +780,7 @@ impl RwkvActor {
             token_strings,
             token_chunk_size,
             _model_data: model_data,
+            cancel: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -829,6 +845,12 @@ impl RwkvActor {
         let mut first_token_sampled = false;
 
         loop {
+            if self.cancel.load(Ordering::Relaxed) {
+                return Ok((text, TokenUsage {
+                    prompt_tokens: prompt_len,
+                    completion_tokens: generated.len(),
+                }));
+            }
             let input = inference.clone();
             let (input, output) = self
                 .runtime
@@ -916,6 +938,9 @@ impl RwkvActor {
 
         // Generate remaining tokens
         for _ in 1..max_tokens {
+            if self.cancel.load(Ordering::Relaxed) {
+                break;
+            }
             let input = inference.clone();
             let (input, output) = self
                 .runtime
@@ -997,19 +1022,28 @@ impl RwkvActor {
     }
 
     /// Run the actor message loop on the local set.
-    async fn run(mut self, mut rx: mpsc::Receiver<CompleteReq>) {
-        while let Some(req) = rx.recv().await {
-            let result = self
-                .handle_complete(
-                    &req.system,
-                    &req.prompt,
-                    req.max_tokens,
-                    req.temperature,
-                    #[cfg(feature = "grammar-rwkv")]
-                    req.grammar.as_deref(),
-                )
-                .await;
-            let _ = req.reply.send(result);
+    async fn run(mut self, mut rx: mpsc::Receiver<ActorMessage>) {
+        use ActorMessage::*;
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                Complete(req) => {
+                    self.cancel.store(false, Ordering::Relaxed);
+                    let result = self
+                        .handle_complete(
+                            &req.system,
+                            &req.prompt,
+                            req.max_tokens,
+                            req.temperature,
+                            #[cfg(feature = "grammar-rwkv")]
+                            req.grammar.as_deref(),
+                        )
+                        .await;
+                    let _ = req.reply.send(result);
+                }
+                Cancel => {
+                    self.cancel.store(true, Ordering::Relaxed);
+                }
+            }
         }
     }
 }
@@ -1019,7 +1053,7 @@ impl RwkvActor {
 // ---------------------------------------------------------------------------
 
 pub struct RwkvBackend {
-    tx: Option<mpsc::Sender<CompleteReq>>,
+    tx: Option<mpsc::Sender<ActorMessage>>,
     /// Join handle of the dedicated actor thread. Joined on drop so the
     /// thread's wgpu/tokio resources are torn down in-order (see `Drop`).
     actor_thread: Option<std::thread::JoinHandle<()>>,
@@ -1036,7 +1070,7 @@ impl RwkvBackend {
     /// **Blocks** until the model is fully loaded and the actor is ready to
     /// serve requests. Returns an error if model loading fails.
     pub fn from_env() -> anyhow::Result<Self> {
-        let (tx, rx) = mpsc::channel::<CompleteReq>(4);
+        let (tx, rx) = mpsc::channel::<ActorMessage>(4);
         let (ready_tx, ready_rx) = oneshot::channel::<std::result::Result<(), String>>();
 
         let actor_thread = std::thread::Builder::new()
@@ -1151,7 +1185,7 @@ impl ModelBackend for RwkvBackend {
                 temperature: req.temperature,
                 grammar,
                 reply: reply_tx,
-            })
+            }.into())
             .await
             .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
 
@@ -1175,6 +1209,16 @@ impl ModelBackend for RwkvBackend {
                 parsed,
                 think_trace: None,
             })
+        })
+    }
+
+    fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
+        let tx = self.tx.clone().expect("rwkv backend already shut down");
+        Box::pin(async move {
+            tx.send(ActorMessage::Cancel)
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv interrupt send: {e}")))?;
+            Ok(())
         })
     }
 }

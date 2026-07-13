@@ -146,6 +146,15 @@ pub trait ModelBackend: Send + Sync {
             Err(EngineError::Backend("state mixing not supported".into()))
         })
     }
+
+    /// Request cancellation of the current in-flight generation.
+    /// The backend should abort and return a short partial result or error.
+    /// Default implementation returns an error.
+    fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
+        Box::pin(async move {
+            Err(EngineError::Backend("interrupt not supported".into()))
+        })
+    }
 }
 
 /// Deterministic backend for tests / pre-model development.
@@ -231,6 +240,10 @@ impl ModelBackend for MockBackend {
             });
             Ok(serde_json::to_vec(&merged).unwrap())
         })
+    }
+
+    fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
+        Box::pin(async move { Ok(()) })
     }
 }
 
@@ -326,6 +339,11 @@ mod tests {
             format!("{err:?}").contains("state mixing not supported"),
             "should reject: {err:?}"
         );
+        let err = b.interrupt().await.unwrap_err();
+        assert!(
+            format!("{err:?}").contains("interrupt not supported"),
+            "should reject: {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -347,5 +365,16 @@ mod tests {
         );
         assert!(v.get("source_a").is_some());
         assert!(v.get("source_b").is_some());
+    }
+
+    #[tokio::test]
+    async fn mock_backend_interrupt() {
+        let b = MockBackend::default();
+        // MockBackend completes instantly, so interrupt before calling
+        // complete is a no-op (just verifies the method exists and returns Ok).
+        b.interrupt().await.unwrap();
+        // After interrupt, complete should still work.
+        let resp = b.complete(CompletionRequest::new("sys", "hello")).await.unwrap();
+        assert!(resp.text.contains("result"));
     }
 }
