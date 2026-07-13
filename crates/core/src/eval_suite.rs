@@ -607,6 +607,23 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             oracle: Some("1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest".into()),
             category: EvalCategory::Format,
         },
+
+        // --- Newline handling --- //
+        EvalCase {
+            name: "newline_handling".into(),
+            description:
+                "Model outputs a three-line message when asked, each line separate.".into(),
+            system: "You are a precise assistant. Always separate lines with line breaks.".into(),
+            prompt: "Write exactly three lines:\nLine 1: Apples\nLine 2: Bananas\nLine 3: Cherries".into(),
+            expected_hints: vec!["Apples".into(), "Bananas".into(), "Cherries".into()],
+            forbidden_strings: vec![],
+            max_tokens: 50,
+            temperature: 0.0,
+            min_output_chars: 20,
+            grammar: None,
+            oracle: Some("Apples\nBananas\nCherries".into()),
+            category: EvalCategory::Format,
+        },
     ]
 }
 

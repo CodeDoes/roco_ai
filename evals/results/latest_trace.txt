@@ -14,3 +14,116 @@ Assistant: 42
 --- oracle (MATCH) ---
 42
 
+--- instruct_format_constraint ---
+System: You always output JSON.
+
+User: List three colors in JSON format like this: {"colors": ["red", "green", "blue"]}
+
+Assistant: {"colors": ["red", "green", "blue"]}
+--- oracle (MATCH) ---
+{"colors": ["red", "green", "blue"]}
+
+--- instruct_step_by_step ---
+System: You are a precise assistant.
+
+User: Follow these steps exactly:
+1. Say 'Step 1 complete'
+2. Say 'Step 2 complete'
+3. Say 'All steps done'
+
+Assistant: Step 1 complete
+Step 2 complete
+All steps done
+--- oracle (MATCH) ---
+Step 1 complete
+Step 2 complete
+All steps done
+
+--- instruct_negative ---
+System: You are a helpful assistant.
+
+User: Tell me about the weather, but do NOT mention rain, snow, or temperature.
+
+Assistant: The weather is sunny today.
+
+
+--- oracle (MATCH) ---
+The weather is sunny today.
+
+--- coherence_explain ---
+System: You are a teacher.
+
+User: Explain what a variable is in programming in one paragraph.
+
+Assistant: A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.
+--- oracle (MATCH) ---
+A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.
+
+--- coherence_story ---
+System: You are a storyteller.
+
+User: Write a 3-sentence story about a robot learning to paint.
+
+Assistant: A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.
+--- oracle (MATCH) ---
+A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.
+
+--- repetition_avoidance ---
+System: You are a helpful assistant.
+
+User: List 5 different animals. Write each on a new line.
+
+Assistant: <think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.
+First, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover
+--- oracle (MATCH) ---
+<think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.
+First, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover
+
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant: {
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+--- oracle (MATCH) ---
+{
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+
+--- format_list ---
+System: You are a list maker.
+
+User: List 3 things you need for a picnic, numbered 1 to 3.
+
+Assistant: 1. A blanket or a picnic mat
+2. Food and drinks
+3. A cooler or a portable ice chest
+--- oracle (MATCH) ---
+1. A blanket or a picnic mat
+2. Food and drinks
+3. A cooler or a portable ice chest
+
+--- newline_handling ---
+System: You are a precise assistant. Always separate lines with line breaks.
+
+User: Write exactly three lines:
+Line 1: Apples
+Line 2: Bananas
+Line 3: Cherries
+
+Assistant: Apples
+Bananas
+Cherries
+
+
+--- oracle (MATCH) ---
+Apples
+Bananas
+Cherries
+

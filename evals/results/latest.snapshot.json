@@ -1,4 +1,13 @@
 {
+  "coherence_explain": "A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.",
+  "coherence_story": "A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.",
+  "format_json": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
+  "format_list": "1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest",
+  "instruct_format_constraint": "{\"colors\": [\"red\", \"green\", \"blue\"]}",
+  "instruct_negative": "The weather is sunny today.",
+  "instruct_step_by_step": "Step 1 complete\nStep 2 complete\nAll steps done",
+  "newline_handling": "Apples\nBananas\nCherries",
+  "repetition_avoidance": "<think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.\nFirst, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover",
   "smoke_basic_reply": "Hello!",
   "smoke_empty_system": "42"
 }
