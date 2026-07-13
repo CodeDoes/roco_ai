@@ -151,6 +151,7 @@ impl HardwareCapabilities {
         })
     }
 
+    #[allow(dead_code)] // Reserved for a future InferenceRegistry consumer; called nowhere yet.
     fn nvidia_smi() -> Option<GpuInfo> {
         let output = std::process::Command::new("nvidia-smi")
             .arg("--query-gpu=name,memory.total,memory.free")
