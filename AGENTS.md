@@ -98,13 +98,13 @@ CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
 
 ## Next things to consider
 
-1. Add a JSON-Schema → GBNF converter
-   (`crates/core/src/jsonschema_to_gbnf.rs`). The plumbing already
-   exists — `eval_suite::grammar_eval_cases()` ships three
-   hand-written GBNFs and a unit test that parses them through
-   schoolmarm. The converter plus one new test that does
-   `schema_to_gbnf(...) → Grammar::new(...) → EvalCase.grammar = ...`
-   closes the loop.
+1. ~~Add a JSON-Schema → GBNF converter~~
+   (`crates/core/src/jsonschema_to_gbnf.rs`). **Done.** Compact
+   primitives + enum converter with 5 unit tests, plus a paired
+   `eval_suite::jsonschema_eval_cases()` fixture that exercises
+   the JSON-Schema → GBNF → schoolmarm chain end-to-end. Object/
+   array support is the obvious forward extension but no current
+   eval case demands it.
 2. The 0.1B / 1.5B GGUF→ST shape mismatch in `scripts/gguf_to_st_converter/`
    (`a0/k_a/k_k/v0/w0/x_*` need `[1,1,emb]`, `r_k` needs `(clock_count,head_dim)`).
    Upstream patch needed; without it only the 2.9B works.

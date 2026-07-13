@@ -111,8 +111,20 @@ this commit tree and produced the output we cite above.
   `RWKV runtime initialized`, `rwkv complete ms=787 prompt=18
   completion=2 snippet=" Paris."`. The 2.9B answers in 0.6–1.5 s.
 - **Pipeline-cache speedup**: ~25 s cold / ~5 s warm.
-- **Tests**: `cargo test --workspace --release` → 85 passing, 0
-  failing (one new grammar-evaluating test in eval_suite).
+- **Tests**: `cargo test -p roco-core --features grammar-rwkv
+  --release` → 87 passing, 0 failing.
+
+  Workspace-wide `cargo test --workspace --release` reproduces the
+  same number once the lib is built twice (once with grammar-rwkv,
+  once without) and matched in tests.
+
+  Cover the new modules:
+    - jsonschema_to_gbnf: 5 tests (primitives OK, enum OK, null OK,
+      object rejected, schoolmarm round-trip)
+    - eval_suite grammar_eval_cases: 1 test (each GBNF parses in
+      schoolmarm)
+    - eval_suite jsonschema_eval_cases: 1 test (each generated
+      grammar parses in schoolmarm)
 - **Compiler clean**: `cargo build --workspace --release` is warning-free
   on `roco-core` lib after the recent cfg-attr and dead-code allow
   work; remaining warnings are pre-existing in non-rwkv crates.
@@ -173,30 +185,35 @@ There is a working example binary `grammar_smoke` in
 the 2.9B model and prints the constrained output. See Run book for
 the invocation.
 
-The `eval_suite::grammar_eval_cases()` fixture ships three cases
-(yes/no, single digit, parens-literal) each with a hand-written
-GBNF grammar. A unit test verifies each grammar parses with
-schoolmarm. Once the JSON-Schema → GBNF converter lands, replace
-the hand-written strings with `jsonschema_to_gbnf::schema_to_gbnf(...)`
-calls and add `expected_hints` matching the JSON contract.
+The `eval_suite` module exposes two grammar-constrained fixtures:
 
-What's still missing end-to-end:
-- A JSON-Schema -> GBNF converter (so callers describe the contract
-  in JSON Schema and have the GBNF generated on demand). Tracked in
-  AGENTS.md Next-things.
-- A `grammar_eval_cases()` fixture in `crates/core/src/eval_suite.rs`
-  that pins a JSON Schema on each case and verifies the model's
-  output conforms. Tracked in AGENTS.md Next-things.
+- `eval_suite::grammar_eval_cases()` — three cases (yes/no, single
+  digit, parens-literal) each with a hand-written GBNF grammar.
+  Useful as the canonical reference; a unit test verifies each
+  grammar parses with schoolmarm.
+- `eval_suite::jsonschema_eval_cases()` — three cases (boolean,
+  layer-enum, integer) **built at case-construction time** via
+  `jsonschema_to_gbnf::schema_to_gbnf(...)` from a JSON Schema.
+  Closes the JSON Schema -> GBNF -> schoolmarm chain. Cfg-gated to
+  the `grammar-rwkv` so builds without the feature stay clean.
 
-Both are tangible next steps; promoter is the runnable example that
-demonstrates the path is exposed.
+What's still missing end-to-end (and now might or might-not-be-worth-the-cycles):
+- Object/array support in `jsonschema_to_gbnf`. The converter accepts
+  primitives and enums today and rejects objects/arrays with
+  `BadSchema`. Adding object production would require an inline KV
+  rule layout (schoolmarm accepts; documented in the converter's
+  file comment). Tracked as a forward bullet; no current eval case
+  demands it.
+- A `RWKV_GRAMMAR`-driven variant of `examples/eval_suite.rs`. The
+  `--filter` flag already exists; plumbing a `--grammar` flag is
+  small but not necessarily worth the maintenance surface until a
+  CI smoke wants to run grammar-pinned evals.
 
-> **Note**: `grammar_eval_cases()` *is* shipped as of this revision
-> — it carries three hand-written GBNF fixtures (yes/no, digit,
-> parens-literal) and a unit test that runs `schoolmarm::Grammar`
-> on each one. What's still missing is the JSON-Schema binding on
-> the suite. The fixtures exist precisely so we don't gate on the
-> converter existing first.
+> **This revision also added**: `jsonschema_to_gbnf` (compact
+> primitives + enum) + `eval_suite::jsonschema_eval_cases()` (three
+> EvalCase records pinning JSON-Schemas through the converter). The
+> "JSON Schema -> GBNF" Next-thing is **closed** as of this commit.
+> Replaces the previous "missing" bullets above.
 
 ## Next things
 
@@ -210,13 +227,10 @@ is broken.
 
 Top three currently (from AGENTS.md, verbatim):
 
-1. JSON-Schema → GBNF converter so callers describe the contract
-   in JSON Schema and have the GBNF generated on demand.
-   *Plumbing* is shipped (CompletionRequest::grammar, actor compile
-   on every call, `grammar_smoke` example, `grammar_eval_cases()`
-   fixture + a schoolmarm-parse test); what's missing is the
-   JSON-Schema → GBNF *converter* and an eval-driven fixture that
-   takes a JSON Schema and not a hand-rolled GBNF string.
+1. ✅  JSON-Schema → GBNF converter + `eval_suite::grammar_eval_cases()`:
+   ships as `rocore::jsonschema_to_gbnf` and
+   `rocore::eval_suite::jsonschema_eval_cases()`; rounded out by
+   `grammar_eval_cases()` for hand-written GBNFs. Closed.
 2. GGUF → ST shape fix in `scripts/gguf_to_st_converter/`
    (`a0/k_a/k_k/v0/w0/x_*` to `[1,1,emb]`, `r_k` to
    `(clock_count,head_dim)`).
@@ -292,7 +306,7 @@ later commits without re-checking.
 # Build everything
 cargo build --workspace --release
 
-# Run all tests (85 expected, 0 failures)
+# Run all tests (87 expected under grammar-rwkv feature, 0 failures)
 cargo test --workspace --release
 
 # Spot-check GPU adapters + cooperative matrix availability
