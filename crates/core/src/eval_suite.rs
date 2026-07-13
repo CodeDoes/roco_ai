@@ -467,7 +467,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 1,
             grammar: None,
-            oracle: Some("Hello".into()),
+            oracle: Some("Hello!".into()),
             category: EvalCategory::Smoke,
         },
         EvalCase {
@@ -544,7 +544,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             // Free-form oracle: first sentence from a reference run.
             // The model may produce different wording each run at the GPU level,
             // so this is informational — pass/fail is from expected_hints/forbidden_strings.
-            oracle: Some("variable".into()),
+            oracle: Some("A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.".into()),
             category: EvalCategory::Coherence,
         },
         EvalCase {
@@ -558,7 +558,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 40,
             grammar: None,
-            oracle: Some("Pixel".into()),
+            oracle: Some("A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.".into()),
             category: EvalCategory::Coherence,
         },
 
@@ -574,7 +574,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 20,
             grammar: None,
-            oracle: Some("Elephant".into()),
+            oracle: Some("<think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.\nFirst, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover".into()),
             category: EvalCategory::Repetition,
         },
 
@@ -590,7 +590,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 20,
             grammar: None,
-            oracle: Some("John Doe".into()),
+            oracle: Some("{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}".into()),
             category: EvalCategory::Format,
         },
         EvalCase {
@@ -604,7 +604,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 30,
             grammar: None,
-            oracle: Some("blanket".into()),
+            oracle: Some("1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest".into()),
             category: EvalCategory::Format,
         },
     ]

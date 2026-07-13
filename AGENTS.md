@@ -82,12 +82,13 @@ is the index. Layers `6`–`8` are intentionally reserved for future categories.
 ## Quickstart
 
 ```bash
-roco eval                               # run the eval suite (auto-detects model from models/)
-roco rwkv                               # smoke-test the RWKV backend
-roco grammar                            # grammar-constrained decode smoke test
-gpu-check                               # show Vulkan device + model status
-cargo test --workspace                  # full test suite
-cargo build --release                   # all crates (release for GPU work)
+cargo run --bin roco -- eval              # run evals, snapshot saved
+cargo run --bin roco -- bless             # bless current snapshot as new oracle
+cargo run --bin roco -- rwkv              # smoke-test the RWKV backend
+cargo run --bin roco -- grammar           # grammar-constrained decode smoke test
+cargo run --bin roco -- gpu-check         # show Vulkan device + model status
+cargo test --workspace                    # full test suite
+cargo build --release                     # all crates (release for GPU work)
 ```
 
 > **The execution environment is always inside `devenv shell`.** The `roco` command
@@ -99,10 +100,9 @@ cargo build --release                   # all crates (release for GPU work)
 > are in `default = [\"grammar-rwkv\"]` in `Cargo.toml`. All functionality is
 > available without `--features`.
 >
-> **To invoke commands from the bash tool**, use `cargo run --bin roco -- <sub>`
-> or the full path `.devenv/profile/bin/eval`. The `roco` nix wrapper at
-> `/nix/store/*-roco/bin/roco` runs `cargo run --bin roco -- "$@"` and may not
-> be on PATH in non-interactive shells.
+> **Snapshot/bless workflow:** Every `roco eval` saves a `.snapshot.json` next to
+> the report. When the output is acceptable, run `roco bless` to update the
+> source `oracle:` fields, making the current output the new pass/fail reference.
 
 | Variable | Effect | Default |
 |---|---|---|

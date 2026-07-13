@@ -100,6 +100,9 @@
     # the host GUI libraries discoverable.
     export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig"
 
+    # Add the roco CLI binary to PATH after a cargo build.
+    export PATH="$PATH:$CARGO_TARGET_DIR/release"
+
     # sccache: cache compiled Rust crate artifacts across builds so repeated
     # `cargo build`/`cargo check` are fast (sccache warms across builds).
     # This is what actually addresses slow cargo builds — cachix does not.
