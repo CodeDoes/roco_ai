@@ -84,6 +84,7 @@ pub struct CommandOutput {
 }
 
 /// A timeout-bounded, policy-gated command runner.
+#[derive(Debug, Clone)]
 pub struct Sandbox {
     policy: GuardPolicy,
     timeout: Duration,

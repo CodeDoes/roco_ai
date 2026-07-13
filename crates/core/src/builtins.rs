@@ -264,6 +264,170 @@ impl Tool for BashTool {
     }
 }
 
+/// Search files in the workspace using `grep`-style pattern matching.
+/// Delegates to the sandbox so timeout/guard policy applies.
+pub struct GrepTool {
+    root: PathBuf,
+    sandbox: Sandbox,
+}
+
+impl GrepTool {
+    pub fn new(root: PathBuf, sandbox: Sandbox) -> Self {
+        Self { root, sandbox }
+    }
+}
+
+#[async_trait]
+impl Tool for GrepTool {
+    fn name(&self) -> &str {
+        "grep"
+    }
+    fn description(&self) -> &str {
+        "Search for a pattern in files under the workspace root using grep. Returns matching lines."
+    }
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "pattern": { "type": "string", "description": "Search pattern (regex)" },
+                "path": { "type": "string", "description": "File or directory to search (relative to workspace)" },
+                "max_matches": { "type": "integer", "description": "Maximum results to return (default 20)" }
+            },
+            "required": ["pattern"]
+        })
+    }
+    async fn run(&self, input: Value) -> Result<Value, ToolError> {
+        let pattern = input.get("pattern").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolError::InvalidInput { name: "grep".into(), reason: "missing 'pattern'".into() }
+        })?;
+        let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let max_matches = input.get("max_matches").and_then(|v| v.as_u64()).unwrap_or(20);
+        let cmd = format!(
+            "grep -rn --include='*.rs' --include='*.md' --include='*.toml' --include='*.yaml' --include='*.json' -m {} '{}' {}",
+            max_matches, pattern, path
+        );
+        let out = self.sandbox.run_shell(&cmd).map_err(|e| ToolError::Execution {
+            name: "grep".into(),
+            detail: e.to_string(),
+        })?;
+        Ok(serde_json::json!({
+            "stdout": out.stdout,
+            "stderr": out.stderr,
+            "exit_code": out.exit_code,
+            "timed_out": out.timed_out
+        }))
+    }
+}
+
+/// Find files matching a glob pattern under the workspace root.
+pub struct FindTool {
+    root: PathBuf,
+    sandbox: Sandbox,
+}
+
+impl FindTool {
+    pub fn new(root: PathBuf, sandbox: Sandbox) -> Self {
+        Self { root, sandbox }
+    }
+}
+
+#[async_trait]
+impl Tool for FindTool {
+    fn name(&self) -> &str {
+        "find"
+    }
+    fn description(&self) -> &str {
+        "Find files matching a pattern under the workspace root. Supports glob patterns like '**/*.rs'."
+    }
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "pattern": { "type": "string", "description": "File glob pattern (e.g. '**/*.rs')" },
+                "max_results": { "type": "integer", "description": "Maximum results to return (default 50)" }
+            },
+            "required": ["pattern"]
+        })
+    }
+    async fn run(&self, input: Value) -> Result<Value, ToolError> {
+        let pattern = input.get("pattern").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolError::InvalidInput { name: "find".into(), reason: "missing 'pattern'".into() }
+        })?;
+        let max_results = input.get("max_results").and_then(|v| v.as_u64()).unwrap_or(50);
+        let cmd = format!("find . -path '{}' 2>/dev/null | head -{}", pattern, max_results);
+        let out = self.sandbox.run_shell(&cmd).map_err(|e| ToolError::Execution {
+            name: "find".into(),
+            detail: e.to_string(),
+        })?;
+        Ok(serde_json::json!({
+            "stdout": out.stdout,
+            "stderr": out.stderr,
+            "exit_code": out.exit_code,
+            "timed_out": out.timed_out
+        }))
+    }
+}
+
+/// Edit (replace) text in a file. Handles exact-text and regex replacements.
+pub struct EditTool {
+    root: PathBuf,
+}
+
+impl EditTool {
+    pub fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+}
+
+#[async_trait]
+impl Tool for EditTool {
+    fn name(&self) -> &str {
+        "edit"
+    }
+    fn description(&self) -> &str {
+        "Replace text in a file. Provide the exact old text and new text, or use regex mode."
+    }
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "File path (relative to workspace)" },
+                "old_text": { "type": "string", "description": "Exact text to replace" },
+                "new_text": { "type": "string", "description": "Replacement text" },
+            },
+            "required": ["path", "old_text", "new_text"]
+        })
+    }
+    async fn run(&self, input: Value) -> Result<Value, ToolError> {
+        let path = input.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolError::InvalidInput { name: "edit".into(), reason: "missing 'path'".into() }
+        })?;
+        let old_text = input.get("old_text").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolError::InvalidInput { name: "edit".into(), reason: "missing 'old_text'".into() }
+        })?;
+        let new_text = input.get("new_text").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolError::InvalidInput { name: "edit".into(), reason: "missing 'new_text'".into() }
+        })?;
+        let resolved = resolve(&self.root, path)?;
+        let content = std::fs::read_to_string(&resolved).map_err(|e| ToolError::Execution {
+            name: "edit".into(),
+            detail: format!("read failed: {e}"),
+        })?;
+        if !content.contains(old_text) {
+            return Err(ToolError::InvalidInput {
+                name: "edit".into(),
+                reason: "'old_text' not found in file".into(),
+            });
+        }
+        let new_content = content.replace(old_text, new_text);
+        std::fs::write(&resolved, &new_content).map_err(|e| ToolError::Execution {
+            name: "edit".into(),
+            detail: format!("write failed: {e}"),
+        })?;
+        Ok(serde_json::json!({"replaced": true, "path": path}))
+    }
+}
+
 /// A ready-made registry of the standard file/process tools, confined to
 /// `root` and executing shell commands through `sandbox`.
 pub fn standard_toolkit(root: PathBuf, sandbox: Sandbox) -> ToolRegistry {
@@ -271,6 +435,9 @@ pub fn standard_toolkit(root: PathBuf, sandbox: Sandbox) -> ToolRegistry {
     r.register(Arc::new(ReadTool::new(root.clone())));
     r.register(Arc::new(WriteTool::new(root.clone())));
     r.register(Arc::new(ListTool::new(root.clone())));
+    r.register(Arc::new(EditTool::new(root.clone())));
+    r.register(Arc::new(GrepTool::new(root.clone(), sandbox.clone())));
+    r.register(Arc::new(FindTool::new(root.clone(), sandbox.clone())));
     r.register(Arc::new(BashTool::new(sandbox)));
     r
 }
