@@ -628,6 +628,84 @@ pub fn grammar_eval_cases() -> Vec<EvalCase> {
     ]
 }
 
+/// Grammar-constrained eval cases driven by JSON Schema.
+///
+/// Same shape as [`grammar_eval_cases`] but the grammar string is
+/// *generated* at case-construction time from a JSON Schema, using
+/// `rocore::jsonschema_to_gbnf::schema_to_gbnf`. This is the
+/// end-to-end path the JSON-Schema -> GBNF converter exists to
+/// enable: caller authors a JSON Schema, the suite compiles the
+/// matching GBNF, schoolmarm accepts it on first parse.
+///
+/// Today the cases cover the same primitives the converter
+/// supports (string/integer/number/boolean/null + enum); object
+/// and array schemas would yield BadSchema and the build fails,
+/// which is the right behavior.
+#[cfg(feature = "grammar-rwkv")]
+pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
+    use crate::jsonschema_to_gbnf;
+    use serde_json::json;
+
+    // 1) true/false boolean via Schema -> Boolean rule
+    let bool_schema = json!({"type":"boolean"});
+    let bool_grammar = jsonschema_to_gbnf::schema_to_gbnf("root", &bool_schema)
+        .expect("boolean schema is supported");
+
+    // 2) enum of three short layer labels for rwkv7
+    let layer_schema = json!({"enum":["g1g","g1h","g1d"]});
+    let layer_grammar = jsonschema_to_gbnf::schema_to_gbnf("root", &layer_schema)
+        .expect("enum schema is supported");
+
+    // 3) integer emit directly as Schema-driven grammar
+    let int_schema = json!({"type":"integer"});
+    let int_grammar = jsonschema_to_gbnf::schema_to_gbnf("root", &int_schema)
+        .expect("integer schema is supported");
+
+    vec![
+        EvalCase {
+            name: "json_schema_boolean".into(),
+            description:
+                "Boolean yes/no via JSON Schema ({\"type\":\"boolean\"}) -> GBNF at runtime.".into(),
+            system: "".into(),
+            prompt: "Answer with one word: true or false.".into(),
+            expected_hints: vec![],
+            forbidden_strings: vec![],
+            max_tokens: 8,
+            temperature: 0.4,
+            min_output_chars: 4,
+            grammar: Some(bool_grammar),
+            category: EvalCategory::Format,
+        },
+        EvalCase {
+            name: "json_schema_enum_layer".into(),
+            description:
+                "Enum of rwkv7 layer generations (g1g / g1h / g1d) via JSON Schema.".into(),
+            system: "".into(),
+            prompt: "Pick one of: g1g, g1h, g1d.".into(),
+            expected_hints: vec![],
+            forbidden_strings: vec![],
+            max_tokens: 8,
+            temperature: 0.4,
+            min_output_chars: 3,
+            grammar: Some(layer_grammar),
+            category: EvalCategory::Format,
+        },
+        EvalCase {
+            name: "json_schema_integer".into(),
+            description: "Integer value via JSON Schema ({\"type\":\"integer\"}).".into(),
+            system: "".into(),
+            prompt: "Answer with one negative integer.".into(),
+            expected_hints: vec![],
+            forbidden_strings: vec![],
+            max_tokens: 8,
+            temperature: 0.4,
+            min_output_chars: 1,
+            grammar: Some(int_grammar),
+            category: EvalCategory::Format,
+        },
+    ]
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -710,6 +788,25 @@ mod tests {
         // Without the feature, we just assert the static length.
         #[cfg(not(feature = "grammar-rwkv"))]
         assert!(grammar_eval_cases().iter().all(|c| c.grammar.is_some()));
+    }
+
+    #[cfg(feature = "grammar-rwkv")]
+    #[test]
+    fn jsonschema_eval_cases_grammars_parse_through_schoolmarm() {
+        // The whole reason jsonschema_eval_cases exists is to ensure
+        // JSON-Schema -> GBNF -> schoolmarm::Grammar is a closed
+        // chain. Verify it directly by running schoolmarm::Grammar::new
+        // on each grammar the eval cases carry.
+        use schoolmarm::Grammar;
+        for case in jsonschema_eval_cases() {
+            let g = case
+                .grammar
+                .as_ref()
+                .expect("jsonschema_eval_cases pin a grammar");
+            Grammar::new(g).unwrap_or_else(|e| {
+                panic!("grammar in eval case ‘{}’ did not parse: {e:?}", case.name)
+            });
+        }
     }
 }
 
