@@ -114,5 +114,15 @@ CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
    `builtins.rs` (`SttTool`/`TtsTool`) and `config.rs` (`CapacityConfig`).
    (`resource` was already gone.) `cargo check --workspace` + the touched unit
    tests pass.
-4. Investigate the cleanup segfault; not blocking inference, but ugly.
+4. ~~Investigate the cleanup segfault~~ **Root-caused + fixed.** Cause:
+   the actor thread's `local.block_on` waited on a never-sent oneshot, so the
+   thread never exited; its `JoinHandle` was discarded (detached), so at
+   process exit the OS killed the thread while it still owned a live tokio
+   runtime + wgpu `Context`/`Device`/`Bundle`/`State`. Their allocator state
+   was torn down mid-flight, yielding `free(): invalid size`. Fix in
+   `rwkv_backend.rs`: await the spawned task's `JoinHandle` (the thread now
+   exits once the request channel closes) and join the thread in
+   `RwkvBackend::Drop` so wgpu/tokio resources drop in-order on the owning
+   thread. Not blocking inference. Not yet runtime-verified on GPU — needs a
+   `--release` run to confirm the abort is gone.
 </content>

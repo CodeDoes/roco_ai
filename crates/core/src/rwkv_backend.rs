@@ -989,7 +989,10 @@ impl RwkvActor {
 // ---------------------------------------------------------------------------
 
 pub struct RwkvBackend {
-    tx: mpsc::Sender<CompleteReq>,
+    tx: Option<mpsc::Sender<CompleteReq>>,
+    /// Join handle of the dedicated actor thread. Joined on drop so the
+    /// thread's wgpu/tokio resources are torn down in-order (see `Drop`).
+    actor_thread: Option<std::thread::JoinHandle<()>>,
     name: String,
 }
 
@@ -1006,7 +1009,7 @@ impl RwkvBackend {
         let (tx, rx) = mpsc::channel::<CompleteReq>(4);
         let (ready_tx, ready_rx) = oneshot::channel::<std::result::Result<(), String>>();
 
-        std::thread::Builder::new()
+        let actor_thread = std::thread::Builder::new()
             .name("rwkv-actor".into())
             .spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
@@ -1015,7 +1018,7 @@ impl RwkvBackend {
                     .expect("failed to build rwkv runtime");
                 let local = tokio::task::LocalSet::new();
 
-                local.spawn_local(async move {
+                let actor_handle = local.spawn_local(async move {
                     match RwkvActor::from_env().await {
                         Ok(actor) => {
                             info!("RWKV actor ready on dedicated thread");
@@ -1029,9 +1032,14 @@ impl RwkvBackend {
                     }
                 });
 
-                // Drive the local set until the actor thread is done.
-                let (_tx, rx) = tokio::sync::oneshot::channel::<()>();
-                let _ = local.block_on(&rt, rx);
+                // Drive the local set until the actor task finishes. The task
+                // ends when the caller drops `RwkvBackend` (closing the request
+                // channel). Awaiting the join handle instead of a never-sent
+                // oneshot lets the thread exit cleanly, so its wgpu/tokio
+                // resources drop in-order on this thread — previously the
+                // thread leaked (blocked on an unsent oneshot) and was killed
+                // at process exit, corrupting the allocator (`free(): invalid size`).
+                let _ = local.block_on(&rt, actor_handle);
             })
             .expect("failed to spawn rwkv actor thread");
 
@@ -1052,7 +1060,8 @@ impl RwkvBackend {
         })?;
 
         Ok(Self {
-            tx,
+            tx: Some(tx),
+            actor_thread: Some(actor_thread),
             name: "rwkv".to_string(),
         })
     }
@@ -1089,7 +1098,9 @@ impl ModelBackend for RwkvBackend {
         &self,
         req: CompletionRequest,
     ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
-        let tx = self.tx.clone();
+        let tx = self.tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
             let started = Instant::now();
             let (reply_tx, reply_rx) = oneshot::channel();
@@ -1134,5 +1145,21 @@ impl ModelBackend for RwkvBackend {
                 parsed,
             })
         })
+    }
+}
+
+impl Drop for RwkvBackend {
+    fn drop(&mut self) {
+        // Close the request channel first so the actor loop's `rx.recv()`
+        // returns `None` and the actor task ends. Then join the actor thread,
+        // which lets its wgpu/tokio resources drop in-order on the thread that
+        // owns them. Without this, the actor thread was never joined: it
+        // blocked on a never-sent oneshot, was killed at process exit, and its
+        // still-live wgpu/tokio allocator state was torn down by the OS —
+        // producing `free(): invalid size` at shutdown.
+        self.tx.take();
+        if let Some(handle) = self.actor_thread.take() {
+            let _ = handle.join();
+        }
     }
 }
