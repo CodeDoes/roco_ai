@@ -16,6 +16,7 @@ pub mod eval;
 pub mod eval_suite;
 pub mod inference;
 pub mod grammar;
+pub mod jsonschema_to_gbnf;
 pub mod logger;
 pub mod memory;
 pub mod policy;
