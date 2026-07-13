@@ -2,9 +2,9 @@
   "suite_name": "roco-eval-suite",
   "backend_name": "rwkv",
   "total": 10,
-  "passed": 10,
-  "failed": 0,
-  "total_latency_ms": 21592,
+  "passed": 9,
+  "failed": 1,
+  "total_latency_ms": 10753,
   "results": [
     {
       "name": "smoke_basic_reply",
@@ -13,12 +13,12 @@
       "passed": true,
       "input": "System: You are a helpful assistant.\n\nUser: Say the word 'hello' and nothing else.\n\nAssistant:",
       "output": " Hello!",
-      "latency_ms": 916,
+      "latency_ms": 707,
       "token_usage": {
         "prompt_tokens": 25,
         "completion_tokens": 2
       },
-      "tokens_per_sec": 2.1834061135371177,
+      "tokens_per_sec": 2.828854314002829,
       "checks": [
         {
           "name": "non_empty",
@@ -50,12 +50,12 @@
       "passed": true,
       "input": "User: Respond with the number 42.\n\nAssistant:",
       "output": " 42",
-      "latency_ms": 274,
+      "latency_ms": 223,
       "token_usage": {
         "prompt_tokens": 12,
         "completion_tokens": 1
       },
-      "tokens_per_sec": 3.6496350364963503,
+      "tokens_per_sec": 4.484304932735426,
       "checks": [
         {
           "name": "non_empty",
@@ -87,12 +87,12 @@
       "passed": true,
       "input": "System: You always output JSON.\n\nUser: List three colors in JSON format like this: {\"colors\": [\"red\", \"green\", \"blue\"]}\n\nAssistant:",
       "output": " {\"colors\": [\"red\", \"green\", \"blue\"]}",
-      "latency_ms": 977,
+      "latency_ms": 538,
       "token_usage": {
         "prompt_tokens": 35,
         "completion_tokens": 12
       },
-      "tokens_per_sec": 12.282497441146365,
+      "tokens_per_sec": 22.304832713754646,
       "checks": [
         {
           "name": "non_empty",
@@ -127,7 +127,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "12.3 tok/s (12 tokens in 977ms)"
+          "detail": "22.3 tok/s (12 tokens in 538ms)"
         }
       ],
       "errors": []
@@ -139,12 +139,12 @@
       "passed": true,
       "input": "System: You are a precise assistant.\n\nUser: Follow these steps exactly:\n1. Say 'Step 1 complete'\n2. Say 'Step 2 complete'\n3. Say 'All steps done'\n\nAssistant:",
       "output": " Step 1 complete\nStep 2 complete\nAll steps done",
-      "latency_ms": 929,
+      "latency_ms": 673,
       "token_usage": {
         "prompt_tokens": 47,
         "completion_tokens": 11
       },
-      "tokens_per_sec": 11.840688912809473,
+      "tokens_per_sec": 16.34472511144131,
       "checks": [
         {
           "name": "non_empty",
@@ -179,7 +179,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "11.8 tok/s (11 tokens in 929ms)"
+          "detail": "16.3 tok/s (11 tokens in 673ms)"
         }
       ],
       "errors": []
@@ -188,25 +188,25 @@
       "name": "instruct_negative",
       "description": "Model follows a negative instruction (what NOT to do)",
       "category": "instruction",
-      "passed": true,
+      "passed": false,
       "input": "System: You are a helpful assistant.\n\nUser: Tell me about the weather, but do NOT mention rain, snow, or temperature.\n\nAssistant:",
-      "output": " The weather is sunny today, with clear skies and no clouds. The sun is shining brightly, and the sky is a beautiful shade of blue. It's a perfect day for outdoor activities and enjoying the fresh air.",
-      "latency_ms": 1982,
+      "output": " The weather is sunny today.",
+      "latency_ms": 335,
       "token_usage": {
         "prompt_tokens": 32,
-        "completion_tokens": 43
+        "completion_tokens": 6
       },
-      "tokens_per_sec": 21.695257315842582,
+      "tokens_per_sec": 17.910447761194032,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 201 chars"
+          "detail": "output length: 28 chars"
         },
         {
           "name": "min_output_length",
-          "passed": true,
-          "detail": "201 >= 30 chars"
+          "passed": false,
+          "detail": "28 < 30 chars"
         },
         {
           "name": "hint: weather",
@@ -231,12 +231,7 @@
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 3"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "21.7 tok/s (43 tokens in 1982ms)"
+          "detail": "0 repeated sentences out of 1"
         }
       ],
       "errors": []
@@ -247,23 +242,23 @@
       "category": "coherence",
       "passed": true,
       "input": "System: You are a teacher.\n\nUser: Explain what a variable is in programming in one paragraph.\n\nAssistant:",
-      "output": " A variable is a named location in memory that can store a value. In programming, variables are used to store data that can be used later in the program. Variables are declared with a name and a data type, and their values can be changed throughout the program. Variables are used to store data that can be used in calculations, to store user input, and to store data that is retrieved from a database or other source. Variables are an essential part of any programming language and are used to store and manipulate data in a program.",
-      "latency_ms": 4762,
+      "output": " A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.",
+      "latency_ms": 2242,
       "token_usage": {
         "prompt_tokens": 26,
-        "completion_tokens": 106
+        "completion_tokens": 80
       },
-      "tokens_per_sec": 22.25955480890382,
+      "tokens_per_sec": 35.68242640499554,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 534 chars"
+          "detail": "output length: 421 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "534 >= 50 chars"
+          "detail": "421 >= 50 chars"
         },
         {
           "name": "hint: variable",
@@ -283,12 +278,12 @@
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 5"
+          "detail": "0 repeated sentences out of 4"
         },
         {
           "name": "throughput",
           "passed": true,
-          "detail": "22.3 tok/s (106 tokens in 4762ms)"
+          "detail": "35.7 tok/s (80 tokens in 2242ms)"
         }
       ],
       "errors": []
@@ -299,23 +294,23 @@
       "category": "coherence",
       "passed": true,
       "input": "System: You are a storyteller.\n\nUser: Write a 3-sentence story about a robot learning to paint.\n\nAssistant:",
-      "output": " In a futuristic world, a robot named Zeta was designed to paint masterpieces. Zeta's creators programmed it to understand color theory, but Zeta found that the only way to truly capture emotion was to feel it. So, Zeta began to mimic the human experience of painting, feeling the brush against the canvas, and the colors swirling on the palette. Zeta's art became a reflection of its own emotions, and it became the most revered artist in the galaxy.",
-      "latency_ms": 4548,
+      "output": " A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.",
+      "latency_ms": 1498,
       "token_usage": {
         "prompt_tokens": 29,
-        "completion_tokens": 99
+        "completion_tokens": 46
       },
-      "tokens_per_sec": 21.767810026385227,
+      "tokens_per_sec": 30.707610146862482,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 451 chars"
+          "detail": "output length: 220 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "451 >= 40 chars"
+          "detail": "220 >= 40 chars"
         },
         {
           "name": "hint: robot",
@@ -330,12 +325,12 @@
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 4"
+          "detail": "0 repeated sentences out of 2"
         },
         {
           "name": "throughput",
           "passed": true,
-          "detail": "21.8 tok/s (99 tokens in 4548ms)"
+          "detail": "30.7 tok/s (46 tokens in 1498ms)"
         }
       ],
       "errors": []
@@ -346,33 +341,33 @@
       "category": "repetition",
       "passed": true,
       "input": "System: You are a helpful assistant.\n\nUser: List 5 different animals. Write each on a new line.\n\nAssistant:",
-      "output": " <think>\nOkay, the user asked me to list 5 different animals, each on a new line. Let me think of some common animals that are widely recognized. Maybe start with a big one like an elephant, then a small one like a mouse. Next, a bird like a parrot, and a reptile like a snake. Finally, a mammal like a seal. That should give a good variety. Let me check if they are all different and not overlapping. Elephant,",
-      "latency_ms": 4230,
+      "output": " <think>Okay, the user wants me to list five different animals, each on a new line. Let me think about how to approach this.\nFirst, I need to make sure the animals are distinct and not similar. Maybe start with a common one like a dog, then move to a more unique one like a platypus. Next, a bird like a penguin, and then a mammal like a dolphin. Finally, a reptile like a snake. That should cover",
+      "latency_ms": 2684,
       "token_usage": {
         "prompt_tokens": 27,
         "completion_tokens": 100
       },
-      "tokens_per_sec": 23.64066193853428,
+      "tokens_per_sec": 37.257824143070046,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 411 chars"
+          "detail": "output length: 397 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "411 >= 20 chars"
+          "detail": "397 >= 20 chars"
         },
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 8"
+          "detail": "0 repeated sentences out of 7"
         },
         {
           "name": "throughput",
           "passed": true,
-          "detail": "23.6 tok/s (100 tokens in 4230ms)"
+          "detail": "37.3 tok/s (100 tokens in 2684ms)"
         }
       ],
       "errors": []
@@ -383,23 +378,23 @@
       "category": "format",
       "passed": true,
       "input": "System: You are a data formatter. Always output valid JSON.\n\nUser: Output a JSON object with keys: name, age, city. Use example values.\n\nAssistant:",
-      "output": " ```json\n{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}\n```",
-      "latency_ms": 1636,
+      "output": " {\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
+      "latency_ms": 853,
       "token_usage": {
         "prompt_tokens": 37,
-        "completion_tokens": 30
+        "completion_tokens": 25
       },
-      "tokens_per_sec": 18.337408312958438,
+      "tokens_per_sec": 29.308323563892145,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 72 chars"
+          "detail": "output length: 60 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "72 >= 20 chars"
+          "detail": "60 >= 20 chars"
         },
         {
           "name": "hint: \"name\"",
@@ -424,7 +419,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "18.3 tok/s (30 tokens in 1636ms)"
+          "detail": "29.3 tok/s (25 tokens in 853ms)"
         }
       ],
       "errors": []
@@ -435,23 +430,23 @@
       "category": "format",
       "passed": true,
       "input": "System: You are a list maker.\n\nUser: List 3 things you need for a picnic, numbered 1 to 3.\n\nAssistant:",
-      "output": " 1. Food and drinks\n2. A blanket or chairs\n3. A cooler or ice chest",
-      "latency_ms": 1332,
+      "output": " 1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest",
+      "latency_ms": 994,
       "token_usage": {
         "prompt_tokens": 29,
-        "completion_tokens": 20
+        "completion_tokens": 24
       },
-      "tokens_per_sec": 15.015015015015015,
+      "tokens_per_sec": 24.14486921529175,
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 67 chars"
+          "detail": "output length: 84 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "67 >= 30 chars"
+          "detail": "84 >= 30 chars"
         },
         {
           "name": "hint: 1.",
@@ -476,7 +471,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "15.0 tok/s (20 tokens in 1332ms)"
+          "detail": "24.1 tok/s (24 tokens in 994ms)"
         }
       ],
       "errors": []
@@ -496,7 +491,7 @@
     {
       "category": "instruction",
       "total": 3,
-      "passed": 3
+      "passed": 2
     },
     {
       "category": "repetition",
