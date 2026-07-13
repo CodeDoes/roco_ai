@@ -81,6 +81,7 @@ cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
 | `RWKV_GRAMMAR` | GBNF grammar to constrain decoding (only if `grammar-rwkv` feature is on) | unset |
 | `RWKV_PIPELINE_CACHE_DIR` | Override the WGPU pipeline cache directory | `/tmp/roco-pipeline-cache` |
 | `RWKV_QUANT_CACHE_DIR` | Override the quantized-weight cache directory | `/tmp/roco-quant-cache` |
+| `RWKV_CHUNK` | Tokens processed in a single `frontend::infer` call (chunking trades throughput vs prompt buffering) | `128` |
 
 ## Build with `--release` for GPU work
 
