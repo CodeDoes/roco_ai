@@ -156,6 +156,64 @@ pub fn tools_to_gbnf_response() -> String {
     ["root ::= text \"\\n\\n\"", "text ::= [^<]*"].join("\n")
 }
 
+/// Generate a grammar that constrains the assistant's output in the chat
+/// message format (§2_message).  The assistant may produce a free-text
+/// response, optional `<think>` blocks for chain-of-thought reasoning,
+/// and/or `<tool_call>` invocations followed by `<tool_result>` blocks.
+///
+/// This is the "full conversation" grammar — it allows everything the
+/// assistant is allowed to emit in a single turn.
+pub fn message_format_gbnf(registry: Option<&ToolRegistry>, include_think: bool) -> String {
+    let mut lines = shared_rules();
+
+    // Text content: any character except `<` (to avoid confusing tag
+    // boundaries), plus whitespace.
+    lines.push("text-content ::= [^<]*".to_string());
+
+    // Optional thinking block.
+    if include_think {
+        lines.push(
+            "think-block ::= \"<think>\" text-content \"</think>\"".to_string(),
+        );
+    }
+
+    // Tool call and result blocks.
+    if let Some(registry) = registry {
+        let mut call_names = Vec::new();
+        for t in registry.all_tools() {
+            for r in tool_rules(&*t) {
+                lines.push(r);
+            }
+            call_names.push(format!("{}Call", safe_name(t.name())));
+        }
+        if !call_names.is_empty() {
+            lines.push(format!("tool-call ::= {}", call_names.join(" | ")));
+            lines.push(
+                "tool-result ::= \"<tool_result>\" text-content \"</tool_result>\""
+                    .to_string(),
+            );
+        }
+    }
+
+    // Compose the root: the assistant can produce any sequence of text,
+    // think blocks, tool calls, and tool results.
+    let mut segments = vec!["text-content".to_string()];
+    if include_think {
+        segments.push("think-block".to_string());
+    }
+    if registry.is_some() && !registry.is_some_and(|r| r.all_tools().is_empty()) {
+        segments.push("tool-call".to_string());
+        segments.push("tool-result".to_string());
+    }
+    // root: one or more of any segment type, interleaved freely.
+    lines.push(format!(
+        "root ::= ({} ws?)+",
+        segments.join(" | ")
+    ));
+
+    lines.join("\n")
+}
+
 /// Render tool descriptions as a simple XML block for prompt embedding.
 pub fn tools_to_xml(registry: &ToolRegistry) -> String {
     let mut out = Vec::new();
@@ -424,5 +482,32 @@ mod tests {
         assert!(errs
             .iter()
             .any(|i| i.message.contains("ghostCall")));
+    }
+
+    #[test]
+    fn message_format_contains_expected_sections() {
+        // Without tools, without think.
+        let g = message_format_gbnf(None, false);
+        assert!(g.contains("text-content"), "should have text-content: {g}");
+        assert!(!g.contains("think-block"), "should NOT have think: {g}");
+        assert!(!g.contains("tool-call"), "should NOT have tool-call: {g}");
+        assert!(validate_grammar(&g).is_ok(), "grammar should validate: {g}");
+
+        // With tools, with think.
+        let g2 = message_format_gbnf(Some(&sample_registry()), true);
+        assert!(g2.contains("text-content"));
+        assert!(g2.contains("think-block"));
+        assert!(g2.contains("tool-call"));
+        assert!(g2.contains("tool-result"));
+        assert!(g2.contains("echo"));
+        assert!(g2.contains("add"));
+        assert!(validate_grammar(&g2).is_ok(), "grammar should validate: {g2}");
+    }
+
+    #[test]
+    fn message_format_root_allows_any_combination() {
+        let g = message_format_gbnf(Some(&sample_registry()), true);
+        // Root should allow text, think, tool-call, tool-result in any order.
+        assert!(g.contains("text-content | think-block | tool-call | tool-result"));
     }
 }
