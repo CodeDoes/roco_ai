@@ -1,1 +1,0 @@
-{ "kind": "kilo", "base_url": "https://api.kilo.ai/api/gateway", "auth_env": "KILO_API_KEY", "default_model": "tencent/hy3:free", "reasoning_effort": "medium", "capacity_cost": { "kilo_tencent": 1 } }

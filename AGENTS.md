@@ -4,11 +4,13 @@
 
 ## What this is
 
-A Rust workspace where the only currently-active inference path is
-`crates/core/src/rwkv_backend.rs` (RWKV-7 via `web-rwkv` + WGPU).
-Everything else (orchestrator, gateway, web frontend, etc.) is
-compiled but not the focus right now — we are pushing the small
-local RWKV model as far as we can.
+A Rust workspace whose only inference path is `crates/core/src/rwkv_backend.rs`
+(RWKV-7 via `web-rwkv` + WGPU). The repo has been pared down to the
+local-RWKV critical path — the `crates/core` library plus its `rwkv_*`
+examples, the `vendor/web-rwkv` patch, the `scripts/` model converters,
+and the `assets/vocab` tokenizer. Everything non-RWKV (orchestrator
+crates, gateway/web frontends, Docker, agent/eval scaffolding) has been
+removed; git history preserves it.
 
 ## Status
 
@@ -18,34 +20,31 @@ local RWKV model as far as we can.
   (`grammar-rwkv` feature on `roco-core` → schoolmarm GBNF walker
   restricts logits at every sample step). Three hand-written GBNF
   eval cases (`eval_suite::grammar_eval_cases()`) plus a
-  `grammar_smoke` example binary. JSON-Schema -> GBNF converter
-  is the remaining piece (see Next things).
+  `grammar_smoke` example binary. JSON-Schema → GBNF converter is
+  done (`crates/core/src/jsonschema_to_gbnf.rs`, see Next things #1).
 - **Model loading**: `crates/core/src/rwkv_backend.rs` auto-detects
   model shape from `Loader::info`, picks a quantization plan from
   on-disk file size, and resolves model paths from
   `$RWKV_MODEL` / `models/*.st`.
-- **Cleanup segfault**: `free(): invalid size` at process exit
-  (wgpu drop-order across threads). Non-fatal for inference.
+- **Cleanup segfault**: `free(): invalid size` at process exit — **fixed**
+  (see Next things #4). wgpu/tokio resources now drop in-order on the
+  dedicated actor thread via `RwkvBackend::Drop`.
 
 ## Layout
 
 ```
 roco_ai/
-├── Cargo.toml              # workspace: core/cli/session/workspace/napi/gateway/infer
+├── Cargo.toml              # workspace: crates/core only
 ├── crates/
-│   ├── core/               # roco_core — engine, agent, eval_suite, grammar, rwkv_backend
-│   ├── cli/                # roco — demos, chat, eval, session, trace
-│   ├── session/            # roco_session — message queue + poll loop
-│   ├── workspace/          # roco_workspace — sandboxed FS for sessions
-│   ├── napi/               # roco_napi — .node addon
-│   ├── gateway/            # roco-gateway — axum HTTP (POST /rpc, SSE)
-│   └── infer/              # roco-infer — OpenAI-shaped HTTP front-end
-├── apps/{web,visualizer}   # (kept, but not the focus)
-├── models/                 # RWKV .st files; on-disk truth for model resolution
+│   └── core/               # roco_core — engine, eval_suite, grammar, rwkv_backend (+ examples)
+├── vendor/web-rwkv/        # patched web-rwkv dependency ([patch.crates-io] in Cargo.toml)
+├── models/                 # RWKV .st files; on-disk truth for model resolution (gitignored)
 ├── assets/vocab/           # rwkv_vocab_v20230424.json (the tokenizer)
-├── scripts/                # pth_to_st/ and gguf_to_st/ converters
-├── devenv.{yaml,nix}       # Nix dev shell (rust + node + Vulkan)
-└── .env                    # local API keys (gitignored in practice)
+├── scripts/                # pth_to_st/ and gguf_to_st/ model converters
+├── evals/results/          # rwkv benchmark JSON outputs
+├── devenv.{yaml,nix}       # Nix dev shell (rust + Vulkan)
+├── Makefile                # rwkv-focused dev targets
+└── .env                    # local API keys (gitignored)
 ```
 
 The `crates/core/src/` tree holds everything in one flat directory:
@@ -65,7 +64,7 @@ The `crates/core/src/` tree holds everything in one flat directory:
 devenv shell                            # or `nix develop` if no direnv
 
 cargo build --workspace                 # all crates (release for GPU work)
-cargo test --workspace                  # 98 tests, all passing as of last commit
+cargo test --workspace                  # full test suite
 cargo run -p roco-core                  # choose a subcommand
 cargo run -p roco-core --example eval_suite --release -- --backend rwkv
 cargo run -p roco-core --example rwkv_test --release

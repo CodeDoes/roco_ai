@@ -347,12 +347,11 @@ cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
   result is correct; the segfault is in shutdown ordering of
   wgpu-on-the-actor-thread vs. main thread. See
   `Things we tried that didn't work` for the descriptive details.
-- `crates/cli/src/main.rs` is 922 LOC; only a fraction runs in
-  the rwkv path today. Worth keeping until we know which subcommand
-  surface is real.
-- Web frontend (`apps/web`) compiles; gateway (`crates/gateway`)
-  ships axum; neither has been exercised against the live rwkv
-  path in current checkout.
+- The orchestrator CLI (`crates/cli`, ~922 LOC) and the web/gateway
+  frontends were removed during the repo slim-down; git history
+  preserves them. The rwkv path lives in `crates/core` + its examples.
+- (frontends removed) — see above; the rwkv path is exercised via
+  `crates/core/examples` (`eval_suite`, `rwkv_test`, `grammar_smoke`).
 - 0.1 B / 1.5 B rwkv7 models can't be inference-tested; only the
   2.9 B works end-to-end on disk. Converter bug — see AGENTS.md.
 </content>

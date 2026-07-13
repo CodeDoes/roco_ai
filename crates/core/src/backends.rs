@@ -303,7 +303,7 @@ impl ModelBackend for LocalRwkvBackend {
         Box::pin(async move {
             Err(EngineError::Backend(
                 "local RWKV backend not yet implemented — use Mock, Nvidia, or Kilo. \
-                 See provider/local_rwkv_adapter.json and https://github.com/cryscan/web-rwkv \
+                 See the web-rwkv repo (https://github.com/cryscan/web-rwkv) \
                  for the planned integration."
                     .into(),
             ))
