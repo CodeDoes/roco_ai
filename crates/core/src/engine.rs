@@ -55,6 +55,10 @@ pub struct CompletionRequest {
     /// Enable chain-of-thought: model emits `<think>...</think>` before answer.
     /// The think trace is extracted into [`CompletionResponse::think_trace`].
     pub thinking: bool,
+    /// When `true`, the backend's recurrent state is preserved across calls
+    /// instead of being reset to blank — enabling continue-inference from the
+    /// previous turn's hidden state.
+    pub preserve_state: bool,
 }
 
 impl Default for CompletionRequest {
@@ -68,6 +72,7 @@ impl Default for CompletionRequest {
             max_tokens: 512,
             estimated_prompt_tokens: 0,
             thinking: false,
+            preserve_state: false,
         }
     }
 }

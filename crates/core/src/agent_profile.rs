@@ -305,6 +305,7 @@ impl AgentProfile {
             max_tokens: max_tokens.unwrap_or(default_max),
             estimated_prompt_tokens: 0,
             thinking: false,
+            preserve_state: false,
         }
     }
 

@@ -490,6 +490,7 @@ impl MemoryProcessor {
                 max_tokens: 512,
                 estimated_prompt_tokens: text.len() / 4,
                 thinking: false,
+            preserve_state: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -528,6 +529,7 @@ impl MemoryProcessor {
                 max_tokens: 128,
                 estimated_prompt_tokens: est,
                 thinking: false,
+            preserve_state: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -584,6 +586,7 @@ impl MemoryProcessor {
                 max_tokens: 512,
                 estimated_prompt_tokens: est,
                 thinking: false,
+            preserve_state: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -646,6 +649,7 @@ impl MemoryProcessor {
                 max_tokens: 512,
                 estimated_prompt_tokens: text.len() / 4,
                 thinking: false,
+            preserve_state: false,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;

@@ -254,6 +254,7 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
                 max_tokens: 512,
                 estimated_prompt_tokens: task.prompt_tokens,
                 thinking: false,
+            preserve_state: false,
             };
             if let Some(t) = &self.tracer {
                 t.record(TraceEvent::new(
@@ -557,6 +558,7 @@ impl<B: ModelBackend + Send + Sync> Verifier for JudgeVerifier<B> {
             max_tokens: 256,
             estimated_prompt_tokens: est,
             thinking: false,
+            preserve_state: false,
         };
         let resp = self.backend.complete(req).await?;
         let v: Value = serde_json::from_str(&resp.text).map_err(|e| {

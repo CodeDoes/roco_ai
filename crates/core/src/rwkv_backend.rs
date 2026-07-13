@@ -275,6 +275,9 @@ struct CompleteReq {
     #[cfg_attr(not(feature = "grammar-rwkv"), allow(dead_code))]
     grammar: Option<String>,
     reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
+    /// When true, skip the state-reset step so the recurrent hidden
+    /// state carries over from the previous call.
+    preserve_state: bool,
 }
 
 enum ActorMessage {
@@ -790,6 +793,7 @@ impl RwkvActor {
         prompt: &str,
         max_tokens: usize,
         temperature: f32,
+        preserve_state: bool,
         #[cfg(feature = "grammar-rwkv")] grammar: Option<&str>,
     ) -> Result<(String, TokenUsage), EngineError> {
         // Grammar setup: compile a fresh GrammarState per call. The state is
@@ -813,10 +817,12 @@ impl RwkvActor {
         });
 
         // Reset state to blank before each completion so independent requests
-        // don't leak context into each other.
-        self.state
-            .load(self.initial_state.clone(), 0)
-            .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
+        // don't leak context into each other (unless `preserve_state` is set).
+        if !preserve_state {
+            self.state
+                .load(self.initial_state.clone(), 0)
+                .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
+        }
 
         // RWKV-7 Chat models are trained on User:/Assistant: format.
         // System prompt goes first, then User:, then the model completes as Assistant:.
@@ -1034,6 +1040,7 @@ impl RwkvActor {
                             &req.prompt,
                             req.max_tokens,
                             req.temperature,
+                            req.preserve_state,
                             #[cfg(feature = "grammar-rwkv")]
                             req.grammar.as_deref(),
                         )
@@ -1185,6 +1192,7 @@ impl ModelBackend for RwkvBackend {
                 temperature: req.temperature,
                 grammar,
                 reply: reply_tx,
+                preserve_state: req.preserve_state,
             }.into())
             .await
             .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;

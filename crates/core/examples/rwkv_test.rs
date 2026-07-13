@@ -26,6 +26,7 @@ async fn main() -> anyhow::Result<()> {
         max_tokens: 32,
         estimated_prompt_tokens: 8,
         thinking: false,
+            preserve_state: false,
     };
 
     println!("prompting…");

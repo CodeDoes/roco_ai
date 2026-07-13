@@ -179,6 +179,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         max_tokens: case.max_tokens,
         estimated_prompt_tokens: 0,
         thinking: false,
+            preserve_state: false,
     };
 
     let start = Instant::now();
