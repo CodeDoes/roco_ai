@@ -1,4 +1,4 @@
-//! Configuration for provider selection, capacity, and orchestration.
+//! Configuration for provider selection and orchestration.
 //!
 //! Drives the system from a config file (e.g. `model/default_config.json`) instead
 //! of hardcoded values. The default provider is **NVIDIA** (see `Config::preset`).
@@ -9,7 +9,6 @@ use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::agent::{ContextBudget, RetryPolicy};
-use crate::capacity::Capacity;
 
 /// Which backend provider to use.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,36 +21,6 @@ pub enum Provider {
     /// Local RWKV/SSM inference via `web-rwkv` (Phase 4 — see
     /// `provider/local_rwkv_adapter.json`). Returns an error until wired in.
     LocalRwkv,
-}
-
-/// Capacity pool, in the same units as [`crate::capacity::Capacity`].
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CapacityConfig {
-    #[serde(default)]
-    pub local_gpu_gb: u32,
-    #[serde(default)]
-    pub local_cache_gb: u32,
-    #[serde(default)]
-    pub cpu_model: u32,
-    #[serde(default)]
-    pub cpu_ram_gb: u32,
-    #[serde(default)]
-    pub kilo_tencent: u32,
-    #[serde(default)]
-    pub nvidia_gpu: u32,
-}
-
-impl CapacityConfig {
-    pub fn to_capacity(&self) -> Capacity {
-        Capacity {
-            local_gpu_gb: self.local_gpu_gb,
-            local_cache_gb: self.local_cache_gb,
-            cpu_model: self.cpu_model,
-            cpu_ram_gb: self.cpu_ram_gb,
-            kilo_tencent: self.kilo_tencent,
-            nvidia_gpu: self.nvidia_gpu,
-        }
-    }
 }
 
 fn d_max_task() -> usize {
@@ -136,8 +105,6 @@ pub struct Config {
     #[serde(default)]
     pub kilo_model: Option<String>,
     #[serde(default)]
-    pub capacity: CapacityConfig,
-    #[serde(default)]
     pub retry: RetryConfig,
     #[serde(default)]
     pub context: ContextConfig,
@@ -151,14 +118,6 @@ impl Config {
             provider: Provider::Nvidia,
             nvidia_model: Some("nvidia/nemotron-3-super-120b-a12b".into()),
             kilo_model: Some("tencent/hy3:free".into()),
-            capacity: CapacityConfig {
-                local_gpu_gb: 4,
-                local_cache_gb: 8,
-                cpu_model: 1,
-                cpu_ram_gb: 32,
-                kilo_tencent: 1,
-                nvidia_gpu: 1,
-            },
             retry: RetryConfig::default(),
             context: ContextConfig::default(),
         }
@@ -179,10 +138,6 @@ impl Config {
             tracing::warn!("config load failed ({}), using NVIDIA preset", e);
             Config::preset()
         })
-    }
-
-    pub fn capacity(&self) -> Capacity {
-        self.capacity.to_capacity()
     }
 
     pub fn retry_policy(&self) -> RetryPolicy {
@@ -316,9 +271,6 @@ mod tests {
     fn preset_uses_nvidia_with_full_capacity() {
         let c = Config::preset();
         assert_eq!(c.provider, Provider::Nvidia);
-        let cap = c.capacity();
-        assert_eq!(cap.local_gpu_gb, 4);
-        assert_eq!(cap.nvidia_gpu, 1);
         assert_eq!(c.retry_policy().max_per_task, 3);
         assert_eq!(c.context_budget().task_context, 1200);
     }
@@ -328,7 +280,6 @@ mod tests {
         let json = r#"{"provider":"nvidia","capacity":{"nvidia_gpu":1},"retry":{"max_per_task":5}}"#;
         let c: Config = serde_json::from_str(json).unwrap();
         assert_eq!(c.provider, Provider::Nvidia);
-        assert_eq!(c.capacity().nvidia_gpu, 1);
         assert_eq!(c.retry_policy().max_per_task, 5);
     }
 }

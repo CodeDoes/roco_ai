@@ -7,14 +7,11 @@
 
 pub mod agent;
 pub mod agent_profile;
-pub mod audio;
 pub mod builtins;
-pub mod capacity;
 pub mod config;
 pub mod engine;
 pub mod eval;
 pub mod eval_suite;
-pub mod inference;
 pub mod grammar;
 pub mod jsonschema_to_gbnf;
 pub mod logger;

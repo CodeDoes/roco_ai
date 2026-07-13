@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::audio::{AudioBackend, StubAudioBackend, SttRequest, TtsRequest};
 use crate::sandbox::Sandbox;
 use crate::tools::{Tool, ToolError, ToolRegistry};
 use crate::vector::{Embedder, HashingEmbedder, SharedVectorStore, VectorStore};
@@ -388,141 +387,26 @@ impl Tool for VectorSearchTool {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Speech: STT / TTS
-// ---------------------------------------------------------------------------
-
-/// Transcribe speech audio at `audio_path` to text (speech-to-text).
-pub struct SttTool {
-    backend: Arc<dyn AudioBackend>,
-}
-
-impl SttTool {
-    pub fn new(backend: Arc<dyn AudioBackend>) -> Self {
-        Self { backend }
-    }
-}
-
-#[async_trait]
-impl Tool for SttTool {
-    fn name(&self) -> &str {
-        "stt"
-    }
-    fn description(&self) -> &str {
-        "Transcribe speech audio at `audio_path` to text (speech-to-text)."
-    }
-    fn input_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "audio_path": { "type": "string", "description": "Path to the audio file" },
-                "model": { "type": "string", "description": "Optional transcription model hint" }
-            },
-            "required": ["audio_path"]
-        })
-    }
-    async fn run(&self, input: Value) -> Result<Value, ToolError> {
-        let audio_path = input
-            .get("audio_path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::InvalidInput {
-                name: "stt".into(),
-                reason: "missing 'audio_path'".into(),
-            })?;
-        let model = input
-            .get("model")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let resp = self.backend.stt(&SttRequest {
-            audio_path: std::path::PathBuf::from(audio_path),
-            model,
-        });
-        match resp {
-            Ok(r) => Ok(serde_json::json!({ "text": r.text })),
-            Err(e) => Ok(serde_json::json!({ "ok": false, "error": e.to_string() })),
-        }
-    }
-}
-
-/// Synthesize `text` to speech audio (text-to-speech); writes to `out_path`.
-pub struct TtsTool {
-    backend: Arc<dyn AudioBackend>,
-}
-
-impl TtsTool {
-    pub fn new(backend: Arc<dyn AudioBackend>) -> Self {
-        Self { backend }
-    }
-}
-
-#[async_trait]
-impl Tool for TtsTool {
-    fn name(&self) -> &str {
-        "tts"
-    }
-    fn description(&self) -> &str {
-        "Synthesize `text` to speech audio (text-to-speech); writes to `out_path` (model-dependent)."
-    }
-    fn input_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "text": { "type": "string", "description": "Text to speak" },
-                "voice": { "type": "string", "description": "Optional voice/id" },
-                "out_path": { "type": "string", "description": "Optional output audio path" }
-            },
-            "required": ["text"]
-        })
-    }
-    async fn run(&self, input: Value) -> Result<Value, ToolError> {
-        let text = input.get("text").and_then(|v| v.as_str()).ok_or_else(|| ToolError::InvalidInput {
-            name: "tts".into(),
-            reason: "missing 'text'".into(),
-        })?;
-        let voice = input
-            .get("voice")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let out_path = input
-            .get("out_path")
-            .and_then(|v| v.as_str())
-            .map(std::path::PathBuf::from);
-        let resp = self.backend.tts(&TtsRequest {
-            text: text.to_string(),
-            voice,
-            out_path,
-        });
-        match resp {
-            Ok(r) => Ok(serde_json::json!({ "out_path": r.out_path.to_string_lossy(), "bytes": r.bytes })),
-            Err(e) => Ok(serde_json::json!({ "ok": false, "error": e.to_string() })),
-        }
-    }
-}
-
 /// A full agent toolkit: the standard file/process tools plus the RAG tools
-/// (sharing `store` + `embedder`) and the STT/TTS tools (sharing `audio`).
+/// (sharing `store` + `embedder`).
 pub fn agent_toolkit(
     root: PathBuf,
     sandbox: Sandbox,
     store: SharedVectorStore,
     embedder: Arc<dyn Embedder>,
-    audio: Arc<dyn AudioBackend>,
 ) -> ToolRegistry {
     let mut r = standard_toolkit(root, sandbox);
     r.register(Arc::new(VectorUpsertTool::new(store.clone(), embedder.clone())));
     r.register(Arc::new(VectorSearchTool::new(store, embedder)));
-    r.register(Arc::new(SttTool::new(audio.clone())));
-    r.register(Arc::new(TtsTool::new(audio)));
     r
 }
 
-/// Convenience builder: a fresh 256-dim hashing index, stub audio backend, and
-/// the standard file/process tools. Swap `audio`/`embedder` for real backends.
+/// Convenience builder: a fresh 256-dim hashing index, plus the standard
+/// file/process and RAG tools.
 pub fn default_agent_toolkit(root: PathBuf, sandbox: Sandbox) -> ToolRegistry {
     let store: SharedVectorStore = Arc::new(Mutex::new(VectorStore::new(256)));
     let embedder: Arc<dyn Embedder> = Arc::new(HashingEmbedder::new(256));
-    let audio: Arc<dyn AudioBackend> = Arc::new(StubAudioBackend);
-    agent_toolkit(root, sandbox, store, embedder, audio)
+    agent_toolkit(root, sandbox, store, embedder)
 }
 
 #[cfg(test)]
@@ -607,9 +491,7 @@ mod tests {
         let store: SharedVectorStore = Arc::new(Mutex::new(VectorStore::new(256)));
         let embedder: Arc<dyn crate::vector::Embedder> =
             Arc::new(HashingEmbedder::new(256));
-        let audio: Arc<dyn crate::audio::AudioBackend> =
-            Arc::new(crate::audio::StubAudioBackend);
-        let reg = agent_toolkit(temp_root(), Sandbox::new(), store, embedder, audio);
+        let reg = agent_toolkit(temp_root(), Sandbox::new(), store, embedder);
 
         reg.dispatch(
             "vector_upsert",
@@ -628,22 +510,5 @@ mod tests {
         let hits = out["hits"].as_array().expect("hits is an array");
         assert!(!hits.is_empty(), "expected at least one hit");
         assert_eq!(hits[0]["id"], "doc1");
-    }
-
-    #[tokio::test]
-    async fn stt_tts_tools_report_when_audio_backend_unwired() {
-        let reg = default_agent_toolkit(temp_root(), Sandbox::new());
-        let stt = reg
-            .dispatch("stt", serde_json::json!({ "audio_path": "x.wav" }))
-            .await
-            .unwrap();
-        assert_eq!(stt["ok"], false);
-        assert!(stt["error"].as_str().unwrap().contains("not wired"));
-
-        let tts = reg
-            .dispatch("tts", serde_json::json!({ "text": "hello" }))
-            .await
-            .unwrap();
-        assert_eq!(tts["ok"], false);
     }
 }

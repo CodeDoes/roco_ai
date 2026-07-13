@@ -108,8 +108,11 @@ CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
 2. The 0.1B / 1.5B GGUF→ST shape mismatch in `scripts/gguf_to_st_converter/`
    (`a0/k_a/k_k/v0/w0/x_*` need `[1,1,emb]`, `r_k` needs `(clock_count,head_dim)`).
    Upstream patch needed; without it only the 2.9B works.
-3. Clean up the dead modules in `crates/core/src/` (`audio`, `infer`,
-   `capacity`, `resource`) — they compile, have no external consumers,
-   and currently inflate the test graph.
+3. ~~Clean up the dead modules in `crates/core/src/` (`audio`, `infer`,
+   `capacity`, `resource`)~~ **Done.** Removed `audio.rs`, the `inference/`
+   directory (the `infer` stub), and `capacity.rs`, unwiring their consumers in
+   `builtins.rs` (`SttTool`/`TtsTool`) and `config.rs` (`CapacityConfig`).
+   (`resource` was already gone.) `cargo check --workspace` + the touched unit
+   tests pass.
 4. Investigate the cleanup segfault; not blocking inference, but ugly.
 </content>
