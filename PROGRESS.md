@@ -113,11 +113,13 @@ this commit tree and produced the output we cite above.
 - **End-to-end eval**: `cargo run -p roco-core --features local-rwkv
   --example eval_suite --release -- --backend rwkv --filter
   smoke_basic_reply` → `Eval Report: roco-eval-suite. Backend:
-  rwkv. Results: 1/1 passed (100%). Total time: 777ms`. The
-  harness loads the model, runs the smoke case, writes the JSON
-  report to `evals/results/latest.json`, and reports per-case
-  breakdown + throughput. The cleanup-time `free(): invalid size`
-  fires at exit but doesn't affect evaluation output.
+  rwkv. Results: 1/1 passed (100%). Total time: 777ms`. Same with
+  `--filter coherence`: 2/2 passes (explain, story) at ~31-33 tok/s
+  for ~107 / ~79 completion tokens. The harness loads the model,
+  runs the case, writes the JSON report to
+  `evals/results/latest.json`, and reports per-case breakdown +
+  throughput. The cleanup-time `free(): invalid size` fires at
+  exit but doesn't affect evaluation output.
 - **Pipeline-cache speedup**: ~25 s cold / ~5 s warm.
 - **Tests**: `cargo test -p roco-core --features grammar-rwkv
   --release` → 87 passing, 0 failing.
