@@ -29,3 +29,4 @@ pub mod backends;
 
 #[cfg(feature = "local-rwkv")]
 pub mod rwkv_backend;
+pub mod handler;
