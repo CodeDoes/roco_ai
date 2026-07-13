@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         temperature: 1.0,
         max_tokens: 8,
         estimated_prompt_tokens: 32,
+        thinking: false,
     };
 
     println!("prompting…");

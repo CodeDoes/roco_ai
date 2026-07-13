@@ -150,10 +150,40 @@ fn constrained_sample_token(
     if !any_allowed {
         return None;
     }
-    // Filter tokens whose masked-probability is still finite for the
-    // top-p walk. `NEG_INFINITY` ranks below everything else so it won't
-    // sneak through, but we keep the rest of the original logic identical.
-    Some(sample_token(probs, temperature, top_p))
+    // Try top-p sampling on the full distribution (disallowed probs are
+    // NEG_INFINITY so they sort to the bottom and will be dropped first
+    // by the top-p walk). If top-p removes EVERYTHING (which can happen
+    // when allowed tokens have negligible cumulative probability), fall
+    // back to pure temperature sampling on the allowed subset only.
+    let token = sample_token(probs, temperature, top_p);
+    if token != 0 || allowed[0] {
+        return Some(token);
+    }
+    // token 0 is special (EOS). If it's not in the allowed set, we must
+    // pick something else. Gather the finite-probability (allowed) tokens
+    // and temperature-sample from them.
+    let candidates: Vec<(usize, f32)> = probs
+        .iter()
+        .enumerate()
+        .filter(|(_, &p)| p.is_finite())
+        .map(|(i, &p)| {
+            let w = p.powf(1.0 / temperature);
+            (i, w)
+        })
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    let sum: f32 = candidates.iter().map(|(_, w)| w).sum();
+    let r = fastrand::f32();
+    let mut cum = 0.0f32;
+    for (id, w) in &candidates {
+        cum += w / sum;
+        if r <= cum {
+            return Some(*id as u32);
+        }
+    }
+    candidates.last().map(|(id, _)| *id as u32)
 }
 
 // ---------------------------------------------------------------------------
