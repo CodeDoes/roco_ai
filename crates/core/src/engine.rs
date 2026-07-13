@@ -252,6 +252,48 @@ impl ModelBackend for MockBackend {
     }
 }
 
+/// Run a sequence of example turns through a backend with `preserve_state`
+/// and return the final hidden state.  The returned state can be saved,
+/// loaded, and mixed before a conversation to condition the model's persona
+/// or style (no few-shot prompt engineering required on subsequent calls).
+///
+/// `examples` is `[(user_turn, assistant_turn)]`.  The assistant turn is
+/// provided as the expected output so the state evolves as if the model
+/// had generated it.
+pub async fn bake_persona(
+    backend: &dyn ModelBackend,
+    system: &str,
+    examples: &[(&str, &str)],
+) -> Result<Vec<u8>, EngineError> {
+    for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
+        let req = CompletionRequest {
+            system: if i == 0 { system.to_string() } else { String::new() },
+            prompt: user_msg.to_string(),
+            grammar: None,
+            temperature: 0.0,
+            max_tokens: 1024,
+            estimated_prompt_tokens: 0,
+            thinking: false,
+            preserve_state: i > 0,
+            output_schema: None,
+        };
+        backend.complete(req).await?;
+        let req_assistant = CompletionRequest {
+            system: String::new(),
+            prompt: assistant_msg.to_string(),
+            grammar: None,
+            temperature: 0.0,
+            max_tokens: 1024,
+            estimated_prompt_tokens: 0,
+            thinking: false,
+            preserve_state: true,
+            output_schema: None,
+        };
+        backend.complete(req_assistant).await?;
+    }
+    backend.save_state().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,5 +423,20 @@ mod tests {
         // After interrupt, complete should still work.
         let resp = b.complete(CompletionRequest::new("sys", "hello")).await.unwrap();
         assert!(resp.text.contains("result"));
+    }
+
+    #[tokio::test]
+    async fn bake_persona_produces_usable_state() {
+        let b = MockBackend::default();
+        let examples = [
+            ("What is your name?", "My name is Mock."),
+            ("What can you do?", "I can help with many things."),
+        ];
+        let state = bake_persona(&b, "You are a helpful assistant.", &examples)
+            .await
+            .unwrap();
+        assert!(!state.is_empty(), "baked state should be non-empty");
+        // The state should be loadable.
+        b.load_state(state).await.unwrap();
     }
 }
