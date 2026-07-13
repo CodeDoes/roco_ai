@@ -116,6 +116,22 @@ pub trait ModelBackend: Send + Sync {
         &self,
         req: CompletionRequest,
     ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>>;
+
+    /// Serialize the current model state (recurrent hidden state) to bytes.
+    /// Returns `Err(EngineError::Backend("state not supported"))` by default.
+    fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
+        Box::pin(async move {
+            Err(EngineError::Backend("state not supported".into()))
+        })
+    }
+
+    /// Restore model state from previously saved bytes.
+    /// Default implementation returns an error.
+    fn load_state(&self, _state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
+        Box::pin(async move {
+            Err(EngineError::Backend("state not supported".into()))
+        })
+    }
 }
 
 /// Deterministic backend for tests / pre-model development.
@@ -161,6 +177,25 @@ impl ModelBackend for MockBackend {
             })
         })
     }
+
+    fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
+        let name = self.name.clone();
+        Box::pin(async move {
+            let state = serde_json::json!({
+                "backend": name,
+                "mock_state": true,
+            });
+            Ok(serde_json::to_vec(&state).unwrap())
+        })
+    }
+
+    fn load_state(&self, state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
+        Box::pin(async move {
+            let _state: serde_json::Value = serde_json::from_slice(&state)
+                .map_err(|e| EngineError::Backend(format!("invalid mock state: {e}")))?;
+            Ok(())
+        })
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +234,56 @@ mod tests {
         assert!(resp.text.contains("</think>"), "text should contain </think>");
         // The trace content matches what is between <think>...</think>
         assert!(resp.text.contains(&trace), "text should embed the trace");
+    }
+
+    #[tokio::test]
+    async fn mock_backend_save_load_state() {
+        let b = MockBackend::default();
+
+        // Saving the state returns JSON bytes.
+        let state = b.save_state().await.unwrap();
+        assert!(!state.is_empty(), "state should be non-empty");
+
+        // Loading a valid state succeeds.
+        b.load_state(state).await.unwrap();
+
+        // Loading garbage fails.
+        let err = b.load_state(b"trash".to_vec()).await.unwrap_err();
+        assert!(
+            format!("{err:?}").contains("invalid mock state"),
+            "should reject garbage: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn default_backend_rejects_state() {
+        // A backend that doesn't override save_state / load_state
+        // (use the default trait methods) should reject.
+        struct NoStateBackend;
+        impl ModelBackend for NoStateBackend {
+            fn name(&self) -> &str {
+                "no-state"
+            }
+            fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+                Box::pin(async move {
+                    Err(EngineError::Backend("unimplemented".into()))
+                })
+            }
+        }
+
+        let b = NoStateBackend;
+        let err = b.save_state().await.unwrap_err();
+        assert!(
+            format!("{err:?}").contains("state not supported"),
+            "should reject: {err:?}"
+        );
+        let err = b.load_state(Vec::new()).await.unwrap_err();
+        assert!(
+            format!("{err:?}").contains("state not supported"),
+            "should reject: {err:?}"
+        );
     }
 }
