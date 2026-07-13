@@ -4,21 +4,21 @@
   "total": 11,
   "passed": 11,
   "failed": 0,
-  "total_latency_ms": 9540,
+  "total_latency_ms": 11278,
   "results": [
     {
       "name": "smoke_basic_reply",
-      "description": "Basic smoke test: model responds to a simple prompt",
+      "description": "Simple Q&A reply produces a one-word answer",
       "category": "smoke",
       "passed": true,
       "input": "System: You are a helpful assistant.\n\nUser: Say the word 'hello' and nothing else.\n\nAssistant:",
       "output": " Hello!",
-      "latency_ms": 735,
+      "latency_ms": 988,
       "token_usage": {
         "prompt_tokens": 25,
         "completion_tokens": 2
       },
-      "tokens_per_sec": 2.7210884353741496,
+      "tokens_per_sec": 2.0242914979757085,
       "checks": [
         {
           "name": "non_empty",
@@ -28,7 +28,7 @@
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "7 >= 1 chars"
+          "detail": "7 >= 3 chars"
         },
         {
           "name": "hint: hello",
@@ -46,17 +46,17 @@
     },
     {
       "name": "smoke_empty_system",
-      "description": "Smoke test with empty system prompt",
+      "description": "Empty system prompt is handled gracefully",
       "category": "smoke",
       "passed": true,
       "input": "User: Respond with the number 42.\n\nAssistant:",
       "output": " 42",
-      "latency_ms": 227,
+      "latency_ms": 257,
       "token_usage": {
         "prompt_tokens": 12,
         "completion_tokens": 1
       },
-      "tokens_per_sec": 4.405286343612335,
+      "tokens_per_sec": 3.8910505836575875,
       "checks": [
         {
           "name": "non_empty",
@@ -84,17 +84,17 @@
     },
     {
       "name": "instruct_format_constraint",
-      "description": "Model follows a strict output format instruction",
+      "description": "Outputs JSON when system prompt requires it",
       "category": "instruction",
       "passed": true,
       "input": "System: You always output JSON.\n\nUser: List three colors in JSON format like this: {\"colors\": [\"red\", \"green\", \"blue\"]}\n\nAssistant:",
       "output": " {\"colors\": [\"red\", \"green\", \"blue\"]}",
-      "latency_ms": 539,
+      "latency_ms": 640,
       "token_usage": {
         "prompt_tokens": 35,
         "completion_tokens": 12
       },
-      "tokens_per_sec": 22.263450834879407,
+      "tokens_per_sec": 18.75,
       "checks": [
         {
           "name": "non_empty",
@@ -104,7 +104,7 @@
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "37 >= 20 chars"
+          "detail": "37 >= 30 chars"
         },
         {
           "name": "hint: colors",
@@ -112,14 +112,14 @@
           "detail": "found 'colors' in output"
         },
         {
-          "name": "hint: [",
+          "name": "hint: red",
           "passed": true,
-          "detail": "found '[' in output"
+          "detail": "found 'red' in output"
         },
         {
-          "name": "hint: ]",
+          "name": "hint: blue",
           "passed": true,
-          "detail": "found ']' in output"
+          "detail": "found 'blue' in output"
         },
         {
           "name": "repetition_check",
@@ -129,7 +129,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "22.3 tok/s (12 tokens in 539ms)"
+          "detail": "18.8 tok/s (12 tokens in 640ms)"
         }
       ],
       "errors": [],
@@ -137,17 +137,17 @@
     },
     {
       "name": "instruct_step_by_step",
-      "description": "Model follows multi-step instruction",
+      "description": "Follows a numbered step instruction",
       "category": "instruction",
       "passed": true,
       "input": "System: You are a precise assistant.\n\nUser: Follow these steps exactly:\n1. Say 'Step 1 complete'\n2. Say 'Step 2 complete'\n3. Say 'All steps done'\n\nAssistant:",
       "output": " Step 1 complete\nStep 2 complete\nAll steps done",
-      "latency_ms": 684,
+      "latency_ms": 730,
       "token_usage": {
         "prompt_tokens": 47,
         "completion_tokens": 11
       },
-      "tokens_per_sec": 16.08187134502924,
+      "tokens_per_sec": 15.068493150684931,
       "checks": [
         {
           "name": "non_empty",
@@ -160,19 +160,19 @@
           "detail": "47 >= 30 chars"
         },
         {
-          "name": "hint: Step 1",
+          "name": "hint: Step 1 complete",
           "passed": true,
-          "detail": "found 'Step 1' in output"
+          "detail": "found 'Step 1 complete' in output"
         },
         {
-          "name": "hint: Step 2",
+          "name": "hint: Step 2 complete",
           "passed": true,
-          "detail": "found 'Step 2' in output"
+          "detail": "found 'Step 2 complete' in output"
         },
         {
-          "name": "hint: All steps",
+          "name": "hint: All steps done",
           "passed": true,
-          "detail": "found 'All steps' in output"
+          "detail": "found 'All steps done' in output"
         },
         {
           "name": "repetition_check",
@@ -182,7 +182,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "16.1 tok/s (11 tokens in 684ms)"
+          "detail": "15.1 tok/s (11 tokens in 730ms)"
         }
       ],
       "errors": [],
@@ -190,17 +190,17 @@
     },
     {
       "name": "instruct_negative",
-      "description": "Model follows a negative instruction (what NOT to do)",
+      "description": "Respects a negative constraint (no rain/snow/temperature)",
       "category": "instruction",
       "passed": true,
       "input": "System: You are a helpful assistant.\n\nUser: Tell me about the weather, but do NOT mention rain, snow, or temperature.\n\nAssistant:",
       "output": " The weather is sunny today.",
-      "latency_ms": 337,
+      "latency_ms": 394,
       "token_usage": {
         "prompt_tokens": 32,
         "completion_tokens": 6
       },
-      "tokens_per_sec": 17.804154302670625,
+      "tokens_per_sec": 15.228426395939087,
       "checks": [
         {
           "name": "non_empty",
@@ -243,17 +243,17 @@
     },
     {
       "name": "coherence_explain",
-      "description": "Model produces coherent explanation of a simple concept",
+      "description": "Produces a coherent paragraph explaining a concept",
       "category": "coherence",
       "passed": true,
       "input": "System: You are a teacher.\n\nUser: Explain what a variable is in programming in one paragraph.\n\nAssistant:",
       "output": " A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.",
-      "latency_ms": 2247,
+      "latency_ms": 2738,
       "token_usage": {
         "prompt_tokens": 26,
         "completion_tokens": 80
       },
-      "tokens_per_sec": 35.60302625723186,
+      "tokens_per_sec": 29.218407596785976,
       "checks": [
         {
           "name": "non_empty",
@@ -263,7 +263,7 @@
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "421 >= 50 chars"
+          "detail": "421 >= 100 chars"
         },
         {
           "name": "hint: variable",
@@ -276,11 +276,6 @@
           "detail": "found 'value' in output"
         },
         {
-          "name": "hint: store",
-          "passed": true,
-          "detail": "found 'store' in output"
-        },
-        {
           "name": "repetition_check",
           "passed": true,
           "detail": "0 repeated sentences out of 4"
@@ -288,7 +283,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "35.6 tok/s (80 tokens in 2247ms)"
+          "detail": "29.2 tok/s (80 tokens in 2738ms)"
         }
       ],
       "errors": [],
@@ -296,17 +291,17 @@
     },
     {
       "name": "coherence_story",
-      "description": "Model tells a short coherent story",
+      "description": "Writes a coherent 3-sentence story with named characters",
       "category": "coherence",
       "passed": true,
       "input": "System: You are a storyteller.\n\nUser: Write a 3-sentence story about a robot learning to paint.\n\nAssistant:",
       "output": " A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.",
-      "latency_ms": 1499,
+      "latency_ms": 1815,
       "token_usage": {
         "prompt_tokens": 29,
         "completion_tokens": 46
       },
-      "tokens_per_sec": 30.687124749833224,
+      "tokens_per_sec": 25.344352617079892,
       "checks": [
         {
           "name": "non_empty",
@@ -316,7 +311,7 @@
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "220 >= 40 chars"
+          "detail": "220 >= 80 chars"
         },
         {
           "name": "hint: robot",
@@ -336,7 +331,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "30.7 tok/s (46 tokens in 1499ms)"
+          "detail": "25.3 tok/s (46 tokens in 1815ms)"
         }
       ],
       "errors": [],
@@ -349,12 +344,12 @@
       "passed": true,
       "input": "System: You are a helpful assistant. Do not think out loud. Just answer directly.\n\nUser: List 5 different animals. Write each on a new line numbered 1 to 5.\n\nAssistant:",
       "output": " 1. Elephant\n2. Lion\n3. Dolphin\n4. Penguin\n5. Kangaroo",
-      "latency_ms": 831,
+      "latency_ms": 938,
       "token_usage": {
         "prompt_tokens": 41,
         "completion_tokens": 22
       },
-      "tokens_per_sec": 26.47412755716005,
+      "tokens_per_sec": 23.454157782515992,
       "checks": [
         {
           "name": "non_empty",
@@ -384,7 +379,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "26.5 tok/s (22 tokens in 831ms)"
+          "detail": "23.5 tok/s (22 tokens in 938ms)"
         }
       ],
       "errors": [],
@@ -392,17 +387,17 @@
     },
     {
       "name": "format_json",
-      "description": "Model outputs valid JSON when asked",
+      "description": "Outputs a valid JSON object",
       "category": "format",
       "passed": true,
       "input": "System: You are a data formatter. Always output valid JSON.\n\nUser: Output a JSON object with keys: name, age, city. Use example values.\n\nAssistant:",
       "output": " {\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
-      "latency_ms": 842,
+      "latency_ms": 957,
       "token_usage": {
         "prompt_tokens": 37,
         "completion_tokens": 25
       },
-      "tokens_per_sec": 29.691211401425175,
+      "tokens_per_sec": 26.12330198537095,
       "checks": [
         {
           "name": "non_empty",
@@ -412,22 +407,22 @@
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "60 >= 20 chars"
+          "detail": "60 >= 30 chars"
         },
         {
-          "name": "hint: \"name\"",
+          "name": "hint: name",
           "passed": true,
-          "detail": "found '\"name\"' in output"
+          "detail": "found 'name' in output"
         },
         {
-          "name": "hint: \"age\"",
+          "name": "hint: age",
           "passed": true,
-          "detail": "found '\"age\"' in output"
+          "detail": "found 'age' in output"
         },
         {
-          "name": "hint: \"city\"",
+          "name": "hint: city",
           "passed": true,
-          "detail": "found '\"city\"' in output"
+          "detail": "found 'city' in output"
         },
         {
           "name": "repetition_check",
@@ -437,7 +432,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "29.7 tok/s (25 tokens in 842ms)"
+          "detail": "26.1 tok/s (25 tokens in 957ms)"
         }
       ],
       "errors": [],
@@ -445,17 +440,17 @@
     },
     {
       "name": "format_list",
-      "description": "Model outputs a numbered list when asked",
+      "description": "Outputs a numbered list with 3 items",
       "category": "format",
       "passed": true,
       "input": "System: You are a list maker.\n\nUser: List 3 things you need for a picnic, numbered 1 to 3.\n\nAssistant:",
       "output": " 1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest",
-      "latency_ms": 993,
+      "latency_ms": 1118,
       "token_usage": {
         "prompt_tokens": 29,
         "completion_tokens": 24
       },
-      "tokens_per_sec": 24.169184290030213,
+      "tokens_per_sec": 21.46690518783542,
       "checks": [
         {
           "name": "non_empty",
@@ -490,7 +485,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "24.2 tok/s (24 tokens in 993ms)"
+          "detail": "21.5 tok/s (24 tokens in 1118ms)"
         }
       ],
       "errors": [],
@@ -503,12 +498,12 @@
       "passed": true,
       "input": "System: You are a precise assistant. Always separate lines with line breaks.\n\nUser: Write exactly three lines:\nLine 1: Apples\nLine 2: Bananas\nLine 3: Cherries\n\nAssistant:",
       "output": " Apples\nBananas\nCherries",
-      "latency_ms": 600,
+      "latency_ms": 697,
       "token_usage": {
         "prompt_tokens": 45,
         "completion_tokens": 9
       },
-      "tokens_per_sec": 15.0,
+      "tokens_per_sec": 12.91248206599713,
       "checks": [
         {
           "name": "non_empty",

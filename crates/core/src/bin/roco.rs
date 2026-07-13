@@ -94,58 +94,63 @@ fn cmd_bless(extra: &[&str]) {
 
     let obj = snap.as_object().expect("snapshot must be a JSON object");
 
-    // Read eval_suite.rs, update oracle lines, write back.
+    // Read eval_suite.rs and eval_cases.rs, update oracle lines, write back.
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
-    let source_path = if PathBuf::from(&manifest_dir)
-        .join("src/eval_suite.rs")
-        .exists()
-    {
-        PathBuf::from(&manifest_dir).join("src/eval_suite.rs")
-    } else if PathBuf::from(&manifest_dir)
-        .join("crates/core/src/eval_suite.rs")
-        .exists()
-    {
-        PathBuf::from(&manifest_dir).join("crates/core/src/eval_suite.rs")
-    } else {
-        PathBuf::from(".").join("crates/core/src/eval_suite.rs")
-    };
+    let source_candidates = [
+        PathBuf::from(&manifest_dir).join("src/eval_suite.rs"),
+        PathBuf::from(&manifest_dir).join("crates/core/src/eval_suite.rs"),
+        PathBuf::from(&manifest_dir).join("src/eval_cases.rs"),
+        PathBuf::from(&manifest_dir).join("crates/core/src/eval_cases.rs"),
+    ];
+    let source_paths: Vec<PathBuf> = source_candidates
+        .iter()
+        .filter(|p| p.exists())
+        .cloned()
+        .collect();
 
-    let content = std::fs::read_to_string(&source_path).expect("eval_suite.rs not found");
+    if source_paths.is_empty() {
+        eprintln!("eval_suite.rs / eval_cases.rs not found");
+        return;
+    }
 
-    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-    let mut changed = 0;
+    let mut total_changed = 0;
 
-    for (name, out_val) in obj {
-        let out_str = out_val.as_str().unwrap_or("");
-        // Find the eval case block by name, then update its oracle line.
-        if let Some(name_line) = lines
-            .iter()
-            .position(|l| l.trim() == &format!("name: \"{}\".into(),", name))
-        {
-            // Scan forward from name_line for the next `oracle:` line.
-            let mut oracle_line = None;
-            for i in name_line..lines.len() {
-                let trimmed = lines[i].trim();
-                if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,") {
-                    oracle_line = Some(i);
-                    break;
+    for source_path in &source_paths {
+        let content = std::fs::read_to_string(source_path).expect("source not found");
+        let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+        let mut changed = 0;
+
+        for (name, out_val) in obj {
+            let out_str = out_val.as_str().unwrap_or("");
+            // Find the eval case block by name, then update its oracle line.
+            if let Some(name_line) = lines
+                .iter()
+                .position(|l| l.trim() == &format!("name: \"{}\".into(),", name))
+            {
+                // Scan forward from name_line for the next `oracle:` line.
+                let mut oracle_line = None;
+                for i in name_line..lines.len() {
+                    let trimmed = lines[i].trim();
+                    if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,") {
+                        oracle_line = Some(i);
+                        break;
+                    }
+                    if (trimmed.starts_with("category:") || trimmed.starts_with("name:"))
+                        && i != name_line
+                    {
+                        break;
+                    }
                 }
-                if trimmed.starts_with("category:")
-                    || trimmed.starts_with("name:") && i != name_line
-                {
-                    break;
-                }
-            }
-            if let Some(oi) = oracle_line {
-                // Escape the output string for Rust source.
-                let escaped = out_str
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('\n', "\\n");
-                let indent = &lines[oi][..lines[oi].len() - lines[oi].trim_start().len()];
-                lines[oi] = format!("{indent}oracle: Some(\"{escaped}\".into()),");
-                changed += 1;
-                eprintln!("  blessed {name}: \"{escaped}\"");
+                if let Some(oi) = oracle_line {
+                    // Escape the output string for Rust source.
+                    let escaped = out_str
+                        .replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                        .replace('\n', "\\n");
+                    let indent = &lines[oi][..lines[oi].len() - lines[oi].trim_start().len()];
+                    lines[oi] = format!("{indent}oracle: Some(\"{escaped}\".into()),");
+                    changed += 1;
+                    eprintln!("  blessed {name}: \"{escaped}\"");
             } else {
                 eprintln!("  skipping {name}: no oracle field found");
             }
@@ -155,11 +160,17 @@ fn cmd_bless(extra: &[&str]) {
     }
 
     if changed > 0 {
-        std::fs::write(&source_path, lines.join("\n") + "\n")
-            .expect("failed to write eval_suite.rs");
+        std::fs::write(source_path, lines.join("\n") + "\n")
+            .expect("failed to write source file");
         eprintln!("\nBlessed {changed} oracle(s). Rebuild to pick up changes.");
     } else {
         eprintln!("No oracles blessed.");
+    }
+    total_changed += changed;
+    }
+
+    if total_changed > 0 {
+        eprintln!("\nTotal blessed: {total_changed}");
     }
 }
 

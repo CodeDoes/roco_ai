@@ -11,6 +11,7 @@ pub mod builtins;
 pub mod config;
 pub mod engine;
 pub mod eval;
+pub mod eval_cases;
 pub mod eval_suite;
 pub mod grammar;
 pub mod jsonschema_to_gbnf;
