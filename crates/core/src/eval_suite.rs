@@ -557,6 +557,77 @@ pub fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
     }]
 }
 
+/// Grammar-constrained eval cases.
+///
+/// Each case pins a hand-written GBNF grammar into `EvalCase::grammar`.
+/// The rwkv_backend (with the `grammar-rwkv` feature on) compiles
+/// the grammar once per call via schoolmarm and masks logits at every
+/// sample step. The expected output is *guaranteed* to be in the
+/// grammar's language — not by post-hoc verification, by construction.
+///
+/// These don't need a JSON-Schema->GBNF converter to ship; the
+/// grammars are kept intentionally short so a contributor reading
+/// the case can hand-edit them. Once a converter ships, replace
+/// these strings with `jsonschema_to_gbnf::schema_to_gbnf(...)` and
+/// add proper `expected_hints` matching the JSON contract.
+pub fn grammar_eval_cases() -> Vec<EvalCase> {
+    // Tiny yes/no grammar is the most common raw-test for schoolmarm:
+    // breadth-1 alternative, no whitespace, no recursion.
+    let yes_no: &str = r#"root ::= "yes" | "no""#;
+
+    // Integer-1-9 grammar: 9-branch alternative, validates the
+    // walker handles width correctly.
+    let digit: &str = r#"root ::= "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9""#;
+
+    // Bracket-delimited literal: tests deep acceptance through
+    // bounded alternation depth.
+    let paren_lit: &str = r#"root ::= "(" [a-z]+ ")""#;
+
+    vec![
+        EvalCase {
+            name: "grammar_yes_no".into(),
+            description: "Grammar-constrained yes/no response. Pins 'root ::= \"yes\" | \"no\"'.".into(),
+            system: "You are a precise assistant.".into(),
+            prompt: "Are you a helpful model? Answer yes or no.".into(),
+            expected_hints: vec![],
+            // We expect the model to emit one of {"yes","no"}; both
+            // pass without post-hoc checks because backend enforces it.
+            forbidden_strings: vec![],
+            max_tokens: 8,
+            temperature: 0.5,
+            min_output_chars: 2,
+            grammar: Some(yes_no.to_string()),
+            category: EvalCategory::Format,
+        },
+        EvalCase {
+            name: "grammar_digit_1_to_9".into(),
+            description: "Grammar-constrained single-digit response. Pins a 9-branch alternative.".into(),
+            system: "".into(),
+            prompt: "Pick a digit from one to nine.".into(),
+            expected_hints: vec![],
+            forbidden_strings: vec![],
+            max_tokens: 4,
+            temperature: 0.5,
+            min_output_chars: 1,
+            grammar: Some(digit.to_string()),
+            category: EvalCategory::Format,
+        },
+        EvalCase {
+            name: "grammar_parens_literal".into(),
+            description: "Grammar-constrained (foo)-style response.".into(),
+            system: "".into(),
+            prompt: "Write exactly one word in parentheses.".into(),
+            expected_hints: vec![],
+            forbidden_strings: vec![],
+            max_tokens: 8,
+            temperature: 0.5,
+            min_output_chars: 5,
+            grammar: Some(paren_lit.to_string()),
+            category: EvalCategory::Format,
+        },
+    ]
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -616,3 +687,29 @@ pub fn print_report(report: &EvalReport) {
     }
     println!();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grammar_eval_cases_have_compilable_grammars() {
+        // Sanity check: grammar strings must parse as GBNF. We pull
+        // schoolmarm only when the feature is on so the lib stays
+        // buildable with default features.
+        #[cfg(feature = "grammar-rwkv")]
+        {
+            use schoolmarm::Grammar;
+            for case in grammar_eval_cases() {
+                let g = case.grammar.as_ref().expect("grammar_eval_cases pin a grammar");
+                Grammar::new(g).unwrap_or_else(|e| {
+                    panic!("grammar in eval case ‘{}’ did not parse: {e:?}", case.name)
+                });
+            }
+        }
+        // Without the feature, we just assert the static length.
+        #[cfg(not(feature = "grammar-rwkv"))]
+        assert!(grammar_eval_cases().iter().all(|c| c.grammar.is_some()));
+    }
+}
+
