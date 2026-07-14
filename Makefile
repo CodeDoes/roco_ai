@@ -1,50 +1,47 @@
-.PHONY: all build test check fmt fix clean rwkv grammar eval gpu-check
+.PHONY: all build test check fmt fix clean
 
-# ─── Rust (local RWKV inference) ─────────────────────────────────────────────
+# ─── Rust workspace ──────────────────────────────────────────────────────────
 
 all: build
 
-## Build the workspace (just crates/core now)
 build:
 	cargo build --workspace
 
-## Run all Rust tests
 test:
 	cargo test --workspace
 
-## Type-check the workspace
 check:
 	cargo check --workspace
 
-## Format all Rust code
 fmt:
 	cargo fmt --all
 
-## Fix Rust warnings
 fix:
 	cargo fix --workspace --allow-dirty
 
-# ─── RWKV backend ────────────────────────────────────────────────────────────
+clean:
+	cargo clean
 
-## Smoke-test the RWKV backend (requires a .st model; --release for GPU)
+# ─── RWKV inference ──────────────────────────────────────────────────────────
+
 rwkv:
-	cargo run -p roco-core --example rwkv_test --release
+	cargo run -p roco-inference --example rwkv_test --release
 
-## Grammar-constrained decode smoke test
 grammar:
-	cargo run -p roco-core --example grammar_smoke --release
+	cargo run -p roco-cli --example grammar_smoke --release
 
-## Run the rwkv eval suite
 eval:
-	cargo run -p roco-core --example eval_suite --release -- --backend rwkv
+	cargo run -p roco-cli --example eval_suite --release -- --backend rwkv
 
-## Show Vulkan device + model/vocab status
+chat:
+	cargo run -p roco-cli --example chat --release
+
 gpu-check:
 	@echo "=== Vulkan devices ==="; vulkaninfo --summary 2>&1 | grep -E "(GPU[0-9]|deviceName|deviceType)" || true
 	@echo "=== RWKV model & vocab ==="; ls -lh models/*.st 2>/dev/null || echo "no .st model found"; ls -lh assets/vocab/rwkv_vocab_v20230424.json 2>/dev/null || echo "vocab not found"
 
-# ─── Utilities ───────────────────────────────────────────────────────────────
+# ─── RoCo CLI ────────────────────────────────────────────────────────────────
 
-## Clean build artifacts
-clean:
-	cargo clean
+## Run the roco binary via cargo run
+roco:
+	cargo run --bin roco -- $(ARGS)

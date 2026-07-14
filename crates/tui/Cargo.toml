@@ -1,0 +1,14 @@
+[package]
+name = "roco-tui"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roco_tui"
+
+[dependencies]
+roco-engine = { path = "../engine" }
+roco-chat-common = { path = "../chat-common" }
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true

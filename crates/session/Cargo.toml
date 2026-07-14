@@ -1,0 +1,14 @@
+[package]
+name = "roco-session"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roco_session"
+
+[dependencies]
+roco-engine = { path = "../engine" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

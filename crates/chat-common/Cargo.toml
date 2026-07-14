@@ -1,0 +1,13 @@
+[package]
+name = "roco-chat-common"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roco_chat_common"
+
+[dependencies]
+roco-engine = { path = "../engine" }
+roco-message = { path = "../message" }
+serde.workspace = true
+serde_json.workspace = true

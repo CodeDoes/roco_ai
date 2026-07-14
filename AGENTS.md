@@ -60,11 +60,14 @@ The `crates/core/src/` tree holds everything in one flat directory:
 | Where it lives | What it does |
 |---|---|
 | `rwkv_backend.rs` | The only actively-supported inference path. Owns a dedicated actor thread that hosts all non-`Send` WGPU resources. |
+| `rwkv_quant_proxy.rs` | RWKVQuant-style proxy analysis: streaming SafeTensors reader, adaptive P_c/P_f per-tensor scoring. |
 | `eval_suite.rs` | Standalone backend eval (smoke, instruction, coherence, format, throughput). The harness the `eval_suite` example binary uses. |
 | `engine.rs` | The `ModelBackend` trait + `MockBackend`. Eval runs against any `ModelBackend` impl. |
-| `grammar.rs` | GBNF grammar generation from tool schemas (the *receiving* half of grammar-constrained decoding). |
-| `agent.rs` / `eval.rs` | Orchestrator pipeline + the wider eval suite (tests via the orchestrator, not just the model). Compiles, runs, but is **not the focus** right now. |
-| everything else | Compiled, sometimes exercised by tests. Mostly scaffolding from earlier experiments. Safe to delete on a case-by-case basis — none of it is on the rwkv critical path. |
+| `bnf_constraint.rs` | Grammar-constrained decoding via `bnf_sampler` with schoolmarm fallback. |
+| `jsonschema_to_gbnf.rs` | JSON Schema → GBNF grammar converter. |
+| `eval_cases.rs` | Eval case definitions (oracles, categories, prompts). |
+
+Everything outside the `rwkv_backend` critical path has been removed (agent, memory, vector, policy, sandbox, toolcall, tools, handler, config, visualizer, trace, backends, logger, builtins — all dead modules). Git history preserves them.
 
 ## Goals
 

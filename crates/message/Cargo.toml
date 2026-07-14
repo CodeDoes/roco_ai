@@ -1,0 +1,23 @@
+[package]
+name = "roco-message"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roco_message"
+
+[dependencies]
+roco-engine = { path = "../engine" }
+roco-grammar = { path = "../grammar", optional = true }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+schoolmarm = "0.1"
+
+[features]
+default = ["grammar"]
+grammar = ["dep:roco-grammar"]

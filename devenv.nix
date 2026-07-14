@@ -50,24 +50,21 @@
   # https://devenv.sh/scripts/
   scripts.check.exec = "cargo check --workspace";
   scripts.test.exec = "cargo test --workspace";
-  scripts.run.exec = "cargo run -p roco-core";
-  scripts.build-backends.exec = "cargo build --features http-backends";
-  scripts.test-backends.exec = "cargo test --features http-backends";
-  # Build the local RWKV backend (requires --release for GPU work; see
-  # rwkv_backend.rs module docs — debug builds can hang on some drivers).
-  scripts.rwkv.exec = "cargo run -p roco-core --example rwkv_test --release";
-  scripts.grammar.exec = "cargo run -p roco-core --example grammar_smoke --release";
-  scripts.eval.exec = "cargo run -p roco-core --example eval_suite --release -- --backend rwkv";
-  scripts.chat.exec = "cargo run -p roco-core --features grammar-rwkv --example chat --release";
-  scripts.daemon.exec = "cargo run -p roco-core --example daemon --release";
-  scripts.quant-analyze.exec = "cargo run -p roco-core --example quant_analyze --release";
-  scripts.style-stress.exec = "cargo run -p roco-core --example style_stress --release";
+  scripts.build.exec = "cargo build --workspace";
+  scripts.rwkv.exec = "cargo run -p roco-inference --example rwkv_test --release";
+  scripts.grammar.exec = "cargo run -p roco-cli --example grammar_smoke --release";
+  scripts.eval.exec = "cargo run -p roco-cli --example eval_suite --release -- --backend rwkv";
+  scripts.chat.exec = "cargo run -p roco-cli --example chat --release";
+  scripts.agent.exec = "cargo run -p roco-cli --example agent --release --";
+  scripts.daemon.exec = "cargo run -p roco-server --example daemon --release";
+  scripts.quant-analyze.exec = "cargo run -p roco-inference --example quant_analyze --release";
+  scripts.style-stress.exec = "cargo run -p roco-inference --example style_stress --release";
   scripts.gpu-check.exec = ''
     echo "=== Vulkan devices ==="
     vulkaninfo --summary 2>&1 | grep -E "(GPU[0-9]|deviceName|deviceType|driverID|driverInfo)" || true
     echo ""
     echo "=== RWKV model & vocab ==="
-    ls -lh models/rwkv7-g1h-2.9b-20260710-ctx10240-converted.st 2>/dev/null || echo "convert .st model not found"
+    ls -lh models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st 2>/dev/null || echo ".st model not found"
     ls -lh assets/vocab/rwkv_vocab_v20230424.json 2>/dev/null || echo "vocab not found"
     echo ""
     echo "=== To select a specific GPU at runtime ==="

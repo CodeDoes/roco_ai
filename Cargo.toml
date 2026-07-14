@@ -1,6 +1,18 @@
 [workspace]
 members = [
-    "crates/core",
+    "crates/engine",
+    "crates/grammar",
+    "crates/inference",
+    "crates/message",
+    "crates/session",
+    "crates/tools",
+    "crates/workspace",
+    "crates/agent",
+    "crates/chat-common",
+    "crates/cli",
+    "crates/tui",
+    "crates/server",
+    "crates/gateway",
 ]
 resolver = "2"
 
@@ -21,6 +33,8 @@ futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 dotenvy = "0.15"
 clap = { version = "4", features = ["derive"] }
+num_cpus = "1.16"
+parking_lot = "0.12"
 
 [patch.crates-io]
 web-rwkv = { path = "vendor/web-rwkv" }
