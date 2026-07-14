@@ -138,6 +138,17 @@ impl Agent {
         Self::with_tools(config, tools)
     }
 
+    /// Create an agent whose tool set is the default built-ins plus the
+    /// `schedule` tool bound to `scheduler`.
+    pub fn with_scheduler(
+        config: AgentConfig,
+        scheduler: std::sync::Arc<crate::scheduler::Scheduler>,
+    ) -> Self {
+        let mut tools = all_tools();
+        tools.extend(crate::scheduler::Scheduler::scoped_tools(scheduler));
+        Self::with_tools(config, tools)
+    }
+
     /// Ask the backend to produce a structured plan for `task`.
     ///
     /// Returns a reviewable/resumable [`Plan`](crate::plan::Plan) (falls back to

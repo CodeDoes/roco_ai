@@ -27,18 +27,20 @@ Prerequisite order (mirrors the product layer):
    (with `from_trace`) and exposes a `search_sessions` tool that ranks past
    sessions by content using the shared `score_text` ranker from `memory`.
    Wired via `Agent::with_sessions`.
-7. **scheduled_tasks** — ⬜ *self-directed:* a `Scheduler` holding one-off and
-   periodic tasks with a next-run time; a `schedule`/`run_due` tool pair. Test
-   with a fake clock so it needs no real waiting.
+7. **scheduled_tasks** — ✅ done. `Scheduler`
+   (`crates/agent/src/scheduler.rs`) with one-off + periodic tasks, an injectable
+   fake clock, `due()` / `run_due(backend)` (one-off removed, periodic
+   rescheduled), JSON persistence, and a `schedule` tool wired via
+   `Agent::with_scheduler`. `run_due` is host-driven (not a model tool).
 
 **Wiring (my standing priority):**
-- Connect `memory` + `planning` into the `agent` CLI example so a real run can
-  `remember`, `recall`, and `plan` — today only `all_tools()` (unrestricted) is
-  used.
+- Connect `memory` + `planning` + `session_search` + `scheduler` into the `agent`
+  CLI example so a real run can `remember`, `recall`, `plan`, `search_sessions`,
+  and `schedule` — today only `all_tools()` (unrestricted) is used.
 - Add an **agent eval** that runs a tiny planned task against `MockBackend` and
   asserts the plan is decomposed and executed.
 
-**Next self-directed action:** implement `scheduled_tasks` (a fake-clock
-`Scheduler` + `schedule`/`run_due` tools), then wire memory + planning +
-session-search into the `agent` CLI example so a real run can `remember`,
-`recall`, `plan`, and `search_sessions`.
+**Next self-directed action:** wire the agent capabilities into the `agent` CLI
+ example (memory/planning/session-search/scheduler), then return to the
+ `message` layer (close the `chat_cli` session-state gap) and the `workspace`
+ layer (agent-example integration + a sandbox escape eval case).

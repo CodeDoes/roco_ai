@@ -221,8 +221,11 @@ flags, env vars, run commands); this file is the strategy context.
   stable topological order. **Session search done**
   (`goals/agent/session_search`): `SessionStore` records runs as transcripts
   and a `search_sessions` tool ranks past sessions by content (reusing the
-  `memory` ranker). Wired via `Agent::with_sessions`. Remaining:
-  `scheduled_tasks`.
+  `memory` ranker). Wired via `Agent::with_sessions`. **Scheduled tasks done**
+  (`goals/agent/scheduled_tasks`): `Scheduler` with one-off/periodic tasks,
+  injectable fake clock, `due()`/`run_due`, JSON persistence, and a `schedule`
+  tool wired via `Agent::with_scheduler`. The `agent` layer is now **complete**;
+  remaining integration is wiring these into the `agent` CLI example.
 - `testing/eval_harness` — **done**.
 - `workspace` — **implemented (core)**: `Workspace` sandbox boundary
   (`crates/workspace/src/workspace.rs`) with path-escape protection
