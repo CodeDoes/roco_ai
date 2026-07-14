@@ -1,3 +1,7 @@
 models/
 workspace/
 node_modules/
+target/
+.devenv/
+.roco/
+.env
