@@ -115,6 +115,12 @@ goal's prerequisites come before it in that file. Goal files carry only
 intent (and optional `User:` notes / reference links); progress lives in
 `PROGRESS.md`.
 
+There is also a **`self-directed-goals/`** tree — the agent's own reflection of
+this roadmap. It mirrors the layer structure but encodes the agent's
+autonomous priorities, sequencing, and engineering commitments (see
+`self-directed-goals/index.md`). Product intent stays in `goals/`; the
+agent's working plan lives in `self-directed-goals/`.
+
 ## Quickstart
 
 ```bash

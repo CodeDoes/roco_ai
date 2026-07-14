@@ -23,6 +23,11 @@ AGENTS.md — as prerequisite-ordered layers: `infer`, `message`,
 future `coder`. This file is the strategy/context layer (the "why",
 dead-ends, run book); the actionable roadmap is `goals/`.
 
+The agent's **own** working plan is `self-directed-goals/` — a reflection of
+`goals/` that encodes the agent's autonomous priorities, sequencing, and
+engineering commitments (keep the build green, wire features end-to-end, grow
+eval coverage, and ultimately let the agent steer itself).
+
 ### Completed priorities
 
 **BNF / Grammar-constrained decoding — ✅ DONE.** The `BnfConstraint`
