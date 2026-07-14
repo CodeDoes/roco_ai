@@ -64,6 +64,11 @@ pub struct CompletionRequest {
     /// are produced, enabling streaming trace output.
     #[serde(skip)]
     pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
+    /// Optional session ID for stateful conversations. When set, the backend
+    /// loads the saved state for this session before generating, and saves
+    /// the resulting state back afterward. When `None`, the blank initial
+    /// state is used (single-turn / stateless).
+    pub session: Option<String>,
 }
 
 impl Clone for CompletionRequest {
@@ -78,6 +83,7 @@ impl Clone for CompletionRequest {
             estimated_prompt_tokens: self.estimated_prompt_tokens,
             thinking: self.thinking,
             preserve_state: self.preserve_state,
+            session: self.session.clone(),
             on_token: None, // callbacks cannot be cloned
         }
     }
@@ -113,6 +119,7 @@ impl Default for CompletionRequest {
             thinking: false,
             preserve_state: false,
             on_token: None,
+            session: None,
         }
     }
 }
@@ -316,6 +323,7 @@ pub async fn bake_persona(
             preserve_state: i > 0,
             output_schema: None,
             on_token: None,
+            session: None,
         };
         backend.complete(req).await?;
         let req_assistant = CompletionRequest {
@@ -329,6 +337,7 @@ pub async fn bake_persona(
             preserve_state: true,
             output_schema: None,
             on_token: None,
+            session: None,
         };
         backend.complete(req_assistant).await?;
     }

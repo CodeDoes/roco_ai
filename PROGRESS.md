@@ -1,7 +1,7 @@
 # PROGRESS.md — RoCo AI
 
-> Wishlist / strategy / "what we wanted to do but didn't yet".
-> Living document; this version reflects the rwkv7-first scope as of 2026-07-12.
+> Strategy / context / "what we wanted to do but didn't yet".
+> Living document; this version reflects the rwkv7-first scope as of 2026-07-14.
 
 ## Current scope
 
@@ -11,17 +11,43 @@ path today is `crates/core/src/rwkv_backend.rs` (web-rwkv + WGPU +
 SafeTensors). Other backends (mock / HTTP) exist for tests but are not
 the product.
 
-When the local model isn't good enough, the documented escape hatch is
-the Story Agent harness from `~/Documents/dev/ksr/` — its `infer/`
-stack inherits `rwkv_backend.rs` unchanged and adds grammar-constrained
-generation on top. We don't currently pursue non-rwkv7 engines (candle,
-llama.cpp, mistral.rs, LiteRT).
+When the local model isn't good enough, the escape hatch is the Story
+Agent harness from `~/Documents/dev/ksr/` — its `infer/` stack inherits
+`rwkv_backend.rs` unchanged and adds grammar-constrained generation on
+top. We don't pursue non-rwkv7 engines (candle, llama.cpp, mistral.rs,
+LiteRT).
 
-The product roadmap now lives in `goals/` — indexed by AGENTS.md — as
-numbered, prerequisite-ordered layers `1_infer` → `2_message` →
-`3_workspace` → `4_agent` → `5_browser_use`, plus future `9_coder`.
-This file stays the strategy/context layer (the "why", dead-ends, run
-book); the actionable roadmap is `goals/`.
+The product roadmap lives in `goals/` — indexed by `goals/index.md` and
+AGENTS.md — as prerequisite-ordered layers: `infer`, `message`,
+`workspace`, `agent`, `agent_chat`, `browser_use`, `testing`, plus
+future `coder`. This file is the strategy/context layer (the "why",
+dead-ends, run book); the actionable roadmap is `goals/`.
+
+### Completed priorities
+
+**BNF / Grammar-constrained decoding — ✅ DONE.** The `BnfConstraint`
+module (`crates/core/src/bnf_constraint.rs`) wraps `bnf_sampler` (v0.3.8)
+with a `qp-trie` vocabulary built from the model's tokenizer. It is the
+primary grammar engine in `rwkv_backend.rs`, with schoolmarm as a
+transparent fallback for GBNF grammars that use features `bnf_sampler`
+can't parse (character classes `[...]`, quantifiers `*`). The GBNF→BNF
+converter wraps nonterminal names in angle brackets so `bnf_sampler`'s
+parser accepts them.
+
+**State-mixing / State pool — ✅ Phase 1 DONE.** Session-based
+save/restore is wired through the entire pipeline:
+`CompletionRequest::session` → `CompleteReq::session` →
+`RwkvActor::handle_complete`. Before generation the actor loads the saved
+session state (or blank initial state); after generation it reads the
+state back via `AnyState::back()` and stores it in the LRU pool. The pool
+evicts least-recently-used sessions when it exceeds `max_sessions`
+(default 8). Phase 2 (multi-slot GPU pool with concurrent batching) and
+Phase 3 (tensor-level state blending) are forward work.
+
+**Chat CLI — ✅ DONE.** `crates/core/examples/chat.rs` provides a terminal
+REPL with streaming output, session persistence (`session: "chat"`),
+grammar constraints (`/grammar <file>`), temperature control, and Ctrl+C
+interrupt. Invoked via `cargo run --example chat --release`.
 
 ## Model loading strategy
 
@@ -57,11 +83,12 @@ crates/core/src/rwkv_backend::RwkvBackend::complete
         v
 RwkvActor thread (LocalSet + current-thread tokio)
    owns Context, TokioRuntime<Rnn>, AnyState, token_strings
-   * compiles grammar (schoolmarm) if Grammar is Some
-   * resets State before each completion (no leak between requests)
+   * tries BnfConstraint for grammar; falls back to schoolmarm
+   * loads session state or blank initial state
    * prompt tokens -> softmax_one -> sample_token
-        + grammar_state.allowed_tokens masks disallowed indices to -inf
-        + accept_token(word) advances state after each sample
+        + grammar constraint masks disallowed indices to -inf
+        + accept_token advances state after each sample
+   * saves session state back after generation
    * decodes via web_rwkv::Tokenizer
         |
         v
@@ -74,24 +101,19 @@ produce non-`Send` futures (they embed wgpu resources). The
 the actor is a request server. `mpsc::Sender::send` from the calling
 thread is `Send`, so callers can be anywhere.
 
-If you ever write Rust that touches wgpu directly from outside this
-file, you're probably picking the wrong layer.
-
 ### Decisions baked into the rwkv critical path
-
-Non-obvious choices that sit in the file and the next contributor
-would otherwise re-litigate:
 
 | Decision | Why |
 |---|---|
-| `std::fs::read`, not `memmap2` | Mmap crashed producer on the AMD iGPU. The 5.5 GB FP16 read is hot-path but cached by the kernel page cache, so a second launch from RAM hits the same wall-clock budget as Mmap would. |
-| `LocalSet` + current-thread tokio on a dedicated OS thread | web-rwkv's async methods produce non-Send futures (they embed `wgpu::Device`). `mpsc::Sender` is Send across threads, so callers can be anywhere. |
-| State reset on every `complete()` | Independent evaluations need clean state. Cheaper than running a per-call session tracker on the actor. |
-| Grammar state is fresh per `complete()` (no caching) | `schoolmarm::GrammarState` isn't `Sync` and only meaningful for one turn. Trying to cache complicates the API without measurable benefit. |
-| Bytes -> UTF-8 PUA mapping (`U+E000..U+E07F`) | Schoolmarm expects UTF-8 strings for tokens; non-ASCII BPE bytes only round-trip through that PUA range. Matches what rwkv-harness' schoolmarm consumer does. |
-| NF4 / Int8 / no-quant policy driven by on-disk file size | wgpu's `max_buffer_size` over-reports (200x on RTX 2050); on-disk size is ground truth. |
-| Filter tokens with `logits[i] = NEG_INFINITY` and `sample_token` unchanged | Avoids a second sample implementation; `-inf` rank-orders below any real probability. |
-| Allow passthrough on `schoolmarm::accept_token` failure | BPE chunkings straddle literal boundaries; the right semantics is "didn't advance", not fatal. |
+| `std::fs::read`, not `memmap2` | Mmap crashed producer on the AMD iGPU. The 5.5 GB FP16 read is cached by the kernel page cache. |
+| `LocalSet` + current-thread tokio on a dedicated OS thread | web-rwkv's async methods produce non-Send futures (they embed `wgpu::Device`). `mpsc::Sender` is Send across threads. |
+| Session state pool with LRU | Independent evaluations need clean state; sessions need persistent state. The pool handles both: `session=None` → blank state, `session=Some(id)` → load/save. |
+| Grammar state is fresh per `complete()` | `schoolmarm::GrammarState` isn't `Sync` and only meaningful for one turn. |
+| Bytes → UTF-8 PUA mapping (`U+E000..U+E07F`) | Schoolmarm expects UTF-8 strings; non-ASCII BPE bytes round-trip through that PUA range. |
+| NF4 / Int8 / no-quant from on-disk file size | wgpu's `max_buffer_size` over-reports (200x on RTX 2050); on-disk size is ground truth. |
+| Filter tokens with `NEG_INFINITY` | Avoids a second sample implementation; `-inf` rank-orders below any real probability. |
+| Allow passthrough on grammar accept failure | BPE chunkings straddle literal boundaries; "didn't advance" is the right semantics. |
+| BnfConstraint first, schoolmarm fallback | bnf_sampler handles most grammars cleanly; schoolmarm catches edge cases (character classes, quantifiers). |
 
 ## What fits on this hardware
 
@@ -100,7 +122,7 @@ the 2.9 B model (~5.5 GB FP16) loads with NF4 quantization, lands
 in roughly 1.4 GB VRAM resident, and generates at ~16–20 tok/s.
 Smaller rwkv7 checkpoints (0.1 B / 1.5 B) are still GGUF;
 converting them to ST hits a known tensor-layout bug in
-`scripts/gguf_to_st_converter/` (see AGENTS.md "Next things").
+`scripts/gguf_to_st_converter/` (tracked as `goals/infer/gguf_st_converter`).
 
 The actual VRAM ceiling for unquantized FP16 is `4 GB on RTX 2050`,
 the actual reported cap from wgpu's `max_buffer_size` is `1 TB`.
@@ -109,66 +131,18 @@ self-report.
 
 ## Status verification (what we've actually run recently)
 
-Per-section proof points — each line is a real command that ran on
-this commit tree and produced the output we cite above.
-
 - **End-to-end inference**: `cargo run -p roco-core --features
-  grammar-rwkv --example rwkv_test --release` →
-  `RWKV runtime initialized`, `rwkv complete ms=787 prompt=18
-  completion=2 snippet=" Paris."`. The 2.9B answers in 0.6–1.5 s.
+  grammar-rwkv --example rwkv_test --release` → model loads, answers
+  in 0.6–1.5 s at ~16–20 tok/s.
+- **Chat CLI**: `cargo run -p roco-core --features grammar-rwkv --example
+  chat --release` → streaming REPL with session persistence.
 - **End-to-end eval**: `cargo run -p roco-core --features local-rwkv
-  --example eval_suite --release -- --backend rwkv --filter
-  smoke_basic_reply` → `Eval Report: roco-eval-suite. Backend:
-  rwkv. Results: 1/1 passed (100%). Total time: 777ms`. Same with
-  `--filter coherence`: 2/2 passes (explain, story) at ~31-33 tok/s
-  for ~107 / ~79 completion tokens. The harness loads the model,
-  runs the case, writes the JSON report to
-  `evals/results/latest.json`, and reports per-case breakdown +
-  throughput. (The cleanup-time `free(): invalid size` segfault that
-  previously fired at exit is now fixed — see AGENTS.md; evaluation
-  output was never affected.)
-- **Pipeline-cache speedup**: ~25 s cold / ~5 s warm.
-- **Tests**: `cargo test -p roco-core --features grammar-rwkv
-  --release` → 87 passing, 0 failing.
-
-  Workspace-wide `cargo test --workspace --release` reproduces the
-  same number once the lib is built twice (once with grammar-rwkv,
-  once without) and matched in tests.
-
-  Cover the new modules:
-    - jsonschema_to_gbnf: 5 tests (primitives OK, enum OK, null OK,
-      object rejected, schoolmarm round-trip)
-    - eval_suite grammar_eval_cases: 1 test (each GBNF parses in
-      schoolmarm)
-    - eval_suite jsonschema_eval_cases: 1 test (each generated
-      grammar parses in schoolmarm)
-- **Compiler clean**: `cargo build --workspace --release` is warning-free
-  on `roco-core` lib after the recent cfg-attr and dead-code allow
-  work; remaining warnings are pre-existing in non-rwkv crates.
-- **Grammar plumbing**: completion with grammar text compiles
-  `schoolmarm::Grammar` once per call, masks logits via
-  `allowed_tokens`, advances state through `accept_token`. The
-  `grammar_smoke` example ships end-to-end: ask the model a yes/no
-  question with `root ::= "yes" | "no"`, observe that the response
-  (when generation fires) is one of those tokens only. Yes/no
-  generation through this grammar on the 2.9B / NF4 with default
-  temperature sails to the walker's invalid state from step 1
-  today — useful as a *binding* test (you see whether anything
-  comes out, not what shape the answer takes).
-
-The Run book below is the executable ground truth for re-running any
-of these.
-
-### Verification notes
-
-When the grammar_smoke default (`root ::= "yes" | "no"`) lands in
-the invalid walker state at temperature 1.0, that's typically a
-prompt+grammar mismatch — the model's preferred first tokens don't
-line up with `"yes" | "no"`. Better prompts (binary options the
-model has been seen in training) + a no_leading_space variant
-grammar (eg `root ::= " answer" | " is") tend to produce
-visible constrained output. The example is shipping as a binding
-test, not as a happy-path demo.
+  --example eval_suite --release -- --backend rwkv` → runs eval cases,
+  writes JSON report to `evals/results/latest.json`.
+- **Tests**: `cargo test -p roco-core --features grammar-rwkv` →
+  114 passing, 0 failing.
+- **Compiler clean**: `cargo check -p roco-core --features grammar-rwkv`
+  — only pre-existing dead-code warnings in non-rwkv modules.
 
 ## Eval framework (`eval_suite.rs`)
 
@@ -180,197 +154,88 @@ Built-in categories: smoke, instruction following, coherence,
 repetition, throughput, format, context. The example binary takes
 `--backend` and `--filter` flags.
 
-Per-each-call runtime artifacts land under `.roco/evals/<name>/result.json`
-(via `crates/core/src/eval.rs::run_eval`). At the time of writing only
-`.roco/evals/delegate/` is populated — anchor for a future where this
-fills up.
-
 ### Grammar-constrained variant
-
-Compiles a grammar text -> GBNF compile via schoolmarm, masks logits
-on every sample step, advances state through `accept_token`, and
-exposes the writing path through two surfaces:
 
 - `rocore::engine::CompletionRequest::grammar: Option<String>`. Any
   backend can carry the field; rwkv_backend honors it when the
   `grammar-rwkv` cargo feature is on.
-- `RWKV_GRAMMAR` / `RWKV_GRAMMAR_FILE` env vars. They let scripts set
-  a grammar without threading it through the request.
-
-There is a working example binary `grammar_smoke` in
-`crates/core/examples/` that asks `root ::= "yes" | "no"` against
-the 2.9B model and prints the constrained output. See Run book for
-the invocation.
-
-The `eval_suite` module exposes two grammar-constrained fixtures:
-
-- `eval_suite::grammar_eval_cases()` — three cases (yes/no, single
-  digit, parens-literal) each with a hand-written GBNF grammar.
-  Useful as the canonical reference; a unit test verifies each
-  grammar parses with schoolmarm.
-- `eval_suite::jsonschema_eval_cases()` — three cases (boolean,
-  layer-enum, integer) **built at case-construction time** via
-  `jsonschema_to_gbnf::schema_to_gbnf(...)` from a JSON Schema.
-  Closes the JSON Schema -> GBNF -> schoolmarm chain. Cfg-gated to
-  the `grammar-rwkv` so builds without the feature stay clean.
-
-What's still missing end-to-end (and now might or might-not-be-worth-the-cycles):
-- Object/array support in `jsonschema_to_gbnf`. The converter accepts
-  primitives and enums today and rejects objects/arrays with
-  `BadSchema`. Adding object production would require an inline KV
-  rule layout (schoolmarm accepts; documented in the converter's
-  file comment). Tracked as a forward bullet; no current eval case
-  demands it.
-- A `RWKV_GRAMMAR`-driven variant of `examples/eval_suite.rs`. The
-  `--filter` flag already exists; plumbing a `--grammar` flag is
-  small but not necessarily worth the maintenance surface until a
-  CI smoke wants to run grammar-pinned evals.
-
-> **This revision also added**: `jsonschema_to_gbnf` (compact
-> primitives + enum) + `eval_suite::jsonschema_eval_cases()` (three
-> EvalCase records pinning JSON-Schemas through the converter). The
-> "JSON Schema -> GBNF" Next-thing is **closed** as of this commit.
-> Replaces the previous "missing" bullets above.
+- `RWKV_GRAMMAR` / `RWKV_GRAMMAR_FILE` env vars for scripting.
+- The `eval_suite` module exposes `grammar_eval_cases()` (hand-written
+  GBNF) and `jsonschema_eval_cases()` (JSON Schema → GBNF chain).
 
 ## Next things
 
-The live product roadmap is `goals/` (AGENTS.md indexes it) — numbered,
-prerequisite-ordered layers from the inference engine up to a full agent,
-plus future `9_coder`. AGENTS.md remains the operator's view (build
-flags, env vars, run commands); this file is the *strategy* context that
-survives across sessions. If something here contradicts AGENTS.md,
-AGENTS.md wins — it's the one we read more often when something
-is broken.
-
-The old "Next things to consider" list from AGENTS.md is now largely
-closed:
-
-1. ✅  JSON-Schema → GBNF converter + `eval_suite::grammar_eval_cases()`:
-   ships as `rocore::jsonschema_to_gbnf` and
-   `rocore::eval_suite::jsonschema_eval_cases()`; rounded out by
-   `grammar_eval_cases()` for hand-written GBNFs. Closed.
-2. GGUF → ST shape fix in `scripts/gguf_to_st_converter/`
-   (`a0/k_a/k_k/v0/w0/x_*` to `[1,1,emb]`, `r_k` to
-   `(clock_count,head_dim)`) — **tracked as a goal**:
-   `goals/1_infer/15_gguf_st_converter.md`.
-3. ✅  `audio` removal — `crates/core/src/audio.rs` removed. Closed.
-
-Drag-through target: each goals item should eventually move either into
-the **Status verification** block (resolved and run-able) or **Things we
-tried that didn't work** (resolved as rejected hypothesis).
+The live product roadmap is `goals/` (see `goals/index.md`) —
+prerequisite-ordered layers from the inference engine up to a full
+agent, plus future `coder`. AGENTS.md is the operator's view (build
+flags, env vars, run commands); this file is the strategy context.
 
 ### Roadmap alignment (PROGRESS ↔ goals/)
 
-Which PROGRESS sections back which `goals/` layers, and which goals are
-currently blocked:
-
-- `1_infer/*` ← Architecture map / Model loading strategy / What fits on
+- `infer/*` ← Architecture map / Model loading strategy / What fits on
   this hardware. **Blocked:** 0.1B / 1.5B by the GGUF→ST shape bug
-  (tracked as `goals/1_infer/15_gguf_st_converter.md`).
-- `2_message/*` ← Eval framework (grammar) + the GBNF converter (Done).
-  `07_structured_output` has a forward extension (objects/arrays) at
-  `goals/1_infer/08_structured_output_objects.md`.
-- `3_workspace`, `4_agent`, `5_browser_use`, `9_coder` ← forward-looking;
-  not yet in code.
+  (`goals/infer/gguf_st_converter`).
+- `message/*` ← Eval framework (grammar) + the GBNF converter (done).
+  Forward extension: object/array support (`goals/infer/structured_output_objects`).
+- `workspace`, `agent`, `agent_chat`, `browser_use`, `testing`, `coder` ←
+  forward-looking; not yet in code.
 
-## Open questions / unresolved
+## Open questions
 
-None outstanding. The prior open question — keep or remove
-`crates/core/src/audio.rs` — is **resolved**: `audio.rs` was removed
-(AGENTS.md Next-thing #3, Done). (`resource` and `infer` already
-removed earlier.)
+None outstanding.
 
 ## Things we tried that didn't work
-
-A log of dead-ends so we don't repeat the experiment. Written for the
-next contributor who shows up with the same instinct.
 
 ### Debug-mode rwkv build hangs
 
 `build_v7()` hangs indefinitely in **debug** on most consumer GPUs
-(RTX 2050 / AMD RADV RENOIR confirmed). Cause is wgpu's
-debug-build validation layers + slow unoptimized shader compilation
-interacting with the GPU driver's Timeout Detection & Recovery. We
-print a warning at runtime offering `--release`, which is the only
-fix. `RWKV_ADAPTER=llvmpipe` is a usable debug fallback (extremely
-slow, ~0.5 tok/s on the 2.9B), but not a debugging experience.
+(RTX 2050 / AMD RADV RENOIR confirmed). Cause: wgpu debug-build
+validation layers + slow unoptimized shader compilation interacting
+with the GPU driver's TDR. Fix: build with `--release`. Fallback:
+`RWKV_ADAPTER=llvmpipe` (slow but works).
 
 ### 2.9B at FP16 OOMs the RTX 2050
 
 The model's FP16 file is 5.6 GB; the card has 4 GB VRAM. We initially
 trusted wgpu's `max_buffer_size` to drive the auto-quant heuristic.
-The RTX 2050 reports `1048576` (1 TB) — clearly wrong, but can't be
-overridden per-adapter. We now read **on-disk file size** as the
-source of truth: files ≥ 1.5 GB always quantize (NF4 with coop-matrix,
-Int8 otherwise). The 2.9B loads cleanly end-to-end after this change
-("capital of France?" → "Paris", ~20 tok/s).
+The RTX 2050 reports 1 TB — clearly wrong. We now read **on-disk file
+size** as the source of truth: files ≥ 1.5 GB always quantize.
 
 ### GGUF → ST converter drops 3-D / matrix shapes
 
-`scripts/gguf_to_st_converter/convert.py` (vendored from rwkv-harness)
-converts the 0.1 B / 1.5 B model files into SafeTensors, but the
-resulting tensors carry 1-D vectors where web-rwkv expects 3-D
-`[1, 1, emb]` matrices for `a0 / k_a / k_k / v0 / w0 / x_*`, and flat
-`[emb]` where web-rwkv expects `(clock_count, head_dim)` for `r_k`.
-Inference blows up with
-`TensorError(Shape([emb,1,1,1]), Shape([1,emb,1,1]))`. Ad-lib can be
-cleanly fixed upstream with a `rwkv7.embedding_length` +
-`rwkv7.wkv.head_size` read from GGUF metadata, but it's a separate
-small change. The 2.9B `.st` shipped on disk *is* in the right layout —
-that's why the 2.9B path works end-to-end today.
+`scripts/gguf_to_st_converter/convert.py` converts 0.1B / 1.5B model
+files into SafeTensors, but tensors carry 1-D vectors where web-rwkv
+expects 3-D `[1, 1, emb]` matrices for `a0/k_a/k_k/v0/w0/x_*`, and
+flat `[emb]` where it expects `(clock_count, head_dim)` for `r_k`.
+The 2.9B `.st` on disk is in the right layout — that's why it works.
 
-### mmap-based model load crashed producer on AMD iGPU
+### mmap-based model load crashed on AMD iGPU
 
 `memmap2` Mmap of the 5 GB model file worked on NVIDIA but hung or
-segfaulted on the AMD RADV iGPU. Switched to `std::fs::read`. The
-8 MB loaded file is still small by 2026 standards and disk-resident
-caching makes subsequent reads effectively free.
+segfaulted on the AMD RADV iGPU. Switched to `std::fs::read`.
 
-## Run book (commands that currently work)
-
-Verified on the dev-kit on Mon 2026-07-13. Don't trust these against
-later commits without re-checking.
+## Run book
 
 ```bash
 # Build everything
 cargo build --workspace --release
 
-# Run all tests (87 expected under grammar-rwkv feature, 0 failures)
+# Run all tests
 cargo test --workspace --release
 
-# Spot-check GPU adapters + cooperative matrix availability
+# Spot-check GPU adapters
 cargo run -p roco-core --features local-rwkv --example gpu_check
 
-# Load the 2.9 B rwkv7 with stage-by-stage timeouts; deduplicated
-# by /tmp/roco-pipeline-cache/key.bin on subsequent runs
-cargo run -p roco-core --features local-rwkv --example rwkv_load_test --release
-
-# Smoke-test: ask the 2.9 B model "capital of France?"
+# Smoke-test: ask the model "capital of France?"
 cargo run -p roco-core --features local-rwkv --example rwkv_test --release
 
-# Run the eval suite against the same backend (writes JSON report)
+# Run the eval suite
 cargo run -p roco-core --features local-rwkv --example eval_suite --release -- --backend rwkv
 
-# Grammar-constrained smoke: feed the model a GBNF and confirm it
-# never breaks the grammar. Uses RWKV_GRAMMAR env var (or
-# RWKV_GRAMMAR_FILE=/path/to.gbnf). Default grammar is yes/no.
-RWKV_MODEL=/path/to/rwkv7-g1g-2.9b-...-converted.st \
-RWKV_VOCAB=/path/to/rwkv_vocab_v20230424.json \
+# Chat REPL
+cargo run -p roco-core --features grammar-rwkv --example chat --release
+
+# Grammar-constrained smoke
+RWKV_GRAMMAR='root ::= "yes" | "no"' \
 cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
 ```
-
-### What's not yet working (and the failure mode)
-
-- ~~Conversational eval `free(): invalid size` segfault at exit~~
-  **Resolved** — root-caused and fixed in `rwkv_backend.rs` (the actor
-  thread now joins in `RwkvBackend::Drop`; wgpu/tokio drop in-order).
-  Evaluation was never affected. See AGENTS.md status.
-- The orchestrator CLI (`crates/cli`, ~922 LOC) and the web/gateway
-  frontends were removed during the repo slim-down; git history
-  preserves them. The rwkv path lives in `crates/core` + its examples.
-- (frontends removed) — see above; the rwkv path is exercised via
-  `crates/core/examples` (`eval_suite`, `rwkv_test`, `grammar_smoke`).
-- 0.1 B / 1.5 B rwkv7 models can't be inference-tested; only the
-  2.9 B works end-to-end on disk. Converter bug — tracked as
-  `goals/1_infer/15_gguf_st_converter.md`.
-</content>

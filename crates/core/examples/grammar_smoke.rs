@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
         thinking: false,
         preserve_state: false,
         on_token: None,
+            session: None,
     };
 
     println!("prompting…");

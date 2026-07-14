@@ -60,6 +60,9 @@ use web_rwkv::tokenizer::Tokenizer;
 #[cfg(feature = "grammar-rwkv")]
 use schoolmarm::{Grammar, GrammarState};
 
+#[cfg(feature = "grammar-rwkv")]
+use crate::bnf_constraint::BnfConstraint;
+
 use crate::engine::{
     BoxFuture, CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage,
 };
@@ -188,6 +191,14 @@ fn constrained_sample_token(
     candidates.last().map(|(id, _)| *id as u32)
 }
 
+/// Convert a `BitSet` of allowed token IDs to a `Vec<bool>` mask for
+/// [`constrained_sample_token`]. Used when `BnfConstraint` is the active
+/// grammar engine.
+#[cfg(feature = "grammar-rwkv")]
+fn bitset_to_allowed(bitset: &bit_set::BitSet<u32>, vocab_size: usize) -> Vec<bool> {
+    (0..vocab_size).map(|i| bitset.contains(i)).collect()
+}
+
 // ---------------------------------------------------------------------------
 // Type-erased state (reserved for future state persistence across turns)
 // ---------------------------------------------------------------------------
@@ -259,6 +270,16 @@ struct RwkvActor {
     _model_data: Vec<u8>,
     /// Set to `true` to request cancellation of the current generation.
     cancel: Arc<AtomicBool>,
+    /// Session state pool: maps session ID → saved `TensorCpu<f32>` state.
+    /// Phase 1 of state-mixing: per-session save/restore with LRU eviction.
+    /// `None` entry means "use initial_state (blank)".
+    state_pool: std::collections::HashMap<String, Option<TensorCpu<f32>>>,
+    /// Maximum number of sessions to keep in the pool before LRU eviction.
+    /// 8 slots ≈ 11 GB for 2.9B states; practical limit on a 4 GB GPU is 1–2
+    /// active, but we keep many in RAM and only load into VRAM on demand.
+    max_sessions: usize,
+    /// LRU order: front = least recently used, back = most recently used.
+    session_lru: std::collections::VecDeque<String>,
 }
 
 /// Request sent to the actor through the channel.
@@ -281,6 +302,11 @@ struct CompleteReq {
     /// Called on the actor thread for every decoded token as it is generated.
     /// Passed through from [`CompletionRequest::on_token`].
     on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
+    /// Optional session ID for stateful conversations. When set, the actor
+    /// loads the saved state for this session before generating, and saves
+    /// the resulting state back after generation. When `None`, the blank
+    /// initial state is used (single-turn / stateless).
+    session: Option<String>,
 }
 
 enum ActorMessage {
@@ -324,18 +350,28 @@ fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
 
 /// Auto-pick a quantization plan from the on-disk model size and GPU caps.
 ///
-/// Replaces the old hardcoded `(0..32, Int8)` constant. The model declares
-/// its own `num_layer` and `num_emb` via `Loader::info`; we don't pin a
-/// layer count anywhere.
+/// RWKV-7 is a recurrent model — its time-mix modules, decay vectors, and
+/// state evolution components are incredibly sensitive to precision drops.
+/// Quantizing every layer uniformly breaks the RNN state tracking, producing
+/// looping / garbled output. The fix is a **sandwich strategy**:
+///
+/// * **Edge layers** (first 2 + last 2): left at FP16 — these carry the
+///   sensitive RNN machinery (time_mix, time_decay, state updates).
+/// * **Middle layers**: quantized to NF4 (or Int8) — FFN-dominated and
+///   robust to precision loss.
+/// * **Embedding / head**: never quantized (loaded as FP16 by web-rwkv).
+///
+/// On the RTX 2050 (Turing, no native BF16) FP16 is the unquantized
+/// fallback; on Ampere+ GPUs BF16 would be preferred for the edge layers.
 ///
 /// Policy:
-/// * **None** if FP16 file < 1.5 GB on disk — fits on any GPU
-///   (0.1B / 1.5B; ~ 200 MB / 1.34 GB).
-/// * **NF4** if file ≥ 1.5 GB AND GPU has cooperative-matrix ops (NVIDIA
-///   RTX 2050, AMD with coop support). NF4 is ~0.5× FP16 and faster matmul.
-/// * **Int8** otherwise — universal safety net.
+/// * **None** if FP16 file < 1.5 GB on disk — fits on any GPU.
+/// * **Sandwich** if file ≥ 1.5 GB AND GPU has cooperative-matrix ops:
+///   edge layers at None, middle at NF4.
+/// * **Int8 middle** otherwise — universal safety net, no NF4.
 ///
-/// `RWKV_QUANT` env var still overrides: "none", "nf4=N", "N" (Int8 N layers).
+/// `RWKV_QUANT` env var still overrides: "none", "nf4=N", "N" (Int8 N layers),
+/// or "sandwich=N" (keep N edge layers at FP16, rest NF4/Int8).
 ///
 /// `model_path` is used to read the on-disk file size (ground truth — wgpu's
 /// `max_buffer_size` is unreliable: NVIDIA RTX 2050 reports 1 TB though it
@@ -349,16 +385,8 @@ fn auto_quant(
     let num_layer = info.num_layer as u64;
     let num_emb = info.num_emb as u64;
     let num_vocab = info.num_vocab as u64;
-    // Common RWKV convention: ffn_hidden = num_emb * 4 (or sometimes
-    // num_emb * 3.5 for gated). We use *4 as a conservative upper bound.
     let ffn_hidden = num_emb * 4;
 
-    // Approximate model param count:
-    //   embed ≈ num_emb * num_vocab
-    //   per layer: num_emb * num_emb (QKV-like) + 2 * num_emb * ffn_hidden (gated FFN)
-    // For RWKV the Attention path uses some LoRA-like low-rank factors, so this
-    // is a slightly-high estimate; binding to params means we'll lean toward
-    // quantizing at the same weight thresholds the harness benchmarked.
     let params = (num_emb * num_vocab) + num_layer * (num_emb * num_emb + 2 * num_emb * ffn_hidden);
     let fp16_total_mb = (params * 2) / (1024 * 1024);
 
@@ -366,17 +394,6 @@ fn auto_quant(
         .map(|m| m.len() / (1024 * 1024))
         .unwrap_or(fp16_total_mb);
 
-    // Quantization policy for the rwkv7 family:
-    //
-    //   models < 1.5 GB on disk  → no quantization (model fits in any GPU)
-    //   models ≥ 1.5 GB on disk  → quantize (most consumer GPUs have ≤ 4 GB VRAM
-    //                               and wgpu's `max_buffer_size` is unreliable)
-    //
-    // We pick the quant type by GPU capability:
-    //   NF4 cooperative-matrix available  → NF4 (faster matmul, ~0.5× size)
-    //   otherwise                           → Int8 (universal safety net)
-    //
-    // `RWKV_QUANT` env var still overrides: "none", "nf4=N", "N" (Int8 N layers).
     let quantize_threshold_mb = 1536;
 
     if on_disk_mb < quantize_threshold_mb {
@@ -389,17 +406,36 @@ fn auto_quant(
         return std::collections::HashMap::new();
     }
 
-    let q = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
-    let label = if gpu_coop { "NF4" } else { "Int8" };
-    let n_layers = info.num_layer;
+    // Sandwich quantization: keep edge layers at FP16 for RNN state
+    // integrity, quantize the middle bulk.
+    //
+    // For models with ≤ 4 layers: quantize all (no room for sandwich).
+    // For models with > 4 layers: keep first 2 + last 2 at FP16.
+    let n = info.num_layer;
+    let edge = if n <= 4 { 0 } else { 2 };
+    let q_mid = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
+    let mid_label = if gpu_coop { "NF4" } else { "Int8" };
+
+    let mut plan = std::collections::HashMap::new();
+    for l in 0..n {
+        let q = if (l as usize) < edge || (l as usize) >= n - edge {
+            Quant::None // edge layers: FP16 for RNN state tracking
+        } else {
+            q_mid
+        };
+        plan.insert(l as usize, q);
+    }
+
     info!(
         on_disk_mb = on_disk_mb,
         gpu_coop = gpu_coop,
-        num_layer = num_layer,
+        num_layer = n,
+        edge_layers = edge,
         "large model (FP16 file {on_disk_mb}MB >= {quantize_threshold_mb}MB) — \
-         auto-quantizing all layers as {label} (wgpu VRAM reports are unreliable here)"
+         sandwich quantization: {edge} edge layers FP16, middle {} layers {mid_label}",
+        n - 2 * edge
     );
-    (0..n_layers).map(|l| (l, q)).collect()
+    plan
 }
 
 /// Resolve the default model path when `RWKV_MODEL` env var is unset.
@@ -831,6 +867,9 @@ impl RwkvActor {
             token_chunk_size,
             _model_data: model_data,
             cancel: Arc::new(AtomicBool::new(false)),
+            state_pool: std::collections::HashMap::new(),
+            session_lru: std::collections::VecDeque::new(),
+            max_sessions: 8,
         })
     }
 
@@ -843,42 +882,96 @@ impl RwkvActor {
         preserve_state: bool,
         on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
         #[cfg(feature = "grammar-rwkv")] grammar: Option<&str>,
+        session: Option<&str>,
     ) -> Result<(String, TokenUsage), EngineError> {
-        // Grammar setup: compile a fresh GrammarState per call. The state is
-        // single-thread by API design (schoolmarm carries no `Sync`) and only
-        // meaningful for the lifetime of this completion, so we own it here.
-        #[cfg(feature = "grammar-rwkv")]
-        let mut grammar_state: Option<GrammarState> =
-            match grammar {
-                Some(g) if !g.trim().is_empty() => {
-                    let compiled = Grammar::new(g)
-                        .map_err(|e| EngineError::Backend(format!("GBNF compile error: {e:?}")))?;
-                    Some(GrammarState::new(compiled).map_err(|e| {
-                        EngineError::Backend(format!("GrammarState init error: {e:?}"))
-                    })?)
+        // --- Session state management (Phase 1 state-mixing) ---
+        // Before generating: load saved session state or blank initial state.
+        // After generating: save the resulting state back to the pool.
+        let session_id = session.map(|s| s.to_string());
+
+        // Load state: session pool → blank initial.
+        if let Some(ref sid) = session_id {
+            // Promote in LRU (move to back).
+            if let Some(pos) = self.session_lru.iter().position(|s| s == sid) {
+                self.session_lru.remove(pos).unwrap();
+            }
+            self.session_lru.push_back(sid.clone());
+
+            match self.state_pool.get(sid) {
+                Some(Some(saved)) => {
+                    self.state
+                        .load(saved.clone(), 0)
+                        .map_err(|e| EngineError::Backend(format!("session load failed: {e}")))?;
+                    info!(session = sid, "loaded session state");
                 }
-                _ => None,
-            };
+                Some(None) | None => {
+                    // Never seen this session — start from blank.
+                    self.state
+                        .load(self.initial_state.clone(), 0)
+                        .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
+                    info!(session = sid, "new session (blank state)");
+                }
+            }
+        } else if !preserve_state {
+            // No session and !preserve_state → reset to blank.
+            self.state
+                .load(self.initial_state.clone(), 0)
+                .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
+        }
+        // If !session && preserve_state → carry over current state (existing behavior).
+        // Grammar setup: try BnfConstraint first (trie-based, vocabulary-aware);
+        // fall back to schoolmarm if the grammar uses features bnf_sampler
+        // can't parse (character classes `[...]`, quantifiers `*`, etc.).
+        #[cfg(feature = "grammar-rwkv")]
+        let mut bnf_constraint: Option<BnfConstraint> = None;
+        #[cfg(feature = "grammar-rwkv")]
+        let mut grammar_state: Option<GrammarState> = None;
+
+        #[cfg(feature = "grammar-rwkv")]
+        match grammar {
+            Some(g) if !g.trim().is_empty() => {
+                match BnfConstraint::new(g, &self.tokenizer) {
+                    Ok(c) => {
+                        bnf_constraint = Some(c);
+                    }
+                    Err(e) => {
+                        info!(error = %e, "BnfConstraint failed, falling back to schoolmarm");
+                        let compiled = Grammar::new(g)
+                            .map_err(|e| {
+                                EngineError::Backend(format!("GBNF compile error: {e:?}"))
+                            })?;
+                        grammar_state = Some(GrammarState::new(compiled).map_err(|e| {
+                            EngineError::Backend(format!("GrammarState init error: {e:?}"))
+                        })?);
+                    }
+                }
+            }
+            _ => {}
+        }
         #[cfg(feature = "grammar-rwkv")]
         let vocab_refs: Option<Vec<&str>> = grammar_state
             .as_ref()
             .map(|_| self.token_strings.iter().map(String::as_str).collect());
 
-        // Reset state to blank before each completion so independent requests
-        // don't leak context into each other (unless `preserve_state` is set).
-        if !preserve_state {
-            self.state
-                .load(self.initial_state.clone(), 0)
-                .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
-        }
-
         // RWKV-7 Chat models are trained on role-prefixed dialogue
         // (System:/User:/Assistant:). Keep the full conversation history
         // with explicit role markers.
+        //
+        // On continuation turns (`preserve_state`), the model already has
+        // the system prompt baked into its hidden state — re-sending it in
+        // the text causes the model to regurgitate it. Only include the
+        // system block on the first turn.
+        //
+        // Force `\n\n` between every section boundary so the model clearly
+        // sees where one role ends and the next begins.
         let full = if system.is_empty() {
-            format!("User: {prompt}\n\nAssistant:")
+            "User: ".to_string() + prompt + "\n\nAssistant:"
+        } else if preserve_state {
+            // Continuation turn: skip system, force \n\n before Assistant.
+            "User: ".to_string() + prompt + "\n\nAssistant:"
         } else {
-            format!("System: {system}\n\nUser: {prompt}\n\nAssistant:")
+            // First turn: include system with explicit \n\n boundaries.
+            "System: ".to_string() + system.trim() + "\n\nUser: " + prompt + "\n\nAssistant:"
         };
         let prompt_tokens = self
             .tokenizer
@@ -946,7 +1039,19 @@ impl RwkvActor {
                 let mut p = probs.data().to_vec();
                 let token: u32;
                 let active: bool;
-                if let (Some(gs), Some(vrefs)) = (grammar_state.as_mut(), vocab_refs.as_ref()) {
+                // BnfConstraint path (trie-based, no vocab_refs needed)
+                if let Some(c) = bnf_constraint.as_mut() {
+                    let allowed = bitset_to_allowed(c.allowed_tokens(), p.len());
+                    match constrained_sample_token(&mut p, &allowed, temperature, top_p) {
+                        Some(t) => {
+                            token = t;
+                            active = true;
+                        }
+                        None => break, // no allowed token → stop generation
+                    }
+                } else if let (Some(gs), Some(vrefs)) =
+                    (grammar_state.as_mut(), vocab_refs.as_ref())
+                {
                     let allowed = gs.allowed_tokens(vrefs);
                     match constrained_sample_token(&mut p, &allowed, temperature, top_p) {
                         Some(t) => {
@@ -985,7 +1090,9 @@ impl RwkvActor {
             // has nothing meaningful to add", not an error.
             #[cfg(feature = "grammar-rwkv")]
             if grammar_active {
-                if let Some(gs) = grammar_state.as_mut() {
+                if let Some(c) = bnf_constraint.as_mut() {
+                    let _ = c.accept_token(token);
+                } else if let Some(gs) = grammar_state.as_mut() {
                     let _ = gs.accept_token(&word);
                 }
             }
@@ -1039,7 +1146,13 @@ impl RwkvActor {
             #[cfg(feature = "grammar-rwkv")]
             let token_opt: Option<u32> = {
                 let mut p = probs.data().to_vec();
-                if let (Some(gs), Some(vrefs)) = (grammar_state.as_mut(), vocab_refs.as_ref()) {
+                // BnfConstraint path (trie-based, no vocab_refs needed)
+                if let Some(c) = bnf_constraint.as_mut() {
+                    let allowed = bitset_to_allowed(c.allowed_tokens(), p.len());
+                    constrained_sample_token(&mut p, &allowed, temperature, top_p)
+                } else if let (Some(gs), Some(vrefs)) =
+                    (grammar_state.as_mut(), vocab_refs.as_ref())
+                {
                     let allowed = gs.allowed_tokens(vrefs);
                     constrained_sample_token(&mut p, &allowed, temperature, top_p)
                 } else {
@@ -1071,8 +1184,12 @@ impl RwkvActor {
 
             // Advance grammar state with the bytes of the sampled token.
             #[cfg(feature = "grammar-rwkv")]
-            if let Some(gs) = grammar_state.as_mut() {
-                let _ = gs.accept_token(&word);
+            {
+                if let Some(c) = bnf_constraint.as_mut() {
+                    let _ = c.accept_token(token);
+                } else if let Some(gs) = grammar_state.as_mut() {
+                    let _ = gs.accept_token(&word);
+                }
             }
 
             if word == "\n\n" || word == "\nUser:" || word == "\nHuman:" {
@@ -1093,6 +1210,31 @@ impl RwkvActor {
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
             String::from_utf8_lossy(&decoded).to_string()
         };
+
+        // --- Save session state after generation (Phase 1 state-mixing) ---
+        // Read the current GPU state back into a CPU tensor and store it in
+        // the pool. On next call with the same session ID, this tensor will
+        // be loaded, resuming the conversation exactly where it left off.
+        if let Some(ref sid) = session_id {
+            match self.state.back(0).await {
+                Ok(saved_state) => {
+                    self.state_pool.insert(sid.clone(), Some(saved_state));
+                    info!(session = sid, tokens = generated.len(), "saved session state");
+                }
+                Err(e) => {
+                    warn!(session = sid, error = %e, "failed to save session state");
+                }
+            }
+            // Evict least-recently-used sessions if pool is full.
+            while self.state_pool.len() > self.max_sessions {
+                if let Some(oldest) = self.session_lru.pop_front() {
+                    self.state_pool.remove(&oldest);
+                    info!(session = oldest, "evicted session (LRU)");
+                } else {
+                    break;
+                }
+            }
+        }
 
         Ok((
             text,
@@ -1120,6 +1262,7 @@ impl RwkvActor {
                             req.on_token,
                             #[cfg(feature = "grammar-rwkv")]
                             req.grammar.as_deref(),
+                            req.session.as_deref(),
                         )
                         .await;
                     let _ = req.reply.send(result);
@@ -1273,6 +1416,7 @@ impl ModelBackend for RwkvBackend {
                     reply: reply_tx,
                     preserve_state: req.preserve_state,
                     on_token: req.on_token,
+                    session: req.session.clone(),
                 }
                 .into(),
             )

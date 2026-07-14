@@ -34,6 +34,11 @@ web-rwkv = { version = "0.10", default-features = false, features = ["native"], 
 wgpu = { version = "29.0", optional = true }
 # schoolmarm = GBNF grammar walker, used for grammar-constrained decoding
 schoolmarm = { version = "0.1", optional = true }
+# bnf_sampler = recursive-descent grammar sampler (web-rwkv-axum), replaces schoolmarm
+bnf_sampler = { version = "0.3", optional = true }
+qp-trie = { version = "0.8", optional = true }
+bit-set = { version = "0.5", optional = true }
+rustc-hash = { version = "1.1", optional = true }
 num_cpus = "1.16"
 
 [features]
@@ -48,5 +53,6 @@ local-rwkv = [
     "dep:wgpu",
 ]
 # Grammar-constrained decoding requires both the RWKV runtime (for vocab
-# + logits) and the schoolmarm grammar walker.
-grammar-rwkv = ["local-rwkv", "dep:schoolmarm"]
+# + logits) and a grammar walker. bnf_sampler is the primary engine;
+# schoolmarm is kept as a fallback.
+grammar-rwkv = ["local-rwkv", "dep:schoolmarm", "dep:bnf_sampler", "dep:qp-trie", "dep:bit-set", "dep:rustc-hash"]

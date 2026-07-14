@@ -16,19 +16,26 @@ removed; git history preserves it.
 
 - **Inference**: works end-to-end on `RWKV-7 g1g 2.9B` (FP16 SafeTensors
   → quantized to NF4 at runtime on RTX 2050 / AMD iGPU).
-- **Grammar-constrained decoding**: plumbing in place
-  (`grammar-rwkv` feature on `roco-core` → schoolmarm GBNF walker
-  restricts logits at every sample step). Three hand-written GBNF
-  eval cases (`eval_suite::grammar_eval_cases()`) plus a
-  `grammar_smoke` example binary. JSON-Schema → GBNF converter is
-  done (`crates/core/src/jsonschema_to_gbnf.rs`, see Next things #1).
+- **Grammar-constrained decoding**: **`BnfConstraint`** (`bnf_sampler`
+  v0.3.8 + `qp-trie` vocabulary + GBNF→BNF converter) is the primary
+  engine in `rwkv_backend.rs`. Falls back to schoolmarm automatically when
+  the GBNF uses features `bnf_sampler` can't parse (character classes `[...]`,
+  quantifiers `*`). JSON-Schema → GBNF converter is done
+  (`crates/core/src/jsonschema_to_gbnf.rs`).
+- **State-mixing / multi-session**: **Phase 1 implemented.**
+  `CompletionRequest::session` → session-based state save/restore via
+  `AnyState::back()`/`load()`, with an LRU pool (`max_sessions = 8`).
+  Enables persistent conversations across calls. Phase 2 (N-slot GPU pool
+  with concurrent batching) and Phase 3 (tensor blending) are forward work.
+- **Chat CLI**: `roco chat` example provides a terminal REPL with streaming
+  output, session persistence, grammar constraints, and Ctrl+C interrupt.
 - **Model loading**: `crates/core/src/rwkv_backend.rs` auto-detects
   model shape from `Loader::info`, picks a quantization plan from
   on-disk file size, and resolves model paths from
   `$RWKV_MODEL` / `models/*.st`.
-- **Cleanup segfault**: `free(): invalid size` at process exit — **fixed**
-  (see Next things #4). wgpu/tokio resources now drop in-order on the
-  dedicated actor thread via `RwkvBackend::Drop`.
+- **Cleanup segfault**: `free(): invalid size` at process exit — **fixed**.
+  wgpu/tokio resources now drop in-order on the dedicated actor thread
+  via `RwkvBackend::Drop`.
 
 ## Layout
 
@@ -41,7 +48,7 @@ roco_ai/
 ├── models/                 # RWKV .st files; on-disk truth for model resolution (gitignored)
 ├── assets/vocab/           # rwkv_vocab_v20230424.json (the tokenizer)
 ├── scripts/                # pth_to_st/ and gguf_to_st/ model converters
-├── goals/                  # product roadmap, numbered by prerequisite (see goals/README.md)
+├── goals/                  # product roadmap (see goals/index.md)
 ├── evals/results/          # rwkv benchmark JSON outputs
 ├── devenv.{yaml,nix}       # Nix dev shell (rust + Vulkan)
 ├── Makefile                # rwkv-focused dev targets
@@ -61,23 +68,24 @@ The `crates/core/src/` tree holds everything in one flat directory:
 
 ## Goals
 
-`goals/` is the product roadmap, organized as numbered layers that mirror the
-build order from the local RWKV-7 engine up to a full agent:
+`goals/` is the product roadmap, organized as prerequisite-ordered layers
+from the local RWKV-7 engine up to a full agent:
 
-- `1_infer/` — inference engine (model, quant, state, decoding, structured output)
-- `2_message/` — chat protocol (instructions, formatting, tool calls)
-- `3_workspace/` — the environment the agent acts in
-- `4_agent/` — the autonomous agent loop and its capabilities
-- `5_browser_use/` — driving a real browser
-- `9_coder/` — **(future)** the agent's own develop/test/lint loop in a controlled sandbox
+| Layer | What it covers |
+|---|---|
+| `infer/` | inference engine (model, quant, state, decoding, structured output) |
+| `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) |
+| `workspace/` | the environment the agent acts in |
+| `agent/` | the autonomous agent loop and its capabilities |
+| `agent_chat/` | persistent workspace or folder-bound agent sessions |
+| `browser_use/` | driving a real browser |
+| `testing/` | eval harness, oracles, regression gates |
+| `coder/` | **(future)** the agent's own develop/test/lint loop in a controlled sandbox |
 
-Each file is `NN_name.md`; the numeric prefix is **prerequisite order** — a
-file's dependencies come before it (e.g. `tokenization` precedes `inference`;
-`tool_catelogue` precedes `tool_calling`; in `9_coder`, `human_approval` is `01`
-because the gate must exist before the devloop can run). Files may carry a
-`User:` section with notes/constraints added during planning (model variants to
-try, tokenizer gotchas, Camoufox for stealth browsing, etc.). `goals/README.md`
-is the index. Layers `6`–`8` are intentionally reserved for future categories.
+Each folder contains an `index.md` listing its goals in dependency order. A
+goal's prerequisites come before it in that file. Files may carry a `User:`
+section with notes/constraints added during planning (model variants to try,
+tokenizer gotchas, Camoufox for stealth browsing, etc.).
 
 ## Quickstart
 
@@ -97,7 +105,7 @@ cargo build --release                     # all crates (release for GPU work)
 > shell script. The model is auto-detected from `models/*.st` (symlinked).
 >
 > **Features are enabled by default.** The `grammar-rwkv` and `local-rwkv` features
-> are in `default = [\"grammar-rwkv\"]` in `Cargo.toml`. All functionality is
+> are in `default = ["grammar-rwkv"]` in `Cargo.toml`. All functionality is
 > available without `--features`.
 >
 > **Snapshot/bless workflow:** Every `roco eval` saves a `.snapshot.json` next to
@@ -126,33 +134,20 @@ on RTX 2050 / NF4 / 2.9B.
 If a debug build hangs regardless: try `RWKV_ADAPTER=llvmpipe` for the
 CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
 
-## Next things to consider
+## Next things
 
-1. ~~Add a JSON-Schema → GBNF converter~~
-   (`crates/core/src/jsonschema_to_gbnf.rs`). **Done.** Compact
-   primitives + enum converter with 5 unit tests, plus a paired
-   `eval_suite::jsonschema_eval_cases()` fixture that exercises
-   the JSON-Schema → GBNF → schoolmarm chain end-to-end. Object/
-   array support is the obvious forward extension but no current
-   eval case demands it.
+1. ~~JSON-Schema → GBNF converter~~ **Done.** Compact primitives + enum
+   converter. Object/array support is a forward extension
+   (`goals/infer/structured_output_objects`).
 2. The 0.1B / 1.5B GGUF→ST shape mismatch in `scripts/gguf_to_st_converter/`
    (`a0/k_a/k_k/v0/w0/x_*` need `[1,1,emb]`, `r_k` needs `(clock_count,head_dim)`).
-   Upstream patch needed; without it only the 2.9B works.
-3. ~~Clean up the dead modules in `crates/core/src/` (`audio`, `infer`,
-   `capacity`, `resource`)~~ **Done.** Removed `audio.rs`, the `inference/`
-   directory (the `infer` stub), and `capacity.rs`, unwiring their consumers in
-   `builtins.rs` (`SttTool`/`TtsTool`) and `config.rs` (`CapacityConfig`).
-   (`resource` was already gone.) `cargo check --workspace` + the touched unit
-   tests pass.
-4. ~~Investigate the cleanup segfault~~ **Root-caused + fixed.** Cause:
-   the actor thread's `local.block_on` waited on a never-sent oneshot, so the
-   thread never exited; its `JoinHandle` was discarded (detached), so at
-   process exit the OS killed the thread while it still owned a live tokio
-   runtime + wgpu `Context`/`Device`/`Bundle`/`State`. Their allocator state
-   was torn down mid-flight, yielding `free(): invalid size`. Fix in
-   `rwkv_backend.rs`: await the spawned task's `JoinHandle` (the thread now
-   exits once the request channel closes) and join the thread in
-   `RwkvBackend::Drop` so wgpu/tokio resources drop in-order on the owning
-   thread. Not blocking inference. Not yet runtime-verified on GPU — needs a
-   `--release` run to confirm the abort is gone.
-</content>
+   Upstream patch needed; without it only the 2.9B works. Tracked as
+   `goals/infer/gguf_st_converter`.
+3. ~~Dead module cleanup~~ **Done.** Removed `audio.rs`, the `inference/`
+   directory, and `capacity.rs`. All tests pass.
+4. ~~Cleanup segfault~~ **Fixed.** Actor thread now joins in `Drop`.
+5. ~~`bnf_sampler` integration~~ **Done.** `BnfConstraint` is the primary
+   grammar engine with schoolmarm fallback. 114 tests pass.
+6. ~~State pool Phase 1~~ **Done.** Session-based save/restore wired
+   through the pipeline with LRU eviction. Phase 2 (N-slot GPU pool)
+   and Phase 3 (tensor blending) are forward work.

@@ -269,6 +269,7 @@ impl<B: ModelBackend + Send + Sync + ?Sized> Worker<B> {
                 thinking: false,
                 preserve_state: false,
                 on_token: None,
+            session: None,
             };
             if let Some(t) = &self.tracer {
                 t.record(
@@ -583,6 +584,7 @@ impl<B: ModelBackend + Send + Sync> Verifier for JudgeVerifier<B> {
             thinking: false,
             preserve_state: false,
             on_token: None,
+            session: None,
         };
         let resp = self.backend.complete(req).await?;
         let v: Value = serde_json::from_str(&resp.text)

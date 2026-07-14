@@ -71,7 +71,11 @@ pub fn schema_to_gbnf(root_name: &str, schema: &Value) -> Result<String, GbnfErr
         out.push_str(r);
         out.push('\n');
     }
-    out.push_str(&format!("{root_name} ::= {body}\n"));
+    // Always emit a `root` rule as the grammar entry point (schoolmarm
+    // requires a rule literally named `root`). When `body` is a bare
+    // library-primitive name this becomes `root ::= number` rather than
+    // the useless circular `number ::= number`.
+    out.push_str(&format!("root ::= {body}\n"));
     Ok(out)
 }
 

@@ -30,5 +30,7 @@ pub mod backends;
 
 pub mod handler;
 pub mod handler_tools;
+#[cfg(feature = "grammar-rwkv")]
+pub mod bnf_constraint;
 #[cfg(feature = "local-rwkv")]
 pub mod rwkv_backend;

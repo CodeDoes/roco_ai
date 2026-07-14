@@ -510,6 +510,7 @@ impl MemoryProcessor {
                 thinking: false,
                 preserve_state: false,
                 on_token: None,
+            session: None,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -552,6 +553,7 @@ impl MemoryProcessor {
                 thinking: false,
                 preserve_state: false,
                 on_token: None,
+            session: None,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -611,6 +613,7 @@ impl MemoryProcessor {
                 thinking: false,
             preserve_state: false,
             on_token: None,
+            session: None,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;
@@ -679,6 +682,7 @@ impl MemoryProcessor {
                 thinking: false,
                 preserve_state: false,
                 on_token: None,
+            session: None,
             })
             .await
             .map_err(|e| MemoryError::Backend(e.to_string()))?;

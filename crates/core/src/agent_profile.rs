@@ -310,6 +310,7 @@ impl AgentProfile {
             thinking: false,
             preserve_state: false,
             on_token: None,
+            session: None,
         }
     }
 
