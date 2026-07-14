@@ -195,7 +195,7 @@ fn cmd_gpu_check() {
     println!();
     println!("=== RWKV model ===");
     let _ = Command::new("ls")
-        .args(["-lh", "models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st"])
+        .args(["-lh", "models/rwkv7-g1h-2.9b-20260710-ctx10240-Q_K.st"])
         .status();
     println!("=== RWKV vocab ===");
     let _ = Command::new("ls")

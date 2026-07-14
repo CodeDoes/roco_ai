@@ -5,7 +5,7 @@
 
 ## Current scope
 
-The active focus is **rwkv7** — push the local RWKV-7 g1g family as the
+The active focus is **rwkv7** — push the local RWKV-7 g1h family as the
 single backbone model for everything we can. The only working inference
 path today is `crates/core/src/rwkv_backend.rs` (web-rwkv + WGPU +
 SafeTensors). Other backends (mock / HTTP) exist for tests but are not

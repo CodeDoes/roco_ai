@@ -1,4 +1,4 @@
-//! Quick inference test: load the converted model, run a short completion.
+//! Quick inference test: load the model (Q_K SafeTensors), run a short completion.
 //!
 //! ```bash
 //! RWKV_QUANT=all cargo run -p roco-core --features local-rwkv --example rwkv_test

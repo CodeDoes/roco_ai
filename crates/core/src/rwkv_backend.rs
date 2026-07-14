@@ -591,7 +591,7 @@ fn extract_layer_from_name(name: &str) -> Option<usize> {
 /// 1. If the user pinned a path with `RWKV_MODEL`, use it verbatim.
 /// 2. Otherwise scan `<cwd>/models/` (or `<cwd>/../models/` via the symlink)
 ///    for any SafeTensors file matching `rwkv7-*` and pick the best one.
-/// 3. Prefer the `-converted.st` variant (3D shapes ready for web-rwkv v7)
+/// 3. Prefer the `-Q_K.st` variant (3D shapes ready for web-rwkv v7)
 ///    over raw `.st` (1D reshape needed).
 /// 4. If no `.st` is found, error and list candidates the user could fetch.
 ///
@@ -617,8 +617,8 @@ fn default_model_path() -> anyhow::Result<PathBuf> {
     }
 
     // Collect all rwkv7 .st files, scored:
-    //   -converted.st         = 100 (the proven harness format, 3D shapes)
-    //   -converted-*.st       =  90 (any converted variant)
+    //   -Q_K.st             = 100 (the proven harness format, 3D shapes)
+    //   -converted.st        =  90 (backward compat, old naming)
     //   raw .st with rwkv7 in name = 50 (1D shapes, will mismatch web-rwkv)
     let mut best: Option<(i32, PathBuf)> = None;
     for search_dir in &search_dirs {
@@ -634,17 +634,11 @@ fn default_model_path() -> anyhow::Result<PathBuf> {
             if !name.starts_with("rwkv7") || !name.ends_with(".st") {
                 continue;
             }
-            let score = if name.contains("-converted") {
-                if name.contains("-converted.") || name == "model.st" {
-                    100
-                } else {
-                    100
-                }
-            } else if name.ends_with("-converted.st") {
+            let score = if name.contains("-Q_K") {
                 100
-            } else if name.contains("converted") {
+            } else if name.contains("-converted") {
                 90
-            } else if name.contains(".st") {
+            } else if name.ends_with(".st") {
                 50
             } else {
                 0

@@ -133,7 +133,7 @@ RWKVQuant outperforms both pure SQ and pure VQ across all model sizes.
 ## User notes
 
 - The paper specifically covers RWKV-6 and RWKV-7 families — directly
-  applicable to our 2.9B g1g model
+  applicable to our 2.9B g1h model
 - The element-wise multiplication optimization is unique to RWKV's
   architecture (the `μ` weights in time mixing / channel mixing)
 - This is a **forward-looking goal** — our current NF4 works and
