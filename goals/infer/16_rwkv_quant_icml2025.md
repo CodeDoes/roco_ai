@@ -98,7 +98,7 @@ RWKVQuant outperforms both pure SQ and pure VQ across all model sizes.
 
 ### Phase 1: Proxy analysis
 - Implement P_c (IE-based uniformity) and P_f (moment-based outlier
-  detection) in `crates/core/src/quant_proxy.rs`
+  detection) in `crates/inference/src/quant.rs`
 - Run on the 2.9B model to profile which weights want SQ vs VQ
 - Log the distribution: what % of tensors prefer each method?
 

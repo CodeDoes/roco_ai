@@ -91,7 +91,7 @@ workspace directory. The agent:
 
 ## Where it lives
 
-- `crates/core/examples/agent_chat.rs` — initial implementation
+- `crates/cli/examples/agent_chat.rs` — initial implementation
 - Eventually: `crates/agent/` crate with the agent loop, workspace model,
   and safety gates
 - The `roco agent` CLI entry point via devenv.nix

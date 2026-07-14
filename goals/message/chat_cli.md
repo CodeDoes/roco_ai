@@ -89,7 +89,7 @@ All prerequisites are now **done**:
 
 ## Where it lives
 
-- `crates/core/examples/chat.rs` — initial implementation
+- `crates/cli/examples/chat.rs` — initial implementation
 - Eventually: a dedicated `crates/cli/` crate if the CLI grows beyond
   the devenv script wrapper
 
