@@ -7,7 +7,7 @@
 
 The active focus is **rwkv7** — push the local RWKV-7 g1h family as the
 single backbone model for everything we can. The only working inference
-path today is `crates/core/src/rwkv_backend.rs` (web-rwkv + WGPU +
+path today is `crates/inference/src/backend.rs` (web-rwkv + WGPU +
 SafeTensors). Other backends (mock / HTTP) exist for tests but are not
 the product.
 
@@ -26,7 +26,7 @@ dead-ends, run book); the actionable roadmap is `goals/`.
 ### Completed priorities
 
 **BNF / Grammar-constrained decoding — ✅ DONE.** The `BnfConstraint`
-module (`crates/core/src/bnf_constraint.rs`) wraps `bnf_sampler` (v0.3.8)
+module (`crates/grammar/src/bnf.rs`) wraps `bnf_sampler` (v0.3.8)
 with a `qp-trie` vocabulary built from the model's tokenizer. It is the
 primary grammar engine in `rwkv_backend.rs`, with schoolmarm as a
 transparent fallback for GBNF grammars that use features `bnf_sampler`
@@ -44,10 +44,33 @@ evicts least-recently-used sessions when it exceeds `max_sessions`
 (default 8). Phase 2 (multi-slot GPU pool with concurrent batching) and
 Phase 3 (tensor-level state blending) are forward work.
 
-**Chat CLI — ✅ DONE.** `crates/core/examples/chat.rs` provides a terminal
+**Chat CLI — ✅ DONE.** `crates/cli/examples/chat.rs` provides a terminal
 REPL with streaming output, session persistence (`session: "chat"`),
 grammar constraints (`/grammar <file>`), temperature control, and Ctrl+C
-interrupt. Invoked via `cargo run --example chat --release`.
+interrupt. Invoked via `cargo run -p roco-cli --example chat --release`.
+There is also a `roco` binary (`crates/cli/src/bin/roco.rs`).
+
+**Monorepo restructuring — ✅ DONE.** The monolithic `crates/core` was
+split into 13 focused crates: `engine`, `grammar`, `inference`, `message`,
+`session`, `tools`, `workspace`, `agent`, `chat-common`, `cli`, `tui`,
+`server`, `gateway`. `infer` layer is complete (raw model, tokenization,
+quantize, inference, streaming, GBNF, structured output + objects, thinking,
+state save/load/mix, interrupt, continue). `testing/eval_harness` is done.
+
+**Message layer — ✅ DONE (core).** `crates/message/src/gbnf.rs` generates
+the structured chat GBNF (`message_format_gbnf` + `assistant_response_gbnf`,
+schoolmarm-compatible, with think / tool_tag variants). `crates/tools` has 6
+built-in tools (read/write/search/list/bash/now) with JSON schemas, a
+`ToolRegistry`, and `parse` helpers that extract `<tool_call>` blocks and
+segment assistant output. `crates/message/src/error.rs` provides
+`complete_with_retry` (grammar fallback, truncation handling, backoff).
+
+**Agent loop — ✅ DONE (core ReAct).** `crates/agent/src/agent.rs` runs the
+observe→think→act loop: render prompt → constrained generate → parse
+segments → execute tools via `ToolRegistry` → feed `<tool_result>` back →
+repeat until final answer or step/budget limit. `AgentConfig` /
+`AgentStep` / `AgentTrace` record the run. Runnable via
+`cargo run -p roco-cli --example agent --release`.
 
 ## Model loading strategy
 
@@ -73,17 +96,17 @@ Concrete request flow on the current code, end-to-end.
 clap / napi / axum (entries)
         |
         v
-crates/core/src/eval_suite::run_suite           <- 10 default cases live here
-crates/core/src/engine::ModelBackend::complete   <- trait, code-path-agnostic
+crates/engine/src/eval::run_suite              <- 10 default cases live here
+crates/engine/src/backend::ModelBackend::complete  <- trait, code-path-agnostic
         |
         v
-crates/core/src/rwkv_backend::RwkvBackend::complete
+crates/inference/src/backend::RwkvBackend::complete
    sends CompleteReq over mpsc::Sender
         |
         v
-RwkvActor thread (LocalSet + current-thread tokio)
+RwkvActor thread (crates/inference/src/actor.rs; LocalSet + current-thread tokio)
    owns Context, TokioRuntime<Rnn>, AnyState, token_strings
-   * tries BnfConstraint for grammar; falls back to schoolmarm
+   * tries BnfConstraint (crates/grammar/src/bnf.rs) for grammar; falls back to schoolmarm
    * loads session state or blank initial state
    * prompt tokens -> softmax_one -> sample_token
         + grammar constraint masks disallowed indices to -inf
@@ -131,22 +154,21 @@ self-report.
 
 ## Status verification (what we've actually run recently)
 
-- **End-to-end inference**: `cargo run -p roco-core --features
-  grammar-rwkv --example rwkv_test --release` → model loads, answers
-  in 0.6–1.5 s at ~16–20 tok/s.
-- **Chat CLI**: `cargo run -p roco-core --features grammar-rwkv --example
-  chat --release` → streaming REPL with session persistence.
-- **End-to-end eval**: `cargo run -p roco-core --features local-rwkv
-  --example eval_suite --release -- --backend rwkv` → runs eval cases,
-  writes JSON report to `evals/results/latest.json`.
-- **Tests**: `cargo test -p roco-core --features grammar-rwkv` →
-  114 passing, 0 failing.
-- **Compiler clean**: `cargo check -p roco-core --features grammar-rwkv`
-  — only pre-existing dead-code warnings in non-rwkv modules.
+- **End-to-end inference**: `cargo run -p roco-inference --example
+  rwkv_test --release` → model loads, answers in 0.6–1.5 s at ~16–20 tok/s.
+- **Chat CLI**: `cargo run -p roco-cli --example chat --release` →
+  streaming REPL with session persistence.
+- **Agent loop**: `cargo run -p roco-cli --example agent --release -- "<task>"`
+  → ReAct loop with tool dispatch.
+- **End-to-end eval**: `cargo run -p roco-cli --example eval_suite
+  --release -- --backend rwkv` → runs eval cases, writes JSON report to
+  `evals/results/latest.json`.
+- **Tests**: `cargo test --workspace` → 61 passing, 0 failing.
+- **Compiler clean**: `cargo check --workspace --all-targets` — zero warnings.
 
 ## Eval framework (`eval_suite.rs`)
 
-`crates/core/src/eval_suite.rs` + `crates/core/examples/eval_suite.rs`.
+`crates/engine/src/eval.rs` + `crates/cli/examples/eval_suite.rs`.
 The harness runs `EvalCase` records against any `ModelBackend`
 (`mock`, `rwkv`, …) and writes a structured JSON report.
 
@@ -156,9 +178,8 @@ repetition, throughput, format, context. The example binary takes
 
 ### Grammar-constrained variant
 
-- `rocore::engine::CompletionRequest::grammar: Option<String>`. Any
-  backend can carry the field; rwkv_backend honors it when the
-  `grammar-rwkv` cargo feature is on.
+- `roco_engine::CompletionRequest::grammar: Option<String>`. Any
+  backend can carry the field; `RwkvBackend` honors it.
 - `RWKV_GRAMMAR` / `RWKV_GRAMMAR_FILE` env vars for scripting.
 - The `eval_suite` module exposes `grammar_eval_cases()` (hand-written
   GBNF) and `jsonschema_eval_cases()` (JSON Schema → GBNF chain).
@@ -172,13 +193,21 @@ flags, env vars, run commands); this file is the strategy context.
 
 ### Roadmap alignment (PROGRESS ↔ goals/)
 
-- `infer/*` ← Architecture map / Model loading strategy / What fits on
-  this hardware. **Blocked:** 0.1B / 1.5B by the GGUF→ST shape bug
-  (`goals/infer/gguf_st_converter`).
-- `message/*` ← Eval framework (grammar) + the GBNF converter (done).
-  Forward extension: object/array support (`goals/infer/structured_output_objects`).
-- `workspace`, `agent`, `agent_chat`, `browser_use`, `testing`, `coder` ←
-  forward-looking; not yet in code.
+- `infer/*` — **complete** (raw model, tokenization, quantize, inference,
+  streaming, GBNF, structured output + objects, thinking, state
+  save/load/mix, interrupt, continue). **Blocked:** 0.1B / 1.5B by the
+  GGUF→ST shape bug (`goals/infer/gguf_st_converter`).
+- `message/*` — **complete (core)**: `message_format_gbnf`, tool catalogue,
+  tool calling, tool result handling, error recovery. Remaining:
+  `chat_cli` (wire grammar+agent into the live chat example),
+  `gradual_tool_disclosure`, `state_tune_examples`,
+  `system_instruction_following`, `user_message_response`.
+- `agent/*` — **partial**: core loop + tool execution loop done
+  (`goals/agent/agent`, `goals/agent/tool_execution_loop`). Remaining:
+  `planning`, `orchastrate`, `memory`, `session_search`, `scheduled_tasks`.
+- `testing/eval_harness` — **done**.
+- `workspace`, `agent_chat`, `browser_use`, `coder` — forward-looking; not
+  yet in code.
 
 ## Open questions
 
@@ -221,21 +250,24 @@ segfaulted on the AMD RADV iGPU. Switched to `std::fs::read`.
 cargo build --workspace --release
 
 # Run all tests
-cargo test --workspace --release
+cargo test --workspace
 
 # Spot-check GPU adapters
-cargo run -p roco-core --features local-rwkv --example gpu_check
+cargo run -p roco-inference --example gpu_check
 
 # Smoke-test: ask the model "capital of France?"
-cargo run -p roco-core --features local-rwkv --example rwkv_test --release
+cargo run -p roco-inference --example rwkv_test --release
 
 # Run the eval suite
-cargo run -p roco-core --features local-rwkv --example eval_suite --release -- --backend rwkv
+cargo run -p roco-cli --example eval_suite --release -- --backend rwkv
 
 # Chat REPL
-cargo run -p roco-core --features grammar-rwkv --example chat --release
+cargo run -p roco-cli --example chat --release
+
+# Agent loop (ReAct with tools)
+cargo run -p roco-cli --example agent --release -- "<task>"
 
 # Grammar-constrained smoke
 RWKV_GRAMMAR='root ::= "yes" | "no"' \
-cargo run -p roco-core --features grammar-rwkv --example grammar_smoke --release
+cargo run -p roco-cli --example grammar_smoke --release
 ```
