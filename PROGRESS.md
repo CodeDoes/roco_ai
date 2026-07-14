@@ -205,8 +205,13 @@ flags, env vars, run commands); this file is the strategy context.
 - `message/*` — **complete (core)**: `message_format_gbnf`, tool catalogue,
   tool calling, tool result handling, error recovery. **chat_cli done**
   (now uses `CompletionRequest::session` for real multi-turn state plus
-  `/save` `/load` `/system`). Remaining: `gradual_tool_disclosure`,
-  `state_tune_examples`, `system_instruction_following`, `user_message_response`.
+  `/save` `/load` `/system`). **gradual_tool_disclosure done**
+  (`goals/message/gradual_tool_disclosure`): `select_relevant`
+  (`crates/agent/src/tool_selector.rs`) discloses only task-relevant tools
+  (keyword-overlap score reusing the `memory` ranker), with a safety net
+  returning all tools when none score above zero; wired via
+  `AgentConfig::gradual_tool_disclosure`. Remaining: `state_tune_examples`,
+  `system_instruction_following`, `user_message_response`.
 - `agent/*` — **partial**: core loop + tool execution loop done
   (`goals/agent/agent`, `goals/agent/tool_execution_loop`). **Memory done**
   (`goals/agent/memory`): `MemoryStore` + `remember`/`recall` tools.

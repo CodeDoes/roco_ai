@@ -11,6 +11,7 @@ pub mod memory;
 pub mod plan;
 pub mod sessions;
 pub mod scheduler;
+pub mod tool_selector;
 
 pub use agent::{Agent, AgentConfig, AgentStep, AgentTrace};
 pub use error::AgentError;
@@ -19,3 +20,4 @@ pub use memory::{MemoryEntry, MemoryStore, RememberTool, RecallTool};
 pub use plan::{Plan, PlanStep, PlanResult, Planner, StepOutcome};
 pub use sessions::{SessionSearchTool, SessionStore, SessionTranscript, SessionTurn};
 pub use scheduler::{ScheduleTool, ScheduledOutcome, ScheduledTask, Scheduler};
+pub use tool_selector::select_relevant;

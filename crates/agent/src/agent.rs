@@ -37,6 +37,11 @@ pub struct AgentConfig {
     pub enable_tools: bool,
     /// Emit think/trace to stderr during the run.
     pub verbose: bool,
+    /// Reveal only tools relevant to the current task (gradual tool disclosure)
+    /// instead of the full catalogue.
+    pub gradual_tool_disclosure: bool,
+    /// Max tools disclosed per turn when gradual disclosure is on (0 = no cap).
+    pub tool_disclosure_limit: usize,
 }
 
 impl Default for AgentConfig {
@@ -53,6 +58,8 @@ impl Default for AgentConfig {
             enable_think: true,
             enable_tools: true,
             verbose: false,
+            gradual_tool_disclosure: true,
+            tool_disclosure_limit: 0,
         }
     }
 }
@@ -191,8 +198,18 @@ impl Agent {
         };
 
         let tool_schemas: Vec<serde_json::Value> = if options.tools {
-            self.tools
-                .names()
+            let names: Vec<String> = if self.config.gradual_tool_disclosure {
+                let ctx = history.join("\n");
+                crate::tool_selector::select_relevant(
+                    &self.tools,
+                    task,
+                    &ctx,
+                    self.config.tool_disclosure_limit,
+                )
+            } else {
+                self.tools.names()
+            };
+            names
                 .iter()
                 .filter_map(|name| self.tools.get(name).map(|t| t.schema()))
                 .collect()

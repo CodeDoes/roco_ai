@@ -27,6 +27,13 @@ Prerequisite order (mirrors the product layer):
     pool carries the context, not a rebuilt prompt) and adds `/save`, `/load`,
     `/system`. System prompt is folded into the recurrent state on the first
     turn of a session, then the state carries it.
+8. **gradual_tool_disclosure** — ✅ done. `select_relevant`
+   (`crates/agent/src/tool_selector.rs`) discloses only task-relevant tools
+   (keyword-overlap score over name+description, reusing `memory`'s ranker),
+   with a safety net that returns all tools when none score above zero. Wired
+   into `Agent` via `AgentConfig::gradual_tool_disclosure`.
 
 **Next self-directed action:** add the `system_instruction_following` and
-`user_message_response` eval cases, then `gradual_tool_disclosure`.
+`user_message_response` eval cases (probe the model's baseline), then return to
+layer wiring (sandbox the `agent` example by default + a workspace escape eval).
+
