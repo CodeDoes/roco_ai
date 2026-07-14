@@ -203,10 +203,10 @@ flags, env vars, run commands); this file is the strategy context.
   save/load/mix, interrupt, continue). **Blocked:** 0.1B / 1.5B by the
   GGUF→ST shape bug (`goals/infer/gguf_st_converter`).
 - `message/*` — **complete (core)**: `message_format_gbnf`, tool catalogue,
-  tool calling, tool result handling, error recovery. Remaining:
-  `chat_cli` (wire grammar+agent into the live chat example),
-  `gradual_tool_disclosure`, `state_tune_examples`,
-  `system_instruction_following`, `user_message_response`.
+  tool calling, tool result handling, error recovery. **chat_cli done**
+  (now uses `CompletionRequest::session` for real multi-turn state plus
+  `/save` `/load` `/system`). Remaining: `gradual_tool_disclosure`,
+  `state_tune_examples`, `system_instruction_following`, `user_message_response`.
 - `agent/*` — **partial**: core loop + tool execution loop done
   (`goals/agent/agent`, `goals/agent/tool_execution_loop`). **Memory done**
   (`goals/agent/memory`): `MemoryStore` + `remember`/`recall` tools.

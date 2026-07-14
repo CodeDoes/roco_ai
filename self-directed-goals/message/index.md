@@ -22,14 +22,11 @@ Prerequisite order (mirrors the product layer):
    current task (match by keyword against the task + recent memory). Wire into
    `Agent`'s tool schema rendering.
 9. **error_recovery** — ✅ done (`complete_with_retry`).
-10. **chat_cli** — 🟡 *self-directed (highest-value message item):* the current
-    `crates/cli/examples/chat.rs` sets `session: None` and **rebuilds the full
-    prompt from a `turns` vec every turn** — it does not use the Phase-1 state
-    pool at all. Fix: drive it via `CompletionRequest::session` so the recurrent
-    state carries the conversation, and add the missing `/save`, `/load`,
-    `/system` commands. This is the most visible gap between the goal and the
-    code.
+10. **chat_cli** — ✅ done. `crates/cli/examples/chat.rs` now drives
+    multi-turn conversation via `CompletionRequest::session` (the Phase-1 state
+    pool carries the context, not a rebuilt prompt) and adds `/save`, `/load`,
+    `/system`. System prompt is folded into the recurrent state on the first
+    turn of a session, then the state carries it.
 
-**Next self-directed action:** close the `chat_cli` gap (real session state +
-`/save` `/load` `/system`), then add the `system_instruction_following` and
-`user_message_response` eval cases.
+**Next self-directed action:** add the `system_instruction_following` and
+`user_message_response` eval cases, then `gradual_tool_disclosure`.
