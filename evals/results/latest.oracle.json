@@ -1,13 +1,13 @@
 {
-  "coherence_explain": "A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.",
-  "coherence_story": "A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.",
+  "coherence_explain": "A variable is a named storage location in a computer program that can hold a value. It is used to store data that can be used and manipulated throughout the program. Variables can be of different data types, such as integers, floats, strings, and booleans. They can be declared and initialized with a value, and their values can be changed throughout the program. Variables are used to store and manipulate data in a program, and they are an essential part of programming.",
+  "coherence_story": "The robot, with its metallic frame and glowing eyes, stood before the blank canvas. It had been programmed to paint, but it had never seen a brush in its life. As it dipped its mechanical hand into the paint, it felt the texture and the weight of the brush. With each stroke, it learned to feel the colors and the shapes, and soon, it was creating beautiful paintings that no one had ever seen before.",
   "format_json": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
-  "format_list": "1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest",
+  "format_list": "1. A blanket or mat to sit on\n2. A cooler or basket to carry food and drinks\n3. A portable grill or stove for cooking",
   "instruct_format_constraint": "{\"colors\": [\"red\", \"green\", \"blue\"]}",
-  "instruct_negative": "The weather is sunny today.",
+  "instruct_negative": "The weather is clear and sunny today.",
   "instruct_step_by_step": "Step 1 complete\nStep 2 complete\nAll steps done",
   "newline_handling": "Apples\nBananas\nCherries",
-  "repetition_avoidance": "1. Elephant\n2. Lion\n3. Dolphin\n4. Penguin\n5. Kangaroo",
-  "smoke_basic_reply": "Hello!",
-  "smoke_empty_system": "42"
+  "repetition_avoidance": "1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Penguin",
+  "smoke_basic_reply": "Hello.",
+  "smoke_empty_system": "<think>Okay, the user asked me to respond with the number 42. I remember that 42"
 }

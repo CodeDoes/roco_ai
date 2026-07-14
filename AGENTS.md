@@ -14,8 +14,8 @@ removed; git history preserves it.
 
 ## Status
 
-- **Inference**: works end-to-end on `RWKV-7 g1g 2.9B` (FP16 SafeTensors
-  → quantized to NF4 at runtime on RTX 2050 / AMD iGPU).
+- **Inference**: works end-to-end on `RWKV-7 g1h 2.9B` (FP16 PTH → converted
+  to SafeTensors → quantized to NF4 at runtime on RTX 2050 / AMD iGPU).
 - **Grammar-constrained decoding**: **`BnfConstraint`** (`bnf_sampler`
   v0.3.8 + `qp-trie` vocabulary + GBNF→BNF converter) is the primary
   engine in `rwkv_backend.rs`. Falls back to schoolmarm automatically when

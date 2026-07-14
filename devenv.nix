@@ -58,12 +58,16 @@
   scripts.rwkv.exec = "cargo run -p roco-core --example rwkv_test --release";
   scripts.grammar.exec = "cargo run -p roco-core --example grammar_smoke --release";
   scripts.eval.exec = "cargo run -p roco-core --example eval_suite --release -- --backend rwkv";
+  scripts.chat.exec = "cargo run -p roco-core --features grammar-rwkv --example chat --release";
+  scripts.daemon.exec = "cargo run -p roco-core --example daemon --release";
+  scripts.quant-analyze.exec = "cargo run -p roco-core --example quant_analyze --release";
+  scripts.style-stress.exec = "cargo run -p roco-core --example style_stress --release";
   scripts.gpu-check.exec = ''
     echo "=== Vulkan devices ==="
     vulkaninfo --summary 2>&1 | grep -E "(GPU[0-9]|deviceName|deviceType|driverID|driverInfo)" || true
     echo ""
     echo "=== RWKV model & vocab ==="
-    ls -lh models/rwkv7-g1g-2.9b-20260526-ctx8192-converted.st 2>/dev/null || echo "convert .st model not found"
+    ls -lh models/rwkv7-g1h-2.9b-20260710-ctx10240-converted.st 2>/dev/null || echo "convert .st model not found"
     ls -lh assets/vocab/rwkv_vocab_v20230424.json 2>/dev/null || echo "vocab not found"
     echo ""
     echo "=== To select a specific GPU at runtime ==="
@@ -117,6 +121,10 @@
     echo "  roco eval                           # run the rwkv eval suite (--release)"
     echo "  roco rwkv                           # smoke-test the RWKV backend"
     echo "  roco grammar                        # grammar-constrained decode smoke test"
+    echo "  roco chat                           # interactive chat REPL"
+    echo "  roco daemon                         # background daemon + RPC"
+    echo "  roco quant-analyze                  # RWKVQuant proxy analysis"
+    echo "  roco style-stress                   # prompt style stress test"
     echo "  gpu-check                          # show Vulkan device + model status"
     echo ""
     echo "GPU: $(vulkaninfo --summary 2>/dev/null | grep -oP 'deviceName\s*=\s*\K.*' | head -1 || echo 'no Vulkan device found')"

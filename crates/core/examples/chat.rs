@@ -3,24 +3,47 @@
 //! ```bash
 //! cargo run -p roco-core --features grammar-rwkv --example chat --release
 //! ```
-//!
-//! Commands:
-//!   /quit or /exit   Leave the chat
-//!   /clear           Reset conversation to blank state
-//!   /temp <n>        Set sampling temperature (0.0-2.0)
-//!   /max <n>         Set max tokens per response
-//!   /grammar <path>  Load a GBNF grammar file for constrained output
-//!   /grammar off     Disable grammar constraints
-//!   /help            Show this help
-//!
-//! Ctrl+C during generation cancels the current response.
 
 use std::io::{self, BufRead, Write};
 
 use roco_core::engine::{CompletionRequest, ModelBackend};
 use roco_core::rwkv_backend::RwkvBackend;
 
-const SESSION: &str = "chat";
+/// How to structure the prompt for multi-turn conversations.
+#[derive(Clone, Copy)]
+enum PromptStyle {
+    /// `System: ...\n\nUser: {current}\n\nAssistant:`
+    /// Only current turn sent; relies on RNN state for history.
+    StateOnly,
+    /// `System: ...\n\nUser: t1\n\nAssistant: r1\n\nUser: t2\n\n...`
+    /// Full interleaved history with system at top.
+    Interleaved,
+    /// `{history}\n\nSystem: ...\n\nUser: {current}\n\nAssistant:`
+    /// Raw history dump, then system + current turn.
+    HistoryFirst,
+    /// `System: ...\n\nUser: t1\n\nAssistant: r1\n\nSystem: ...\n\nUser: t2\n\nAssistant: r2\n\n...`
+    /// System prompt repeated before every user turn.
+    RepeatedSystem,
+}
+
+impl PromptStyle {
+    fn as_str(self) -> &'static str {
+        match self {
+            PromptStyle::StateOnly => "state-only",
+            PromptStyle::Interleaved => "interleaved",
+            PromptStyle::HistoryFirst => "history-first",
+            PromptStyle::RepeatedSystem => "repeated-system",
+        }
+    }
+    fn next(self) -> Self {
+        match self {
+            PromptStyle::StateOnly => PromptStyle::Interleaved,
+            PromptStyle::Interleaved => PromptStyle::HistoryFirst,
+            PromptStyle::HistoryFirst => PromptStyle::RepeatedSystem,
+            PromptStyle::RepeatedSystem => PromptStyle::StateOnly,
+        }
+    }
+}
 
 fn print_banner() {
     eprintln!();
@@ -32,12 +55,14 @@ fn print_banner() {
 fn print_help() {
     eprintln!();
     eprintln!("  /quit or /exit   Leave the chat");
-    eprintln!("  /clear           Reset conversation to blank state");
-    eprintln!("  /temp <n>        Set sampling temperature (0.0-2.0)");
-    eprintln!("  /max <n>         Set max tokens per response");
-    eprintln!("  /grammar <path>  Load a GBNF grammar file");
-    eprintln!("  /grammar off     Disable grammar constraints");
-    eprintln!("  /stats           Show token counts and session info");
+    eprintln!("  /clear           Reset conversation");
+    eprintln!("  /temp <n>        Temperature (0.0-2.0)");
+    eprintln!("  /topp <n>        Top-p (0.0-1.0)");
+    eprintln!("  /max <n>         Max tokens");
+    eprintln!("  /grammar <path>  Load GBNF grammar file");
+    eprintln!("  /grammar off     Disable grammar");
+    eprintln!("  /style           Cycle prompt style (state-only / interleaved / history-first)");
+    eprintln!("  /stats           Show token counts");
     eprintln!("  /help            Show this help");
     eprintln!();
 }
@@ -55,6 +80,12 @@ fn do_prompt() -> io::Result<String> {
     read_line()
 }
 
+/// Turn record for building conversation history.
+struct Turn {
+    user: String,
+    assistant: String,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -70,12 +101,14 @@ async fn main() -> anyhow::Result<()> {
     let mut grammar: Option<String> = None;
     let mut total_prompt = 0u64;
     let mut total_completion = 0u64;
+    let mut style = PromptStyle::Interleaved;
+    let mut turns: Vec<Turn> = Vec::new();
 
     print_banner();
 
     eprintln!("Loading model... (this takes a moment)");
     let backend = RwkvBackend::from_env()?;
-    eprintln!("Backend: {} -- ready.\n", backend.name());
+    eprintln!("Backend: {} -- ready.  Style: {}\n", backend.name(), style.as_str());
 
     loop {
         let input = match do_prompt() {
@@ -93,9 +126,14 @@ async fn main() -> anyhow::Result<()> {
                 "/quit" | "/exit" => break,
                 "/help" => print_help(),
                 "/clear" => {
+                    turns.clear();
                     total_prompt = 0;
                     total_completion = 0;
-                    eprintln!("  Conversation cleared. Next turn starts fresh.\n");
+                    eprintln!("  Conversation cleared.\n");
+                }
+                "/style" => {
+                    style = style.next();
+                    eprintln!("  Prompt style: {}\n", style.as_str());
                 }
                 "/stats" => {
                     eprintln!("  Prompt tokens:     {total_prompt}");
@@ -103,46 +141,32 @@ async fn main() -> anyhow::Result<()> {
                     eprintln!("  Temperature:       {temperature}");
                     eprintln!("  Top-p:             {top_p}");
                     eprintln!("  Max tokens:        {max_tokens}");
-                    eprintln!(
-                        "  Grammar:           {}",
-                        grammar.as_deref().unwrap_or("off")
-                    );
+                    eprintln!("  Prompt style:      {}", style.as_str());
+                    eprintln!("  Turns in history:  {}", turns.len());
                     eprintln!();
                 }
                 "/temp" => {
                     if let Some(val) = parts.get(1) {
                         if let Ok(t) = val.parse::<f32>() {
                             temperature = t.clamp(0.0, 2.0);
-                            eprintln!("  Temperature set to {temperature}\n");
-                        } else {
-                            eprintln!("  Invalid temperature: {val}\n");
+                            eprintln!("  Temperature: {temperature}\n");
                         }
-                    } else {
-                        eprintln!("  Usage: /temp <0.0-2.0>\n");
                     }
                 }
                 "/topp" => {
                     if let Some(val) = parts.get(1) {
                         if let Ok(p) = val.parse::<f32>() {
                             top_p = p.clamp(0.0, 1.0);
-                            eprintln!("  Top-p set to {top_p}\n");
-                        } else {
-                            eprintln!("  Invalid top-p: {val}\n");
+                            eprintln!("  Top-p: {top_p}\n");
                         }
-                    } else {
-                        eprintln!("  Usage: /topp <0.0-1.0>\n");
                     }
                 }
                 "/max" => {
                     if let Some(val) = parts.get(1) {
                         if let Ok(n) = val.parse::<usize>() {
                             max_tokens = n;
-                            eprintln!("  Max tokens set to {max_tokens}\n");
-                        } else {
-                            eprintln!("  Invalid max tokens: {val}\n");
+                            eprintln!("  Max tokens: {max_tokens}\n");
                         }
-                    } else {
-                        eprintln!("  Usage: /max <n>\n");
                     }
                 }
                 "/grammar" => {
@@ -151,19 +175,12 @@ async fn main() -> anyhow::Result<()> {
                         eprintln!("  Grammar disabled.\n");
                     } else if let Some(path) = parts.get(1) {
                         match std::fs::read_to_string(path) {
-                            Ok(g) => {
-                                grammar = Some(g);
-                                eprintln!("  Grammar loaded from {path}\n");
-                            }
-                            Err(e) => eprintln!("  Failed to read {path}: {e}\n"),
+                            Ok(g) => { grammar = Some(g); eprintln!("  Grammar loaded.\n"); }
+                            Err(e) => eprintln!("  Failed: {e}\n"),
                         }
-                    } else {
-                        eprintln!("  Usage: /grammar <path> or /grammar off\n");
                     }
                 }
-                other => {
-                    eprintln!("  Unknown command: {other}. Type /help for commands.\n");
-                }
+                other => eprintln!("  Unknown: {other}. Type /help.\n"),
             }
             continue;
         }
@@ -172,33 +189,66 @@ async fn main() -> anyhow::Result<()> {
             continue;
         }
 
-        // Build the completion request.
-        // `session: Some("chat")` carries state across turns.
-        // `preserve_state: true` tells the backend to chain state
-        // between turns; `/clear` resets by starting a new session.
+        // Build the prompt text based on the current style.
+        let system = "You are a helpful, concise assistant.</think>";
+        let prompt = match style {
+            PromptStyle::StateOnly => {
+                input.clone()
+            }
+            PromptStyle::Interleaved => {
+                let mut s = format!("System: {system}\n\n");
+                for t in &turns {
+                    s.push_str(&format!("User: {}\n\nAssistant: {}\n\n", t.user, t.assistant));
+                }
+                s.push_str(&format!("User: {input}"));
+                s
+            }
+            PromptStyle::HistoryFirst => {
+                let mut s = String::new();
+                for t in &turns {
+                    s.push_str(&format!("User: {}\n\nAssistant: {}\n\n", t.user, t.assistant));
+                }
+                s.push_str(&format!("System: {system}\n\nUser: {input}"));
+                s
+            }
+            PromptStyle::RepeatedSystem => {
+                let mut s = format!("System: {system}\n\n");
+                for t in &turns {
+                    s.push_str(&format!("User: {}\n\nAssistant: {}\n\nSystem: {system}\n\n", t.user, t.assistant));
+                }
+                s.push_str(&format!("User: {input}"));
+                s
+            }
+        };
+
+        let grammar_str = grammar.clone();
+
         let req = CompletionRequest {
-            system: "You are a helpful, concise assistant.</think>".into(),
-            prompt: input,
+            system: String::new(), // already baked into the prompt text
+            prompt,
             output_schema: None,
-            grammar: grammar.clone(),
+            grammar: grammar_str,
             temperature,
             max_tokens,
             estimated_prompt_tokens: 0,
             thinking: false,
-            preserve_state: true,
+            preserve_state: false, // full context is in the text
             on_token: Some(Box::new(move |token: &str| {
                 print!("{token}");
                 let _ = io::stdout().flush();
             })),
-            session: Some(SESSION.to_string()),
+            session: None,
         };
 
-        // Streamed text is printed via on_token as tokens are produced.
         match backend.complete(req).await {
             Ok(resp) => {
                 println!();
                 total_prompt += resp.usage.prompt_tokens as u64;
                 total_completion += resp.usage.completion_tokens as u64;
+                turns.push(Turn {
+                    user: input,
+                    assistant: resp.text,
+                });
             }
             Err(e) => {
                 eprintln!("\n  Error: {e}\n");
@@ -206,6 +256,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    eprintln!("\nBye. (prompt={total_prompt}, completion={total_completion} tokens)\n");
+    eprintln!("\nBye. (prompt={total_prompt}, completion={total_completion}, turns={})\n", turns.len());
     Ok(())
 }

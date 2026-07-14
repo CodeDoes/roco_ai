@@ -369,9 +369,12 @@ fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
 /// * **Sandwich** if file ≥ 1.5 GB AND GPU has cooperative-matrix ops:
 ///   edge layers at None, middle at NF4.
 /// * **Int8 middle** otherwise — universal safety net, no NF4.
+/// * **Proxy** (`RWKV_QUANT=proxy`) — RWKVQuant-style analysis: compute
+///   P_c (uniformity) and P_f (outliers) per layer, skip quant on layers
+///   with non-uniform weights or outliers (see rwkv_quant_proxy.rs).
 ///
 /// `RWKV_QUANT` env var still overrides: "none", "nf4=N", "N" (Int8 N layers),
-/// or "sandwich=N" (keep N edge layers at FP16, rest NF4/Int8).
+/// "sandwich=N" (keep N edge layers at FP16, rest NF4/Int8), or "proxy".
 ///
 /// `model_path` is used to read the on-disk file size (ground truth — wgpu's
 /// `max_buffer_size` is unreliable: NVIDIA RTX 2050 reports 1 TB though it
@@ -379,6 +382,7 @@ fn get_quant_cache_dir(model_path: &str) -> std::path::PathBuf {
 fn auto_quant(
     info: &web_rwkv::runtime::model::ModelInfo,
     model_path: &str,
+    _model_data: &[u8],
     gpu_coop: bool,
     _gpu_max_mb: u64,
 ) -> std::collections::HashMap<usize, Quant> {
@@ -404,6 +408,13 @@ fn auto_quant(
             "small model (FP16 file {on_disk_mb}MB < {quantize_threshold_mb}MB) — no quantization"
         );
         return std::collections::HashMap::new();
+    }
+
+    // RWKV_QUANT=proxy → proxy-guided per-layer quantization
+    if let Ok(mode) = env::var("RWKV_QUANT") {
+        if mode == "proxy" {
+            return proxy_guided_quant(info, model_path, gpu_coop);
+        }
     }
 
     // Sandwich quantization: keep edge layers at FP16 for RNN state
@@ -436,6 +447,142 @@ fn auto_quant(
         n - 2 * edge
     );
     plan
+}
+
+/// RWKVQuant-style proxy-guided quantization.
+///
+/// For each layer, samples one representative weight tensor, computes
+/// the coarse (P_c) and fine (P_f) proxies, and decides:
+/// - Both below thresholds → scalar quant (NF4/Int8) is safe
+/// - Otherwise → keep FP16 (uniform quant would lose too much accuracy)
+///
+/// This is conservative: if ANY tensor in a layer has outliers, the
+/// whole layer stays FP16. Better to leave a few layers unquantized
+/// than to tank accuracy on the ones that matter.
+fn proxy_guided_quant(
+    info: &web_rwkv::runtime::model::ModelInfo,
+    model_path: &str,
+    gpu_coop: bool,
+) -> std::collections::HashMap<usize, Quant> {
+    use crate::rwkv_quant_proxy::{analyze_model_streaming, QuantRecommendation};
+
+    let n = info.num_layer;
+    let q = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
+    let q_label = if gpu_coop { "NF4" } else { "Int8" };
+
+    info!("RWKV_QUANT=proxy — analysing weight distributions (streaming)…");
+    let t0 = std::time::Instant::now();
+
+    let analysis = match analyze_model_streaming(model_path) {
+        Ok(a) => a,
+        Err(e) => {
+            warn!("proxy analysis failed ({e}), falling back to sandwich quantization");
+            return sandwich_quant(info, gpu_coop);
+        }
+    };
+    analysis.print();
+
+    let mut plan = std::collections::HashMap::new();
+    let mut sq_layers = 0;
+    let mut fp16_layers = 0;
+
+    // Compute a "quantizability" score per layer: fraction of tensor
+    // elements that are safe for scalar quant.  Layers above the median
+    // get quantized; layers below stay FP16 (edge protection).
+    let mut layer_scores: Vec<(usize, f64)> = Vec::with_capacity(n);
+    for layer in 0..n {
+        let layer_tensors: Vec<_> = analysis
+            .tensors
+            .iter()
+            .filter(|t| extract_layer_from_name(&t.name) == Some(layer))
+            .collect();
+        if layer_tensors.is_empty() {
+            layer_scores.push((layer, 0.0));
+            continue;
+        }
+        let total_elements: usize = layer_tensors.iter().map(|t| t.numels).sum();
+        let sq_elements: usize = layer_tensors
+            .iter()
+            .filter(|t| t.recommendation == QuantRecommendation::ScalarQuant)
+            .map(|t| t.numels)
+            .sum();
+        let score = if total_elements > 0 {
+            sq_elements as f64 / total_elements as f64
+        } else {
+            0.0
+        };
+        layer_scores.push((layer, score));
+    }
+
+    // Keep edge layers + the lowest-scoring layers at FP16.
+    // Quantize the rest.  Target: keep ~25% of layers at FP16
+    // (similar to the original sandwich with 2/32 ≈ 6%, but more
+    // generous since the proxy shows RWKV weights are inherently
+    // non-uniform).
+    let fp16_budget = (n as f64 * 0.25) as usize;
+    layer_scores.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    let mut fp16_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for (layer, _score) in layer_scores.iter().take(fp16_budget) {
+        fp16_set.insert(*layer);
+    }
+    // Always protect first 2 and last 2 layers
+    for l in 0..n {
+        if l < 2 || l >= n - 2 {
+            fp16_set.insert(l);
+        }
+    }
+
+    for layer in 0..n {
+        if fp16_set.contains(&layer) {
+            fp16_layers += 1;
+        } else {
+            plan.insert(layer, q);
+            sq_layers += 1;
+        }
+    }
+
+    let elapsed = t0.elapsed();
+    info!(
+        elapsed_ms = elapsed.as_millis(),
+        sq = sq_layers,
+        fp16 = fp16_layers,
+        total = n,
+        "proxy-guided quant: {sq_layers}/{n} layers → {q_label}, {fp16_layers} layers → FP16"
+    );
+    plan
+}
+
+/// Fallback sandwich quantization (used when proxy analysis fails).
+fn sandwich_quant(
+    info: &web_rwkv::runtime::model::ModelInfo,
+    gpu_coop: bool,
+) -> std::collections::HashMap<usize, Quant> {
+    let n = info.num_layer;
+    let edge = if n <= 4 { 0 } else { 2 };
+    let q_mid = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
+
+    let mut plan = std::collections::HashMap::new();
+    for l in 0..n {
+        let q = if (l as usize) < edge || (l as usize) >= n - edge {
+            Quant::None
+        } else {
+            q_mid
+        };
+        plan.insert(l as usize, q);
+    }
+    plan
+}
+
+/// Extract layer index from a tensor name.
+/// RWKV SafeTensors use `blk.{N}.*` or `blocks.{N}.*` convention.
+fn extract_layer_from_name(name: &str) -> Option<usize> {
+    let parts: Vec<&str> = name.split('.').collect();
+    for (i, part) in parts.iter().enumerate() {
+        if (*part == "blk" || *part == "blocks") && i + 1 < parts.len() {
+            return parts[i + 1].parse().ok();
+        }
+    }
+    None
 }
 
 /// Resolve the default model path when `RWKV_MODEL` env var is unset.
@@ -751,10 +898,10 @@ impl RwkvActor {
                 layers
             } else {
                 warn!("unknown RWKV_QUANT='{qs}', falling back to auto-quant from model shape");
-                auto_quant(&info, &model_path, gpu_coop, gpu_max_mb)
+                auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb)
             }
         } else {
-            auto_quant(&info, &model_path, gpu_coop, gpu_max_mb)
+            auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb)
         };
 
         if quant_layers.is_empty() {

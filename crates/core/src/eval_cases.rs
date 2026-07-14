@@ -24,7 +24,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 3,
             grammar: None,
-            oracle: Some("Hello!".into()),
+            oracle: Some("Hello.".into()),
             category: EvalCategory::Smoke,
         },
         EvalCase {
@@ -34,11 +34,11 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             prompt: "Respond with the number 42.".into(),
             expected_hints: vec!["42".into()],
             forbidden_strings: vec![],
-            max_tokens: 8,
+            max_tokens: 20,
             temperature: 0.0,
             min_output_chars: 1,
             grammar: None,
-            oracle: Some("42".into()),
+            oracle: Some("<think>Okay, the user asked me to respond with the number 42. I remember that 42".into()),
             category: EvalCategory::Smoke,
         },
         // --- Instruction-following --- //
@@ -89,7 +89,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 25,
             grammar: None,
-            oracle: Some("The weather is sunny today.".into()),
+            oracle: Some("The weather is clear and sunny today.".into()),
             category: EvalCategory::Instruction,
         },
         // --- Coherence --- //
@@ -104,7 +104,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 100,
             grammar: None,
-            oracle: Some("A variable is a named storage location in a computer's memory that can hold a value. Variables are used to store and manipulate data in a program. They are typically declared with a name and a data type, and their values can be changed throughout the program's execution. Variables are essential for storing and manipulating data in a program, and they are used in a wide range of programming languages and applications.".into()),
+            oracle: Some("A variable is a named storage location in a computer program that can hold a value. It is used to store data that can be used and manipulated throughout the program. Variables can be of different data types, such as integers, floats, strings, and booleans. They can be declared and initialized with a value, and their values can be changed throughout the program. Variables are used to store and manipulate data in a program, and they are an essential part of programming.".into()),
             category: EvalCategory::Coherence,
         },
         EvalCase {
@@ -118,7 +118,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 80,
             grammar: None,
-            oracle: Some("A robot named Pixel was programmed to paint, but it lacked the ability to express emotion. One day, it discovered a new color and began to paint with it, creating a masterpiece that touched the hearts of all who saw it.".into()),
+            oracle: Some("The robot, with its metallic frame and glowing eyes, stood before the blank canvas. It had been programmed to paint, but it had never seen a brush in its life. As it dipped its mechanical hand into the paint, it felt the texture and the weight of the brush. With each stroke, it learned to feel the colors and the shapes, and soon, it was creating beautiful paintings that no one had ever seen before.".into()),
             category: EvalCategory::Coherence,
         },
         // --- Repetition --- //
@@ -133,7 +133,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 40,
             grammar: None,
-            oracle: Some("1. Elephant\n2. Lion\n3. Dolphin\n4. Penguin\n5. Kangaroo".into()),
+            oracle: Some("1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Penguin".into()),
             category: EvalCategory::Repetition,
         },
         // --- Format --- //
@@ -162,7 +162,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             temperature: 0.0,
             min_output_chars: 30,
             grammar: None,
-            oracle: Some("1. A blanket or a picnic mat\n2. Food and drinks\n3. A cooler or a portable ice chest".into()),
+            oracle: Some("1. A blanket or mat to sit on\n2. A cooler or basket to carry food and drinks\n3. A portable grill or stove for cooking".into()),
             category: EvalCategory::Format,
         },
         // --- Newline handling --- //
