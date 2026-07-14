@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use futures::future::join_all;
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_tools::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -103,7 +104,8 @@ impl Plan {
     }
 
     /// Indices of `steps` in a valid dependency order (Kahn's algorithm).
-    /// On a cycle, remaining steps are appended in original order.
+    /// On a cycle, remaining steps are appended in original order. Ties between
+    /// independent steps are broken by ascending index, so the order is stable.
     pub fn topological_order(&self) -> Vec<usize> {
         let n = self.steps.len();
         let id_to_idx: HashMap<&str, usize> = self
@@ -122,14 +124,17 @@ impl Plan {
                 }
             }
         }
-        let mut queue: Vec<usize> = (0..n).filter(|&i| indeg[i] == 0).collect();
+        let mut heap: std::collections::BinaryHeap<std::cmp::Reverse<usize>> = (0..n)
+            .filter(|&i| indeg[i] == 0)
+            .map(std::cmp::Reverse)
+            .collect();
         let mut order = Vec::with_capacity(n);
-        while let Some(u) = queue.pop() {
+        while let Some(std::cmp::Reverse(u)) = heap.pop() {
             order.push(u);
             for &v in &adj[u] {
                 indeg[v] -= 1;
                 if indeg[v] == 0 {
-                    queue.push(v);
+                    heap.push(std::cmp::Reverse(v));
                 }
             }
         }
@@ -143,72 +148,138 @@ impl Plan {
         order
     }
 
-    /// Execute the plan: run each step in dependency order, threading prior
-    /// step outputs into later steps as context. Steps with a `tool` that is
-    /// present in `tools` are dispatched directly; otherwise they run as a
-    /// model subtask.
+    /// Execute the plan.
+    ///
+    /// Steps are grouped into dependency **waves**: each wave holds steps whose
+    /// dependencies are all in earlier waves. Steps within a wave run
+    /// concurrently (independent steps branch in parallel); the results are
+    /// threaded forward into later waves as context. Steps naming a `tool`
+    /// present in `tools` are dispatched directly; others run as model
+    /// subtasks. Outcomes are returned in topological (review) order.
     pub async fn execute(
         &self,
         backend: &dyn ModelBackend,
         tools: Option<&ToolRegistry>,
     ) -> Result<PlanResult, AgentError> {
         let order = self.topological_order();
-        let mut context: Vec<String> = Vec::new();
-        let mut outcomes = Vec::with_capacity(self.steps.len());
+        let levels = self.wave_levels();
+        let mut outputs: HashMap<String, String> = HashMap::new();
+        let mut outcome_by_idx: HashMap<usize, StepOutcome> = HashMap::new();
 
-        for &idx in &order {
-            let step = &self.steps[idx];
-
-            // Tool-direct path.
-            if let (Some(tools), Some(tool_name)) = (tools, step.tool.as_ref()) {
-                if let Some(tool) = tools.get(tool_name) {
-                    if let Ok(v) = tool.call(serde_json::json!({ "task": step.description })) {
-                        let out = v.to_string();
-                        outcomes.push(StepOutcome {
-                            step_id: step.id.clone(),
-                            description: step.description.clone(),
-                            output: out.clone(),
-                            used_tool: Some(tool_name.clone()),
-                        });
-                        context.push(out);
-                        continue;
-                    }
-                }
+        for wave in &levels {
+            let mut futures = Vec::with_capacity(wave.len());
+            for &idx in wave {
+                let step = &self.steps[idx];
+                let prompt = self.build_step_prompt(step, &outputs);
+                futures.push(self.run_step(step, backend, tools, prompt));
             }
-
-            // Model subtask path.
-            let mut prompt = String::new();
-            prompt.push_str(&format!("Plan task: {}\n", self.task));
-            if !context.is_empty() {
-                prompt.push_str("\nResults from prior steps:\n");
-                for c in &context {
-                    prompt.push_str(&format!("- {c}\n"));
-                }
+            let results = join_all(futures).await;
+            for (i, res) in results.into_iter().enumerate() {
+                let idx = wave[i];
+                let outcome = res?;
+                outputs.insert(outcome.step_id.clone(), outcome.output.clone());
+                outcome_by_idx.insert(idx, outcome);
             }
-            prompt.push_str(&format!(
-                "\nNow perform step {}: {}\nResult:",
-                step.id, step.description
-            ));
-            let req = CompletionRequest::new(
-                "You are executing one step of a plan. Produce only the result of this step.",
-                prompt,
-            );
-            let resp = backend
-                .complete(req)
-                .await
-                .map_err(|e| AgentError::BackendError(e.to_string()))?;
-            outcomes.push(StepOutcome {
-                step_id: step.id.clone(),
-                description: step.description.clone(),
-                output: resp.text.clone(),
-                used_tool: None,
-            });
-            context.push(resp.text.clone());
         }
 
-        Ok(PlanResult {
-            outcomes,
-            success: true,
+        let mut outcomes = Vec::with_capacity(self.steps.len());
+        for &idx in &order {
+            if let Some(o) = outcome_by_idx.remove(&idx) {
+                outcomes.push(o);
+            }
+        }
+        Ok(PlanResult { outcomes, success: true })
+    }
+
+    /// Split step indices into dependency waves (see [`Plan::execute`]).
+    fn wave_levels(&self) -> Vec<Vec<usize>> {
+        let id_to_idx: HashMap<&str, usize> = self
+            .steps
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.id.as_str(), i))
+            .collect();
+        let mut done: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut remaining: Vec<usize> = (0..self.steps.len()).collect();
+        let mut levels = Vec::new();
+        while !remaining.is_empty() {
+            let mut wave = Vec::new();
+            remaining.retain(|&i| {
+                let ready = self.steps[i]
+                    .depends_on
+                    .iter()
+                    .all(|d| id_to_idx.get(d.as_str()).map_or(false, |&j| done.contains(&j)));
+                if ready {
+                    wave.push(i);
+                    false
+                } else {
+                    true
+                }
+            });
+            if wave.is_empty() {
+                // Cycle safety: flush whatever remains as one final wave.
+                wave = remaining.clone();
+                remaining.clear();
+            }
+            for &i in &wave {
+                done.insert(i);
+            }
+            levels.push(wave);
+        }
+        levels
+    }
+
+    fn build_step_prompt(&self, step: &PlanStep, outputs: &HashMap<String, String>) -> String {
+        let mut prompt = String::new();
+        prompt.push_str(&format!("Plan task: {}\n", self.task));
+        if !outputs.is_empty() {
+            prompt.push_str("\nResults from prior steps:\n");
+            for (id, out) in outputs {
+                prompt.push_str(&format!("- [step {id}] {out}\n"));
+            }
+        }
+        prompt.push_str(&format!(
+            "\nNow perform step {}: {}\nResult:",
+            step.id, step.description
+        ));
+        prompt
+    }
+
+    async fn run_step(
+        &self,
+        step: &PlanStep,
+        backend: &dyn ModelBackend,
+        tools: Option<&ToolRegistry>,
+        prompt: String,
+    ) -> Result<StepOutcome, AgentError> {
+        // Tool-direct path.
+        if let (Some(tools), Some(tool_name)) = (tools, step.tool.as_ref()) {
+            if let Some(tool) = tools.get(tool_name) {
+                if let Ok(v) = tool.call(serde_json::json!({ "task": step.description })) {
+                    let out = v.to_string();
+                    return Ok(StepOutcome {
+                        step_id: step.id.clone(),
+                        description: step.description.clone(),
+                        output: out.clone(),
+                        used_tool: Some(tool_name.clone()),
+                    });
+                }
+            }
+        }
+        // Model subtask path.
+        let req = CompletionRequest::new(
+            "You are executing one step of a plan. Produce only the result of this step.",
+            prompt,
+        );
+        let resp = backend
+            .complete(req)
+            .await
+            .map_err(|e| AgentError::BackendError(e.to_string()))?;
+        Ok(StepOutcome {
+            step_id: step.id.clone(),
+            description: step.description.clone(),
+            output: resp.text.clone(),
+            used_tool: None,
         })
     }
 }
@@ -390,6 +461,40 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.outcomes.len(), 1);
         assert!(!result.outcomes[0].output.is_empty());
+    }
+
+    #[test]
+    fn wave_levels_groups_independent_steps() {
+        let plan = Plan {
+            task: "t".into(),
+            steps: vec![
+                PlanStep { id: "1".into(), description: "a".into(), tool: None, depends_on: vec![] },
+                PlanStep { id: "2".into(), description: "b".into(), tool: None, depends_on: vec![] },
+                PlanStep { id: "3".into(), description: "c".into(), tool: None, depends_on: vec!["1".into(), "2".into()] },
+            ],
+        };
+        let levels = plan.wave_levels();
+        assert_eq!(levels.len(), 2, "independent steps share a wave, dependent waits");
+        assert_eq!(levels[0].len(), 2, "steps 1 and 2 run concurrently");
+        assert_eq!(levels[1].len(), 1, "step 3 waits for both");
+    }
+
+    #[tokio::test]
+    async fn execute_runs_dependent_after_independent() {
+        let plan = Plan {
+            task: "t".into(),
+            steps: vec![
+                PlanStep { id: "1".into(), description: "a".into(), tool: None, depends_on: vec![] },
+                PlanStep { id: "2".into(), description: "b".into(), tool: None, depends_on: vec![] },
+                PlanStep { id: "3".into(), description: "c".into(), tool: None, depends_on: vec!["1".into(), "2".into()] },
+            ],
+        };
+        let result = plan.execute(&MockBackend::default(), None).await.unwrap();
+        assert_eq!(result.outcomes.len(), 3);
+        // Outcomes returned in topological (review) order.
+        assert_eq!(result.outcomes[0].step_id, "1");
+        assert_eq!(result.outcomes[1].step_id, "2");
+        assert_eq!(result.outcomes[2].step_id, "3");
     }
 
     #[test]

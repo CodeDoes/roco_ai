@@ -215,8 +215,10 @@ flags, env vars, run commands); this file is the strategy context.
   a single step), dependency-tracked `topological_order`, JSON
   (de)serialization for review/resume, and `Plan::execute` (sequential
   orchestration — the primitive `goals/agent/orchastrate` builds on). Wired
-  via `Agent::plan`. Remaining: `orchastrate` (multi-step/parallel
-  coordination), `session_search`, `scheduled_tasks`.
+  via `Agent::plan`. **Orchestrate done** (`goals/agent/orchastrate`):
+  `Plan::execute` runs steps in dependency **waves** (independent steps in
+  parallel via `join_all`, dependent steps wait) and returns outcomes in
+  stable topological order. Remaining: `session_search`, `scheduled_tasks`.
 - `testing/eval_harness` — **done**.
 - `workspace` — **implemented (core)**: `Workspace` sandbox boundary
   (`crates/workspace/src/workspace.rs`) with path-escape protection

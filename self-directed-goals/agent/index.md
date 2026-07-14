@@ -13,11 +13,11 @@ Prerequisite order (mirrors the product layer):
    sequential `Plan::execute`. *Self-directed improvement:* optionally
    grammar-constrain the planner's JSON output via `roco_grammar::schema_to_gbnf`
    so the 2.9B model emits cleaner plans; keep the fallback as the safety net.
-4. **orchastrate** — ⬜ *self-directed (next agent cap):* build on
-   `Plan::execute`. Support branch/parallel execution where steps have no
-   dependency edge (run independent steps concurrently bounded by a worker
-   count), and feed a step's tool result forward into dependent steps. Make
-   `Plan::execute` the real orchestrator rather than a strict sequence.
+4. **orchastrate** — ✅ done. `Plan::execute` now groups steps into
+   dependency **waves** and runs each wave concurrently via `join_all`, threading
+   results forward into later waves; outcomes are returned in stable topological
+   order. Independent steps branch in parallel, dependent steps wait. A
+   `wave_levels` helper drives this and is unit-tested.
 5. **memory** — ✅ done. `MemoryStore` + `remember`/`recall` tools wired via
    `Agent::with_memory`. *Self-directed:* auto-inject the top-K recalled
    memories into the agent's system prefix (the `User:` note: "use a smarter
@@ -37,6 +37,7 @@ Prerequisite order (mirrors the product layer):
 - Add an **agent eval** that runs a tiny planned task against `MockBackend` and
   asserts the plan is decomposed and executed.
 
-**Next self-directed action:** implement `orchastrate` (parallel/branch
-execution on top of `Plan::execute`), then `session_search` reusing memory
-retrieval.
+**Next self-directed action:** implement `session_search` (reuse `MemoryStore`
+retrieval over saved session transcripts), then `scheduled_tasks`; and wire
+memory + planning into the `agent` CLI example so a real run can `remember`,
+`recall`, and `plan`.
