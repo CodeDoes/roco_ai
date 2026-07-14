@@ -22,10 +22,11 @@ Prerequisite order (mirrors the product layer):
    `Agent::with_memory`. *Self-directed:* auto-inject the top-K recalled
    memories into the agent's system prefix (the `User:` note: "use a smarter
    form of prefix sampling"), so long-term context is recalled proactively.
-6. **session_search** — ⬜ *self-directed:* reuse `MemoryStore`'s retrieval over
-   saved session transcripts (the `session` state pool in `crates/session` plus
-   a JSON transcript log). A `search_sessions` tool that ranks past runs by
-   relevance to the current task.
+6. **session_search** — ✅ done. `SessionStore`
+   (`crates/agent/src/sessions.rs`) records agent runs as `SessionTranscript`s
+   (with `from_trace`) and exposes a `search_sessions` tool that ranks past
+   sessions by content using the shared `score_text` ranker from `memory`.
+   Wired via `Agent::with_sessions`.
 7. **scheduled_tasks** — ⬜ *self-directed:* a `Scheduler` holding one-off and
    periodic tasks with a next-run time; a `schedule`/`run_due` tool pair. Test
    with a fake clock so it needs no real waiting.
@@ -37,7 +38,7 @@ Prerequisite order (mirrors the product layer):
 - Add an **agent eval** that runs a tiny planned task against `MockBackend` and
   asserts the plan is decomposed and executed.
 
-**Next self-directed action:** implement `session_search` (reuse `MemoryStore`
-retrieval over saved session transcripts), then `scheduled_tasks`; and wire
-memory + planning into the `agent` CLI example so a real run can `remember`,
-`recall`, and `plan`.
+**Next self-directed action:** implement `scheduled_tasks` (a fake-clock
+`Scheduler` + `schedule`/`run_due` tools), then wire memory + planning +
+session-search into the `agent` CLI example so a real run can `remember`,
+`recall`, `plan`, and `search_sessions`.

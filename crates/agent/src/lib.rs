@@ -9,9 +9,11 @@ pub mod error;
 pub mod subtask;
 pub mod memory;
 pub mod plan;
+pub mod sessions;
 
 pub use agent::{Agent, AgentConfig, AgentStep, AgentTrace};
 pub use error::AgentError;
 pub use subtask::{Subtask, SubtaskOutput};
 pub use memory::{MemoryEntry, MemoryStore, RememberTool, RecallTool};
 pub use plan::{Plan, PlanStep, PlanResult, Planner, StepOutcome};
+pub use sessions::{SessionSearchTool, SessionStore, SessionTranscript, SessionTurn};

@@ -127,10 +127,21 @@ impl Agent {
         Self::with_tools(config, tools)
     }
 
+    /// Create an agent whose tool set is the default built-ins plus the
+    /// `search_sessions` tool bound to `sessions`.
+    pub fn with_sessions(
+        config: AgentConfig,
+        sessions: std::sync::Arc<crate::sessions::SessionStore>,
+    ) -> Self {
+        let mut tools = all_tools();
+        tools.extend(crate::sessions::SessionStore::scoped_tools(sessions));
+        Self::with_tools(config, tools)
+    }
+
     /// Ask the backend to produce a structured plan for `task`.
     ///
-    /// Returns a reviewable/resumable [`Plan`] (falls back to a single-step
-    /// plan if the model does not emit valid plan JSON).
+    /// Returns a reviewable/resumable [`Plan`](crate::plan::Plan) (falls back to
+    /// a single-step plan if the model does not emit valid plan JSON).
     pub async fn plan(&self, backend: &dyn ModelBackend, task: &str) -> Result<crate::plan::Plan, AgentError> {
         crate::plan::Planner::plan(backend, task).await
     }

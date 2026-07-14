@@ -218,7 +218,11 @@ flags, env vars, run commands); this file is the strategy context.
   via `Agent::plan`. **Orchestrate done** (`goals/agent/orchastrate`):
   `Plan::execute` runs steps in dependency **waves** (independent steps in
   parallel via `join_all`, dependent steps wait) and returns outcomes in
-  stable topological order. Remaining: `session_search`, `scheduled_tasks`.
+  stable topological order. **Session search done**
+  (`goals/agent/session_search`): `SessionStore` records runs as transcripts
+  and a `search_sessions` tool ranks past sessions by content (reusing the
+  `memory` ranker). Wired via `Agent::with_sessions`. Remaining:
+  `scheduled_tasks`.
 - `testing/eval_harness` — **done**.
 - `workspace` — **implemented (core)**: `Workspace` sandbox boundary
   (`crates/workspace/src/workspace.rs`) with path-escape protection

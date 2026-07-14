@@ -39,7 +39,7 @@ impl MemoryEntry {
 
 static MEM_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -51,7 +51,7 @@ fn new_id() -> String {
     format!("mem-{}-{:x}", now_secs(), c)
 }
 
-fn tokenize(s: &str) -> Vec<String> {
+pub(crate) fn tokenize(s: &str) -> Vec<String> {
     s.split(|c: char| !c.is_alphanumeric())
         .map(|t| t.to_lowercase())
         .filter(|t| t.len() >= 3)
@@ -141,7 +141,7 @@ impl MemoryStore {
         let entries = self.entries.read().expect("mem lock poisoned");
         let mut scored: Vec<(f64, MemoryEntry)> = entries
             .iter()
-            .map(|e| (score_entry(&query_tokens, e), e.clone()))
+            .map(|e| (score_text(&query_tokens, &e.text, &e.tags, e.created_at), e.clone()))
             .filter(|(s, _)| *s > 0.0)
             .collect();
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -201,11 +201,12 @@ impl MemoryStore {
     }
 }
 
-/// Score an entry against the (already tokenized) query.
-/// Returns 0.0 when there is no overlap (so the entry is filtered out).
-fn score_entry(query_tokens: &[String], e: &MemoryEntry) -> f64 {
-    let mut hay: Vec<String> = tokenize(&e.text);
-    for t in &e.tags {
+/// Shared relevance scorer used by both [`MemoryStore`] and
+/// [`crate::sessions::SessionStore`]. Returns 0.0 when there is no overlap
+/// (so the entry is filtered out).
+pub(crate) fn score_text(query_tokens: &[String], text: &str, tags: &[String], created_at: u64) -> f64 {
+    let mut hay: Vec<String> = tokenize(text);
+    for t in tags {
         hay.extend(tokenize(t));
     }
     let mut hits = 0u32;
@@ -218,7 +219,7 @@ fn score_entry(query_tokens: &[String], e: &MemoryEntry) -> f64 {
         return 0.0;
     }
     let recall = hits as f64 / query_tokens.len() as f64;
-    let age = now_secs().saturating_sub(e.created_at);
+    let age = now_secs().saturating_sub(created_at);
     let recency = 1.0 / (1.0 + age as f64 / 86_400.0);
     recall * (0.7 + 0.3 * recency)
 }
