@@ -119,6 +119,22 @@ impl Agent {
         Self { config, tools }
     }
 
+    /// Create an agent whose tool set is the default built-ins plus the
+    /// long-term memory tools (`remember` / `recall`) bound to `mem`.
+    pub fn with_memory(config: AgentConfig, mem: std::sync::Arc<crate::memory::MemoryStore>) -> Self {
+        let mut tools = all_tools();
+        tools.extend(crate::memory::MemoryStore::scoped_tools(mem));
+        Self::with_tools(config, tools)
+    }
+
+    /// Ask the backend to produce a structured plan for `task`.
+    ///
+    /// Returns a reviewable/resumable [`Plan`] (falls back to a single-step
+    /// plan if the model does not emit valid plan JSON).
+    pub async fn plan(&self, backend: &dyn ModelBackend, task: &str) -> Result<crate::plan::Plan, AgentError> {
+        crate::plan::Planner::plan(backend, task).await
+    }
+
     /// Create an agent with a custom tool set.
     pub fn with_tools(config: AgentConfig, tools: Vec<Arc<dyn Tool>>) -> Self {
         let mut registry = ToolRegistry::new();

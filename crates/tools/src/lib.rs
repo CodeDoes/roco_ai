@@ -10,6 +10,7 @@ pub mod builtins;
 pub mod parse;
 
 pub use tool::Tool;
+pub use tool::ToolError;
 pub use registry::ToolRegistry;
 pub use builtins::*;
 pub use parse::*;

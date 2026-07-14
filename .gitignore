@@ -1,5 +1,5 @@
 models/
-workspace/
+/workspace/
 node_modules/
 target/
 .devenv/

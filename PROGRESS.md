@@ -203,11 +203,26 @@ flags, env vars, run commands); this file is the strategy context.
   `gradual_tool_disclosure`, `state_tune_examples`,
   `system_instruction_following`, `user_message_response`.
 - `agent/*` — **partial**: core loop + tool execution loop done
-  (`goals/agent/agent`, `goals/agent/tool_execution_loop`). Remaining:
-  `planning`, `orchastrate`, `memory`, `session_search`, `scheduled_tasks`.
+  (`goals/agent/agent`, `goals/agent/tool_execution_loop`). **Memory done**
+  (`goals/agent/memory`): `MemoryStore` + `remember`/`recall` tools.
+  **Planning done** (`goals/agent/planning`): `Planner` + `Plan`/`PlanStep`
+  (`crates/agent/src/plan.rs`) with defensive JSON extraction (falls back to
+  a single step), dependency-tracked `topological_order`, JSON
+  (de)serialization for review/resume, and `Plan::execute` (sequential
+  orchestration — the primitive `goals/agent/orchastrate` builds on). Wired
+  via `Agent::plan`. Remaining: `orchastrate` (multi-step/parallel
+  coordination), `session_search`, `scheduled_tasks`.
 - `testing/eval_harness` — **done**.
-- `workspace`, `agent_chat`, `browser_use`, `coder` — forward-looking; not
-  yet in code.
+- `workspace` — **implemented (core)**: `Workspace` sandbox boundary
+  (`crates/workspace/src/workspace.rs`) with path-escape protection
+  (lexical `..` normalization + canonical-prefix check for existing files),
+  `WorkspaceKind` (eval/temp/user/agent/generic), cwd, and `metadata()`.
+  Workspace-scoped tools (`Workspace::scoped_tools`) cover file read/write/
+  edit/search/list + a cwd-scoped `bash` tool (`crates/workspace/src/tools.rs`),
+  all resolving through `Workspace::resolve` so they cannot leave the root.
+  The agent drives them via `Agent::with_tools(config, Workspace::scoped_tools(ws))`.
+  Caveat: the `bash` tool is cwd-scoped, not a full syscall sandbox.
+- `agent_chat`, `browser_use`, `coder` — forward-looking; not yet in code.
 
 ## Open questions
 

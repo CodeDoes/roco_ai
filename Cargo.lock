@@ -1382,6 +1382,7 @@ name = "roco-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures",
  "roco-engine",
  "roco-message",
  "roco-session",
@@ -1562,6 +1563,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "walkdir",
 ]
 
 [[package]]
