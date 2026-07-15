@@ -64,6 +64,7 @@ pub(crate) fn tokenize(s: &str) -> Vec<String> {
 /// a shared `Arc<MemoryStore>`) can read and write concurrently. If a `path`
 /// is set (via [`MemoryStore::open`]), each write is persisted to disk as a
 /// JSON array.
+#[derive(Debug)]
 pub struct MemoryStore {
     entries: RwLock<Vec<MemoryEntry>>,
     path: RwLock<Option<PathBuf>>,

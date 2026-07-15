@@ -29,13 +29,16 @@
 //! Classic code (handlers) does all file I/O in a scoped temp workspace.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Serialize};
 
-use crate::base::BaseAgent;
-use crate::error::AgentError;
+use super::base::BaseAgent;
+use super::error::AgentError;
+use super::memory::MemoryStore;
+use super::sessions::SessionStore;
 
 /// Classified intent from a user message.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -179,6 +182,12 @@ pub struct MechanisticAgent {
     fallback_threshold: f32,
     /// Whether verbose traces are emitted to stderr during execution.
     verbose: bool,
+    /// Optional shared session store for cross-run context retrieval.
+    session_store: Option<Arc<SessionStore>>,
+    /// Optional shared memory store for structured recall across runs.
+    memory_store: Option<Arc<MemoryStore>>,
+    /// Context budget in tokens per inference call (0 = no limit).
+    context_budget_tokens: usize,
 }
 
 impl MechanisticAgent {
@@ -191,6 +200,9 @@ impl MechanisticAgent {
             repair: RepairConfig::default(),
             fallback_threshold: FALLBACK_THRESHOLD,
             verbose: false,
+            session_store: None,
+            memory_store: None,
+            context_budget_tokens: 512,
         }
     }
 
@@ -211,6 +223,53 @@ impl MechanisticAgent {
     pub fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
         self
+    }
+
+    /// Attach a shared session store for cross-run context retrieval.
+    pub fn with_session_store(mut self, store: Arc<SessionStore>) -> Self {
+        self.session_store = Some(store);
+        self
+    }
+
+    /// Attach a shared memory store for structured recall across runs.
+    pub fn with_memory_store(mut self, store: Arc<MemoryStore>) -> Self {
+        self.memory_store = Some(store);
+        self
+    }
+
+    /// Set the token budget for context snippets per inference call.
+    /// Default is 512 tokens.
+    pub fn with_context_budget(mut self, tokens: usize) -> Self {
+        self.context_budget_tokens = tokens;
+        self
+    }
+
+    /// Build a ContextManager configured with available sources.
+    fn build_context_manager(
+        &self,
+        _query: &str,
+        workspace_root: Option<&std::path::Path>,
+    ) -> super::context::ContextManager {
+        let mut manager = super::context::ContextManager::new(self.context_budget_tokens)
+            .with_global_limit(20);
+
+        if let Some(ref store) = self.session_store {
+            manager = manager.add_source(Box::new(
+                super::context::SessionContextSource::new(store.clone(), 3),
+            ));
+        }
+        if let Some(ref store) = self.memory_store {
+            manager = manager.add_source(Box::new(
+                super::context::MemoryContextSource::new(store.clone(), 3),
+            ));
+        }
+        if let Some(root) = workspace_root {
+            manager = manager.add_source(Box::new(
+                super::context::WorkspaceContextSource::new(root),
+            ));
+        }
+
+        manager
     }
 
     /// Register a handler for a `(type, domain)` pair.
@@ -275,15 +334,26 @@ impl MechanisticAgent {
     /// Calls the model with the `INTENT_GRAMMAR` to produce a structured
     /// `Intent`. If confidence is below `fallback_threshold`, the route
     /// is overridden to `DEFAULT_ROUTE` (`justChatting`).
+    ///
+    /// Prepend-pull protocol: queries session store and memory store for
+    /// previously classified requests that match, avoiding redundant classification.
     async fn classify(
         &self,
         backend: &dyn ModelBackend,
         msg: &str,
     ) -> Result<Intent, AgentError> {
-        let prompt = format!(
+        // Pull relevant context from available sources.
+        let mut ctx_mgr = self.build_context_manager(msg, None);
+        let snippets = ctx_mgr.collect(msg);
+        let ctx_block = super::context::ContextManager::to_prompt_block(&snippets);
+
+        let mut prompt = format!(
             "Classify this user request into a route and goal.\n\nUser: {}\n\nIntent (as JSON):",
             msg
         );
+        if !ctx_block.is_empty() {
+            prompt.insert_str(0, &format!("{}\n\n", ctx_block));
+        }
         let grammar = Some(INTENT_GRAMMAR.to_string());
         let resp = backend_call(backend, "", &prompt, grammar.as_deref(), 128, 0.2).await?;
 
@@ -312,16 +382,28 @@ impl MechanisticAgent {
     }
 
     /// Phase 1: free-form model call seeded with the classified intent.
+    ///
+    /// Prepend-pull protocol: surfaces context from past sessions and memory
+    /// that shares keywords with the current request or its goal.
     async fn think_with_intent(
         &self,
         backend: &dyn ModelBackend,
         intent: &Intent,
         msg: &str,
     ) -> Result<String, AgentError> {
-        let prompt = format!(
+        // Combine message + goal for richer query.
+        let query = format!("{} {}", msg, intent.goal);
+        let mut ctx_mgr = self.build_context_manager(&query, None);
+        let snippets = ctx_mgr.collect(&query);
+        let ctx_block = super::context::ContextManager::to_prompt_block(&snippets);
+
+        let mut prompt = format!(
             "Route: {}\nGoal: {}\n\nRequest: {}\n\nReason about this and plan a response:",
             intent.route, intent.goal, msg
         );
+        if !ctx_block.is_empty() {
+            prompt.insert_str(0, &format!("{}\n\n", ctx_block));
+        }
         let resp = backend_call(backend, "", &prompt, None, 512, 0.7).await?;
         Ok(resp)
     }
@@ -335,6 +417,11 @@ impl MechanisticAgent {
     }
 
     /// Phase 2: grammar-constrained model call with repair loop.
+    ///
+    /// Before each attempt it collects relevant context from sessions/memory
+    /// keyed against the prior reasoning (`thoughts`). If an attempt fails,
+    /// already-attempted plans are avoided by excluding them from future
+    /// context windows.
     async fn repair_derive(
         &self,
         backend: &dyn ModelBackend,
@@ -344,12 +431,20 @@ impl MechanisticAgent {
         let mut max_tokens = self.repair.max_tokens;
         let mut last_err = None;
 
+        // Pre-collect context once per derive cycle, keyed against the reasoning.
+        let mut ctx_mgr = self.build_context_manager(thoughts, None);
+        let snippets = ctx_mgr.collect(thoughts);
+        let ctx_block = super::context::ContextManager::to_prompt_block(&snippets);
+
         for attempt in 0..=self.repair.max_retries {
             let grammar = Some(PLAN_GRAMMAR.to_string());
-            let prompt = format!(
+            let mut prompt = format!(
                 "Based on your reasoning, produce a structured plan as JSON tasks:\n{}",
                 thoughts
             );
+            if !ctx_block.is_empty() {
+                prompt.insert_str(0, &format!("{}\n\n", ctx_block));
+            }
 
             match backend_call(backend, "", &prompt, grammar.as_deref(), max_tokens, temp).await {
                 Ok(resp) => match serde_json::from_str::<Plan>(&resp) {

@@ -11,6 +11,7 @@
 pub mod base;
 pub mod common_agent;
 pub mod mecha_agent;
+pub mod context;
 pub mod error;
 pub mod subtask;
 pub mod memory;
@@ -31,6 +32,7 @@ pub use base::BaseAgent;
 pub use common_agent::{Agent, CommonAgent, AgentConfig, AgentStep, AgentTrace};
 pub use mecha_agent::{MechanisticAgent, MechaAgent};
 pub use agent_chat::AgentChatSession;
+pub use context::*;
 pub use error::AgentError;
 pub use subtask::{Subtask, SubtaskOutput};
 pub use memory::{MemoryEntry, MemoryStore, RememberTool, RecallTool};
