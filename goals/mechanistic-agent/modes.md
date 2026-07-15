@@ -14,3 +14,5 @@ Intent: Declarative route definitions that package system prompt, tool availabil
 | `random` | Jokes, games, and light distractions | — | — |
 | `worldBuilding` | Construct and maintain consistent fictional worlds | — | — |
 | `storyTeller` | Story generation, tracking, and publishing — manages plot, events, wiki, synopsis, chapters, and a world bible | plot, events, wiki, synopsis, chapter, edit, validate, publish | — |
+
+Concrete `.mode` files live in `mechanist_agent/modes/`. The `mode_file_format` goal defines the DSL.
