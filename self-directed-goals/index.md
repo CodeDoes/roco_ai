@@ -30,6 +30,13 @@ These are my standing self-directed commitments:
 6. **Respect blockers.** When a goal is blocked (e.g. the GGUF→ST tensor-shape
    bug), note it and move to the next unblocked prerequisite rather than
    stalling.
+7. **Grammar-first, always.** Every model call goes through a BNF grammar.
+   Free-form prompting on undertrained RWKV models produces systematic
+   contamination (`<thinking>` tag leakage, meta-commentary) that no prompt or
+   temperature adjustment can eliminate. Grammar-constrained decoding rejects
+   non-conforming tokens at every sampling step — contamination cannot occur.
+   Post-processing (regex stripping, pre-fill workarounds) signals where
+   domain-specific grammars are still needed.
 
 ## Layers (mirror of `goals/`, in my working order)
 
@@ -44,11 +51,15 @@ These are my standing self-directed commitments:
 4. **agent** — *core + memory + planning done*. Self-directed: orchestrate
    (parallel/branch), session_search (reuse `MemoryStore` over transcripts),
    scheduled_tasks, and wire memory+planning into the `agent` CLI example.
-5. **mechanistic-agent** — 🟡 *core done*. `MechanisticAgent` struct in
-   `crates/agent/src/mechanistic.rs` with think → derive → dispatch → commit
-   loop, typed plan grammar, (type, domain) → HandlerFn router, and 6 unit
-   tests against MockBackend. Self-directed: add repair loop, workspace
-   sandbox integration, intent classification.
+5. **mechanistic-agent** — 🟡 *core done, grammar gap*. `MechanisticAgent` in
+   `crates/agent/src/mecha_agent.rs` has think → derive → dispatch → commit
+   loop, typed plan grammar, (type, domain) → HandlerFn router, repair loop,
+   workspace sandbox integration, intent classification, context budgeting,
+   and story pipeline. **Critical gap:** per-handler BNF grammars are missing
+   — every story stage (outline, wiki, chapters, validation, synopsis) uses
+   free-form prompting with pre-fill workarounds. Self-directed: wire
+   `BnfConstraint` into each stage handler so the grammar-first principle
+   holds end-to-end.
 6. **agent_chat** — *started*. `AgentChatSession` (`crates/agent/src/agent_chat.rs`)
    opens a folder-bound session that persists memory + session history (and the
    executed plan, captured in `AgentTrace`) across runs; wired through the

@@ -30,6 +30,34 @@ right shape, and the harness code never deals with malformed JSON.
 | `jsonschema_to_gbnf()` | JSON Schema → GBNF converter for ad-hoc output shapes | Tool argument schemas |
 | Domain grammars | Per-task BNF productions (plans, chapters, wiki entries, events) | Story mode sub-plans |
 
+## What We Learned from Live Generation
+
+During multi-step story pipeline runs on undertrained RWKV models (1B–2.9B), the **no free-form JSON extraction** principle was proven correct:
+
+- **System prompts alone cannot prevent meta-commentary** — `<think>` tag leakage persists regardless of instruction strength
+- **Temperature decay has minimal effect** — contamination occurs at all temperatures
+- **Post-processing is fragile** — models often never close their think tags, making regex-based stripping unreliable
+- **Grammar-constrained decoding is the only reliable solution** — the sampler rejects non-conforming tokens at every step, so contamination literally cannot occur
+
+### Domain grammars are non-negotiable
+
+Every stage handler needs its own BNF grammar:
+- Outline handler → `outline.bnf` (title, chapters, genre, tone)
+- Wiki handler → `wiki.bnf` (characters, locations, lore)
+- Chapter handler → `chapter.bnf` (prose with proper narrative structure)
+- Validation handler → `validation.bnf` (pass/fail criteria, issues list)
+- Synopsis handler → `synopsis.bnf` (single-paragraph summary)
+
+The current story pipeline uses **pre-fill workarounds** (`<thinking>plan</think>` before prompt) as interim measures. These are explicit signals that domain-specific grammars are still needed.
+
+### Pre-fill pattern for interim use
+
+When grammars aren't available yet, pre-filling a think block tricks the model into clean output:
+```
+prompt = "<thinking>Plan: write outline...</think>\n\nWrite outline for: {premise}"
+```
+The model believes it already did thinking and continues directly into the requested content. This works because undertrained RWKV completes whatever follows a `<think>` marker.
+
 ## Sub-goals
 
 - **Plan grammar** (`plan_gbnf`): `<task-list>` with typed tasks, dependencies,

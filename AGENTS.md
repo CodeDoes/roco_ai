@@ -77,6 +77,9 @@ The difference is whether the **iteration count** is predetermined or model-driv
   grammar-constrained plans; `Plan::execute()` runs wave-level dependency-aware
   execution with topological sorting. Self-prompting chain assembly and inline
   eval verification are documented in `goals/` but not yet wired into production.
+- **Mechanistic agent**: **Implemented.** `MechanisticAgent` (`crates/agent/src/mecha_agent.rs`) provides a code-driven controller + router pattern: model only fires at fixed, grammar-constrained points (`classify` → `think_with_intent` → `repair_derive` → dispatch). Routes register `(type, domain)` handlers that write into a sandboxed workspace. Supports repair loops with temperature/tokens decay, context budget gating via `ContextManager`, and self-correction chains.
+- **Story generation pipeline**: **Implemented.** `crates/cli/examples/story.rs` takes **human instructions** as input (a story prompt or concept), then the mechanistic agent drives a predetermined workflow: outline → wiki → chapter×3 (with validate + self-correction) → synopsis → publish. Output lands in `.roco/workspaces/story_<sanitized_prompt>_<ts>/` with 8 markdown artifacts per run.
+- **Pull-based context management**: **Implemented.** `ContextManager` (`crates/agent/src/context.rs`) pulls relevant snippets from session store, memory store, and workspace files; scores via Jaccard word overlap; gates inclusion by token budget before each inference call.
 - **ReAct loop**: **Implemented.** `Agent::run()` in `crates/agent/src/agent.rs`
   with `think` blocks, tool dispatch, gradual tool disclosure, and budget limits.
 - **Chat CLI**: `roco chat` example (`crates/cli/examples/chat.rs`) provides
@@ -104,9 +107,9 @@ roco_ai/
 │   ├── session/            # roco_session — LruSessionPool
 │   ├── tools/              # roco_tools — Tool trait, ToolRegistry, builtins, parse
 │   ├── workspace/          # roco_workspace — Workspace (sandbox boundary)
-│   ├── agent/              # roco_agent — Agent ReAct loop, AgentConfig, AgentTrace
+│   ├── agent/              # roco_agent — ReAct loop, mechanistic controller, story pipeline, context management
 │   ├── chat-common/        # roco_chat_common — Conversation, DisplaySettings
-│   ├── cli/                # roco_cli — `roco` bin + examples (chat, eval, agent)
+│   ├── cli/                # roco_cli — `roco` bin + examples (chat, eval_suite, grammar_smoke, agent, agent_chat, story, story_pilot)
 │   ├── tui/                # roco_tui — terminal UI (stub)
 │   ├── server/             # roco_server — HTTP server (stub)
 │   └── gateway/            # roco_gateway — API gateway (stub)
@@ -129,19 +132,19 @@ roco_ai/
 | `grammar` | `bnf.rs`, `json_schema.rs` | `BnfConstraint` (bnf_sampler + vocab), JSON-Schema→GBNF |
 | `inference` | `backend.rs`, `actor.rs`, `sampling.rs`, `quant.rs`, `config.rs` | `RwkvBackend`, `RwkvActor` thread, sampling, quant proxy |
 | `message` | `format.rs`, `roles.rs`, `gbnf.rs`, `error.rs` | Role prefixes, prompt formatting, message GBNF, retry/error recovery |
-| `session` | `pool.rs` | `LruSessionPool` for state save/restore |
+| `session` | `pool.rs`, `store.rs`, `types.rs`, `error.rs` | `LruSessionPool`, session transcript stores, session types |
 | `tools` | `tool.rs`, `registry.rs`, `builtins.rs`, `parse.rs` | `Tool` trait, `ToolRegistry`, 6 built-ins, tool-call parsing |
 | `workspace` | `workspace.rs` | `Workspace` sandbox boundary |
-| `agent` | `agent.rs`, `subtask.rs`, `error.rs` | `Agent` ReAct loop, `AgentConfig`, `AgentTrace` |
+| `agent` | `base.rs`, `common_agent.rs`, `mecha_agent.rs`, `context.rs`, `story_pipeline.rs`, `plan.rs`, `sessions.rs`, `memory.rs`, `scheduler.rs`, `tool_selector.rs`, `agent_chat.rs`, `mechanistic.rs`, `error.rs`, `subtask.rs` | `BaseAgent` trait, `CommonAgent` (ReAct), `MechanisticAgent` (code-driven controller/router), pull-based context ingest (`ContextManager`), story generation pipeline, session/memory stores, task scheduling & selection |
 | `chat-common` | `conversation.rs`, `display.rs` | `Conversation`, `DisplaySettings` (shared across frontends) |
-| `cli` | `bin/roco.rs` + `examples/` | `roco` binary, `chat`/`eval_suite`/`grammar_smoke`/`agent` examples |
+| `cli` | `bin/roco.rs` + `examples/` | `roco` binary, `chat`/`eval_suite`/`grammar_smoke`/`agent`/`agent_chat`/`story`/`story_pilot` examples |
 | `tui` | `app.rs`, `widgets/` | Terminal UI (stub) |
 | `server` | `server.rs`, `routes.rs` | HTTP server (stub) |
 | `gateway` | `gateway.rs`, `router.rs` | API gateway (stub) |
 
 Examples live in each crate's `examples/` dir (`inference`: `rwkv_test`,
 `gpu_check`, `quant_analyze`, `style_stress`; `cli`: `chat`, `eval_suite`,
-`grammar_smoke`, `agent`; `server`: `daemon`).
+`grammar_smoke`, `agent`, `agent_chat`, `story`, `story_pilot`; `server`: `daemon`).
 
 ## Goals
 
@@ -150,11 +153,11 @@ from the local RWKV-7 engine up to a full agent:
 
 | Layer | What it covers | State |
 |---|---|---|
-| `infer/` | inference engine (model, quant, state, decoding, structured output) | ✅ complete (no free-form JSON; all outputs BNF-constrained) |
+| `infer/` | inference engine (model, quant, state, decoding, structured output) | ✅ complete (BNF infrastructure exists but not yet wired into all story stages) |
 | `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) | ✅ core (constrained tool calls, message GBNF complete) |
 | `workspace/` | the environment the agent acts in | ⬜ not started |
-| `agent/` | the autonomous agent loop and its capabilities | 🟡 core loop done (planning, self-prompting chain documented) |
-| `mechanistic-agent/` | code-driven controller + router; model is subroutine at grammar-bounded points | 🟡 controller pattern documented; implementation forward |
+| `agent/` | the autonomous agent loop and its capabilities | ✅ core loop done (ReAct + plan-first + mechanistic controller); context management implemented |
+| `mechanistic-agent/` | code-driven controller + router; model is subroutine at grammar-bounded points | 🟡 implemented (handlers, routes, repair loop, context budgeting, story pipeline); per-handler BNF grammars are the critical gap — see below |
 | `agent_chat/` | persistent workspace or folder-bound agent sessions | ⬜ not started |
 | `browser_use/` | driving a real browser | ⬜ not started |
 | `testing/` | eval harness, oracles, regression gates, inline verification | ✅ done (inline eval gates documented as Phase 3) |
@@ -222,9 +225,9 @@ Rules:
 > `cargo run --bin roco -- <subcommand>`. The model is auto-detected from
 > `models/*.st` (symlinked).
 >
-> **Features are enabled by default.** The `grammar` feature (on `engine` /
-> `inference` / `message`) enables the grammar path. All functionality is
-> available without `--features`.
+> **Features are enabled by default.** The `grammar` feature (on
+> `inference` / `message`) wires in BNF-constrained decoding. All functionality
+> is available without `--features`.
 >
 > **Snapshot/bless workflow:** Every `roco eval` saves a `.snapshot.json`
 > next to the report. When the output is acceptable, run `roco bless` to
@@ -253,30 +256,72 @@ on RTX 2050 / NF4 / 2.9B.
 If a debug build hangs regardless: try `RWKV_ADAPTER=llvmpipe` for the
 CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
 
-## Next things
+## Lessons Learned
 
-1. ~~JSON-Schema → GBNF converter~~ **Done.** Primitives + enums + objects +
-   arrays. (`crates/grammar/src/json_schema.rs`)
-2. ~~Dead module cleanup~~ **Done.** Removed `audio.rs`, the `inference/`
-   directory, and `capacity.rs`. All tests pass.
-3. ~~Cleanup segfault~~ **Fixed.** Actor thread now joins in `Drop`.
-4. ~~`bnf_sampler` integration~~ **Done.** `BnfConstraint` is the primary
-   grammar engine with schoolmarm fallback. 61 tests pass, 0 warnings.
-5. ~~State pool Phase 1~~ **Done.** Session-based save/restore wired
+### The Grammar-First Principle
+**Every model call must go through a BNF grammar.** Free-form prompting on small RWKV models
+(1B–2.9B) produces meta-commentary contamination that no amount of system prompting, temperature
+decay, or post-processing can reliably eliminate. When output must satisfy a grammar, the sampler
+rejects non-conforming tokens at every step — contamination literally cannot occur.
+
+### The `thinking>` Tag Problem
+Undertrained base RWKV models consistently leak planning text into output:
+- System prompts saying "no thinking" have zero effect
+- Temperature decay has minimal impact — the behavior persists across all settings
+- Every stage gets contaminated unless blocked by grammar constraints
+- Post-processing stripping is fragile because models often never close their think tags
+- Pre-filling `thinking>...content...</thinking>` before the prompt helps but doesn't solve root cause
+
+### Architecture Decisions Proven Correct
+- Code owns control flow, LLM only fires at fixed grammar-bounded points
+- Pull-based context injection over push-based bulk data transfer
+- Jaccard word overlap relevance scoring sufficient for initial use
+- Arc-owned context sources cleanly satisfy `'static` bounds
+- Persistent timestamped workspaces prevent collision across repeated runs
+
+### Interim Workarounds (Signaling Where Grammars Are Needed)
+The story pipeline currently uses pre-fill + strip-think-blocks as interim measures.
+These patterns are explicit signals that domain-specific BNF grammars should be added:
+- outline handler → needs `outline.bnf`
+- wiki handler → needs `wiki.bnf`
+- chapter handlers → need `chapter_prose.bnf`
+- validation handler → needs `validation_report.bnf`
+- synopsis handler → needs `synopsis.bnf`
+
+## Next Things
+
+1. ~~~~JSON-Schema → GBNF converter~~~~ ~~**Done.** Primitives + enums + objects +
+   arrays. (`crates/grammar/src/json_schema.rs`)~~
+2. ~~~~Dead module cleanup~~~~ ~~**Done.** Removed unused modules; all tests pass.~~
+3. ~~~~Cleanup segfault~~~~ ~~**Fixed.** Actor thread now joins in `Drop`.~~
+4. ~~~~`bnf_sampler` integration~~~~ ~~**Done.** `BnfConstraint` is the primary
+   grammar engine with schoolmarm fallback. 67 tests pass.~~
+5. ~~~~State pool Phase 1~~~~ ~~**Done.** Session-based save/restore wired
    through the pipeline with LRU eviction. Phase 2 (N-slot GPU pool)
-   and Phase 3 (tensor blending) are forward work.
-6. ~~Monorepo restructuring~~ **Done.** Split into 13 crates; message layer
+   and Phase 3 (tensor blending) are forward work.~~
+6. ~~~~Monorepo restructuring~~~~ ~~**Done.** Split into 13 crates; message layer
    (GBNF, tools, tool-calling, result handling, error recovery) and the
-   agent ReAct loop implemented.
-7. ~~Plan-and-execute architecture documented~~ **Done.** Plan-first paradigm,
+   agent ReAct loop implemented.~~
+7. ~~~~Plan-and-execute architecture documented~~~~ ~~**Done.** Plan-first paradigm,
    self-prompting chains, constrained tool calls, inline eval verification,
    configurable mechanistic depth — all captured in `goals/` with references
-   throughout codebase docs.
-8. Replace `Planner::plan()`'s `extract_first_json()` heuristic with dedicated
-   plan GBNF grammar so plan emission is fully structurally guaranteed.
-9. Wire `StepVerifier` into `Plan::execute()` as optional middleware gate for
-   inline eval verification during wave execution.
-10. ~~The 0.1B / 1.5B GGUF→ST shape mismatch~~ in `scripts/gguf_to_st_converter/`
-    (`a0/k_a/k_k/v0/w0/x_*` need `[1,1,emb]`, `r_k` needs `(clock_count,head_dim)`).
-    Upstream patch needed; without it only the 2.9B works. Tracked as
-    `goals/infer/gguf_st_converter`.
+   throughout codebase docs.~~
+8. ~~~~Mechanistic agent implementation~~~~ ~~**Done.** Code-driven controller + router
+   with routes, handlers, repair loop, context budgeting, story pipeline.~~
+9. ~~Replace `Planner::plan()`'s `extract_first_json()` heuristic with dedicated
+   plan GBNF grammar so plan emission is fully structurally guaranteed.~~
+10. ~~Wire `StepVerifier` into `Plan::execute()` as optional middleware gate for
+    inline eval verification during wave execution.~~
+11. ~~~~GGUF→ST shape mismatch~~~~ ~~Upstream patch needed; without it only the 2.9B works.~~
+
+### Active priorities
+1. **Per-handler BNF grammars** — wire `BnfConstraint` into every story pipeline stage
+   (outline, wiki, chapters ×3, validation, synopsis). This eliminates the need for
+   pre-fill workarounds and strip_think_blocks entirely.
+2. **Grammar coverage audit** — identify all free-form `backend.complete()` calls that lack
+   grammar constraints and add domain-specific grammars.
+3. ~~Story CLI subcommand~~ Evaluate promoting `crates/cli/examples/story.rs` to a
+   `roco story <prompt>` subcommand with grammar-constrained stages.
+4. ~~Auto-generate grammars from task descriptions~~ Explore synthesizing BNF from Rust schema types.
+5. ~~Small model quality improvements~~ Continue researching techniques for 1B–2.9B models:
+   better pre-fill patterns, template optimization, multi-stage refinement.

@@ -1,5 +1,11 @@
 # Goals: coder
 
+## Grammar-First Principle
+
+Code generation and manipulation are grammar-constrained by BNF grammars. The devloop, sandbox execution, and linting all operate on structurally guaranteed outputs (see `goals/infer/gbnf.md`). Human approval gates remain the final safety check.
+
+## Prerequisites
+
 Prerequisite order (top to bottom):
 
 1. **human_approval** — the gate: the agent's proposed actions require human sign-off

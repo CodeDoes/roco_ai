@@ -1,5 +1,13 @@
 # Goals: agent
 
+## Grammar-First Principle (Foundation)
+
+**Every model call must go through a BNF grammar.** This is the non-negotiable architectural decision that underpins the entire agent system. Free-form prompting on undertrained RWKV models produces systematic contamination (`<thinking>` tags, meta-commentary) that no prompt or temperature adjustment can eliminate. Grammar-constrained decoding rejects non-conforming tokens at every sampling step — contamination cannot occur.
+
+See `goals/infer/thinking.md` and `goals/infer/gbnf.md` for detailed learnings from live multi-stage story pipeline runs.
+
+## Prerequisites
+
 Prerequisite order (top to bottom):
 
 1. **planning** — structured plan emission via GBNF grammar; no free-form JSON extraction

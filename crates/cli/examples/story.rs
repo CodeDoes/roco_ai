@@ -16,7 +16,8 @@
 //!   06-STORY.md         — complete published story (all chapters assembled)
 //!
 //! Usage:
-//!   RWKV_MODEL=... RWKV_VOCAB=... cargo run --release --example story-agent -p roco-cli
+//!   RWKV_MODEL=... cargo run --release --example story -p roco-cli \
+//!     "Make me a xianxia story about a lone cultivator who levels up alone"
 
 use std::collections::HashMap;
 
@@ -26,6 +27,40 @@ use roco_agent::mechanistic::{
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_inference::RwkvBackend;
 use roco_workspace::{Workspace, WorkspaceKind};
+
+/// Strip all Thinking...thinking blocks from model output.
+/// Uses string search for reliable tag detection, handles both paired and open-ended blocks.
+fn strip_think_blocks(text: &str) -> String {
+    const OPEN: &str = "<thinking>";
+    const CLOSE: &str = "</thinking>";
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text;
+
+    loop {
+        if let Some(pos) = remaining.find(OPEN) {
+            // Copy everything before this think block
+            result.push_str(&remaining[..pos]);
+            // Skip past the open tag
+            remaining = &remaining[pos + OPEN.len()..];
+            // Find matching close tag
+            if let Some(close_pos) = remaining.find(CLOSE) {
+                // Discard think content, resume after close tag
+                remaining = &remaining[close_pos + CLOSE.len()..];
+            } else {
+                // No closing tag found — entire rest is think content, discard it
+                break;
+            }
+        } else {
+            // No more think blocks — copy remainder
+            result.push_str(remaining);
+            break;
+        }
+    }
+
+    // Collapse multiple spaces/newlines into single space, trim
+    result.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 
 /// Detect if model output is contaminated with meta-commentary.
 fn has_meta_contamination(text: &str) -> bool {
@@ -85,20 +120,12 @@ fn clean_complete(
 
         attempt += 1;
         if attempt >= 3 {
-            // On third failure, strip <think> blocks and return what's left.
-            let cleaned = text
-                .split("<think>")
-                .last()
-                .unwrap_or(&text)
-                .split("</think>")
-                .next()
-                .unwrap_or(&text)
-                .trim()
-                .to_string();
-            if cleaned.len() > 50 {
-                return Ok(cleaned);
+            // Strip ALL <think>...<\think> blocks and return remaining prose.
+            let stripped = strip_think_blocks(&text).trim().to_string();
+            if !stripped.is_empty() {
+                return Ok(stripped);
             }
-            return Err(format!("{}: failed to produce clean output after {attempt} attempts", label));
+            return Err(format!("{}: failed to extract usable output after {attempt} attempts", label));
         }
 
         temp = (temp - 0.2).max(0.3);
@@ -127,7 +154,7 @@ fn main() -> anyhow::Result<()> {
     println!("Model ready. Generating story...\n");
 
     // Build the mechanistic agent with the storyTeller route.
-    let mut agent = MechanisticAgent::new(&backend)
+    let mut agent = MechanisticAgent::new()
         .with_repair(RepairConfig {
             max_retries: 2,
             temperature: 0.7,
@@ -377,12 +404,15 @@ fn main() -> anyhow::Result<()> {
         ],
     };
 
-    let ws = Workspace::temp(WorkspaceKind::Temp)
-        .map_err(|e| anyhow::anyhow!("workspace: {e}"))?;
+    let ws = create_workspace(&prompt)?;
+    let workspace_path = ws.root().to_string_lossy().to_string();
+
+    println!("\nWorkspace: {workspace_path}\n");
+    println!("Pipeline: outline → wiki → chapter×3 → validate → synopsis → publish\n");
 
     // Phase 1: outline
     println!("📝 Outline...");
-    let outline_result = agent.dispatch_single(&plan.tasks[0], &ws)
+    let outline_result = agent.dispatch_single(&backend, &plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("outline failed: {e}"))?;
     let outline_text = &outline_result.output;
 
@@ -395,7 +425,7 @@ fn main() -> anyhow::Result<()> {
             spec: serde_json::json!({"premise": prompt, "outline": outline_text}),
         }],
     };
-    let wiki_result = agent.dispatch_single(&wiki_plan.tasks[0], &ws)
+    let wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("wiki failed: {e}"))?;
 
     // Phase 3: chapters ×3
@@ -416,7 +446,7 @@ fn main() -> anyhow::Result<()> {
                 "previous": previous,
             }),
         };
-        let ch_result = agent.dispatch_single(&ch_task, &ws)
+        let ch_result = agent.dispatch_single(&backend, &ch_task, &ws)
             .map_err(|e| anyhow::anyhow!("chapter {i} failed: {e}"))?;
         chapter_texts.push(ch_result.output.clone());
 
@@ -430,7 +460,7 @@ fn main() -> anyhow::Result<()> {
                 "text": ch_result.output,
             }),
         };
-        let _val_result = agent.dispatch_single(&val_task, &ws)
+        let _val_result = agent.dispatch_single(&backend, &val_task, &ws)
             .map_err(|e| anyhow::anyhow!("validation {i} failed: {e}"))?;
 
         // If validation found issues, re-run with corrected prompt
@@ -472,7 +502,7 @@ fn main() -> anyhow::Result<()> {
         domain: "synopsis".into(),
         spec: serde_json::json!({"chapters": all_chapters}),
     };
-    let _synopsis_result = agent.dispatch_single(&synopsis_task, &ws)
+    let _synopsis_result = agent.dispatch_single(&backend, &synopsis_task, &ws)
         .map_err(|e| anyhow::anyhow!("synopsis failed: {e}"))?;
 
     // Phase 5: publish
@@ -482,7 +512,7 @@ fn main() -> anyhow::Result<()> {
         domain: "chapter".into(),
         spec: serde_json::json!({}),
     };
-    let publish_result = agent.dispatch_single(&publish_task, &ws)
+    let publish_result = agent.dispatch_single(&backend, &publish_task, &ws)
         .map_err(|e| anyhow::anyhow!("publish failed: {e}"))?;
 
     // Snapshot the workspace for display
@@ -510,6 +540,34 @@ fn main() -> anyhow::Result<()> {
     println!("Workspace path: {}", outcome.workspace_path);
     println!("\nStory published to 06-STORY.md inside the workspace.");
     Ok(())
+}
+
+/// Sanitize a string into a safe filesystem directory name.
+fn sanitize_dirname(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect::<String>()
+        .to_lowercase()
+}
+
+/// Create a unique persistent workspace under `.roco/workspaces/story_<sanitized_prompt>_<ts>/`.
+/// Appends a timestamp to prevent collisions when running the same prompt multiple times.
+fn create_workspace(prompt: &str) -> Result<Workspace, anyhow::Error> {
+    let base = std::env::current_dir()?.join(".roco").join("workspaces");
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let name = if prompt.trim().is_empty() {
+        format!("story_ts_{ts}")
+    } else {
+        let words: Vec<&str> = prompt.split_whitespace().take(4).collect();
+        format!("story_{}", sanitize_dirname(&words.join("_")))
+    };
+    let dir = base.join(format!("{name}_{ts}"));
+    std::fs::create_dir_all(&dir)?;
+    let ws = Workspace::from_existing(dir, WorkspaceKind::Agent)?;
+    Ok(ws.with_name(name))
 }
 
 /// Extract the title from an outline markdown file.

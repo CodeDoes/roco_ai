@@ -5,10 +5,30 @@ A plugin layer on top of the core agent loop. The mechanistic agent replaces the
 ## Core philosophy
 
 ```
-Model provides:    decomposition plans, content slots, reasoning under constraint
+Grammar owns:      structural validity — what output CAN look like (BNF per stage)
 Code owns:         iteration order, dependency graphs, error paths, budgets, subtask injection
-Result:            deterministic control flow over probabilistic generation
+Model provides:    content filling within grammar boundaries only
+Result:            deterministic control flow over structurally guaranteed generation
 ```
+
+### Grammar-First Principle
+**Every model call must go through a BNF grammar.** This is not optional infrastructure — it's the
+fundamental guarantee that separates controllable generation from gambling.
+
+Free-form prompting (no grammar) on small RWKV models produces:
+- Meta-commentary (`thinking>` tags, planning text, "let me...")
+- Structurally invalid JSON or prose
+- Inconsistent formatting across stages
+
+With grammar constraints:
+- The sampler rejects non-conforming tokens at every step
+- No post-processing stripping needed — contamination literally cannot occur
+- `serde_json::from_str()` always succeeds
+- Error recovery reduces to timeout/retry only
+
+All stages in the mechanistic agent pipeline (plan → outline → wiki → chapter × 3 → validate → synopsis → publish)
+should have domain-specific grammars. The current story example uses pre-fill workarounds as interim measures,
+signaling where proper grammars are still needed.
 
 Prerequisite order (top to bottom):
 

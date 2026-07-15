@@ -1,5 +1,13 @@
 # Goals: message
 
+## Grammar-First Principle (Foundation)
+
+**Every model call must go through a BNF grammar.** The message layer enforces this through `message_format_gbnf` and `assistant_response_gbnf`. Free-form prompting on undertrained RWKV models produces systematic contamination (`<thinking>` tags, meta-commentary) that no prompt or temperature adjustment can eliminate. Grammar-constrained decoding rejects non-conforming tokens at every sampling step.
+
+See `goals/infer/thinking.md` and `goals/message/error_recovery.md` for learnings.
+
+## Prerequisites
+
 Prerequisite order (top to bottom):
 
 1. **message_format_gbnf** — the GBNF grammar for the agent↔user message format

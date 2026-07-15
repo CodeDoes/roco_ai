@@ -12,6 +12,7 @@ pub mod base;
 pub mod common_agent;
 pub mod mecha_agent;
 pub mod context;
+pub mod story_pipeline;
 pub mod error;
 pub mod subtask;
 pub mod memory;

@@ -9,7 +9,7 @@ use crate::types::{HistoryEntry, HistoryKind, SessionMeta, SessionStatus};
 /// File-backed session store under a `.roco/` root.
 ///
 /// Layout:
-/// ```
+/// ```text
 /// .roco/
 /// ├── trace.log                      ← global trace, ALL sessions
 /// └── sessions/

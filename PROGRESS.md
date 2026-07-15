@@ -3,6 +3,46 @@
 > Strategy / context / "what we wanted to do but didn't yet".
 > Living document; this version reflects the rwkv7-first scope as of 2026-07-14.
 
+## Lessons Learned
+
+### The Grammar-First Principle
+Live generation runs on undertrained RWKV models (1B–2.9B g1h) revealed a fundamental truth:
+**free-form prompting cannot prevent meta-commentary contamination**. No amount of system
+prompting, temperature decay, or post-processing reliably stops the model from outputting
+`think>` planning text.
+
+The correct architectural pattern is **grammar-constrained decoding at every call site**:
+- When output must satisfy a BNF grammar, the sampler rejects non-conforming tokens at every step
+- Contamination literally cannot occur — the grammar doesn't allow it
+- No stripping, no retries, no fallbacks needed
+- Error recovery reduces to timeout/retry logic only
+
+Post-processing approaches (strip_think_blocks, pre-fill workarounds) are **interim signals**
+marking where proper grammars still need to be added.
+
+### Mechanistic Agent Live Testing Results
+The `crates/cli/examples/story.rs` pipeline demonstrated the full mechanistic agent pattern end-to-end:
+- Outline → wiki → chapter×3 (with validate + self-correction) → synopsis → publish
+- Persists artifacts to `.roco/workspaces/story_<prompt>_<ts>/`
+- Self-correction loops detect validation failures and retry with tighter prompts
+- Context budgeting gates snippet inclusion per inference call
+- All stages work structurally; content quality limited by model size when not grammar-constrained
+
+### Architecture Decisions Proven Correct
+- Code owns control flow, LLM only fires at fixed grammar-bounded points
+- Pull-based context injection over push-based bulk transfer
+- Arc-owned context sources cleanly satisfy `'static` bounds for `Box<dyn ContextQuery>`
+- Jaccard word overlap relevance scoring sufficient for initial use
+- Persistent timestamped workspaces prevent collision across repeated runs
+- Pre-fill `thinking>...plan...</thi nk>` tricks model into clean output when grammars unavailable
+
+### What Didn't Work
+- System prompts alone preventing `think>` leakage — zero effect regardless of strength
+- Temperature decay (0.6→0.3) stopping contamination — model leaks at all temperatures
+- Character-by-character think block stripping — closing tags never detected, open-ended blocks dominate
+- Fallback returning raw unstripped text — defeats the purpose entirely
+- Over-engineered regex/state-machine parsers — simple string replace works better
+
 ## Current scope
 
 The active focus is **rwkv7** — push the local RWKV-7 g1h family as the

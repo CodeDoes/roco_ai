@@ -1,5 +1,19 @@
 # Goals: infer
 
+## What We Learned from Live Generation
+
+Live multi-stage story pipeline runs on undertrained RWKV models (1B–2.9B) validated a core principle:
+
+**Grammar-constrained decoding is non-negotiable for production use.** Free-form prompting produces systematic contamination (`<think>` tag leakage, planning text, meta-commentary) that no system prompt or temperature adjustment can eliminate. When output must satisfy a BNF grammar, the sampler rejects non-conforming tokens at every step — contamination literally cannot occur.
+
+**Every stage needs its own domain grammar.** Plan and tool grammars are necessary but not sufficient. Story outline, wiki, chapter prose, validation reports, and synopsis all require dedicated grammars. Without them, the pipeline falls back to pre-fill workarounds (`<thinking>plan</thinking>` before prompt) which are explicit signals that domain grammars are still needed.
+
+**Post-processing is a last resort.** Regex-based think block stripping is fragile because models often never close their tags. Architecture should prevent the problem at the sampling layer, not clean up after it.
+
+See: [gbnf.md](gbnf.md), [structured_output.md](structured_output.md), [thinking.md](thinking.md) for detailed learnings.
+
+## Goal Prerequisites
+
 Prerequisite order (top to bottom):
 
 1. **raw_model** — loading the raw SafeTensors / GGUF model weights

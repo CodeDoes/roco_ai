@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     // the built-in tools into one agent.
     let workspace = Arc::new(Workspace::temp(WorkspaceKind::Agent)?);
     let memory = Arc::new(MemoryStore::new());
-    let sessions = Arc::new(SessionStore::new());
+    let sessions = Arc::new(SessionStore::new(std::env::temp_dir().join("roco-agent-sessions")));
     let scheduler = Arc::new(Scheduler::new());
 
     let mut tools = all_tools();
