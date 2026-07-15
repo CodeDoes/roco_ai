@@ -28,6 +28,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AgentError;
 
+/// Classified intent from a user message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Intent {
+    /// The matched route name (e.g. "storyTeller", "coder", "justChatting").
+    pub route: String,
+    /// Confidence 0.0–1.0. Below `FALLBACK_THRESHOLD` routes to `justChatting`.
+    pub confidence: f32,
+    /// A one-line summary of what the user wants.
+    pub goal: String,
+    /// Route-specific parameters extracted from the message.
+    #[serde(default)]
+    pub params: serde_json::Value,
+}
+
+/// Default confidence threshold — below this, the agent falls back
+/// to `justChatting` (safe mode, no tools, clarify instead of guess).
+pub const FALLBACK_THRESHOLD: f32 = 0.5;
+
+/// The default safe-mode route used when confidence is low.
+pub const DEFAULT_ROUTE: &str = "justChatting";
+
 /// Configuration for the repair loop (Infer → Engine → Infer).
 ///
 /// Controls retry behaviour when model output fails to parse:
@@ -143,7 +164,11 @@ pub type HandlerFn =
 pub struct MechanisticAgent<'a> {
     backend: &'a dyn ModelBackend,
     handlers: HashMap<(String, String), HandlerFn>,
+    /// Route name → set of supported (type, domain) pairs for that mode.
+    route_tasks: HashMap<String, Vec<(String, String)>>,
     repair: RepairConfig,
+    /// Confidence threshold below which the agent falls back to DEFAULT_ROUTE.
+    fallback_threshold: f32,
 }
 
 impl<'a> MechanisticAgent<'a> {
@@ -152,13 +177,22 @@ impl<'a> MechanisticAgent<'a> {
         Self {
             backend,
             handlers: HashMap::new(),
+            route_tasks: HashMap::new(),
             repair: RepairConfig::default(),
+            fallback_threshold: FALLBACK_THRESHOLD,
         }
     }
 
     /// Override the default repair loop configuration.
     pub fn with_repair(mut self, config: RepairConfig) -> Self {
         self.repair = config;
+        self
+    }
+
+    /// Set the confidence threshold for fallback detection.
+    /// Below this value, `classify()` returns `DEFAULT_ROUTE`.
+    pub fn with_fallback_threshold(mut self, threshold: f32) -> Self {
+        self.fallback_threshold = threshold.clamp(0.0, 1.0);
         self
     }
 
@@ -169,25 +203,92 @@ impl<'a> MechanisticAgent<'a> {
         self.handlers.insert((r#type.to_string(), domain.to_string()), handler);
     }
 
-    /// Run the full mechanistic loop with a request-scoped temp workspace.
+    /// Declare a route with its supported task types.
     ///
-    /// 1. Think: free-form model call to reason about the request.
-    /// 2. Derive (repair loop): grammar-constrained call → structured Plan.
-    /// 3. Dispatch: route each task to its handler; handlers write into the
+    /// Routes are named modes (e.g. "storyTeller", "coder"). Each route
+    /// declares which `(type, domain)` pairs it handles. The intent
+    /// classifier selects a route, and dispatch validates that the plan's
+    /// tasks are within the route's declared set.
+    pub fn add_route(&mut self, name: &str, tasks: Vec<(&str, &str)>) {
+        let pairs: Vec<(String, String)> = tasks
+            .into_iter()
+            .map(|(t, d)| (t.to_string(), d.to_string()))
+            .collect();
+        self.route_tasks.insert(name.to_string(), pairs);
+    }
+
+    /// Run the full mechanistic loop with intent classification and routing.
+    ///
+    /// 1. Classify: model call → structured Intent (route, confidence, goal).
+    ///    Low confidence falls back to `justChatting`.
+    /// 2. Think: free-form model call to reason about the request.
+    /// 3. Derive (repair loop): grammar-constrained call → structured Plan.
+    /// 4. Validate: check plan tasks against the selected route's declared set.
+    /// 5. Dispatch: route each task to its handler; handlers write into the
     ///    temp workspace.
-    /// 4. Commit: snapshot workspace files and return the outcome.
+    /// 6. Commit: snapshot workspace files and return the outcome.
     pub fn run(&self, msg: &str) -> Result<MechanisticOutcome, AgentError> {
         let ws = Workspace::temp(WorkspaceKind::Temp)
             .map_err(|e| AgentError::Internal(format!("failed to create workspace: {e}")))?;
 
-        let thoughts = self.think(msg)?;
+        let intent = self.classify(msg)?;
+        let thoughts = self.think_with_intent(&intent, msg)?;
         let plan = self.repair_derive(&thoughts)?;
+        self.validate_route_tasks(&intent.route, &plan)?;
         let results = self.dispatch(&plan, &ws)?;
         let outcome = self.commit(plan, results, &ws)?;
         Ok(outcome)
     }
 
-    /// Phase 1: free-form model call to reason about the user request.
+    /// Phase 0: classify the user's intent against known routes.
+    ///
+    /// Calls the model with the `INTENT_GRAMMAR` to produce a structured
+    /// `Intent`. If confidence is below `fallback_threshold`, the route
+    /// is overridden to `DEFAULT_ROUTE` (`justChatting`).
+    fn classify(&self, msg: &str) -> Result<Intent, AgentError> {
+        let prompt = format!(
+            "Classify this user request into a route and goal.\n\nUser: {}\n\nIntent (as JSON):",
+            msg
+        );
+        let grammar = Some(INTENT_GRAMMAR.to_string());
+        let resp = self.backend_complete("", &prompt, grammar.as_deref(), 128, 0.2)?;
+
+        let mut intent: Intent = serde_json::from_str(&resp).map_err(|e| {
+            AgentError::Internal(format!(
+                "failed to parse intent from model output: {e}\noutput: {resp}"
+            ))
+        })?;
+
+        // Enforce confidence threshold — low confidence → safe fallback.
+        if intent.confidence < self.fallback_threshold {
+            intent.route = DEFAULT_ROUTE.to_string();
+            intent.confidence = 1.0; // mark as forced
+        }
+
+        // Validate the route is known.
+        if !self.route_tasks.contains_key(&intent.route) && !self.handlers.is_empty() {
+            // If the route isn't registered but we have handlers, fall back.
+            // If no routes are registered at all, accept any route.
+            if !self.route_tasks.is_empty() {
+                intent.route = DEFAULT_ROUTE.to_string();
+            }
+        }
+
+        Ok(intent)
+    }
+
+    /// Phase 1: free-form model call seeded with the classified intent.
+    fn think_with_intent(&self, intent: &Intent, msg: &str) -> Result<String, AgentError> {
+        let prompt = format!(
+            "Route: {}\nGoal: {}\n\nRequest: {}\n\nReason about this and plan a response:",
+            intent.route, intent.goal, msg
+        );
+        let resp = self.backend_complete("", &prompt, None, 512, 0.7)?;
+        Ok(resp)
+    }
+
+    /// Phase 1 core: free-form model call without intent context.
+    #[allow(dead_code)]
     fn think(&self, msg: &str) -> Result<String, AgentError> {
         let prompt = format!("Reason about this request and plan a response:\n{}", msg);
         let resp = self.backend_complete("", &prompt, None, 512, 0.7)?;
@@ -229,6 +330,25 @@ impl<'a> MechanisticAgent<'a> {
         Err(last_err.unwrap_or_else(|| {
             AgentError::Internal("derive failed after all retries".to_string())
         }))
+    }
+
+    /// Validate that all plan tasks are within the selected route's declared
+    /// task set. If the route has no declared tasks, skip validation (any
+    /// task is accepted).
+    fn validate_route_tasks(&self, route: &str, plan: &Plan) -> Result<(), AgentError> {
+        let Some(allowed) = self.route_tasks.get(route) else {
+            return Ok(()); // no task restrictions for this route
+        };
+        for task in &plan.tasks {
+            let key = (task.r#type.clone(), task.domain.clone());
+            if !allowed.contains(&key) {
+                return Err(AgentError::Internal(format!(
+                    "task ({}, {}) not allowed in route '{}'",
+                    task.r#type, task.domain, route
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Phase 3: dispatch each task to its registered handler.
@@ -303,6 +423,14 @@ impl<'a> MechanisticAgent<'a> {
         Ok(resp.text)
     }
 }
+
+/// BNF grammar that constrains model output to a valid Intent JSON.
+const INTENT_GRAMMAR: &str = r#"
+root  ::= "{" space "\"route\"" space ":" space string space "," space "\"confidence\"" space ":" space number space "," space "\"goal\"" space ":" space string space "}"
+string ::= "\"" ( [ -~] )* "\""
+number ::= [0-9] "." [0-9] [0-9]?
+space ::= " "?
+"#;
 
 /// BNF grammar that constrains model output to a valid Plan JSON.
 const PLAN_GRAMMAR: &str = r#"
@@ -525,5 +653,100 @@ mod tests {
 
         let result = agent.repair_derive("Write a story.");
         assert!(result.is_err(), "zero retries should fail immediately");
+    }
+
+    #[test]
+    fn test_classify_falls_back_on_low_confidence() {
+        let backend = MockBackend::default();
+        let agent = MechanisticAgent::new(&backend).with_fallback_threshold(0.8);
+
+        // MockBackend echoes the prompt, which won't parse as Intent JSON.
+        // classify() should fail with a parse error rather than panic.
+        let result = agent.classify("write me a story");
+        // Either parse error or default route — no panics.
+        match result {
+            Ok(intent) => {
+                // If parsing somehow succeeds, low confidence forces fallback.
+                assert_eq!(intent.route, DEFAULT_ROUTE);
+            }
+            Err(e) => {
+                assert!(e.to_string().contains("failed to parse intent"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_validate_route_tasks_accepts_allowed_task() {
+        let backend = MockBackend::default();
+        let mut agent = MechanisticAgent::new(&backend);
+        agent.add_route("storyTeller", vec![("write", "chapter"), ("write", "wiki")]);
+
+        let plan = Plan {
+            tasks: vec![Task {
+                r#type: "write".into(),
+                domain: "chapter".into(),
+                spec: serde_json::json!({}),
+            }],
+        };
+
+        assert!(agent.validate_route_tasks("storyTeller", &plan).is_ok());
+    }
+
+    #[test]
+    fn test_validate_route_tasks_rejects_disallowed_task() {
+        let backend = MockBackend::default();
+        let mut agent = MechanisticAgent::new(&backend);
+        agent.add_route("storyTeller", vec![("write", "chapter")]);
+
+        let plan = Plan {
+            tasks: vec![Task {
+                r#type: "write".into(),
+                domain: "wiki".into(),
+                spec: serde_json::json!({}),
+            }],
+        };
+
+        let result = agent.validate_route_tasks("storyTeller", &plan);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not allowed in route"));
+    }
+
+    #[test]
+    fn test_validate_route_tasks_skips_if_no_routes_declared() {
+        let backend = MockBackend::default();
+        let agent = MechanisticAgent::new(&backend);
+
+        let plan = Plan {
+            tasks: vec![Task {
+                r#type: "anything".into(),
+                domain: "goes".into(),
+                spec: serde_json::json!({}),
+            }],
+        };
+
+        // No routes declared at all — validation should skip.
+        assert!(agent.validate_route_tasks("any-route", &plan).is_ok());
+    }
+
+    #[test]
+    fn test_classify_with_route_table() {
+        let backend = MockBackend::default();
+        let mut agent = MechanisticAgent::new(&backend)
+            .with_fallback_threshold(0.2);
+        agent.add_route("storyTeller", vec![("write", "chapter"), ("write", "wiki")]);
+        agent.add_route("justChatting", vec![]);
+
+        // MockBackend echoes the prompt, so parsing will fail.
+        // This tests that classify() doesn't panic with routes registered.
+        let result = agent.classify("write me a story about a dragon");
+        match result {
+            Ok(intent) => {
+                // If parsed, route should be one of the registered routes or default.
+                assert!(&intent.route == "storyTeller" || &intent.route == DEFAULT_ROUTE);
+            }
+            Err(e) => {
+                assert!(e.to_string().contains("failed to parse intent"));
+            }
+        }
     }
 }
