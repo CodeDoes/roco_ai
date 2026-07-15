@@ -23,9 +23,10 @@ Commands: /help /quit /save <name> /load <name> /grammar <file> /temp <n>
 
 ### Core
 - **REPL loop** — reads user input, sends to backend, streams response back
-- **Session persistence** — uses `CompletionRequest::session` to maintain
-  conversation state across turns (the Phase 1 state pool in
-  `rwkv_backend.rs`)
+- **Session persistence** — uses `CompletionRequest::session` + `preserve_state`
+  to maintain conversation state across turns (the Phase 1 state pool in
+  `rwkv_backend.rs`). First turn sends the system prompt; subsequent turns
+  preserve the recurrent state and send only the user input.
 - **Streaming** — token-by-token output via `on_token` callback
 - **Interrupt** — Ctrl+C cancels the current generation (uses
   `ModelBackend::interrupt`)

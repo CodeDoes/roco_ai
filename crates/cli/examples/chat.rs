@@ -246,7 +246,10 @@ async fn main() -> anyhow::Result<()> {
                 max_tokens,
                 estimated_prompt_tokens: 0,
                 thinking: false,
-                preserve_state: false,
+                // After the first turn, preserve the recurrent state so the
+                // model's hidden state carries the conversation across turns
+                // without rebuilding the full prompt each time.
+                preserve_state: baked,
                 on_token: Some(Box::new(move |token: &str| {
                     print!("{token}");
                     let _ = io::stdout().flush();
