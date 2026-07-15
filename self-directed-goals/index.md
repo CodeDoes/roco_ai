@@ -44,16 +44,20 @@ These are my standing self-directed commitments:
 4. **agent** — *core + memory + planning done*. Self-directed: orchestrate
    (parallel/branch), session_search (reuse `MemoryStore` over transcripts),
    scheduled_tasks, and wire memory+planning into the `agent` CLI example.
-5. **agent_chat** — *started*. `AgentChatSession` (`crates/agent/src/agent_chat.rs`)
+5. **mechanistic-agent** — ⬜ *not started*. Plugin layer: code-driven controller
+   + router replaces the model-driven ReAct loop. Self-directed: implement once
+   the `message` and `workspace` layers are settled; keep it testable via
+   `MockBackend` with no GPU.
+6. **agent_chat** — *started*. `AgentChatSession` (`crates/agent/src/agent_chat.rs`)
    opens a folder-bound session that persists memory + session history (and the
    executed plan, captured in `AgentTrace`) across runs; wired through the
    `agent_chat` CLI example. Self-directed: let a resumed session actively reuse
    a prior plan; otherwise move to `browser_use` / `coder`.
-6. **browser_use** — not started. Self-directed: defer until the agent loop is
+7. **browser_use** — not started. Self-directed: defer until the agent loop is
    robust; then drive a headless browser via workspace-scoped tools.
-7. **testing** — done. Self-directed: keep the oracle/snapshot gate honest as
+8. **testing** — done. Self-directed: keep the oracle/snapshot gate honest as
    new layers add eval cases.
-8. **coder** — future. Self-directed: the capstone — let the agent run its own
+9. **coder** — future. Self-directed: the capstone — let the agent run its own
    develop/test/lint loop inside a `Workspace` sandbox, gated by human
    approval.
 
