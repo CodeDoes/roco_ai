@@ -5,10 +5,13 @@ A plugin layer on top of the core agent loop. The mechanistic agent replaces the
 Prerequisite order (top to bottom):
 
 1. **self_controlled_ingest** — the controller decides what the model reads; context is pulled, not pushed
-2. **task_grammars** — BNF grammars per task domain; model output is structurally trusted
-3. **workspace_sandbox** — request-scoped temp directory; model never touches the real filesystem
-4. **controller** — think → derive → dispatch → commit orchestration loop
-5. **router** — (type, domain) → handler dispatch table; unknown pairs fail loud
-6. **modes** — declarative route definitions (system prompt, tools, model size, state, workflow loop); router dispatches here
-7. **repair_loop** — grammar validate, structure oracle, retry with tightened params, fallback
-8. **actions_gate** — actions as the only exit to durable state; three-gate safety model
+2. **intent_classification** — classify user input → route + mode selection; low confidence falls back to `justChatting`
+3. **task_grammars** — BNF grammars per task domain; model output is structurally trusted
+4. **workspace_sandbox** — request-scoped temp directory; model never touches the real filesystem
+5. **controller** — think → derive → dispatch → commit orchestration loop
+6. **router** — (type, domain) → handler dispatch table; unknown pairs fail loud
+7. **modes** — declarative route definitions (system prompt, tools, model size, state, workflow loop); router dispatches here
+8. **handler_registry** — typed (type, domain) → HandlerFn map; modes register handlers; unknown pairs fail loud
+9. **state_mounted_instructions** — system instructions keyed by content hash, mounted per mode, not in-prompt
+10. **repair_loop** — grammar validate, structure oracle, retry with tightened params, fallback
+11. **actions_gate** — actions as the only exit to durable state; three-gate safety model
