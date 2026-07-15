@@ -300,12 +300,12 @@ impl MechanisticAgent {
     ///
     /// 1. Classify: model call → structured Intent (route, confidence, goal).
     ///    Low confidence falls back to `justChatting`.
-    /// 2. Think: free-form model call to reason about the request.
-    /// 3. Derive (repair loop): grammar-constrained call → structured Plan.
-    /// 4. Validate: check plan tasks against the selected route's declared set.
-    /// 5. Dispatch: route each task to its handler; handlers write into the
+    /// 2. Derive (repair loop): grammar-constrained call → structured Plan.
+    ///    Context is the Intent directly — no free-form thinking step.
+    /// 3. Validate: check plan tasks against the selected route's declared set.
+    /// 4. Dispatch: route each task to its handler; handlers write into the
     ///    temp workspace.
-    /// 6. Commit: snapshot workspace files and return the outcome.
+    /// 5. Commit: snapshot workspace files and return the outcome.
     pub async fn run(
         &self,
         backend: &dyn ModelBackend,
@@ -317,12 +317,11 @@ impl MechanisticAgent {
         let intent = self.classify(backend, msg).await?;
         if self.verbose {
             eprintln!("[mecha:identify] route={} confidence={:.2}", intent.route, intent.confidence);
+            eprintln!("[mecha:goal] {}", intent.goal);
         }
-        let thoughts = self.think_with_intent(backend, &intent, msg).await?;
-        if self.verbose {
-            eprintln!("[mecha:think] {}", thoughts.lines().take(3).collect::<Vec<_>>().join("\n"));
-        }
-        let plan = self.repair_derive(backend, &thoughts).await?;
+        // Derive plan directly from Intent — no free-form thinking step.
+        // This eliminates the source of <thinking> tag contamination.
+        let plan = self.repair_derive(backend, &intent, msg).await?;
         self.validate_route_tasks(&intent.route, &plan)?;
         let results = self.dispatch(backend, &plan, &ws).await?;
         let outcome = self.commit(plan, results, &ws)?;
@@ -383,8 +382,14 @@ impl MechanisticAgent {
 
     /// Phase 1: free-form model call seeded with the classified intent.
     ///
+    /// DEPRECATED: This method produces free-form output that causes <thinking>
+    /// tag contamination on undertrained RWKV models. Use `repair_derive()` with
+    /// structured Intent context instead.
+    ///
     /// Prepend-pull protocol: surfaces context from past sessions and memory
     /// that shares keywords with the current request or its goal.
+    #[deprecated(note = "Eliminates free-form generation that causes think-tag contamination")]
+    #[allow(dead_code)]
     async fn think_with_intent(
         &self,
         backend: &dyn ModelBackend,
@@ -418,29 +423,34 @@ impl MechanisticAgent {
 
     /// Phase 2: grammar-constrained model call with repair loop.
     ///
+    /// Takes the structured Intent directly as context — no free-form thinking
+    /// step. This eliminates the source of <thinking> tag contamination from
+    /// undertrained RWKV models.
+    ///
     /// Before each attempt it collects relevant context from sessions/memory
-    /// keyed against the prior reasoning (`thoughts`). If an attempt fails,
-    /// already-attempted plans are avoided by excluding them from future
-    /// context windows.
+    /// keyed against the intent goal. If an attempt fails, already-attempted
+    /// plans are avoided by excluding them from future context windows.
     async fn repair_derive(
         &self,
         backend: &dyn ModelBackend,
-        thoughts: &str,
+        intent: &Intent,
+        msg: &str,
     ) -> Result<Plan, AgentError> {
         let mut temp = self.repair.temperature;
         let mut max_tokens = self.repair.max_tokens;
         let mut last_err = None;
 
-        // Pre-collect context once per derive cycle, keyed against the reasoning.
-        let mut ctx_mgr = self.build_context_manager(thoughts, None);
-        let snippets = ctx_mgr.collect(thoughts);
+        // Pre-collect context once per derive cycle, keyed against the goal.
+        let mut ctx_mgr = self.build_context_manager(&intent.goal, None);
+        let snippets = ctx_mgr.collect(&intent.goal);
         let ctx_block = super::context::ContextManager::to_prompt_block(&snippets);
 
         for attempt in 0..=self.repair.max_retries {
             let grammar = Some(PLAN_GRAMMAR.to_string());
+            // Build prompt from structured Intent — no free-form reasoning.
             let mut prompt = format!(
-                "Based on your reasoning, produce a structured plan as JSON tasks:\n{}",
-                thoughts
+                "Route: {}\nGoal: {}\nRequest: {}\n\nProduce a structured plan as JSON tasks:",
+                intent.route, intent.goal, msg
             );
             if !ctx_block.is_empty() {
                 prompt.insert_str(0, &format!("{}\n\n", ctx_block));
@@ -821,7 +831,13 @@ mod tests {
             min_tokens: 64,
         });
 
-        let result = agent.repair_derive(&backend, "Write a story.").await;
+        let intent = Intent {
+            route: "storyTeller".into(),
+            confidence: 0.9,
+            goal: "Write a story.".into(),
+            params: serde_json::json!({}),
+        };
+        let result = agent.repair_derive(&backend, &intent, "Write a story.").await;
         assert!(result.is_err(), "repair loop should fail after exhausting retries");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -838,7 +854,13 @@ mod tests {
             ..RepairConfig::default()
         });
 
-        let result = agent.repair_derive(&backend, "Write a story.").await;
+        let intent = Intent {
+            route: "storyTeller".into(),
+            confidence: 0.9,
+            goal: "Write a story.".into(),
+            params: serde_json::json!({}),
+        };
+        let result = agent.repair_derive(&backend, &intent, "Write a story.").await;
         assert!(result.is_err(), "zero retries should fail immediately");
     }
 
