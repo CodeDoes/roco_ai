@@ -440,4 +440,41 @@ mod tests {
         assert!(config.max_steps > 0);
         assert!(config.budget_tokens > 0);
     }
+
+    #[tokio::test]
+    async fn agent_runs_with_combined_workspace_memory_session_scheduler_tools() {
+        use std::sync::Arc;
+        use crate::memory::MemoryStore;
+        use crate::sessions::SessionStore;
+        use crate::scheduler::Scheduler;
+        use crate::workspace::{Workspace, WorkspaceKind};
+
+        let ws = Arc::new(Workspace::temp(WorkspaceKind::Agent).unwrap());
+        let mem = Arc::new(MemoryStore::new());
+        let sess = Arc::new(SessionStore::new());
+        let sched = Arc::new(Scheduler::new());
+
+        let mut tools = roco_tools::all_tools();
+        tools.extend(Workspace::scoped_tools(ws));
+        tools.extend(MemoryStore::scoped_tools(mem.clone()));
+        tools.extend(SessionStore::scoped_tools(sess.clone()));
+        tools.extend(Scheduler::scoped_tools(sched.clone()));
+
+        let agent = Agent::with_tools(AgentConfig::default(), tools);
+        let backend = MockBackend::default();
+        let trace = agent.run(&backend, "do something benign").await.unwrap();
+        assert!(trace.steps.len() >= 1, "agent should run with the combined registry");
+
+        // The expanded registry carries the workspace + memory + session + scheduler tools.
+        assert!(agent.tools().get("remember").is_some());
+        assert!(agent.tools().get("search_sessions").is_some());
+        assert!(agent.tools().get("schedule").is_some());
+        assert!(agent.tools().get("read").is_some(), "workspace read tool present");
+
+        // The scheduler integrates with the backend (host-driven run_due).
+        let id = sched.schedule_one_off("deferred task", 0, None);
+        let outcomes = sched.run_due(&backend).await.unwrap();
+        assert_eq!(outcomes.len(), 1);
+        assert!(sched.get(&id).is_none(), "one-off task removed after running");
+    }
 }

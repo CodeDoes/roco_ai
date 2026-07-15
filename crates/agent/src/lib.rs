@@ -21,3 +21,6 @@ pub use plan::{Plan, PlanStep, PlanResult, Planner, StepOutcome};
 pub use sessions::{SessionSearchTool, SessionStore, SessionTranscript, SessionTurn};
 pub use scheduler::{ScheduleTool, ScheduledOutcome, ScheduledTask, Scheduler};
 pub use tool_selector::select_relevant;
+/// Re-export of the workspace crate so callers (and the agent example) can
+/// build a sandboxed agent via `roco_agent::workspace`.
+pub use roco_workspace as workspace;

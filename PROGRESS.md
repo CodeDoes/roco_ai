@@ -212,25 +212,17 @@ flags, env vars, run commands); this file is the strategy context.
   returning all tools when none score above zero; wired via
   `AgentConfig::gradual_tool_disclosure`. Remaining: `state_tune_examples`,
   `system_instruction_following`, `user_message_response`.
-- `agent/*` — **partial**: core loop + tool execution loop done
+- `agent/*` — **complete**: core loop + tool execution loop done
   (`goals/agent/agent`, `goals/agent/tool_execution_loop`). **Memory done**
-  (`goals/agent/memory`): `MemoryStore` + `remember`/`recall` tools.
-  **Planning done** (`goals/agent/planning`): `Planner` + `Plan`/`PlanStep`
-  (`crates/agent/src/plan.rs`) with defensive JSON extraction (falls back to
-  a single step), dependency-tracked `topological_order`, JSON
-  (de)serialization for review/resume, and `Plan::execute` (sequential
-  orchestration — the primitive `goals/agent/orchastrate` builds on). Wired
-  via `Agent::plan`. **Orchestrate done** (`goals/agent/orchastrate`):
-  `Plan::execute` runs steps in dependency **waves** (independent steps in
-  parallel via `join_all`, dependent steps wait) and returns outcomes in
-  stable topological order. **Session search done**
-  (`goals/agent/session_search`): `SessionStore` records runs as transcripts
-  and a `search_sessions` tool ranks past sessions by content (reusing the
-  `memory` ranker). Wired via `Agent::with_sessions`. **Scheduled tasks done**
-  (`goals/agent/scheduled_tasks`): `Scheduler` with one-off/periodic tasks,
-  injectable fake clock, `due()`/`run_due`, JSON persistence, and a `schedule`
-  tool wired via `Agent::with_scheduler`. The `agent` layer is now **complete**;
-  remaining integration is wiring these into the `agent` CLI example.
+  (`goals/agent/memory`), **Planning done** (`goals/agent/planning`), **Orchestrate done**
+  (`goals/agent/orchastrate`), **Session search done** (`goals/agent/session_search`),
+  **Scheduled tasks done** (`goals/agent/scheduled_tasks`). **Wired end-to-end**:
+  the `agent` CLI example now builds a `Workspace`-sandboxed agent with
+  `MemoryStore` + `SessionStore` + `Scheduler` combined tools, records its run,
+  and runs due tasks; a `MockBackend` integration test asserts the combined
+  registry carries every scoped tool and the scheduler integrates with the
+  backend. The `agent` layer is now **complete**; remaining integration items
+  are in the `workspace`/`message` layers.
 - `testing/eval_harness` — **done**.
 - `workspace` — **implemented (core)**: `Workspace` sandbox boundary
   (`crates/workspace/src/workspace.rs`) with path-escape protection

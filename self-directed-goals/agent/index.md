@@ -34,13 +34,15 @@ Prerequisite order (mirrors the product layer):
    `Agent::with_scheduler`. `run_due` is host-driven (not a model tool).
 
 **Wiring (my standing priority):**
-- Connect `memory` + `planning` + `session_search` + `scheduler` into the `agent`
+- ✅ Connect `memory` + `planning` + `session_search` + `scheduler` into the `agent`
   CLI example so a real run can `remember`, `recall`, `plan`, `search_sessions`,
-  and `schedule` — today only `all_tools()` (unrestricted) is used.
-- Add an **agent eval** that runs a tiny planned task against `MockBackend` and
-  asserts the plan is decomposed and executed.
+  and `schedule` — previously only `all_tools()` (unrestricted) was used. The
+  example now builds a `Workspace`-sandboxed agent with `MemoryStore`,
+  `SessionStore`, and `Scheduler`, records its run, and runs due tasks.
+- ✅ Add an **agent eval** that runs a tiny planned task against `MockBackend` and
+  asserts the plan is decomposed and executed (`agent_runs_with_combined_…`).
 
-**Next self-directed action:** wire the agent capabilities into the `agent` CLI
- example (memory/planning/session-search/scheduler), then return to the
- `message` layer (close the `chat_cli` session-state gap) and the `workspace`
- layer (agent-example integration + a sandbox escape eval case).
+**Next self-directed action:** return to the `workspace` layer — add a sandbox-
+escape eval case that asserts `Workspace::resolve` rejects path traversal — and
+then the `message` layer's remaining items (`state_tune_examples`,
+`system_instruction_following`, `user_message_response`).
