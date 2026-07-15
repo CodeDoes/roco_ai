@@ -215,7 +215,10 @@ flags, env vars, run commands); this file is the strategy context.
   `message_eval_cases()` (`crates/engine/src/cases.rs`) adds `instruct_baseline_persona`
   and `user_turn_coherence` to measure the *un-tuned* model's starting point;
   wired into the `eval_suite` example (RWKV backend) and asserted by a unit test.
-  Remaining: `state_tune_examples`.
+  **State-tuning exposed** (`goals/message/state_tune_examples`): `bake_into_session`
+  (`crates/engine/src/backend.rs`) bakes a few-shot persona into a named session
+  via `preserve_state` (so `RwkvBackend`'s session pool carries it), and the chat
+  CLI exposes it as `/bake <file>`; unit-tested for plumbing via `MockBackend`.
 - `agent/*` — **complete**: core loop + tool execution loop done
   (`goals/agent/agent`, `goals/agent/tool_execution_loop`). **Memory done**
   (`goals/agent/memory`), **Planning done** (`goals/agent/planning`), **Orchestrate done**

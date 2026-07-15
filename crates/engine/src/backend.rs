@@ -229,6 +229,50 @@ pub async fn bake_persona(
     backend.save_state().await
 }
 
+/// Bake a few-shot persona into a *named session* by replaying example turns
+/// through the backend with `preserve_state` enabled.
+///
+/// Unlike [`bake_persona`], which returns raw state bytes (only meaningful for
+/// backends that implement `save_state`/`load_state`), this uses the session
+/// mechanism (`CompletionRequest::session` + `preserve_state`) so the
+/// recurrent state of that session — not a rebuilt prompt — carries the
+/// persona. This is what the chat CLI uses, because `RwkvBackend` manages
+/// state through its session pool rather than byte snapshots.
+///
+/// The first example's user turn folds in `system`; every subsequent turn
+/// relies on the accumulated state. After baking, mark the session as `baked`
+/// so later user turns don't re-send the system prompt or the examples.
+pub async fn bake_into_session(
+    backend: &dyn ModelBackend,
+    session: &str,
+    system: &str,
+    examples: &[(&str, &str)],
+) -> Result<(), EngineError> {
+    for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
+        let user_req = CompletionRequest {
+            system: if i == 0 { system.to_string() } else { String::new() },
+            prompt: user_msg.to_string(),
+            temperature: 0.0,
+            max_tokens: 1024,
+            preserve_state: true,
+            session: Some(session.to_string()),
+            ..Default::default()
+        };
+        backend.complete(user_req).await?;
+        let asst_req = CompletionRequest {
+            system: String::new(),
+            prompt: assistant_msg.to_string(),
+            temperature: 0.0,
+            max_tokens: 1024,
+            preserve_state: true,
+            session: Some(session.to_string()),
+            ..Default::default()
+        };
+        backend.complete(asst_req).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,5 +363,32 @@ mod tests {
         let state = bake_persona(&b, "You are a helpful assistant.", &examples).await.unwrap();
         assert!(!state.is_empty());
         b.load_state(state).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bake_into_session_replays_examples_on_named_session() {
+        let b = MockBackend::default();
+        let session = "persona-session";
+        let examples = [
+            ("Hi there.", "Hello! How can I help?"),
+            ("Who are you?", "I am a polite assistant."),
+        ];
+        // Baking replays each example as two turns on the named session.
+        bake_into_session(&b, session, "You are a polite assistant.", &examples)
+            .await
+            .unwrap();
+        // The session state is retrievable and a follow-up turn completes.
+        let state = b.save_state().await.unwrap();
+        assert!(!state.is_empty());
+        let resp = b
+            .complete(CompletionRequest {
+                prompt: "Thanks!".into(),
+                preserve_state: true,
+                session: Some(session.into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(resp.text.contains("result"));
     }
 }

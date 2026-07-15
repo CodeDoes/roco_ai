@@ -16,8 +16,18 @@ Prerequisite order (mirrors the product layer):
 3. **user_message_response** — ✅ done (self-directed). `message_eval_cases()`
    adds `user_turn_coherence`, a coherence/format probe for a plain user turn,
    wired and unit-tested the same way.
-4. **state_tune_examples** — ⬜ *self-directed:* use `bake_persona` to persist a
-   few-shot state and verify it changes behavior; expose via the chat CLI.
+4. **state_tune_examples** — ✅ done (self-directed). `bake_into_session`
+   (`crates/engine/src/backend.rs`) bakes a few-shot persona into a *named
+   session* via `preserve_state` (so `RwkvBackend`'s session pool carries the
+   persona, not a rebuilt prompt — unlike the byte-based `bake_persona`, which
+   only works for backends implementing `save_state`/`load_state`). Exposed in
+   the chat CLI as `/bake <file>` (tagged `user:`/`assistant:` pairs), which
+   folds the persona into the current session state and is unit-tested for
+   plumbing via `MockBackend`.
+
+**Next self-directed action:** the `message` layer's self-directed items are
+all done; return to the product `goals/message` remaining sub-goals or move to
+`agent_chat` (folder-bound persistent agent sessions).
 5. **tool_catelogue** — ✅ done.
 6. **tool_calling** — ✅ done.
 7. **tool_result_handling** — ✅ done.

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use roco_engine::{CompletionRequest, ModelBackend};
+use roco_engine::{CompletionRequest, ModelBackend, bake_into_session};
 use roco_inference::RwkvBackend;
 
 fn print_help() {
@@ -23,6 +23,7 @@ fn print_help() {
     eprintln!("  /temp <n>        Temperature (0.0-2.0)");
     eprintln!("  /max <n>         Max tokens per response");
     eprintln!("  /grammar <file>  Load a GBNF grammar (or 'off')");
+    eprintln!("  /bake <file>    Bake a few-shot persona file into the session state");
     eprintln!("  /stats           Show token counts");
     eprintln!("  /help            Show this\n");
 }
@@ -33,6 +34,44 @@ fn do_prompt() -> io::Result<String> {
     let mut line = String::new();
     io::stdin().lock().read_line(&mut line)?;
     Ok(line.trim_end().to_string())
+}
+
+/// Parse a few-shot persona file into `(user, assistant)` pairs.
+///
+/// Each example is two tagged lines, in either order:
+/// ```text
+/// user: <user message>
+/// assistant: <assistant reply>
+/// ```
+/// A subsequent pair starts a new example. Blank lines are ignored.
+fn parse_persona_file(path: &str) -> io::Result<Vec<(String, String)>> {
+    let text = std::fs::read_to_string(path)?;
+    let mut pairs = Vec::new();
+    let mut cur_user: Option<String> = None;
+    let mut cur_asst: Option<String> = None;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("user:") {
+            // Flush any completed-but-unpaired example first.
+            if let (Some(u), Some(a)) = (cur_user.take(), cur_asst.take()) {
+                pairs.push((u, a));
+            }
+            cur_user = Some(rest.trim().to_string());
+        } else if let Some(rest) = line.strip_prefix("assistant:") {
+            cur_asst = Some(rest.trim().to_string());
+        } else {
+            continue;
+        }
+        if let (Some(u), Some(a)) = (&cur_user, &cur_asst) {
+            pairs.push((u.clone(), a.clone()));
+            cur_user = None;
+            cur_asst = None;
+        }
+    }
+    Ok(pairs)
 }
 
 #[tokio::main]
@@ -146,6 +185,37 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+                "/bake" => match parts.get(1) {
+                    Some(path) => match parse_persona_file(path) {
+                        Ok(examples) if examples.is_empty() => {
+                            eprintln!("  No user/assistant pairs found in '{path}'.\n");
+                        }
+                        Ok(examples) => {
+                            match bake_into_session(
+                                &backend,
+                                &current_session,
+                                &system,
+                                &examples
+                                    .iter()
+                                    .map(|(u, a)| (u.as_str(), a.as_str()))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .await
+                            {
+                                Ok(()) => {
+                                    baked = true;
+                                    eprintln!(
+                                        "  Baked {} example pair(s) into session '{current_session}'.\n",
+                                        examples.len()
+                                    );
+                                }
+                                Err(e) => eprintln!("  Bake failed: {e}\n"),
+                            }
+                        }
+                        Err(e) => eprintln!("  Failed: {e}\n"),
+                    },
+                    None => eprintln!("  Usage: /bake <persona_file>\n"),
+                },
                 other => eprintln!("  Unknown: {other}. Type /help.\n"),
             }
             continue;
