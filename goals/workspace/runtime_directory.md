@@ -32,8 +32,8 @@
 **Intended for:** Agent workspace artifacts from the story generation pipeline.
 
 **Used by:**
-- `crates/agent/src/story_pipeline.rs` (base_dir = `.roco/workspaces`)
-- `crates/cli/examples/story.rs` (creates `story_<prompt>_<ts>/` directories)
+- `crates/cli/examples/story.rs` (grammar-constrained, creates `story_<prompt>_<ts>/` directories)
+- `crates/cli/examples/story_pilot.rs` (grammar-constrained, creates `story_<prompt>_<ts>/` directories)
 
 **Structure:** Each story run creates a timestamped directory:
 ```
