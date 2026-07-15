@@ -19,8 +19,8 @@ Prerequisite order (mirrors the product layer):
 1. **self_controlled_ingest** — 🟡 partial. `MechanisticAgent::think()` calls the model; context is the user message. No pull protocol yet.
 2. **intent_classification** — ⬜ not started. No route classification yet; the agent uses a fixed plan grammar.
 3. **task_grammars** — ✅ done. `PLAN_GRAMMAR` BNF constrains model output to a valid Plan JSON with typed tasks.
-4. **workspace_sandbox** — ⬜ not started. Uses `HandlerResult::files` map; no temp directory wrapper yet.
-5. **controller** — ✅ done. think → derive → dispatch → commit loop in `MechanisticAgent::run()`.
+4. **workspace_sandbox** — ✅ done. `run()` creates a `Workspace::temp()` sandbox; handlers write through `ws.resolve()`; `commit()` snapshots all files into `MechanisticOutcome::workspace_files`.
+5. **controller** — ✅ done. think → repair_derive → dispatch → commit loop in `MechanisticAgent::run()`.
 6. **router** — ✅ done. (type, domain) → HandlerFn dispatch table; unknown pairs fail loud.
 7. **modes** — ⬜ not started. No mode system yet; handlers registered directly.
 8. **handler_registry** — ✅ done. Typed HashMap-based registry with `register()` API.
@@ -28,6 +28,6 @@ Prerequisite order (mirrors the product layer):
 10. **repair_loop** — ✅ done. `RepairConfig` + `repair_derive()` wraps `derive()` with retry, temperature decay, token truncation, and bounded retries. 3 unit tests cover retry exhaustion, zero-retry mode, and param tightening.
 11. **actions_gate** — ⬜ not started. Handler results collected but not gated by action registry.
 
-**Self-directed priority:** Core + repair loop done with 9 unit tests against
-MockBackend. Next: workspace sandbox integration via `roco_workspace::Workspace`,
-then intent classification for mode routing.
+**Self-directed priority:** Core + repair loop + workspace sandbox done with 9
+unit tests against MockBackend. Next: intent classification for mode routing,
+then state-mounted instructions.
