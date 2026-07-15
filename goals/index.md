@@ -12,9 +12,10 @@ way (earlier = dependency of later).
 2. **message** — chat protocol (instructions, formatting, tool calls, chat CLI)
 3. **workspace** — the environment the agent acts in
 4. **agent** — the autonomous agent loop and its capabilities
-5. **agent_chat** — persistent workspace or folder-bound agent sessions
-6. **browser_use** — driving a real browser
-7. **testing** — eval harness, oracles, regression gates
-8. **coder** — *(future)* the agent's own develop/test/lint loop in a controlled sandbox
+5. **mechanistic-agent** — code-driven controller + router plugin; model is a subroutine, control flow stays in classic code
+6. **agent_chat** — persistent workspace or folder-bound agent sessions
+7. **browser_use** — driving a real browser
+8. **testing** — eval harness, oracles, regression gates
+9. **coder** — *(future)* the agent's own develop/test/lint loop in a controlled sandbox
 
 Each folder contains an `index.md` listing its goals in dependency order.
