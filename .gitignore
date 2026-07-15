@@ -5,3 +5,8 @@ target/
 .devenv/
 .roco/
 .env
+logs/
+sessions/
+traces/
+workspaces/
+story/

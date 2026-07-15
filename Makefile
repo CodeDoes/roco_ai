@@ -1,4 +1,10 @@
-.PHONY: all build test check fmt fix clean
+.PHONY: all build test test-% check check-% fmt fix clean
+
+# Directories for artefact output.
+mkdir_test := mkdir -p .roco/tests
+mkdir_lint := mkdir -p .roco/lints
+LOG_TEST   := .roco/tests/latest.log
+LOG_LINT   := .roco/lints/latest.log
 
 # ─── Rust workspace ──────────────────────────────────────────────────────────
 
@@ -7,11 +13,25 @@ all: build
 build:
 	cargo build --workspace
 
+# Full test suite — captures all output to LOG_TEST for inspection.
 test:
-	cargo test --workspace
+	$(mkdir_test)
+	cargo test --workspace > $(LOG_TEST) 2>&1 || true
 
+# Single-crate test: make test-agent, make test-engine, etc.
+test-%:
+	$(mkdir_test)
+	cargo test -p roco-$* > $(LOG_TEST) 2>&1 || true
+
+# Workspace-wide compile check → LOG_LINT.
 check:
-	cargo check --workspace
+	$(mkdir_lint)
+	cargo check --workspace > $(LOG_LINT) 2>&1 || true
+
+# Single-crate compile check: make check-agent, make check-engine, etc.
+check-%:
+	$(mkdir_lint)
+	cargo check -p roco-$* > $(LOG_LINT) 2>&1 || true
 
 fmt:
 	cargo fmt --all

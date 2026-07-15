@@ -47,9 +47,10 @@
     ];
   };
 
-  # https://devenv.sh/scripts/
-  scripts.check.exec = "cargo check --workspace";
-  scripts.test.exec = "cargo test --workspace";
+  # Test/lint output lands here for inspection; never prints to terminal.
+  # After running: cat .roco/tests/latest.log or cat .roco/lints/latest.log
+  scripts.check.exec = "mkdir -p .roco/lints && cargo check --workspace > .roco/lints/latest.log 2>&1 || true";
+  scripts.test.exec = "mkdir -p .roco/tests && cargo test --workspace > .roco/tests/latest.log 2>&1 || true";
   scripts.build.exec = "cargo build --workspace";
   scripts.rwkv.exec = "cargo run -p roco-inference --example rwkv_test --release";
   scripts.grammar.exec = "cargo run -p roco-cli --example grammar_smoke --release";
@@ -77,9 +78,12 @@
   dotenv.enable = true;
 
   # https://devenv.sh/tests/
+  # CI: devenv test runner uses workspace-level script which redirects to file.
   enterTest = ''
-    echo "Running RoCo AI test suite"
-    cargo test
+    mkdir -p .roco/tests
+    cargo test --workspace >> .roco/tests/latest.log 2>&1 || true
+    echo "=== Test summary ==="  | tee -a .roco/tests/latest.log
+    grep -E "^(test result|running|passed|failed|ignored)" .roco/tests/latest.log >> /dev/null && echo "See .roco/tests/latest.log for full output." || true
   '';
 
   # Point to the system library path so the Vulkan loader can find

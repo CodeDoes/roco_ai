@@ -179,9 +179,41 @@ cargo run --bin roco -- bless             # bless current snapshot as new oracle
 cargo run --bin roco -- rwkv              # smoke-test the RWKV backend
 cargo run --bin roco -- grammar           # grammar-constrained decode smoke test
 cargo run --bin roco -- gpu-check         # show Vulkan device + model status
-cargo test --workspace                    # full test suite (61 passing, 0 warnings)
 cargo build --release                     # all crates (release for GPU work)
 ```
+
+### Testing convention
+
+Run tests directly with `cargo test`. No shell redirects, no temp files.
+If a test fails, the exit code will be non-zero and the failure messages
+will appear in the terminal output — inspect them directly.
+
+```bash
+# Single crate
+cargo test -p roco-agent
+
+# Full workspace
+cargo test --workspace
+
+# Workspace-only compile check (fast)
+cargo check --workspace
+
+# Linting
+cargo clippy --workspace --all-targets -- --deny warnings
+```
+
+When debugging a flaky or hanging test, add `--nocapture` to see print!
+output and `-q` to reduce noise:
+
+```bash
+cargo test -p roco-agent -- agent_chat::tests:: --nocapture -q
+```
+
+Rules:
+- **Never** redirect test output to files with `>` or `2>&1`.
+- If output needs capturing for later inspection, use `script` (terminal recorder)
+  or `tee` — but prefer reading terminal output directly.
+- Fix test failures instead of hiding them behind redirection.
 
 > **The execution environment is always inside `devenv shell`.** The `roco`
 > command is defined as a devenv script in `devenv.nix` (`scripts.*.exec`) and
