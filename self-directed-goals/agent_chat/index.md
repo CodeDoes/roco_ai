@@ -1,17 +1,35 @@
 # Self-Directed Goals: agent_chat
 
 Reflection of [`goals/agent_chat/index.md`](../../goals/agent_chat/index.md).
-Not started in the product. My self-directed view: a folder-bound agent
-session that persists its workspace, plan, and memory across runs.
+The `agent` layer's memory / sessions / planning produce state that should
+survive across invocations. This layer makes that real: a *folder-bound*
+agent session that persists a workspace + memory + session history (and, via
+the recorded `AgentTrace`, the plan that was executed) so the agent continues
+where it left off.
 
 Prerequisite order (mirrors the product layer):
 
-1. **folder_bound** — ⬜ *self-directed:* bind an agent session to a directory.
-   On start, load (or create) `.roco/session.json` containing the active
-   `Workspace` root, the last `Plan` (resumable), and a `MemoryStore` path.
-   This composes the `workspace`, `agent/planning`, and `agent/memory` layers
-   that are already built — it is glue, not new engine work.
+1. **folder_session** — ✅ done. `AgentChatSession`
+   (`crates/agent/src/agent_chat.rs`) opens (or initializes) a session rooted
+   at a project `<folder>`: it loads `MemoryStore` + `SessionStore` from
+   `<folder>/.roco/agent_chat/`, roots the agent's `Workspace` at the folder
+   (so it can read/edit the project), and runs tasks with the combined
+   built-in + workspace + memory + session + scheduler tools. Both stores
+   persist on every write, so reopening the same folder restores continuity.
+   Unit-tested: memory + session history survive a reopen, and the combined
+   tool set includes the workspace/persistent tools.
+2. **resume_plan** — 🟡 *self-directed:* the executed plan is captured in the
+   recorded `AgentTrace` (and thus the `SessionStore` transcript), so a resumed
+   session can `search_sessions` for prior plans. A future step could lift a
+   prior `Plan`/`PlanStep` list back into the agent's working set explicitly;
+   for now the transcripts are the source of truth and are searchable.
 
-**Next self-directed action:** only after `agent` (orchastrate/session_search)
-is further along — then add `folder_bound` so agent runs are resumable from
-disk. Defer until the agent loop is robust.
+**Wiring (my own priority):** the `agent_chat` CLI example
+(`crates/cli/examples/agent_chat.rs`) opens a folder, runs a task against the
+RWKV backend, runs due scheduled tasks, and persists — so the feature is
+reachable end-to-end, not just compiled into the crate.
+
+**Next self-directed action:** let a resumed session actively *reuse* a prior
+plan (lift the last `SessionTranscript`'s plan steps back into the agent), then
+move to `browser_use` (deferred until the agent loop is robust) or the `coder`
+capstone.

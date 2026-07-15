@@ -249,7 +249,15 @@ flags, env vars, run commands); this file is the strategy context.
   for `Agent`, base dir for `User`, temp dir for `Eval`/`Temp`/`Generic`).
   **Bash denylist added**: `blocked_command_reason` refuses a conservative set
   of destructive/escape-prone commands; `WorkspaceBashTool` enforces it.
-- `agent_chat`, `browser_use`, `coder` — forward-looking; not yet in code.
+- `agent_chat` — **started**: `AgentChatSession` (`crates/agent/src/agent_chat.rs`)
+  opens a folder-bound session rooted at a project folder, loading `MemoryStore`
+  + `SessionStore` from `<folder>/.roco/agent_chat/` and rooting the agent's
+  `Workspace` at the folder. Runs tasks with the combined built-in + workspace
+  + memory + session + scheduler tools; both stores persist on every write, so
+  reopening the folder restores continuity (unit-tested, and wired through the
+  `agent_chat` CLI example). The executed plan is captured in each recorded
+  `AgentTrace`, making prior plans searchable via `search_sessions`.
+- `browser_use`, `coder` — forward-looking; not yet in code.
 
 ## Open questions
 

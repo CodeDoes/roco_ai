@@ -12,8 +12,10 @@ pub mod plan;
 pub mod sessions;
 pub mod scheduler;
 pub mod tool_selector;
+pub mod agent_chat;
 
 pub use agent::{Agent, AgentConfig, AgentStep, AgentTrace};
+pub use agent_chat::AgentChatSession;
 pub use error::AgentError;
 pub use subtask::{Subtask, SubtaskOutput};
 pub use memory::{MemoryEntry, MemoryStore, RememberTool, RecallTool};

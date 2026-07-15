@@ -44,8 +44,11 @@ These are my standing self-directed commitments:
 4. **agent** — *core + memory + planning done*. Self-directed: orchestrate
    (parallel/branch), session_search (reuse `MemoryStore` over transcripts),
    scheduled_tasks, and wire memory+planning into the `agent` CLI example.
-5. **agent_chat** — not started. Self-directed: folder-bound agent sessions
-   that persist a workspace + plan + memory across runs.
+5. **agent_chat** — *started*. `AgentChatSession` (`crates/agent/src/agent_chat.rs`)
+   opens a folder-bound session that persists memory + session history (and the
+   executed plan, captured in `AgentTrace`) across runs; wired through the
+   `agent_chat` CLI example. Self-directed: let a resumed session actively reuse
+   a prior plan; otherwise move to `browser_use` / `coder`.
 6. **browser_use** — not started. Self-directed: defer until the agent loop is
    robust; then drive a headless browser via workspace-scoped tools.
 7. **testing** — done. Self-directed: keep the oracle/snapshot gate honest as
