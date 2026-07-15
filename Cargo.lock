@@ -1411,6 +1411,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "futures",
  "roco-agent",
  "roco-chat-common",
  "roco-engine",
@@ -1418,6 +1419,7 @@ dependencies = [
  "roco-inference",
  "roco-message",
  "roco-tools",
+ "roco-workspace",
  "serde",
  "serde_json",
  "tokio",

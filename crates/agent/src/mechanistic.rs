@@ -351,6 +351,18 @@ impl<'a> MechanisticAgent<'a> {
         Ok(())
     }
 
+    /// Dispatch a single task to its registered handler.
+    pub fn dispatch_single(&self, task: &Task, ws: &Workspace) -> Result<HandlerResult, AgentError> {
+        let key = (task.r#type.clone(), task.domain.clone());
+        let handler = self.handlers.get(&key).ok_or_else(|| {
+            AgentError::Internal(format!(
+                "no handler registered for ({}, {})",
+                task.r#type, task.domain
+            ))
+        })?;
+        Ok(handler(task, self.backend, ws))
+    }
+
     /// Phase 3: dispatch each task to its registered handler.
     fn dispatch(&self, plan: &Plan, ws: &Workspace) -> Result<Vec<HandlerResult>, AgentError> {
         let mut results = Vec::new();
@@ -369,7 +381,7 @@ impl<'a> MechanisticAgent<'a> {
     }
 
     /// Phase 4: snapshot workspace files into the outcome.
-    fn commit(
+    pub fn commit(
         &self,
         plan: Plan,
         handler_results: Vec<HandlerResult>,

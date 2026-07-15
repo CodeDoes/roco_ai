@@ -15,6 +15,7 @@ roco-message = { path = "../message" }
 roco-agent = { path = "../agent" }
 roco-chat-common = { path = "../chat-common" }
 roco-tools = { path = "../tools" }
+roco-workspace = { path = "../workspace" }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -22,3 +23,4 @@ serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+futures.workspace = true
