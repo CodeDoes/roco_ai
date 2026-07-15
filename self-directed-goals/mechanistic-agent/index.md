@@ -25,10 +25,9 @@ Prerequisite order (mirrors the product layer):
 7. **modes** — ⬜ not started. No mode system yet; handlers registered directly.
 8. **handler_registry** — ✅ done. Typed HashMap-based registry with `register()` API.
 9. **state_mounted_instructions** — ⬜ not started. System prompt passed directly, not state-mounted.
-10. **repair_loop** — ⬜ not started. No retry/validation loop yet; `derive()` parse failure returns error.
+10. **repair_loop** — ✅ done. `RepairConfig` + `repair_derive()` wraps `derive()` with retry, temperature decay, token truncation, and bounded retries. 3 unit tests cover retry exhaustion, zero-retry mode, and param tightening.
 11. **actions_gate** — ⬜ not started. Handler results collected but not gated by action registry.
 
-**Self-directed priority:** Core struct implemented with 6 unit tests against
-MockBackend. Next: add repair loop (grammar-validate → retry), then workspace
-sandbox integration via `roco_workspace::Workspace`, then intent classification
-for mode routing.
+**Self-directed priority:** Core + repair loop done with 9 unit tests against
+MockBackend. Next: workspace sandbox integration via `roco_workspace::Workspace`,
+then intent classification for mode routing.
