@@ -6,25 +6,29 @@ The mechanistic agent is a plugin that replaces the model-driven agent loop with
 fixed, grammar-constrained points; classic code owns all control flow, dispatch,
 and I/O.
 
-None of this layer is implemented yet. The core agent loop (ReAct) and all its
-capabilities (memory, planning, orchestration, sessions, scheduler) exist in the
-`agent` layer. The mechanistic agent builds a different dispatch pattern on top.
+The core `MechanisticAgent` struct is implemented in
+`crates/agent/src/mechanistic.rs` with think → derive → dispatch → commit
+loop, typed task/plan types, a (type, domain) → HandlerFn router, and
+6 unit tests against MockBackend. The core agent loop (ReAct) and all its
+capabilities (memory, planning, orchestration, sessions, scheduler) exist
+in the `agent` layer. The mechanistic agent builds a different dispatch
+pattern on top.
 
 Prerequisite order (mirrors the product layer):
 
-1. **self_controlled_ingest** — ⬜ not started. The controller decides what the model reads; context is pulled, not pushed.
-2. **intent_classification** — ⬜ not started. Classify input → route + mode; low confidence falls back to `justChatting`.
-3. **task_grammars** — ⬜ not started. BNF grammars per task domain (plan, chapter, wiki, synopsis…).
-4. **workspace_sandbox** — ⬜ not started. Request-scoped temp directory; model never touches the real filesystem.
-5. **controller** — ⬜ not started. think → derive → dispatch → commit orchestration loop.
-6. **router** — ⬜ not started. (type, domain) → handler dispatch table.
-7. **modes** — ⬜ not started. Declarative route definitions: system prompt, tools, model size, state, workflow.
-8. **handler_registry** — ⬜ not started. Typed (type, domain) → HandlerFn map.
-9. **state_mounted_instructions** — ⬜ not started. System instructions keyed by content hash, mounted per mode.
-10. **repair_loop** — ⬜ not started. Grammar-validate → structure oracle → retry → fallback.
-11. **actions_gate** — ⬜ not started. Actions as the only exit to durable state; three-gate safety model.
+1. **self_controlled_ingest** — 🟡 partial. `MechanisticAgent::think()` calls the model; context is the user message. No pull protocol yet.
+2. **intent_classification** — ⬜ not started. No route classification yet; the agent uses a fixed plan grammar.
+3. **task_grammars** — ✅ done. `PLAN_GRAMMAR` BNF constrains model output to a valid Plan JSON with typed tasks.
+4. **workspace_sandbox** — ⬜ not started. Uses `HandlerResult::files` map; no temp directory wrapper yet.
+5. **controller** — ✅ done. think → derive → dispatch → commit loop in `MechanisticAgent::run()`.
+6. **router** — ✅ done. (type, domain) → HandlerFn dispatch table; unknown pairs fail loud.
+7. **modes** — ⬜ not started. No mode system yet; handlers registered directly.
+8. **handler_registry** — ✅ done. Typed HashMap-based registry with `register()` API.
+9. **state_mounted_instructions** — ⬜ not started. System prompt passed directly, not state-mounted.
+10. **repair_loop** — ⬜ not started. No retry/validation loop yet; `derive()` parse failure returns error.
+11. **actions_gate** — ⬜ not started. Handler results collected but not gated by action registry.
 
-**Self-directed priority:** Once the `message` and `workspace` layers are settled,
-implement the mechanistic-agent as a concrete plugin — a `MechanisticAgent` struct
-in `crates/agent/src/mechanistic.rs` that wraps or replaces the default ReAct loop.
-Keep it testable via `MockBackend` with no GPU.
+**Self-directed priority:** Core struct implemented with 6 unit tests against
+MockBackend. Next: add repair loop (grammar-validate → retry), then workspace
+sandbox integration via `roco_workspace::Workspace`, then intent classification
+for mode routing.

@@ -44,10 +44,11 @@ These are my standing self-directed commitments:
 4. **agent** — *core + memory + planning done*. Self-directed: orchestrate
    (parallel/branch), session_search (reuse `MemoryStore` over transcripts),
    scheduled_tasks, and wire memory+planning into the `agent` CLI example.
-5. **mechanistic-agent** — ⬜ *not started*. Plugin layer: code-driven controller
-   + router replaces the model-driven ReAct loop. Self-directed: implement once
-   the `message` and `workspace` layers are settled; keep it testable via
-   `MockBackend` with no GPU.
+5. **mechanistic-agent** — 🟡 *core done*. `MechanisticAgent` struct in
+   `crates/agent/src/mechanistic.rs` with think → derive → dispatch → commit
+   loop, typed plan grammar, (type, domain) → HandlerFn router, and 6 unit
+   tests against MockBackend. Self-directed: add repair loop, workspace
+   sandbox integration, intent classification.
 6. **agent_chat** — *started*. `AgentChatSession` (`crates/agent/src/agent_chat.rs`)
    opens a folder-bound session that persists memory + session history (and the
    executed plan, captured in `AgentTrace`) across runs; wired through the

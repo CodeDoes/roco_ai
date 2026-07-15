@@ -13,6 +13,7 @@ pub mod sessions;
 pub mod scheduler;
 pub mod tool_selector;
 pub mod agent_chat;
+pub mod mechanistic;
 
 pub use agent::{Agent, AgentConfig, AgentStep, AgentTrace};
 pub use agent_chat::AgentChatSession;
