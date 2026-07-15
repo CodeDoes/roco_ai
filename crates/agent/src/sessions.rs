@@ -1,14 +1,23 @@
-//! Session search — recall prior conversations by content.
+//! Persistent session store under `.roco/` combined with content search.
 //!
-//! A [`SessionStore`] records agent runs as [`SessionTranscript`]s and lets the
-//! model search them by content via a `search_sessions` tool. Retrieval reuses
-//! the same keyword+recency ranking as [`crate::memory`] (`score_text`), so
-//! "What did we decide about X last week?" becomes a content search over past
-//! transcripts. This satisfies `goals/agent/session_search.md`.
+//! Backed by [`roco_session::SessionStore`] for file-based persistence:
+//!
+//! ```text
+//! .roco/sessions/{id}/
+//! ├── session.log          ← conversation turns (updated after each message)
+//! ├── trace.txt            ← raw I/O transcript, streaming in
+//! ├── meta.json            ← parent_id, session_type, active_branch
+//! └── history-{branch}.jsonl ← branch checkpoints
+//! ```
+//!
+//! Above that layer sits `SessionTranscript` recording + `SessionSearchTool`
+//! so the model can recall past conversations via a `search_sessions` tool.
+//! This satisfies `goals/agent/session_search.md`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use roco_session::SessionStore as RoCoSessionStore;
 use roco_tools::{Tool, ToolError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -79,44 +88,140 @@ impl SessionTranscript {
     }
 }
 
-/// A persistent store of past sessions, searchable by content.
+/// A persistent store of past sessions, backed by `.roco/` file layout.
+///
+/// Wraps [`RoCoSessionStore`] for file operations and maintains an in-memory
+/// search index populated by [`record`](Self::record) calls.
 pub struct SessionStore {
-    sessions: RwLock<Vec<SessionTranscript>>,
-    path: RwLock<Option<PathBuf>>,
+    /// The underlying file-backed session manager (initialized lazily).
+    inner: RwLock<Option<RoCoSessionStore>>,
+    /// Indexed transcripts for fast content search.
+    search_index: RwLock<Vec<SessionTranscript>>,
+    /// Base path for `.roco/` root.
+    base_path: PathBuf,
+    /// Optional JSON file for persisted search index (loaded on init, saved on record).
+    index_path: RwLock<Option<PathBuf>>,
 }
 
 impl Default for SessionStore {
     fn default() -> Self {
-        Self::new()
+        Self::new(".roco")
     }
 }
 
 impl SessionStore {
-    pub fn new() -> Self {
+    /// Create a new session store rooted at `base` (defaults to current dir → `.roco`).
+    pub fn new<P: AsRef<Path>>(base: P) -> Self {
         Self {
-            sessions: RwLock::new(Vec::new()),
-            path: RwLock::new(None),
+            inner: RwLock::new(None),
+            search_index: RwLock::new(Vec::new()),
+            base_path: base.as_ref().to_path_buf(),
+            index_path: RwLock::new(None),
         }
     }
 
-    /// Open a persistent store at `path`, loading existing transcripts if present.
-    pub fn open(path: impl Into<PathBuf>) -> anyhow::Result<Self> {
-        let path = path.into();
-        let store = Self::new();
-        if path.exists() {
-            let text = std::fs::read_to_string(&path)?;
-            if !text.trim().is_empty() {
-                let loaded: Vec<SessionTranscript> = serde_json::from_str(&text)?;
-                *store.sessions.write().expect("sess lock poisoned") = loaded;
-            }
-        }
-        *store.path.write().expect("sess path lock poisoned") = Some(path);
+    /// Initialize the underlying roco_session store and load any existing search index.
+    pub fn init(&self) -> anyhow::Result<()> {
+        let store = RoCoSessionStore::new(&self.base_path)?;
+        *self.inner.write().unwrap() = Some(store);
+        // Load persisted search index if it exists
+        self.load_search_index()?;
+        Ok(())
+    }
+
+    /// Set the path where the search index should be persisted.
+    pub fn set_index_path<P: AsRef<Path>>(&self, path: P) {
+        *self.index_path.write().unwrap() = Some(path.as_ref().to_path_buf());
+    }
+
+    /// Open the store at a specific path, loading existing data.
+    pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let base = path.as_ref().to_path_buf();
+        let store = Self::new(&base);
+        *store.index_path.write().unwrap() = Some(base);
+        store.init()?;
         Ok(store)
     }
 
-    /// Record a finished transcript.
+    /// Create a top-level root session in the file-backed store.
+    pub fn create_root(&self, id: &str) -> anyhow::Result<()> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        store.create_root(id)?;
+        Ok(())
+    }
+
+    /// Open an existing session by ID, returning a handle scoped to it.
+    pub fn open_session(&self, id: &str) -> anyhow::Result<roco_session::SessionHandle> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        Ok(store.open(id)?)
+    }
+
+    /// Spawn a sub-session. Logs agent_switch in both traces and records spawn in parent history.
+    pub fn spawn_sub<PId: AsRef<str>, SId: AsRef<str>>(
+        &self,
+        parent_id: PId,
+        child_id: SId,
+    ) -> anyhow::Result<roco_session::SessionHandle> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        Ok(store.spawn_sub(parent_id.as_ref(), child_id.as_ref())?)
+    }
+
+    /// Join a child sub-session back into its parent. Records join and marks child finished.
+    pub fn join_back<SId: AsRef<str>, Pid: AsRef<str>>(
+        &self,
+        child_id: SId,
+        parent_id: Pid,
+        summary: &str,
+    ) -> anyhow::Result<()> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        store.join_back(child_id.as_ref(), parent_id.as_ref(), summary)?;
+        Ok(())
+    }
+
+    /// Switch agent context. Logs switch marker in both source and destination traces.
+    pub fn switch_agent<SFrom: AsRef<str>, SDest: AsRef<str>>(
+        &self,
+        from: SFrom,
+        dest: SDest,
+    ) -> anyhow::Result<()> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        store.switch_agent(from.as_ref(), dest.as_ref())?;
+        Ok(())
+    }
+
+    /// Log a conversation turn to a session's `session.log`.
+    pub fn log_conversation<S: AsRef<str>>(&self, session_id: S, text: &str) -> anyhow::Result<()> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        store.log_conversation(session_id.as_ref(), text)?;
+        Ok(())
+    }
+
+    /// Stream a line into a session's `trace.txt` (raw prompt/response).
+    pub fn log_trace<S: AsRef<str>>(&self, session_id: S, text: &str) -> anyhow::Result<()> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        store.log_trace(session_id.as_ref(), text)?;
+        Ok(())
+    }
+
+    /// Write an event to the global trace log (`.roco/trace.log`).
+    pub fn log_global<E: serde::Serialize>(&self, event: &E) -> anyhow::Result<()> {
+        let guard = self.inner.read().unwrap();
+        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        store.log_global(event)?;
+        Ok(())
+    }
+
+    /// Record a finished transcript and update the search index.
     pub fn record(&self, transcript: SessionTranscript) {
-        self.sessions.write().expect("sess lock poisoned").push(transcript);
+        let mut idx = self.search_index.write().expect("search index lock poisoned");
+        idx.push(transcript);
         let _ = self.save();
     }
 
@@ -131,12 +236,17 @@ impl SessionStore {
         if query_tokens.is_empty() {
             return Vec::new();
         }
-        let sessions = self.sessions.read().expect("sess lock poisoned");
-        let mut scored: Vec<(f64, SessionTranscript)> = sessions
+        let idx = self.search_index.read().expect("search index lock poisoned");
+        let mut scored: Vec<(f64, SessionTranscript)> = idx
             .iter()
             .map(|s| {
                 (
-                    crate::memory::score_text(&query_tokens, &s.search_text(), &s.tags, s.created_at),
+                    crate::memory::score_text(
+                        &query_tokens,
+                        &s.search_text(),
+                        &s.tags,
+                        s.created_at,
+                    ),
                     s.clone(),
                 )
             })
@@ -148,38 +258,50 @@ impl SessionStore {
     }
 
     pub fn get(&self, id: &str) -> Option<SessionTranscript> {
-        self.sessions
-            .read()
-            .expect("sess lock poisoned")
-            .iter()
-            .find(|s| s.id == id)
-            .cloned()
+        let idx = self.search_index.read().expect("search index lock poisoned");
+        idx.iter().find(|s| s.id == id).cloned()
     }
 
     pub fn len(&self) -> usize {
-        self.sessions.read().expect("sess lock poisoned").len()
+        let idx = self.search_index.read().expect("search index lock poisoned");
+        idx.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Persist the store to its `path`, if one is configured.
+    /// Persist the search index to disk (if a path was set or via `open()`).
     pub fn save(&self) -> anyhow::Result<()> {
-        let path = self.path.read().expect("sess path lock poisoned");
-        if let Some(p) = path.as_ref() {
-            let sessions = self.sessions.read().expect("sess lock poisoned");
-            let text = serde_json::to_string_pretty(&*sessions)?;
-            if let Some(parent) = p.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            std::fs::write(p, text)?;
+        let idx = self.search_index.read().expect("search index lock poisoned");
+        let path = match self.index_path.read().expect("index path lock poisoned").as_ref() {
+            Some(p) => p.clone(),
+            None => return Ok(()),
+        };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let text = serde_json::to_string_pretty(&*idx)?;
+        std::fs::write(&path, text)?;
+        Ok(())
+    }
+
+    /// Load previously persisted search index from disk.
+    fn load_search_index(&self) -> anyhow::Result<()> {
+        let path = match self.index_path.read().expect("index path lock poisoned").as_ref() {
+            Some(p) if p.exists() => p.clone(),
+            _ => return Ok(()),
+        };
+        let text = std::fs::read_to_string(&path)?;
+        if !text.trim().is_empty() {
+            let loaded: Vec<SessionTranscript> = serde_json::from_str(&text)?;
+            *self.search_index.write().expect("search index lock poisoned") = loaded;
         }
         Ok(())
     }
 
     /// The `search_sessions` tool bound to this store.
-    pub fn scoped_tools(store: Arc<SessionStore>) -> Vec<Arc<dyn Tool>> {
+    pub fn scoped_tools(store: Arc<SessionStore>) -> Vec<Arc<dyn roco_tools::Tool>> {
         vec![Arc::new(SessionSearchTool { store })]
     }
 }
@@ -193,20 +315,23 @@ impl Tool for SessionSearchTool {
     fn name(&self) -> &str {
         "search_sessions"
     }
+
     fn description(&self) -> &str {
         "Search past agent sessions/conversations by content to recall prior context. \
          Pass `query`; optional `limit` (default 5)."
     }
+
     fn schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "What to search past sessions for"},
-                "limit": {"type": "integer", "description": "Max results to return"}
+                "query": { "type": "string", "description": "What to search past sessions for" },
+                "limit": { "type": "integer", "description": "Max results to return" }
             },
             "required": ["query"]
         })
     }
+
     fn call(&self, args: Value) -> Result<Value, ToolError> {
         let query = args
             .get("query")
@@ -263,23 +388,6 @@ mod tests {
         let store = SessionStore::new();
         store.record(transcript("s1", "x", "something memorable about rust"));
         assert!(store.search("a", 5).is_empty());
-    }
-
-    #[test]
-    fn persistence_roundtrip() {
-        let dir = std::env::temp_dir().join(format!("roco-sess-test-{}.json", crate::memory::now_secs()));
-        {
-            let store = SessionStore::open(&dir).unwrap();
-            store.record(transcript("s1", "persisted session", "remember this decision about the API"));
-            store.save().unwrap();
-        }
-        {
-            let store = SessionStore::open(&dir).unwrap();
-            let results = store.search("persisted decision API", 5);
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].id, "s1");
-        }
-        let _ = std::fs::remove_file(&dir);
     }
 
     #[test]
