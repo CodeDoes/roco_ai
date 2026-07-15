@@ -248,4 +248,50 @@ pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
     ]
 }
 
+/// Message-layer baseline probes (`goals/message`).
+///
+/// These evaluate the *un-tuned* model's starting point for two core chat
+/// capabilities so we can measure the effect of later state-tuning:
+///
+/// - `system_instruction_following`: does the model honor a system prompt
+///   that imposes a persona / format constraint?
+/// - `user_message_response`: does a plain user turn get a coherent,
+///   on-topic answer?
+///
+/// They are intentionally run against the real RWKV backend (not the
+/// non-semantic `MockBackend`), since the mock echoes the prompt and cannot
+/// represent instruction adherence. See `eval_suite.rs` for wiring.
+pub fn message_eval_cases() -> Vec<EvalCase> {
+    vec![
+        EvalCase {
+            name: "instruct_baseline_persona".into(),
+            description: "Baseline: honors a system persona/format constraint without state-tuning".into(),
+            system: "You are a terse pirate. Answer in exactly one short pirate sentence.".into(),
+            prompt: "How do I open a locked treasure chest?".into(),
+            expected_hints: vec!["treasure".into()],
+            forbidden_strings: vec![],
+            max_tokens: 40,
+            temperature: 0.0,
+            min_output_chars: 20,
+            grammar: None,
+            oracle: Some("Aye, use the key to unlock the treasure chest, matey.".into()),
+            category: EvalCategory::Instruction,
+        },
+        EvalCase {
+            name: "user_turn_coherence".into(),
+            description: "Baseline: a plain user turn yields a coherent, on-topic reply".into(),
+            system: "You are a helpful assistant.".into(),
+            prompt: "What are three benefits of drinking water each day?".into(),
+            expected_hints: vec!["water".into()],
+            forbidden_strings: vec![],
+            max_tokens: 120,
+            temperature: 0.0,
+            min_output_chars: 60,
+            grammar: None,
+            oracle: Some("Water keeps you hydrated, aids digestion, and helps regulate body temperature.".into()),
+            category: EvalCategory::Coherence,
+        },
+    ]
+}
+
 

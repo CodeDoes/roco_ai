@@ -7,11 +7,15 @@ making the chat CLI actually exercise the state-mixing feature.
 Prerequisite order (mirrors the product layer):
 
 1. **message_format_gbnf** — ✅ done.
-2. **system_instruction_following** — 🟡 *self-directed:* add an eval case that
-   probes baseline adherence without state-tuning, so we know the model's
-   starting point (the `User:` note asks exactly this).
-3. **user_message_response** — 🟡 *self-directed:* add a coherence/format eval
-   case for a plain user turn.
+2. **system_instruction_following** — ✅ done (self-directed). `message_eval_cases()`
+   in `crates/engine/src/cases.rs` adds `instruct_baseline_persona`, an eval
+   case that probes the *un-tuned* model's adherence to a system persona/format
+   constraint. Wired into the `eval_suite` example (run against the RWKV
+   backend, since `MockBackend` is non-semantic) and asserted present by a unit
+   test.
+3. **user_message_response** — ✅ done (self-directed). `message_eval_cases()`
+   adds `user_turn_coherence`, a coherence/format probe for a plain user turn,
+   wired and unit-tested the same way.
 4. **state_tune_examples** — ⬜ *self-directed:* use `bake_persona` to persist a
    few-shot state and verify it changes behavior; expose via the chat CLI.
 5. **tool_catelogue** — ✅ done.
@@ -33,7 +37,8 @@ Prerequisite order (mirrors the product layer):
    with a safety net that returns all tools when none score above zero. Wired
    into `Agent` via `AgentConfig::gradual_tool_disclosure`.
 
-**Next self-directed action:** add the `system_instruction_following` and
-`user_message_response` eval cases (probe the model's baseline), then return to
-layer wiring (sandbox the `agent` example by default + a workspace escape eval).
+**Next self-directed action:** implement `state_tune_examples` — use
+`bake_persona` to persist a few-shot state and verify it changes behavior,
+expose via the chat CLI (e.g. a `/bake` command), then revisit the `message`
+layer's remaining product sub-goals.
 

@@ -210,8 +210,12 @@ flags, env vars, run commands); this file is the strategy context.
   (`crates/agent/src/tool_selector.rs`) discloses only task-relevant tools
   (keyword-overlap score reusing the `memory` ranker), with a safety net
   returning all tools when none score above zero; wired via
-  `AgentConfig::gradual_tool_disclosure`. Remaining: `state_tune_examples`,
-  `system_instruction_following`, `user_message_response`.
+  `AgentConfig::gradual_tool_disclosure`. **Baseline probes done**
+  (`goals/message/system_instruction_following`, `goals/message/user_message_response`):
+  `message_eval_cases()` (`crates/engine/src/cases.rs`) adds `instruct_baseline_persona`
+  and `user_turn_coherence` to measure the *un-tuned* model's starting point;
+  wired into the `eval_suite` example (RWKV backend) and asserted by a unit test.
+  Remaining: `state_tune_examples`.
 - `agent/*` — **complete**: core loop + tool execution loop done
   (`goals/agent/agent`, `goals/agent/tool_execution_loop`). **Memory done**
   (`goals/agent/memory`), **Planning done** (`goals/agent/planning`), **Orchestrate done**

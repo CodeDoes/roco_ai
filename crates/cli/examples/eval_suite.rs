@@ -4,7 +4,7 @@ use std::env;
 use std::path::PathBuf;
 
 use roco_engine::{MockBackend, EvalReport,
-    run_suite, default_eval_suite, write_report, print_report, write_sidecars,
+    run_suite, default_eval_suite, message_eval_cases, write_report, print_report, write_sidecars,
 };
 use roco_inference::RwkvBackend;
 
@@ -65,7 +65,12 @@ async fn main() {
                 eprintln!("Set RWKV_MODEL and RWKV_VOCAB environment variables.");
                 std::process::exit(1);
             });
-            run_suite(&args.suite, &backend, &default_eval_suite(), args.filter.as_deref(), trace_path.as_deref()).await
+            // The real model additionally runs the message-layer baseline
+            // probes (system-instruction following + user-turn coherence),
+            // which the non-semantic MockBackend cannot represent.
+            let mut cases = default_eval_suite();
+            cases.extend(message_eval_cases());
+            run_suite(&args.suite, &backend, &cases, args.filter.as_deref(), trace_path.as_deref()).await
         }
         other => { eprintln!("Unknown backend: {other}"); std::process::exit(1); }
     };
