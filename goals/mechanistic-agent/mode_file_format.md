@@ -13,4 +13,10 @@ Fields:
 - **notes** — operational constraints
 - **examples** — inline worked traces
 
-Reference: `mechanist_agent/modes/*.mode` for concrete definitions.
+Sub-goals:
+- Parser: read `.mode` files into a typed `Mode` struct
+- Validator: check required fields, valid model values, consistent exit codes
+- Renderer: emit system prompt + state schema for controller use
+- Mode registry: load all `.mode` files from a directory at startup
+
+Reference: `mechanist_agent/modes/*.mode` for concrete definitions (justChatting, coder, proseWriter, storyTeller, etc.).
