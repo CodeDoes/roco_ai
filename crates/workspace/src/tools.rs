@@ -287,6 +287,11 @@ impl Tool for WorkspaceBashTool {
     }
     fn call(&self, args: Value) -> Result<Value, ToolError> {
         let cmd = arg_str(&args, "command")?;
+        if let Some(reason) = crate::workspace::blocked_command_reason(&cmd) {
+            return Err(ToolError(format!(
+                "command blocked by workspace policy (matched '{reason}'): refusing to run"
+            )));
+        }
         let cwd = self.ws.root().join(self.ws.cwd());
         let output = std::process::Command::new("sh")
             .arg("-c")
@@ -385,5 +390,15 @@ mod tests {
         let bash = tools.iter().find(|t| t.name() == "bash").unwrap();
         let r = bash.call(serde_json::json!({"command": "pwd"})).unwrap();
         assert!(r["stdout"].as_str().unwrap().contains("roco-ws"));
+    }
+
+    #[test]
+    fn bash_rejects_destructive_command() {
+        let ws = make_ws();
+        let tools = Workspace::scoped_tools(ws.clone());
+        let bash = tools.iter().find(|t| t.name() == "bash").unwrap();
+        let r = bash.call(serde_json::json!({"command": "rm -rf /"}));
+        assert!(r.is_err(), "destructive command must be blocked");
+        assert!(r.unwrap_err().to_string().contains("blocked"));
     }
 }

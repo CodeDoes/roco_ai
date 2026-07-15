@@ -10,6 +10,7 @@ pub mod tools;
 
 pub use workspace::Workspace;
 pub use workspace::WorkspaceKind;
+pub use workspace::blocked_command_reason;
 pub use error::WorkspaceError;
 pub use tools::{
     WorkspaceReadTool, WorkspaceWriteTool, WorkspaceEditTool, WorkspaceSearchTool,

@@ -102,6 +102,29 @@ impl Workspace {
         Self::new(dir, kind)
     }
 
+    /// Create a workspace using the conventional root for its `kind`, rooted
+    /// at the current working directory.
+    ///
+    /// - `Agent` / `User` pick persistent, cwd-relative roots
+    ///   (`.roco/workspace/agent` and `.`, respectively) so an agent's working
+    ///   memory survives across runs.
+    /// - `Eval` / `Temp` / `Generic` fall back to an isolated temp dir.
+    pub fn preset(kind: WorkspaceKind) -> Result<Self, WorkspaceError> {
+        let base = std::env::current_dir()
+            .map_err(|e| WorkspaceError(format!("could not determine current directory: {e}")))?;
+        Self::preset_in(kind, &base)
+    }
+
+    /// Like [`Workspace::preset`], but the persistent roots are resolved
+    /// against `base` instead of the process cwd (handy for tests).
+    pub fn preset_in(kind: WorkspaceKind, base: &Path) -> Result<Self, WorkspaceError> {
+        match kind {
+            WorkspaceKind::Eval | WorkspaceKind::Temp | WorkspaceKind::Generic => Self::temp(kind),
+            WorkspaceKind::Agent => Self::new(base.join(".roco").join("workspace").join("agent"), kind),
+            WorkspaceKind::User => Self::new(base.to_path_buf(), kind),
+        }
+    }
+
     /// Set a human-readable name for this workspace.
     pub fn with_name(self, name: impl Into<String>) -> Self {
         if let Ok(mut n) = self.name.write() {
@@ -222,6 +245,38 @@ impl Workspace {
     }
 }
 
+/// Commands that are never permitted inside a workspace shell, even though it
+/// is cwd-scoped. The shell is not a syscall sandbox, so this is a
+/// belt-and-suspenders guard that refuses the most destructive or
+/// escape-prone patterns (e.g. wiping the root filesystem, formatting a
+/// device, or forking a fork-bomb).
+const BLOCKED_COMMAND_PATTERNS: &[&str] = &[
+    "rm -rf /",
+    "rm -rf /*",
+    "mkfs",
+    ":(){:|:&",
+    "dd if=/dev",
+    "> /dev/sda",
+    "shutdown",
+    "reboot",
+    "chmod -r 000",
+    "chmod -r 777",
+];
+
+/// Returns `Some(pattern)` if `cmd` matches a [`BLOCKED_COMMAND_PATTERNS`]
+/// entry, otherwise `None`. Matching is case-insensitive on a trimmed command.
+///
+/// This is deliberately a small, conservative denylist — it is meant to stop
+/// catastrophically destructive commands, not to be a security boundary (the
+/// workspace boundary itself is `Workspace::resolve`).
+pub fn blocked_command_reason(cmd: &str) -> Option<&'static str> {
+    let lower = cmd.trim().to_lowercase();
+    BLOCKED_COMMAND_PATTERNS
+        .iter()
+        .copied()
+        .find(|pat| lower.contains(pat))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,6 +333,35 @@ mod tests {
     fn from_existing_rejects_missing_root() {
         let missing = std::env::temp_dir().join("roco-ws-does-not-exist-xyz");
         assert!(Workspace::from_existing(&missing, WorkspaceKind::User).is_err());
+    }
+
+    #[test]
+    fn preset_agent_root_is_persistent_under_roco() {
+        let base = std::env::temp_dir().join(format!("roco-base-{}", std::process::id()));
+        let ws = Workspace::preset_in(WorkspaceKind::Agent, &base).unwrap();
+        assert!(ws.root().ends_with(".roco/workspace/agent"));
+        assert_eq!(ws.kind(), WorkspaceKind::Agent);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn preset_user_root_is_base() {
+        let base = std::env::temp_dir().join(format!("roco-base-{}-u", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let ws = Workspace::preset_in(WorkspaceKind::User, &base).unwrap();
+        assert_eq!(ws.root(), &base);
+        assert_eq!(ws.kind(), WorkspaceKind::User);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn preset_temp_and_eval_are_isolated() {
+        let base = std::env::temp_dir();
+        let tmp = Workspace::preset_in(WorkspaceKind::Temp, &base).unwrap();
+        let eval = Workspace::preset_in(WorkspaceKind::Eval, &base).unwrap();
+        assert!(tmp.root().starts_with(std::env::temp_dir()));
+        assert!(eval.root().starts_with(std::env::temp_dir()));
+        assert_ne!(tmp.root(), eval.root());
     }
 
     // ── Sandbox-escape regression guard ─────────────────────────────

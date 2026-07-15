@@ -26,9 +26,13 @@ Prerequisite order (mirrors the product layer):
   `escape_via_symlink_is_blocked` (unix), and `legit_in_bounds_access_still_works`
   — that plants a secret outside the root and asserts neither lexical traversal
   nor symlink escape can reach it, through both `resolve()` and the `read` tool.
-- Provide ready-made workspace presets: `eval`, `temp`, `user`, `agent`
-  constructors that pick sensible roots (temp dir, `./.roco/workspace`, etc.).
+- ✅ **Workspace presets/constructors**: `Workspace::preset(kind)` and
+  `Workspace::preset_in(kind, base)` pick conventional roots — `Agent` →
+  `.roco/workspace/agent` (persistent), `User` → the base dir, and
+  `Eval`/`Temp`/`Generic` → an isolated temp dir. Unit-tested.
+- ✅ **Bash denylist**: `blocked_command_reason` refuses a small, conservative
+  set of destructive/escape-prone command patterns (e.g. `rm -rf /`, `mkfs`,
+  fork-bomb); `WorkspaceBashTool` enforces it and is unit-tested.
 
-**Next self-directed action:** add workspace presets/constructors and a command
- denylist for the bash tool; then move to the `message` layer's remaining items
+**Next self-directed action:** move to the `message` layer's remaining items
  (`state_tune_examples`, `system_instruction_following`, `user_message_response`).

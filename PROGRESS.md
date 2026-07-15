@@ -237,7 +237,11 @@ flags, env vars, run commands); this file is the strategy context.
   `crates/workspace/src/workspace.rs` now has a dedicated test module that
   plants a secret outside the root and asserts neither lexical `..` traversal
   nor symlink escapes (unix) reach it through `resolve()` or the `read` tool,
-  while legitimate in-bounds access still works.
+  while legitimate in-bounds access still works. **Workspace presets added**:
+  `Workspace::preset`/`preset_in` pick conventional roots (`.roco/workspace/agent`
+  for `Agent`, base dir for `User`, temp dir for `Eval`/`Temp`/`Generic`).
+  **Bash denylist added**: `blocked_command_reason` refuses a conservative set
+  of destructive/escape-prone commands; `WorkspaceBashTool` enforces it.
 - `agent_chat`, `browser_use`, `coder` — forward-looking; not yet in code.
 
 ## Open questions
