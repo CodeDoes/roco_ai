@@ -1,9 +1,14 @@
-//! The autonomous agent: a ReAct-style observe → think → act loop.
+//! ReAct-style autonomous agent (the "common" harness).
 //!
 //! Drives a [`ModelBackend`] through multiple turns, parsing tool calls from
 //! the model's output, executing them via the [`ToolRegistry`], and feeding
 //! the results back into context until the model produces a final answer or
 //! the step/budget limit is reached.
+//!
+//! This is the original `Agent` harness, aliased as [`CommonAgent`] alongside
+//! [`MechanicAgent`](crate::MechanicAgent). Both implement [`BaseAgent`](super::BaseAgent),
+//! guaranteeing the same human I/O contract: take a message, produce a response,
+//! possibly reading/writing files.
 
 use std::sync::Arc;
 
@@ -15,6 +20,7 @@ use roco_tools::{
     all_tools, parse_assistant_response, AssistantSegment, Tool, ToolCall, ToolRegistry,
 };
 
+use crate::base::BaseAgent;
 use crate::error::AgentError;
 use crate::subtask::SubtaskOutput;
 
@@ -110,11 +116,16 @@ impl AgentTrace {
     }
 }
 
-/// The autonomous agent.
+/// The autonomous agent (ReAct loop).
+///
+/// See also [`MechanicAgent`](crate::MechanicAgent) for the code-driven pipeline.
 pub struct Agent {
     config: AgentConfig,
     tools: ToolRegistry,
 }
+
+/// Alias for clarity when used alongside [`MechanicAgent`](crate::MechanicAgent).
+pub type CommonAgent = Agent;
 
 impl Agent {
     /// Create an agent with the default built-in tool set.
@@ -377,6 +388,21 @@ impl Default for Agent {
     }
 }
 
+// ── BaseAgent trait impl ────────────────────────────────────────────────
+
+impl BaseAgent for Agent {
+    /// Run the agent and return only the final human-readable text.
+    async fn run(&self, backend: &dyn ModelBackend, msg: &str) -> Result<String, AgentError> {
+        // Calls the inherent `Agent::run()` (returns AgentTrace), not this trait method.
+        let trace = self.run(backend, msg).await?;
+        Ok(trace.final_text.clone())
+    }
+
+    fn verbose(&self) -> bool {
+        self.config.verbose
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,7 +477,7 @@ mod tests {
 
         let ws = Arc::new(Workspace::temp(WorkspaceKind::Agent).unwrap());
         let mem = Arc::new(MemoryStore::new());
-        let sess = Arc::new(SessionStore::new());
+        let sess = Arc::new(SessionStore::new(std::env::temp_dir().join("roco-test")));
         let sched = Arc::new(Scheduler::new());
 
         let mut tools = roco_tools::all_tools();

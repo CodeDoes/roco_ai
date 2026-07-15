@@ -135,10 +135,28 @@ impl SessionStore {
     }
 
     /// Open the store at a specific path, loading existing data.
+    ///
+    /// Accepts either a directory path (used as the base for internal storage)
+    /// or a file path ending in `.json` (parent directory → base, full path →
+    /// search-index file). This lets callers pass `folder.join("sessions.json")`
+    /// directly without splitting the directory and index manually.
     pub fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
-        let base = path.as_ref().to_path_buf();
+        let path = path.as_ref();
+
+        // If the caller passes a `.json` file path, split it:
+        //   parent dir → base_path (for RoCoSessionStore internal files)
+        //   full path  → index_path (for persisted search index JSON)
+        // Otherwise treat the whole path as a plain directory.
+        let (base, idx) = match path.extension().and_then(|e| e.to_str()) {
+            Some("json") => (
+                path.parent().map(PathBuf::from).unwrap_or_else(|| path.to_path_buf()),
+                Some(path.to_path_buf()),
+            ),
+            _ => (path.to_path_buf(), None),
+        };
+
         let store = Self::new(&base);
-        *store.index_path.write().unwrap() = Some(base);
+        *store.index_path.write().unwrap() = idx;
         store.init()?;
         Ok(store)
     }
@@ -220,8 +238,13 @@ impl SessionStore {
 
     /// Record a finished transcript and update the search index.
     pub fn record(&self, transcript: SessionTranscript) {
-        let mut idx = self.search_index.write().expect("search index lock poisoned");
-        idx.push(transcript);
+        {
+            let mut idx = self
+                .search_index
+                .write()
+                .expect("search index lock poisoned");
+            idx.push(transcript);
+        } // write lock dropped here
         let _ = self.save();
     }
 
@@ -358,6 +381,14 @@ impl Tool for SessionSearchTool {
 mod tests {
     use super::*;
     use crate::{AgentStep, AgentTrace};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn test_tmp_dir() -> PathBuf {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("roco-session-test-{id}"))
+    }
 
     fn transcript(id: &str, task: &str, text: &str) -> SessionTranscript {
         SessionTranscript {
@@ -375,7 +406,7 @@ mod tests {
 
     #[test]
     fn search_ranks_by_relevance() {
-        let store = SessionStore::new();
+        let store = SessionStore::new(test_tmp_dir());
         store.record(transcript("s1", "rust project", "We built a Rust CLI with clap."));
         store.record(transcript("s2", "france trip", "We planned a trip to Paris, the capital of France."));
         let results = store.search("capital France Paris", 5);
@@ -385,14 +416,14 @@ mod tests {
 
     #[test]
     fn search_returns_nothing_for_empty_query() {
-        let store = SessionStore::new();
+        let store = SessionStore::new(test_tmp_dir());
         store.record(transcript("s1", "x", "something memorable about rust"));
         assert!(store.search("a", 5).is_empty());
     }
 
     #[test]
     fn search_sessions_tool_works() {
-        let store = Arc::new(SessionStore::new());
+        let store = Arc::new(SessionStore::new(test_tmp_dir()));
         store.record(transcript("s1", "rust work", "we implemented a rust workspace crate"));
         let tools = SessionStore::scoped_tools(store.clone());
         let tool = tools.iter().find(|t| t.name() == "search_sessions").unwrap();
@@ -407,7 +438,7 @@ mod tests {
         let mut step = AgentStep::new(1);
         step.assistant_text = "The capital of France is Paris.".into();
         trace.steps.push(step);
-        let store = SessionStore::new();
+        let store = SessionStore::new(test_tmp_dir());
         store.record_trace("run-1", "geography question", &trace);
         assert_eq!(store.len(), 1);
         let results = store.search("capital France", 5);

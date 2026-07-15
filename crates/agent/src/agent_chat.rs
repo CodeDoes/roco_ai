@@ -22,7 +22,7 @@ use roco_workspace::{Workspace, WorkspaceKind};
 
 use roco_engine::ModelBackend;
 
-use crate::agent::{Agent, AgentConfig, AgentTrace};
+use crate::common_agent::{Agent, AgentConfig, AgentTrace};
 use crate::{MemoryStore, Scheduler, SessionStore};
 
 /// Metadata directory inside a project folder that holds the agent's
