@@ -135,7 +135,7 @@ roco_ai/
 | `session` | `pool.rs`, `store.rs`, `types.rs`, `error.rs` | `LruSessionPool`, session transcript stores, session types |
 | `tools` | `tool.rs`, `registry.rs`, `builtins.rs`, `parse.rs` | `Tool` trait, `ToolRegistry`, 6 built-ins, tool-call parsing |
 | `workspace` | `workspace.rs` | `Workspace` sandbox boundary |
-| `agent` | `base.rs`, `common_agent.rs`, `mecha_agent.rs`, `context.rs`, `plan.rs`, `sessions.rs`, `memory.rs`, `scheduler.rs`, `tool_selector.rs`, `agent_chat.rs`, `mechanistic.rs`, `error.rs`, `subtask.rs` | `BaseAgent` trait, `CommonAgent` (ReAct), `MechanisticAgent` (code-driven controller/router), pull-based context ingest (`ContextManager`), session/memory stores, task scheduling & selection |
+| `agent` | `base.rs`, `common_agent.rs`, `mecha_agent.rs`, `context.rs`, `plan.rs`, `sessions.rs`, `memory.rs`, `scheduler.rs`, `tool_selector.rs`, `agent_chat.rs`, `error.rs`, `subtask.rs` | `BaseAgent` trait, `CommonAgent` (ReAct), `MechanisticAgent` (code-driven controller/router), pull-based context ingest (`ContextManager`), session/memory stores, task scheduling & selection |
 | `chat-common` | `conversation.rs`, `display.rs` | `Conversation`, `DisplaySettings` (shared across frontends) |
 | `cli` | `bin/roco.rs` + `examples/` | `roco` binary, `chat`/`eval_suite`/`grammar_smoke`/`agent`/`agent_chat`/`story`/`story_pilot` examples |
 | `tui` | `app.rs`, `widgets/` | Terminal UI (stub) |
