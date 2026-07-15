@@ -6,6 +6,8 @@
 //! - Dispatch tasks → handlers write to sandboxed workspace
 //! - Commit → snapshot all workspace files
 //!
+//! All model calls use grammar constraints to prevent think-tag contamination.
+//!
 //! Output lands in `.roco/workspaces/story_<prompt>_<ts>/`.
 //!
 //! Usage:
@@ -23,77 +25,98 @@ use roco_inference::RwkvBackend;
 use roco_workspace::{Workspace, WorkspaceKind};
 use tracing::{error, info};
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// ── Grammar Constraints ──────────────────────────────────────────────
 
-/// Detect meta-contamination in model output.
-fn has_meta(text: &str) -> bool {
-    text.contains("<think>")
-        || text.contains("</think>")
-        || text.contains("We need to")
-        || text.len() < 30
-}
+/// Outline grammar: structured JSON with title, genre, tone, chapters.
+const OUTLINE_GRAMMAR: &str = r#"
+root  ::= "{" space "\"title\"" space ":" space string space "," space "\"genre\"" space ":" space string space "," space "\"tone\"" space ":" space string space "," space "\"chapters\"" space ":" space "[" space chapter ( "," space chapter )* "]" space "}"
+chapter ::= "{" space "\"number\"" space ":" space number space "," space "\"title\"" space ":" space string space "," space "\"summary\"" space ":" space string space "}"
+string ::= "\"" ( [ -~] )* "\""
+number ::= [0-9]+
+space ::= " "?
+"#;
 
-/// Clean-complete: retry until model output is free of meta-commentary.
-fn clean_complete(
+/// Wiki grammar: structured JSON with characters and setting.
+const WIKI_GRAMMAR: &str = r#"
+root  ::= "{" space "\"characters\"" space ":" space "[" space character ( "," space character )* "]" space "," space "\"setting\"" space ":" space string space "}"
+character ::= "{" space "\"name\"" space ":" space string space "," space "\"description\"" space ":" space string space "}"
+string ::= "\"" ( [ -~] )* "\""
+space ::= " "?
+"#;
+
+/// Chapter grammar: structured JSON with title and content.
+const CHAPTER_GRAMMAR: &str = r#"
+root  ::= "{" space "\"title\"" space ":" space string space "," space "\"content\"" space ":" space string space "}"
+string ::= "\"" ( [ -~] )* "\""
+space ::= " "?
+"#;
+
+/// Synopsis grammar: structured JSON with summary text.
+const SYNOPSIS_GRAMMAR: &str = r#"
+root  ::= "{" space "\"summary\"" space ":" space string space "}"
+string ::= "\"" ( [ -~] )* "\""
+space ::= " "?
+"#;
+
+// ── Grammar-constrained completion ──────────────────────────────────
+
+/// Make a grammar-constrained model call. No think-tag cleanup needed.
+fn constrained_complete(
     backend: &dyn ModelBackend,
     system: &str,
     prompt: &str,
+    grammar: &str,
     temperature: f32,
     max_tokens: usize,
-    label: &str,
 ) -> anyhow::Result<String> {
-    let mut attempt = 0u32;
-    let mut temp = temperature;
-    let mut tweak = String::new();
+    let resp = futures::executor::block_on(backend.complete(CompletionRequest {
+        system: system.to_string(),
+        prompt: prompt.to_string(),
+        grammar: Some(grammar.to_string()),
+        temperature,
+        max_tokens,
+        ..Default::default()
+    }))
+    .map_err(|e| anyhow::anyhow!("model error: {e}"))?;
 
-    loop {
-        let resp = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: format!(
-                "{} You output ONLY the requested content. No thinking, no 1<think> tags.",
-                system
-            ),
-            prompt: if attempt == 0 {
-                prompt.to_string()
-            } else {
-                format!(
-                    "{prompt}\n\nIMPORTANT: Write DIRECTLY. NO thinking or planning.\n{tweak}",
-                )
-            },
-            temperature: temp,
-            max_tokens,
-            ..Default::default()
-        }))
-        .map_err(|e| anyhow::anyhow!("{label}: {e}"))?;
+    Ok(resp.text)
+}
 
-        let text = resp.text;
-        if !has_meta(&text) {
-            return Ok(text);
-        }
+// ── JSON helpers ────────────────────────────────────────────────────
 
-        attempt += 1;
-        if attempt >= 3 {
-            // Last resort: strip <think> blocks.
-            let cleaned = text
-                .split("thi nk>")
-                .flat_map(|s| s.split("</think>"))
-                .collect::<Vec<_>>()
-                .join("")
-                .trim()
-                .to_string();
-            if cleaned.len() > 30 {
-                return Ok(cleaned);
+/// Parse JSON string value, handling escape sequences.
+fn parse_json_string(json: &str, key: &str) -> String {
+    let search = format!("\"{}\"", key);
+    if let Some(pos) = json.find(&search) {
+        let rest = &json[pos + search.len()..];
+        if let Some(colon_pos) = rest.find(':') {
+            let after_colon = &rest[colon_pos + 1..];
+            if let Some(quote_start) = after_colon.find('"') {
+                let value_start = &after_colon[quote_start + 1..];
+                let mut result = String::new();
+                let mut chars = value_start.chars().peekable();
+                while let Some(c) = chars.next() {
+                    if c == '\\' {
+                        if let Some(&next) = chars.peek() {
+                            match next {
+                                'n' => { result.push('\n'); chars.next(); }
+                                't' => { result.push('\t'); chars.next(); }
+                                '"' => { result.push('"'); chars.next(); }
+                                '\\' => { result.push('\\'); chars.next(); }
+                                _ => { result.push(c); }
+                            }
+                        }
+                    } else if c == '"' {
+                        break;
+                    } else {
+                        result.push(c);
+                    }
+                }
+                return result;
             }
-            return Err(anyhow::anyhow!("{label}: model produced no clean output after {attempt} retries"));
         }
-        temp = (temp - 0.2).max(0.3);
-        tweak = if text.contains("think>") {
-            "Your response contained 1<think> tags. Output ONLY the final content.".into()
-        } else if text.len() < 60 {
-            "Your response was too short. Write at least one full paragraph.".into()
-        } else {
-            "Write directly. No meta-commentary.".into()
-        };
     }
+    String::new()
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -102,27 +125,48 @@ fn handle_outline(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Ha
     let premise = task.spec.get("premise").and_then(|v| v.as_str()).unwrap_or("");
     info!(premise = %premise, "generate outline");
 
-    let out = match clean_complete(
-        backend, "You are a story outliner.",
+    let json = match constrained_complete(
+        backend,
+        "You are a story outliner. Output valid JSON only.",
         &format!(
-            "Outline a 3-chapter story from:\n{premise}\n\nTitle: ...\nGenre: ...\nTone: ...\nCh1: ...\nCh2: ...\nCh3: ...",
+            "Outline a 3-chapter story from:\n{premise}\n\n\
+             Output JSON with: title, genre, tone, chapters (array of 3 objects with number, title, summary)",
         ),
-        0.6, 350, "outline",
+        OUTLINE_GRAMMAR,
+        0.6,
+        350,
     ) {
-        Ok(t) => t,
-        Err(e) => { error!(%e); "[outline error]".into() }
+        Ok(j) => j,
+        Err(e) => { error!(%e); return error_result(task, "outline"); }
     };
 
-    // Save to workspace
+    // Convert JSON to markdown
+    let title = parse_json_string(&json, "title");
+    let genre = parse_json_string(&json, "genre");
+    let tone = parse_json_string(&json, "tone");
+    
+    let mut md = format!("Title: {title}\nGenre: {genre}\nTone: {tone}\n\n");
+    
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
+        if let Some(chapters) = parsed.get("chapters").and_then(|c| c.as_array()) {
+            for ch in chapters {
+                let num = ch.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+                let ch_title = ch.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                let summary = ch.get("summary").and_then(|s| s.as_str()).unwrap_or("");
+                md.push_str(&format!("Chapter {num}: {ch_title}\n{summary}\n\n"));
+            }
+        }
+    }
+
     let path = ws.resolve("01-OUTLINE.md");
     if let Ok(p) = &path {
-        std::fs::write(p, &out).ok();
+        std::fs::write(p, &md).ok();
     }
 
     HandlerResult {
         task: task.clone(),
-        output: out.clone(),
-        files: HashMap::from([("01-OUTLINE.md".into(), out)]),
+        output: md.clone(),
+        files: HashMap::from([("01-OUTLINE.md".into(), md)]),
     }
 }
 
@@ -131,26 +175,46 @@ fn handle_wiki(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Handl
     let outline = task.spec.get("outline").and_then(|v| v.as_str()).unwrap_or("");
     info!("generate wiki");
 
-    let out = match clean_complete(
-        backend, "You are a worldbuilding assistant.",
+    let json = match constrained_complete(
+        backend,
+        "You are a worldbuilding assistant. Output valid JSON only.",
         &format!(
-            "Create characters and setting lore for this story:\nPremise: {premise}\nOutline: {outline}\n\nCharacters:\n  [name]: [desc]\nSetting:\n  [loc]: [desc]",
+            "Create characters and setting lore for this story:\nPremise: {premise}\nOutline: {outline}\n\n\
+             Output JSON with: characters (array of objects with name, description), setting (string)",
         ),
-        0.7, 450, "wiki",
+        WIKI_GRAMMAR,
+        0.7,
+        450,
     ) {
-        Ok(t) => t,
-        Err(e) => { error!(%e); "[wiki error]".into() }
+        Ok(j) => j,
+        Err(e) => { error!(%e); return error_result(task, "wiki"); }
     };
+
+    // Convert JSON to markdown
+    let mut md = String::new();
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
+        md.push_str("Characters:\n");
+        if let Some(chars) = parsed.get("characters").and_then(|c| c.as_array()) {
+            for ch in chars {
+                let name = ch.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
+                let desc = ch.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                md.push_str(&format!("  - {name}: {desc}\n"));
+            }
+        }
+        md.push('\n');
+        let setting = parsed.get("setting").and_then(|s| s.as_str()).unwrap_or("Unknown");
+        md.push_str(&format!("Setting:\n  - {setting}\n"));
+    }
 
     let path = ws.resolve("02-WIKI.md");
     if let Ok(p) = &path {
-        std::fs::write(p, &out).ok();
+        std::fs::write(p, &md).ok();
     }
 
     HandlerResult {
         task: task.clone(),
-        output: out.clone(),
-        files: HashMap::from([("02-WIKI.md".into(), out)]),
+        output: md.clone(),
+        files: HashMap::from([("02-WIKI.md".into(), md)]),
     }
 }
 
@@ -160,29 +224,47 @@ fn handle_chapter(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Ha
     let prev = task.spec.get("previous").and_then(|v| v.as_str()).unwrap_or("");
 
     let directive = if num == 1 {
-        format!("Write Chapter 1. Introduce character and setting. ~400 words.\nOutline:\n{outline}")
+        format!(
+            "Write Chapter 1. Introduce character and setting. ~400 words.\n\
+             Outline:\n{outline}\n\n\
+             Output JSON with: title (string), content (string with the chapter prose)",
+        )
     } else {
-        format!("Write Chapter {num}. Continue from previous. Advance plot. ~400 words.\nPrevious ending:\n{prev}\n\nOutline:\n{outline}")
+        format!(
+            "Write Chapter {num}. Continue from previous. Advance plot. ~400 words.\n\
+             Previous ending:\n{prev}\n\n\
+             Outline:\n{outline}\n\n\
+             Output JSON with: title (string), content (string with the chapter prose)",
+        )
     };
 
-    let out = match clean_complete(
-        backend, "You are a fiction writer. Write vivid, engaging prose.",
-        &directive, 0.8, 650, &format!("chapter {num}"),
+    let json = match constrained_complete(
+        backend,
+        "You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.",
+        &directive,
+        CHAPTER_GRAMMAR,
+        0.8,
+        650,
     ) {
-        Ok(t) => t,
-        Err(e) => { error!(%e); format!("[chapter {num} error]") }
+        Ok(j) => j,
+        Err(e) => { error!(%e); return error_result(task, &format!("chapter {num}")); }
     };
+
+    // Convert JSON to markdown
+    let title = parse_json_string(&json, "title");
+    let content = parse_json_string(&json, "content");
+    let md = format!("# {title}\n\n{content}");
 
     let fname = format!("03-CHAPTER_{num}.md");
     let path = ws.resolve(&fname);
     if let Ok(p) = &path {
-        std::fs::write(p, &out).ok();
+        std::fs::write(p, &md).ok();
     }
 
     HandlerResult {
         task: task.clone(),
-        output: out.clone(),
-        files: HashMap::from([(fname, out)]),
+        output: md.clone(),
+        files: HashMap::from([(fname, md)]),
     }
 }
 
@@ -197,7 +279,6 @@ fn handle_validate(task: &Task, _backend: &dyn ModelBackend, ws: &Workspace) -> 
         format!("Chapter {num}: OK (length: {} chars)", text.len())
     };
 
-    // Append validation to running file
     let path = ws.resolve("04-VALIDATION.md");
     if let Ok(p) = path {
         let existing = std::fs::read_to_string(&p).unwrap_or_default();
@@ -215,24 +296,34 @@ fn handle_synopsis(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> H
     let chapters = task.spec.get("chapters").and_then(|v| v.as_str()).unwrap_or("");
     info!("generate synopsis");
 
-    let out = match clean_complete(
-        backend, "You are a literary summarizer.",
-        &format!("One-paragraph synopsis (~100 words):\n\n{chapters}"),
-        0.5, 250, "synopsis",
+    let json = match constrained_complete(
+        backend,
+        "You are a literary summarizer. Output valid JSON only.",
+        &format!(
+            "Write a one-paragraph synopsis of the complete story based on these chapters:\n\n\
+             {chapters}\n\n\
+             Output JSON with: summary (string, one paragraph, ~100 words)",
+        ),
+        SYNOPSIS_GRAMMAR,
+        0.5,
+        250,
     ) {
-        Ok(t) => t,
-        Err(e) => { error!(%e); "[synopsis error]".into() }
+        Ok(j) => j,
+        Err(e) => { error!(%e); return error_result(task, "synopsis"); }
     };
+
+    let summary = parse_json_string(&json, "summary");
+    let md = format!("Synopsis:\n\n{summary}");
 
     let path = ws.resolve("05-SYNOPSIS.md");
     if let Ok(p) = &path {
-        std::fs::write(p, &out).ok();
+        std::fs::write(p, &md).ok();
     }
 
     HandlerResult {
         task: task.clone(),
-        output: out.clone(),
-        files: HashMap::from([("05-SYNOPSIS.md".into(), out)]),
+        output: md.clone(),
+        files: HashMap::from([("05-SYNOPSIS.md".into(), md)]),
     }
 }
 
@@ -243,13 +334,11 @@ fn handle_publish(_task: &Task, _backend: &dyn ModelBackend, ws: &Workspace) -> 
     let wiki = std::fs::read_to_string(ws.root().join("02-WIKI.md")).unwrap_or_default();
     let synopsis = std::fs::read_to_string(ws.root().join("05-SYNOPSIS.md")).unwrap_or_default();
 
-    // Extract title from outline
     let title = outline.lines()
         .find(|l| l.starts_with("Title:") || l.starts_with("# "))
         .map(|l| l.replace("Title:", "").replace("# ", "").trim().to_string())
         .unwrap_or_else(|| "Untitled Story".into());
 
-    // Assemble
     let mut story = format!("# {title}\n\n");
     if !wiki.is_empty() {
         story.push_str("## Characters & Setting\n\n");
@@ -280,6 +369,17 @@ fn handle_publish(_task: &Task, _backend: &dyn ModelBackend, ws: &Workspace) -> 
         task: _task.clone(),
         output: format!("published {} bytes", story.len()),
         files: HashMap::from([("06-STORY.md".into(), story)]),
+    }
+}
+
+// ── Error handling ──────────────────────────────────────────────────
+
+fn error_result(task: &Task, label: &str) -> HandlerResult {
+    let error_msg = format!("[{label} error]");
+    HandlerResult {
+        task: task.clone(),
+        output: error_msg.clone(),
+        files: HashMap::new(),
     }
 }
 
@@ -326,7 +426,6 @@ fn main() -> anyhow::Result<()> {
     let backend = RwkvBackend::from_env()?;
     println!("Model ready.\n");
 
-    // ── Build MechanisticAgent ──────────────────────────────────────
     let mut agent = MechanisticAgent::new()
         .with_repair(RepairConfig {
             max_retries: 2,
@@ -339,7 +438,6 @@ fn main() -> anyhow::Result<()> {
         })
         .with_fallback_threshold(0.3);
 
-    // Declare the storyTeller route
     agent.add_route("storyTeller", vec![
         ("compose", "outline"),
         ("compose", "wiki"),
@@ -349,7 +447,6 @@ fn main() -> anyhow::Result<()> {
         ("publish", "chapter"),
     ]);
 
-    // Register handlers
     agent.register("compose", "outline", Box::new(handle_outline));
     agent.register("compose", "wiki", Box::new(handle_wiki));
     agent.register("write", "chapter", Box::new(handle_chapter));
@@ -357,13 +454,12 @@ fn main() -> anyhow::Result<()> {
     agent.register("write", "synopsis", Box::new(handle_synopsis));
     agent.register("publish", "chapter", Box::new(handle_publish));
 
-    // ── Create workspace ───────────────────────────────────────────
     let ws = create_workspace(&premise)?;
     let workspace_path = ws.root().to_string_lossy().to_string();
 
     println!("Pipeline: outline → wiki → chapter×3 → validate → synopsis → publish\n");
 
-    // ── Phase 1: Outline ───────────────────────────────────────────
+    // Phase 1: Outline
     println!("📝 Outline...");
     let outline_plan = Plan {
         tasks: vec![Task {
@@ -376,7 +472,7 @@ fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("outline failed: {e}"))?;
     let outline_text = outline_result.output.clone();
 
-    // ── Phase 2: Wiki ──────────────────────────────────────────────
+    // Phase 2: Wiki
     println!("📚 Worldbuilding...");
     let wiki_plan = Plan {
         tasks: vec![Task {
@@ -388,7 +484,7 @@ fn main() -> anyhow::Result<()> {
     let wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("wiki failed: {e}"))?;
 
-    // ── Phase 3: Chapters ×3 ───────────────────────────────────────
+    // Phase 3: Chapters ×3
     let mut chapter_texts = Vec::new();
     for i in 1..=3 {
         let label = format!("Chapter {i}");
@@ -418,27 +514,32 @@ fn main() -> anyhow::Result<()> {
         let _val = agent.dispatch_single(&backend, &val_task, &ws)
             .map_err(|e| anyhow::anyhow!("validation {i} failed: {e}"))?;
 
-        // Self-correction: if chapter is very short, re-write
+        // Self-correction: if chapter is very short, re-write with grammar constraint
         if ch_result.output.len() < 100 {
             println!("   ⚠️  Short chapter — retrying...");
-            let corrected = clean_complete(
-                &backend,
-                "You are a fiction writer. Write vivid prose. NO meta-commentary.",
-                &format!("Rewrite {label}. Previous was too short (~{} chars).\n\nOutline context:\n{}\n\nJust the story text, ~400 words.", ch_result.output.len(), &outline_text),
-                0.7, 650, &format!("chapter {i} retry"),
-            ).unwrap_or_else(|_| ch_result.output.clone());
-            chapter_texts[i - 1] = corrected.clone();
+            let retry_task = Task {
+                r#type: "write".into(),
+                domain: "chapter".into(),
+                spec: serde_json::json!({
+                    "number": i,
+                    "outline": &outline_text,
+                    "previous": prev,
+                    "retry": true,
+                }),
+            };
+            let retry_result = agent.dispatch_single(&backend, &retry_task, &ws)
+                .unwrap_or(ch_result);
+            chapter_texts[i - 1] = retry_result.output.clone();
 
-            // Overwrite in workspace
             let fname = format!("03-CHAPTER_{i}.md");
             let p = ws.resolve(&fname).ok();
             if let Some(path) = p {
-                std::fs::write(&path, &corrected).ok();
+                std::fs::write(&path, &retry_result.output).ok();
             }
         }
     }
 
-    // ── Phase 4: Synopsis ──────────────────────────────────────────
+    // Phase 4: Synopsis
     println!("📋 Synopsis...");
     let all_chapters = chapter_texts.iter()
         .enumerate()
@@ -455,7 +556,7 @@ fn main() -> anyhow::Result<()> {
     let _syn_result = agent.dispatch_single(&backend, &syn_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("synopsis failed: {e}"))?;
 
-    // ── Phase 5: Publish ───────────────────────────────────────────
+    // Phase 5: Publish
     println!("📦 Publishing...");
     let pub_plan = Plan {
         tasks: vec![Task {
@@ -467,7 +568,7 @@ fn main() -> anyhow::Result<()> {
     let pub_result = agent.dispatch_single(&backend, &pub_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("publish failed: {e}"))?;
 
-    // ── Commit ──────────────────────────────────────────────────────
+    // Commit
     let outcome = agent.commit(pub_plan.clone(), vec![
         outline_result, wiki_result, pub_result,
     ], &ws)?;
