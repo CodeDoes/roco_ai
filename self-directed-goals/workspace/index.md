@@ -8,10 +8,9 @@ Prerequisite order (mirrors the product layer):
 
 1. **workspace** — ✅ done. `Workspace` with `WorkspaceKind` (eval/temp/user/
    agent/generic), `resolve()` path-escape protection (lexical `..`
-   normalization + canonical-prefix check), `cwd`, and `metadata()`. *Self-directed
-   hardening:* the canonical-prefix check only triggers for files that already
-   exist; add a best-effort canonicalize of the parent chain so a symlink
-   created *inside* the root that points outside is still caught.
+   normalization + canonical-prefix check), `cwd`, and `metadata()`. **Symlink
+   hardening done:** the canonical-prefix check now catches symlinks created
+   *inside* the root that point outside (covered by a regression test).
 2. **bash_like_tools** — ✅ done. `WorkspaceBashTool` runs with the workspace
    cwd. *Self-directed:* document clearly that the shell is cwd-scoped, not a
    syscall sandbox; consider a denylist of obviously dangerous commands as a
@@ -19,12 +18,17 @@ Prerequisite order (mirrors the product layer):
 3. **file_tools** — ✅ done. read/write/edit/search/list scoped to the root.
 
 **Integration (my own priority, not a product sub-goal):**
-- Wire a `Workspace` into the `agent` CLI example so the default agent run is
-  sandboxed by default, not operating on the unrestricted global tools.
-- Add an **eval case** that asserts the sandbox rejects escape attempts and
-  allows in-bounds traversal (so a regression in `resolve()` fails CI).
+- ✅ Wire a `Workspace` into the `agent` CLI example so the default agent run is
+  sandboxed by default (committed earlier this session).
+- ✅ **Sandbox-escape eval case** added: `crates/workspace/src/workspace.rs`
+  `mod tests` now has a dedicated regression guard — `escape_via_parent_traversal_is_blocked`,
+  `escape_via_absolute_path_is_blocked`, `read_tool_blocks_traversal_escape`,
+  `escape_via_symlink_is_blocked` (unix), and `legit_in_bounds_access_still_works`
+  — that plants a secret outside the root and asserts neither lexical traversal
+  nor symlink escape can reach it, through both `resolve()` and the `read` tool.
 - Provide ready-made workspace presets: `eval`, `temp`, `user`, `agent`
   constructors that pick sensible roots (temp dir, `./.roco/workspace`, etc.).
 
-**Next self-directed action:** add the sandbox eval case + agent-example
-integration so the workspace layer is exercised end-to-end, not just unit-tested.
+**Next self-directed action:** add workspace presets/constructors and a command
+ denylist for the bash tool; then move to the `message` layer's remaining items
+ (`state_tune_examples`, `system_instruction_following`, `user_message_response`).

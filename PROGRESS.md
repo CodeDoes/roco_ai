@@ -233,6 +233,11 @@ flags, env vars, run commands); this file is the strategy context.
   all resolving through `Workspace::resolve` so they cannot leave the root.
   The agent drives them via `Agent::with_tools(config, Workspace::scoped_tools(ws))`.
   Caveat: the `bash` tool is cwd-scoped, not a full syscall sandbox.
+  **Symlink hardening + sandbox-escape regression guard added**:
+  `crates/workspace/src/workspace.rs` now has a dedicated test module that
+  plants a secret outside the root and asserts neither lexical `..` traversal
+  nor symlink escapes (unix) reach it through `resolve()` or the `read` tool,
+  while legitimate in-bounds access still works.
 - `agent_chat`, `browser_use`, `coder` — forward-looking; not yet in code.
 
 ## Open questions

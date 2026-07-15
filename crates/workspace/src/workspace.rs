@@ -279,4 +279,99 @@ mod tests {
         let missing = std::env::temp_dir().join("roco-ws-does-not-exist-xyz");
         assert!(Workspace::from_existing(&missing, WorkspaceKind::User).is_err());
     }
+
+    // ── Sandbox-escape regression guard ─────────────────────────────
+    //
+    // These tests plant a secret *outside* the workspace and assert that
+    // neither lexical traversal (`../../`) nor symlink escapes can reach it,
+    // whether resolved directly or via the `read` tool. This is the
+    // regression guard called for by the workspace-layer self-directed goal.
+    fn plant_secret_outside(ws: &Workspace) -> std::path::PathBuf {
+        // Put a secret one level above the workspace root, named uniquely so
+        // parallel tests don't collide.
+        let outside = ws.root().parent().expect("workspace root has a parent");
+        let secret = outside.join(format!(
+            "roco-secret-{}.txt",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(&secret, "TOP-SECRET").unwrap();
+        secret
+    }
+
+    #[test]
+    fn escape_via_parent_traversal_is_blocked() {
+        let ws = temp();
+        let secret = plant_secret_outside(&ws);
+        defer_delete(&secret);
+
+        // Resolve the secret through `..` traversal — must be rejected.
+        assert!(ws.resolve("../../").is_err() || ws.resolve("..").is_err());
+        assert!(ws.resolve(&format!("../{}", secret.file_name().unwrap().to_string_lossy())).is_err(),
+            "resolving a sibling-of-root file via '..' must be rejected");
+    }
+
+    #[test]
+    fn escape_via_absolute_path_is_blocked() {
+        let ws = temp();
+        let secret = plant_secret_outside(&ws);
+        defer_delete(&secret);
+
+        // Absolute path to the secret must be rejected (it is outside root).
+        let abs = secret.to_string_lossy().to_string();
+        assert!(ws.resolve(&abs).is_err(), "absolute path outside root must be rejected");
+    }
+
+    #[test]
+    fn read_tool_blocks_traversal_escape() {
+        let ws = temp();
+        let secret = plant_secret_outside(&ws);
+        defer_delete(&secret);
+
+        let tools = Workspace::scoped_tools(std::sync::Arc::new(ws));
+        let read = tools.iter().find(|t| t.name() == "read").unwrap();
+        let rel = format!("../{}", secret.file_name().unwrap().to_string_lossy());
+        let res = read.call(serde_json::json!({ "path": rel }));
+        assert!(res.is_err(), "read tool must reject traversal escape");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn escape_via_symlink_is_blocked() {
+        use std::os::unix::fs::symlink;
+        let ws = temp();
+        let secret = plant_secret_outside(&ws);
+        defer_delete(&secret);
+
+        // Create a symlink *inside* the workspace that points at the parent
+        // directory containing the secret, then try to read the secret through
+        // it. Canonical containment in `resolve` must catch this.
+        let link = ws.root().join("escape_link");
+        symlink(secret.parent().unwrap(), &link).unwrap();
+
+        let tools = Workspace::scoped_tools(std::sync::Arc::new(ws));
+        let read = tools.iter().find(|t| t.name() == "read").unwrap();
+        let target = format!("escape_link/{}", secret.file_name().unwrap().to_string_lossy());
+        let res = read.call(serde_json::json!({ "path": target }));
+        assert!(res.is_err(), "read tool must reject symlink escape");
+    }
+
+    #[test]
+    fn legit_in_bounds_access_still_works() {
+        let ws = temp();
+        std::fs::write(ws.root().join("ok.txt"), "safe").unwrap();
+        let resolved = ws.resolve("ok.txt").unwrap();
+        assert!(resolved.starts_with(ws.root()));
+        assert_eq!(std::fs::read_to_string(&resolved).unwrap(), "safe");
+    }
+
+    /// Best-effort cleanup helper so planted secrets don't leak between runs.
+    fn defer_delete(path: &std::path::Path) {
+        let p = path.to_path_buf();
+        std::thread::spawn(move || {
+            let _ = std::fs::remove_file(&p);
+        });
+    }
 }
