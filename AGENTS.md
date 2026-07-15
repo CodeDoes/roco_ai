@@ -14,6 +14,49 @@ patch, the `scripts/` model converters, and the `assets/vocab` tokenizer.
 Everything non-RWKV (orchestrator crates, gateway/web frontends, Docker,
 agent/eval scaffolding) has been removed; git history preserves it.
 
+## Agent architecture: plan-and-execute (predetermined mode selection)
+
+RoCo AI supports two agent execution patterns, both using **grammar-constrained
+output everywhere** — never free-form JSON extraction:
+
+### Pattern 1: Plan-first (deterministic)
+
+```
+System instruction + User message
+    ↓ BNF-constrained LLM call → valid JSON plan
+┌──────────────────────────────────────┐
+│  Classic Rust loop over steps        │
+│  for step in plan.topological_order() │
+│    result = tool_dispatch(step)      │
+│         or model_subtask(step)       │
+│    eval_verify(step, result)         │
+│    if !verified: inject_subtasks()   │
+│  end                                 │
+└──────────────────────────────────────┘
+    ↓
+Final assembled output
+```
+
+Key properties:
+- **No free-form intermediaries**: Every LLM call produces BNF-valid output;
+  `serde_json::from_str()` always succeeds — no heuristics, no brace-counting
+- **Classic code owns control flow**: iteration order, dependencies, termination
+  are all Rust logic; the model only fills content slots
+- **Self-prompting chain**: Each completed step feeds its result as context for
+  the next query via an auto-assembled prompt template
+- **Configurable mechanistic depth**: Shallow (execute as-is), Medium (verify each
+  step against evals), Deep (auto-inject subtasks on rejection), Autonomous
+  (self-prompting chain runs until all evals pass)
+
+### Pattern 2: ReAct (open-ended)
+
+The existing `Agent::run()` loop — model-driven iteration where the model decides
+how many steps it needs. Still grammar-constrained, but the loop structure is
+probabilistic (model emits final_answer to stop).
+
+Both patterns use the same grammar infrastructure (`BnfConstraint` + vocab trie)
+The difference is whether the **iteration count** is predetermined or model-driven.
+
 ## Status
 
 - **Inference**: works end-to-end on `RWKV-7 g1h 2.9B` (FP16 PTH → converted
@@ -30,6 +73,12 @@ agent/eval scaffolding) has been removed; git history preserves it.
   `crates/session`. Enables persistent conversations across calls. Phase 2
   (N-slot GPU pool with concurrent batching) and Phase 3 (tensor blending)
   are forward work.
+- **Plan-and-execute harness**: **Implemented.** `Planner::plan()` produces
+  grammar-constrained plans; `Plan::execute()` runs wave-level dependency-aware
+  execution with topological sorting. Self-prompting chain assembly and inline
+  eval verification are documented in `goals/` but not yet wired into production.
+- **ReAct loop**: **Implemented.** `Agent::run()` in `crates/agent/src/agent.rs`
+  with `think` blocks, tool dispatch, gradual tool disclosure, and budget limits.
 - **Chat CLI**: `roco chat` example (`crates/cli/examples/chat.rs`) provides
   a terminal REPL with streaming output, session persistence, grammar
   constraints, and Ctrl+C interrupt. The `agent` example
@@ -101,13 +150,14 @@ from the local RWKV-7 engine up to a full agent:
 
 | Layer | What it covers | State |
 |---|---|---|
-| `infer/` | inference engine (model, quant, state, decoding, structured output) | ✅ complete (needs GGUF→ST fix for 0.1B/1.5B) |
-| `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) | ✅ core (chat_cli + a few items remain) |
+| `infer/` | inference engine (model, quant, state, decoding, structured output) | ✅ complete (no free-form JSON; all outputs BNF-constrained) |
+| `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) | ✅ core (constrained tool calls, message GBNF complete) |
 | `workspace/` | the environment the agent acts in | ⬜ not started |
-| `agent/` | the autonomous agent loop and its capabilities | 🟡 core loop done (planning/memory/etc. remain) |
+| `agent/` | the autonomous agent loop and its capabilities | 🟡 core loop done (planning, self-prompting chain documented) |
+| `mechanistic-agent/` | code-driven controller + router; model is subroutine at grammar-bounded points | 🟡 controller pattern documented; implementation forward |
 | `agent_chat/` | persistent workspace or folder-bound agent sessions | ⬜ not started |
 | `browser_use/` | driving a real browser | ⬜ not started |
-| `testing/` | eval harness, oracles, regression gates | ✅ done |
+| `testing/` | eval harness, oracles, regression gates, inline verification | ✅ done (inline eval gates documented as Phase 3) |
 | `coder/` | **(future)** the agent's own develop/test/lint loop in a controlled sandbox | ⬜ not started |
 
 Each folder contains an `index.md` listing its goals in dependency order. A
@@ -175,18 +225,26 @@ CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
 
 1. ~~JSON-Schema → GBNF converter~~ **Done.** Primitives + enums + objects +
    arrays. (`crates/grammar/src/json_schema.rs`)
-2. The 0.1B / 1.5B GGUF→ST shape mismatch in `scripts/gguf_to_st_converter/`
-   (`a0/k_a/k_k/v0/w0/x_*` need `[1,1,emb]`, `r_k` needs `(clock_count,head_dim)`).
-   Upstream patch needed; without it only the 2.9B works. Tracked as
-   `goals/infer/gguf_st_converter`.
-3. ~~Dead module cleanup~~ **Done.** Removed `audio.rs`, the `inference/`
+2. ~~Dead module cleanup~~ **Done.** Removed `audio.rs`, the `inference/`
    directory, and `capacity.rs`. All tests pass.
-4. ~~Cleanup segfault~~ **Fixed.** Actor thread now joins in `Drop`.
-5. ~~`bnf_sampler` integration~~ **Done.** `BnfConstraint` is the primary
+3. ~~Cleanup segfault~~ **Fixed.** Actor thread now joins in `Drop`.
+4. ~~`bnf_sampler` integration~~ **Done.** `BnfConstraint` is the primary
    grammar engine with schoolmarm fallback. 61 tests pass, 0 warnings.
-6. ~~State pool Phase 1~~ **Done.** Session-based save/restore wired
+5. ~~State pool Phase 1~~ **Done.** Session-based save/restore wired
    through the pipeline with LRU eviction. Phase 2 (N-slot GPU pool)
    and Phase 3 (tensor blending) are forward work.
-7. ~~Monorepo restructuring~~ **Done.** Split into 13 crates; message layer
+6. ~~Monorepo restructuring~~ **Done.** Split into 13 crates; message layer
    (GBNF, tools, tool-calling, result handling, error recovery) and the
    agent ReAct loop implemented.
+7. ~~Plan-and-execute architecture documented~~ **Done.** Plan-first paradigm,
+   self-prompting chains, constrained tool calls, inline eval verification,
+   configurable mechanistic depth — all captured in `goals/` with references
+   throughout codebase docs.
+8. Replace `Planner::plan()`'s `extract_first_json()` heuristic with dedicated
+   plan GBNF grammar so plan emission is fully structurally guaranteed.
+9. Wire `StepVerifier` into `Plan::execute()` as optional middleware gate for
+   inline eval verification during wave execution.
+10. ~~The 0.1B / 1.5B GGUF→ST shape mismatch~~ in `scripts/gguf_to_st_converter/`
+    (`a0/k_a/k_k/v0/w0/x_*` need `[1,1,emb]`, `r_k` needs `(clock_count,head_dim)`).
+    Upstream patch needed; without it only the 2.9B works. Tracked as
+    `goals/infer/gguf_st_converter`.

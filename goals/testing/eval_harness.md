@@ -1,7 +1,62 @@
 # Testing
 
 Intent: Eval harness, oracle management, and regression gates that keep the
-inference engine honest as it grows.
+inference engine honest as it grows. Evals serve **dual purposes**: post-hoc
+regression testing AND mid-execution verification gates for the plan-and-execute loop.
+
+## Inline eval verification (mid-execution checks)
+
+Evals are not just for post-hoc regression testing — they serve as **verification**
+**gates during agent execution**:
+
+```
+Plan step completes → result captured
+    ↓
+StepVerifier::check(step_description, result) → EvalCheck {
+    passed: bool,
+    confidence: f32,
+    issues: Vec<String>
+}
+    ↓
+passed=true  → advance to next step
+passed=false → trigger repair or subtask injection
+```
+
+This means every step output is tested against known-good behavior before the
+plan proceeds. If a step produces a malformed plan fragment, a poorly formatted
+chapter, or an incorrect code generation, the inline verifier catches it immediately
+rather than letting errors compound downstream.
+
+### Implementation approach
+
+```rust
+pub struct StepVerifier {
+    // Maps step descriptions to relevant eval case IDs
+    steps_by_category: HashMap<String, Vec<EvalCaseId>>,
+}
+
+impl StepVerifier {
+    pub fn check(&self, step_desc: &str, result: &str) -> EvalCheck {
+        let cases = self.steps_by_category.get(category_for(step_desc));
+        match cases {
+            Some(cases) => run_eval_cases(cases, result),  // structured verdict
+            None => EvalCheck { passed: true, confidence: 0.5 }, // no criteria yet
+        }
+    }
+}
+```
+
+Eval categories map to step types:
+- `tool_dispatch` → format correctness of JSON output
+- `code_generation` → compiles / lint passes
+- `prose_generation` → structural completeness (has intro, body, conclusion?)
+- `plan_fragment` → valid GBNF parseable JSON shape
+
+### Phase 1 priorities
+- StepVerifier scaffold with category mapping
+- Basic eval cases per step type (structural, not behavioral)
+- Wire into Plan::execute() as optional middleware gate
+- Integration tests showing failed step blocks progression
 
 ## What exists today
 
@@ -44,8 +99,10 @@ inference engine honest as it grows.
 | `infer/streaming` | Token streaming | ✅ Done |
 | `infer/gbnf` | Grammar-constrained decoding | ✅ Done |
 | `infer/state_mixing` | Session state pool | ✅ Phase 1 done |
-| `message/system_instruction` | System prompts | ✅ Done |
-| `message/tool_calling` | Tool call format | In progress |
+| `infer/structured_output` | No free-form JSON | ✅ Done |
+| `agent/planning` | Structured plan decomposition | ✅ Done |
+| `agent/self_prompting` | Self-prompting chain | 🟡 New |
+| `message/tool_calling` | Constrained tool calls | ✅ Done |
 
 ## Implementation plan
 
@@ -59,6 +116,11 @@ inference engine honest as it grows.
   on any failure
 - `roco bless` updates all oracles and the baseline
 
-### Phase 3: CI integration
+### Phase 3: Inline verification
+- StepVerifier scaffolding with category-to-eval-case mapping
+- Wire into Plan::execute() as optional middleware gate
+- Verify each step output against relevant cases before advancing waves
+
+### Phase 4: CI integration
 - GitHub Actions (or local cron) runs `roco eval --regression` nightly
 - Reports score deltas, flags model changes
