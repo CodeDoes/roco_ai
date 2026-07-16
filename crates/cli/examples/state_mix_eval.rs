@@ -66,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
     let resp = backend.complete(CompletionRequest {
         system: String::new(),
         prompt: probe.to_string(),
+        prefill: None,
         grammar: None,
         temperature: 0.7,
         max_tokens: 150,
@@ -83,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
     let resp = backend.complete(CompletionRequest {
         system: String::new(),
         prompt: probe.to_string(),
+        prefill: None,
         grammar: None,
         temperature: 0.7,
         max_tokens: 150,
@@ -106,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
     let resp = backend.complete(CompletionRequest {
         system: String::new(),
         prompt: probe.to_string(),
+        prefill: None,
         grammar: None,
         temperature: 0.7,
         max_tokens: 150,

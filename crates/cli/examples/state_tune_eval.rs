@@ -67,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
             let req = CompletionRequest {
                 system: String::new(),
                 prompt: prompt.to_string(),
+                prefill: None,
                 grammar: None,
                 temperature: 0.7,
                 max_tokens: 150,

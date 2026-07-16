@@ -34,6 +34,9 @@ impl TokenUsage {
 pub struct CompletionRequest {
     pub system: String,
     pub prompt: String,
+    /// Text appended after "Assistant: " so the model sees it as its own
+    /// completed output (e.g. pre-filled think blocks, assistant role-play).
+    pub prefill: Option<String>,
     pub output_schema: Option<String>,
     pub grammar: Option<String>,
     pub temperature: f32,
@@ -56,6 +59,7 @@ impl Clone for CompletionRequest {
         Self {
             system: self.system.clone(),
             prompt: self.prompt.clone(),
+            prefill: self.prefill.clone(),
             output_schema: self.output_schema.clone(),
             grammar: self.grammar.clone(),
             temperature: self.temperature,
@@ -75,6 +79,7 @@ impl std::fmt::Debug for CompletionRequest {
         f.debug_struct("CompletionRequest")
             .field("system", &self.system)
             .field("prompt", &self.prompt)
+            .field("prefill", &self.prefill)
             .field("output_schema", &self.output_schema)
             .field("grammar", &self.grammar)
             .field("temperature", &self.temperature)
@@ -94,6 +99,7 @@ impl Default for CompletionRequest {
         Self {
             system: String::new(),
             prompt: String::new(),
+            prefill: None,
             output_schema: None,
             grammar: None,
             temperature: 0.2,

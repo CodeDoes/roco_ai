@@ -81,14 +81,12 @@ async fn main() -> anyhow::Result<()> {
             _ => "Test input.",
         };
         
-        // Pre-fill think block to prevent think-tag contamination
-        let probe_with_prethink = format!("{}\n{}", probe, PRETHINK_BLOCK);
-        
         println!("  Probe: {}", probe);
         let response = backend
             .complete(CompletionRequest {
                 system: String::new(),
-                prompt: probe_with_prethink,
+                prompt: probe.to_string(),
+                prefill: Some(PRETHINK_BLOCK.to_string()),
                 max_tokens: 150,
                 estimated_prompt_tokens: 0,
                 temperature: 0.7,

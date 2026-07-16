@@ -608,6 +608,7 @@ async fn backend_call(
     let req = CompletionRequest {
         system: system.to_string(),
         prompt: prompt.to_string(),
+        prefill: None,
         output_schema: None,
         grammar: grammar.map(|s| s.to_string()),
         temperature,
@@ -766,6 +767,7 @@ mod tests {
             let req = CompletionRequest {
                 system: String::new(),
                 prompt: format!("Generate: {prompt}"),
+                prefill: None,
                 grammar: None,
                 temperature: 0.0,
                 max_tokens: 100,

@@ -200,6 +200,7 @@ pub async fn bake_persona(
         let req = CompletionRequest {
             system: if i == 0 { system.to_string() } else { String::new() },
             prompt: user_msg.to_string(),
+            prefill: None,
             grammar: None,
             temperature: 0.0,
             max_tokens: 1024,
@@ -214,7 +215,8 @@ pub async fn bake_persona(
         backend.complete(req).await?;
         let req_assistant = CompletionRequest {
             system: String::new(),
-            prompt: assistant_msg.to_string(),
+            prompt: String::new(),
+            prefill: Some(assistant_msg.to_string()),
             grammar: None,
             temperature: 0.0,
             max_tokens: 1024,

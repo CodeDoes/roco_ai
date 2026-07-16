@@ -247,6 +247,7 @@ impl Agent {
             let req = CompletionRequest {
                 system: String::new(),
                 prompt,
+                prefill: None,
                 output_schema: None,
                 grammar,
                 temperature: self.config.temperature,
@@ -334,6 +335,7 @@ impl Agent {
         let req = CompletionRequest {
             system: String::new(),
             prompt,
+            prefill: None,
             output_schema: None,
             grammar: None,
             temperature: subtask.temperature,

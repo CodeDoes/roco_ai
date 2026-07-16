@@ -166,6 +166,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let request = CompletionRequest {
         system: case.system.clone(),
         prompt: case.prompt.clone(),
+        prefill: None,
         output_schema: None,
         grammar: case.grammar.clone(),
         temperature: case.temperature,
@@ -200,7 +201,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                     } else {
                         let trunc = |s: &str| {
                             let s = s.trim();
-                            if s.len() > 120 { format!("{}…", &s[..120]) } else { s.to_string() }
+                            if s.chars().count() > 120 { format!("{}…", s.chars().take(120).collect::<String>()) } else { s.to_string() }
                         };
                         format!("\n✗ MISMATCH\n  actual: {}\n  oracle: {}\n", trunc(&output), trunc(oracle))
                     };

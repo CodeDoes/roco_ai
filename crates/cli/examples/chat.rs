@@ -240,6 +240,7 @@ async fn main() -> anyhow::Result<()> {
             .complete(CompletionRequest {
                 system: req_system,
                 prompt: req_prompt,
+                prefill: None,
                 output_schema: None,
                 grammar: grammar.clone(),
                 temperature,

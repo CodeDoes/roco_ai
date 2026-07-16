@@ -41,6 +41,8 @@ categories = [
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cryscan/web-rwkv"
 
+[workspace]
+
 [features]
 backtrace = []
 classic = ["tokio"]
@@ -93,6 +95,10 @@ path = "examples/puzzle15/main.rs"
 [[example]]
 name = "serde"
 path = "examples/serde.rs"
+
+[[example]]
+name = "test_reverse"
+path = "examples_test/test_reverse.rs"
 
 [dependencies.ahash]
 version = "0.8"
