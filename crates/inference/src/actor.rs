@@ -86,6 +86,7 @@ impl AnyState {
 pub struct CompleteReq {
     pub system: String,
     pub prompt: String,
+    pub prefill: Option<String>,
     pub max_tokens: usize,
     pub temperature: f32,
     #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
@@ -375,6 +376,7 @@ impl RwkvActor {
         &mut self,
         system: String,
         prompt: String,
+        prefill: Option<String>,
         max_tokens: usize,
         temperature: f32,
         preserve_state: bool,
@@ -419,14 +421,29 @@ impl RwkvActor {
             format!("System: {}\n\nUser: {prompt}\n\nAssistant:", system.trim())
         };
 
+        // Pre-fill if provided (for pre-think blocks, etc.)
+        let prefill_tokens = if let Some(pf) = prefill {
+            Some(self.tokenizer.encode(pf.as_bytes())
+                .map_err(|e| EngineError::Backend(format!("prefill tokenize: {e}")))?)
+        } else {
+            None
+        };
+
         let prompt_tokens = self.tokenizer.encode(full.as_bytes())
             .map_err(|e| EngineError::Backend(format!("tokenizer encode: {e}")))?;
         let prompt_len = prompt_tokens.len();
 
         let top_p = if temperature < 0.3 { 0.8 } else if temperature < 0.7 { 0.9 } else { 0.95 };
 
+        // Combine prompt tokens with prefill tokens if any
+        let mut all_prompt_tokens = prompt_tokens;
+        if let Some(pf) = prefill_tokens {
+            all_prompt_tokens.extend(pf);
+        }
+        let total_prompt_len = all_prompt_tokens.len();
+
         let mut inference = RnnInput::new(
-            vec![RnnInputBatch::new(prompt_tokens.clone(), RnnOption::Last)],
+            vec![RnnInputBatch::new(all_prompt_tokens, RnnOption::Last)],
             self.token_chunk_size,
         );
 
@@ -437,7 +454,7 @@ impl RwkvActor {
         // Flush prompt + sample first token
         loop {
             if self.cancel.load(Ordering::Relaxed) {
-                return Ok((text, TokenUsage { prompt_tokens: prompt_len, completion_tokens: generated.len() }));
+                return Ok((text, TokenUsage { prompt_tokens: total_prompt_len, completion_tokens: generated.len() }));
             }
             let input = inference.clone();
             let (input, output) = self.runtime.infer(input).await
@@ -584,6 +601,7 @@ impl RwkvActor {
                     let CompleteReq {
                         system,
                         prompt,
+                        prefill,
                         max_tokens,
                         temperature,
                         grammar,
@@ -595,7 +613,7 @@ impl RwkvActor {
                     } = req;
                     let result = self
                         .handle_complete(
-                            system, prompt, max_tokens, temperature,
+                            system, prompt, prefill, max_tokens, temperature,
                             preserve_state, on_token, grammar, session,
                             bnf_mask,
                         )

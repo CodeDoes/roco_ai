@@ -80,8 +80,11 @@ pub struct EvalResult {
     pub passed: bool,
     pub input: String,
     pub output: String,
+    #[serde(skip)]
     pub latency_ms: u64,
+    #[serde(skip)]
     pub token_usage: TokenUsage,
+    #[serde(skip)]
     pub tokens_per_sec: f64,
     pub checks: Vec<CheckResult>,
     pub errors: Vec<String>,
@@ -96,6 +99,7 @@ pub struct EvalReport {
     pub total: usize,
     pub passed: usize,
     pub failed: usize,
+    #[serde(skip)]
     pub total_latency_ms: u64,
     pub results: Vec<EvalResult>,
     pub category_breakdown: Vec<CategoryBreakdown>,
@@ -255,7 +259,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 let tp_ok = if latency_ms == 0 { true } else { tokens_per_sec >= 1.0 };
                 checks.push(CheckResult {
                     name: "throughput".into(), passed: tp_ok,
-                    detail: format!("{:.1} tok/s ({} tokens in {}ms)", tokens_per_sec, usage.completion_tokens, latency_ms),
+                    detail: if tp_ok { "ok" } else { "too slow" }.into(),
                 });
             }
 
