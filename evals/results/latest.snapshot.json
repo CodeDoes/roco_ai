@@ -3,11 +3,15 @@
   "coherence_story": "A robot named Pixel, with a paintbrush in hand, began to learn the art of painting. With each stroke, it discovered the beauty of color and form, transforming a blank canvas into a masterpiece.",
   "format_json": "```json\n{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}\n```",
   "format_list": "1. A blanket or mat to sit on\n2. Food and drinks for everyone\n3. A cooler to keep the food and drinks cold",
+  "instruct_baseline_persona": "Use the key, matey!",
   "instruct_format_constraint": "{\"colors\": [\"red\", \"green\", \"blue\"]}",
   "instruct_negative": "The weather is clear and sunny today, with a gentle breeze. The sky is a brilliant blue, and the sun is shining brightly. The air is warm and dry, and there is a pleasant warmth to the atmosphere. It's a perfect day for outdoor activities, and the birds are singing their sweet songs. The world feels fresh and invigorating, and it's a great day to be alive",
   "instruct_step_by_step": "Step 1 complete\nStep 2 complete\nAll steps done",
   "newline_handling": "Apples\nBananas\nCherries",
   "repetition_avoidance": "1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Penguin",
   "smoke_basic_reply": "Hello",
-  "smoke_empty_system": "42"
+  "smoke_empty_system": "42",
+  "state_pirate_persona_baked": "Keep the stars in your eyes and the wind in your sails.",
+  "state_tune_custom_persona": "I'm a computer program, so I don't have personal feelings or opinions. However, I can provide you with information about the weather. If you tell me the location, I can give you the current weather conditions and forecast for that area.",
+  "user_turn_coherence": "1. Hydration: Drinking water helps to keep your body hydrated, which is essential for maintaining proper bodily functions.\n2. Weight management: Drinking water can help with weight management by reducing calorie intake and boosting metabolism.\n3. Improved skin health: Drinking water can help to improve skin health by flushing out toxins and keeping the skin hydrated."
 }

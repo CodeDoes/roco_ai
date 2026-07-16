@@ -124,6 +124,9 @@ pub struct HandlerResult {
     /// Files written by this handler (name → content snapshot) inside the
     /// workspace sandbox.
     pub files: HashMap<String, String>,
+    /// Whether the handler's output passed quality checks (used by repair loop).
+    #[serde(default)]
+    pub pass: bool,
 }
 
 /// Final outcome of a mechanistic agent run.

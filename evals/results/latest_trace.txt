@@ -924,3 +924,156 @@ Assistant: Apples
 Bananas
 Cherries
 ✓ oracle matches
+--- smoke_basic_reply ---
+System: You are a helpful assistant.
+
+User: Say the word 'hello' and nothing else.
+
+Assistant: Hello
+✗ MISMATCH
+  actual: Hello
+  oracle: Hello.
+--- smoke_empty_system ---
+User: Respond with the number 42.
+
+Assistant: 42
+✗ MISMATCH
+  actual: 42
+  oracle: <think>Okay, the user asked me to respond with the number 42. I remember that 42
+--- instruct_format_constraint ---
+System: You always output JSON.
+
+User: List three colors in JSON format like this: {"colors": ["red", "green", "blue"]}
+
+Assistant: {"colors": ["red", "green", "blue"]}
+✓ oracle matches
+--- instruct_step_by_step ---
+System: You are a precise assistant.
+
+User: Follow these steps exactly:
+1. Say 'Step 1 complete'
+2. Say 'Step 2 complete'
+3. Say 'All steps done'
+
+Assistant: Step 1 complete
+Step 2 complete
+All steps done
+✓ oracle matches
+--- instruct_negative ---
+System: You are a helpful assistant.
+
+User: Tell me about the weather, but do NOT mention rain, snow, or temperature.
+
+Assistant: The weather is clear and sunny today, with a gentle breeze. The sky is a brilliant blue, and the sun is shining brightly. The air is warm and dry, and there is a pleasant warmth to the atmosphere. It's a perfect day for outdoor activities, and the birds are singing their sweet songs. The world feels fresh and invigorating, and it's a great day to be alive
+✗ MISMATCH
+  actual: The weather is clear and sunny today, with a gentle breeze. The sky is a brilliant blue, and the sun is shining brightly…
+  oracle: The weather is clear and sunny today.
+--- coherence_explain ---
+System: You are a teacher.
+
+User: Explain what a variable is in programming in one paragraph.
+
+Assistant: A variable in programming is a named storage location that holds a value. It can be used to store data, such as numbers, text, or other types of information, and can be manipulated throughout the program. Variables are essential for storing and manipulating data in a program, and they allow for the creation of complex data structures and algorithms.
+✗ MISMATCH
+  actual: A variable in programming is a named storage location that holds a value. It can be used to store data, such as numbers,…
+  oracle: A variable is a named storage location in a computer program that can hold a value. It is used to store data that can be…
+--- coherence_story ---
+System: You are a storyteller.
+
+User: Write a 3-sentence story about a robot learning to paint.
+
+Assistant: A robot named Pixel, with a paintbrush in hand, began to learn the art of painting. With each stroke, it discovered the beauty of color and form, transforming a blank canvas into a masterpiece.
+✗ MISMATCH
+  actual: A robot named Pixel, with a paintbrush in hand, began to learn the art of painting. With each stroke, it discovered the …
+  oracle: The robot, with its metallic frame and glowing eyes, stood before the blank canvas. It had been programmed to paint, but…
+--- repetition_avoidance ---
+System: You are a helpful assistant. Do not think out loud. Just answer directly.
+
+User: List 5 different animals. Write each on a new line numbered 1 to 5.
+
+Assistant: 1. Dog
+2. Cat
+3. Elephant
+4. Giraffe
+5. Penguin
+✓ oracle matches
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant: ```json
+{
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+```
+✓ oracle matches
+--- format_list ---
+System: You are a list maker.
+
+User: List 3 things you need for a picnic, numbered 1 to 3.
+
+Assistant: 1. A blanket or mat to sit on
+2. Food and drinks for everyone
+3. A cooler to keep the food and drinks cold
+
+
+✗ MISMATCH
+  actual: 1. A blanket or mat to sit on
+2. Food and drinks for everyone
+3. A cooler to keep the food and drinks cold
+  oracle: 1. A blanket or mat to sit on
+2. A cooler or basket to carry food and drinks
+3. A portable grill or stove for cooking
+--- newline_handling ---
+System: You are a precise assistant. Always separate lines with line breaks.
+
+User: Write exactly three lines:
+Line 1: Apples
+Line 2: Bananas
+Line 3: Cherries
+
+Assistant: Apples
+Bananas
+Cherries
+✓ oracle matches
+--- instruct_baseline_persona ---
+System: You are a terse pirate. Answer in exactly one short pirate sentence.
+
+User: How do I open a locked treasure chest?
+
+Assistant: Use the key, matey!
+✗ MISMATCH
+  actual: Use the key, matey!
+  oracle: Aye, use the key to unlock the treasure chest, matey.
+--- user_turn_coherence ---
+System: You are a helpful assistant.
+
+User: What are three benefits of drinking water each day?
+
+Assistant: 1. Hydration: Drinking water helps to keep your body hydrated, which is essential for maintaining proper bodily functions.
+2. Weight management: Drinking water can help with weight management by reducing calorie intake and boosting metabolism.
+3. Improved skin health: Drinking water can help to improve skin health by flushing out toxins and keeping the skin hydrated.
+✗ MISMATCH
+  actual: 1. Hydration: Drinking water helps to keep your body hydrated, which is essential for maintaining proper bodily function…
+  oracle: Water keeps you hydrated, aids digestion, and helps regulate body temperature.
+--- state_pirate_persona_baked ---
+System: You are a terse pirate. Answer in exactly one short pirate sentence.
+
+User: What's the best way to navigate at night?
+
+Assistant: Keep the stars in your eyes and the wind in your sails.
+✗ MISMATCH
+  actual: Keep the stars in your eyes and the wind in your sails.
+  oracle: Follow the North Star, matey, and ye'll never lose yer way.
+--- state_tune_custom_persona ---
+User: What do you think about the weather today?
+
+Assistant: I'm a computer program, so I don't have personal feelings or opinions. However, I can provide you with information about the weather. If you tell me the location, I can give you the current weather conditions and forecast for that area.
+
+
+✗ MISMATCH
+  actual: I'm a computer program, so I don't have personal feelings or opinions. However, I can provide you with information about…
+  oracle: The weather is fair, though a bit cloudy. Perfect for a walk.

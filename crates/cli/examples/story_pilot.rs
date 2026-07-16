@@ -167,6 +167,7 @@ fn handle_outline(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Ha
         task: task.clone(),
         output: md.clone(),
         files: HashMap::from([("01-OUTLINE.md".into(), md)]),
+        pass: true,
     }
 }
 
@@ -215,6 +216,7 @@ fn handle_wiki(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Handl
         task: task.clone(),
         output: md.clone(),
         files: HashMap::from([("02-WIKI.md".into(), md)]),
+        pass: true,
     }
 }
 
@@ -265,18 +267,103 @@ fn handle_chapter(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Ha
         task: task.clone(),
         output: md.clone(),
         files: HashMap::from([(fname, md)]),
+        pass: true,
     }
 }
 
-fn handle_validate(task: &Task, _backend: &dyn ModelBackend, ws: &Workspace) -> HandlerResult {
+/// BNF grammar for validation output — structured JSON, no think-tag leaks.
+const VALIDATE_GRAMMAR: &str = r#"
+root  ::= "{" space "\"pass\"" space ":" space bool space "," space "\"reason\"" space ":" space string space "}"
+bool  ::= "true" | "false"
+string ::= "\"" ( [ -~] )* "\""
+space ::= " "?
+"#;
+
+fn validate_wiki_quality(backend: &dyn ModelBackend, ws: &Workspace, wiki_text: &str, outline_text: &str) -> HandlerResult {
+    let reason: String = serde_json::from_str::<serde_json::Value>(
+        &match constrained_complete(
+            backend,
+            "You are a story quality inspector. Output valid JSON only. Do not generate story content.",
+            &format!(
+                "Evaluate this wiki/worldbuilding against the outline.\nOutline:\n{}\n\nWiki:\n{}\n\n\
+                 Check: Does wiki contain named characters? Concrete setting details? Useful lore?\n\
+                 Return only: {{\"pass\": true/false, \"reason\": \"short reason\"}}",
+                outline_text.chars().take(60).collect::<String>(), wiki_text.chars().take(800).collect::<String>(),
+            ),
+            VALIDATE_GRAMMAR, 0.5, 80,
+        ) {
+            Ok(j) => j,
+            Err(_) => format!("{{\"pass\": {}, \"reason\": \"parse fallback\"}}", wiki_text.len() > 50),
+        }
+    ).ok()
+        .and_then(|v| v.get("reason").map(|r| r.to_string()))
+        .or_else(|| Some("quality check failed".into()))
+        .unwrap_or_default();
+
+    let ch_len = wiki_text.len();
+    let pass = serde_json::from_str::<serde_json::Value>(&reason)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("pass").and_then(|p| p.as_bool()))
+        .unwrap_or(ch_len > 50);
+
+    let note = if !pass {
+        format!("Wiki: FAIL — {} ({ch_len} chars)", reason.trim_matches('\"'))
+    } else {
+        format!("Wiki: OK ({ch_len} chars)")
+    };
+
+    let path = ws.resolve("04-VALIDATION.md");
+    if let Ok(p) = path {
+        let existing = std::fs::read_to_string(&p).unwrap_or_default();
+        std::fs::write(&p, format!("{existing}\n## Wiki\n{note}\n")).ok();
+    }
+
+    HandlerResult { task: Task { r#type: "validate".into(), domain: "wiki".into(), spec: Default::default() }, output: note, files: HashMap::new(), pass }
+}
+
+fn handle_validate(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> HandlerResult {
     let num = task.spec.get("number").and_then(|v| v.as_u64()).unwrap_or(0);
     let text = task.spec.get("text").and_then(|v| v.as_str()).unwrap_or("");
+    let outline = task.spec.get("outline").and_then(|v| v.as_str()).unwrap_or("");
     info!(chapter = num, "validate chapter");
+    // Truncate long chapters for prompt size budget
+    let prompt_text = if text.len() > 800 { &text[..800] } else { text };
 
-    let note = if text.trim().is_empty() {
-        format!("[chapter {num} skipped — empty]")
+    // Grammar-constrained quality check: length, plot markers, variety
+    let ch_len = text.len();
+    let json = match constrained_complete(
+        backend,
+        "You are a story quality inspector. Output valid JSON only. Do not generate story content.",
+        &format!(
+            "Evaluate Chapter {} of {}.\n\nContent:\n{}\n\n\
+             Check: length >{} chars? Concrete nouns present? Plot advancement? Repetition?\n\
+             Return only: {{\"pass\": true/false, \"reason\": \"short reason\"}}",
+            num, outline.trim_end().chars().take(80).collect::<String>(), prompt_text, 400,
+        ),
+        VALIDATE_GRAMMAR,
+        0.5,
+        80,
+    ) {
+        Ok(j) => j,
+        Err(_) => serde_json::json!({"pass": text.len() > 400, "reason": "parse fallback"}).to_string(),
+    };
+
+    let pass = serde_json::from_str::<serde_json::Value>(&json)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("pass").and_then(|p| p.as_bool()))
+        .unwrap_or(text.len() > 400);
+
+    let note = if !pass {
+        let reason: String = serde_json::from_str::<serde_json::Value>(&json)
+            .ok()
+            .and_then(|v| v.get("reason").map(|r| r.to_string()))
+            .or_else(|| Some("quality check failed".into()))
+            .unwrap_or_default();
+        format!("Chapter {num}: FAIL — {reason}")
     } else {
-        format!("Chapter {num}: OK (length: {} chars)", text.len())
+        format!("Chapter {num}: OK ({ch_len} chars)")
     };
 
     let path = ws.resolve("04-VALIDATION.md");
@@ -289,6 +376,7 @@ fn handle_validate(task: &Task, _backend: &dyn ModelBackend, ws: &Workspace) -> 
         task: task.clone(),
         output: note,
         files: HashMap::new(),
+        pass,
     }
 }
 
@@ -324,6 +412,7 @@ fn handle_synopsis(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> H
         task: task.clone(),
         output: md.clone(),
         files: HashMap::from([("05-SYNOPSIS.md".into(), md)]),
+        pass: true,
     }
 }
 
@@ -369,6 +458,7 @@ fn handle_publish(_task: &Task, _backend: &dyn ModelBackend, ws: &Workspace) -> 
         task: _task.clone(),
         output: format!("published {} bytes", story.len()),
         files: HashMap::from([("06-STORY.md".into(), story)]),
+        pass: true,
     }
 }
 
@@ -380,6 +470,7 @@ fn error_result(task: &Task, label: &str) -> HandlerResult {
         task: task.clone(),
         output: error_msg.clone(),
         files: HashMap::new(),
+        pass: false,
     }
 }
 
@@ -484,6 +575,25 @@ fn main() -> anyhow::Result<()> {
     let wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("wiki failed: {e}"))?;
 
+    // Validate wiki quality before proceeding
+    println!("   🔍 Validating wiki...");
+    let wiki_val = validate_wiki_quality(&backend, &ws, &wiki_result.output, &outline_text);
+    if !wiki_val.pass {
+        println!("   ⚠️  Wiki needs improvement ({}) — regenerating...", wiki_val.output.trim());
+        // Regenerate wiki with quality feedback
+        let retry_task = Task {
+            r#type: "compose".into(),
+            domain: "wiki".into(),
+            spec: serde_json::json!({"premise": &premise, "outline": &outline_text, "quality_note": &wiki_val.output}),
+        };
+        let retry_wiki = agent.dispatch_single(&backend, &retry_task, &ws).unwrap_or(wiki_result.clone());
+        let wiki_path = ws.resolve("02-WIKI.md").ok();
+        if let Some(path) = wiki_path {
+            std::fs::write(&path, &retry_wiki.output).ok();
+        }
+        let wiki_result = retry_wiki;
+    }
+
     // Phase 3: Chapters ×3
     let mut chapter_texts = Vec::new();
     for i in 1..=3 {
@@ -509,14 +619,15 @@ fn main() -> anyhow::Result<()> {
         let val_task = Task {
             r#type: "validate".into(),
             domain: "chapter".into(),
-            spec: serde_json::json!({"number": i, "text": ch_result.output}),
+            spec: serde_json::json!({"number": i, "text": ch_result.output, "outline": &outline_text}),
         };
-        let _val = agent.dispatch_single(&backend, &val_task, &ws)
+        let val_result = agent.dispatch_single(&backend, &val_task, &ws)
             .map_err(|e| anyhow::anyhow!("validation {i} failed: {e}"))?;
 
-        // Self-correction: if chapter is very short, re-write with grammar constraint
-        if ch_result.output.len() < 100 {
-            println!("   ⚠️  Short chapter — retrying...");
+        // Self-correction: low-quality or too-short chapter → rewrite
+        if !val_result.pass || ch_result.output.len() < 400 {
+            let reason_txt = &val_result.output;
+            println!("   ⚠️  Chapter {i} needs improvement ({reason_txt}) — retrying...");
             let retry_task = Task {
                 r#type: "write".into(),
                 domain: "chapter".into(),

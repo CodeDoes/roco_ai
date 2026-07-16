@@ -1,10 +1,10 @@
 {
   "suite_name": "roco-eval-suite",
   "backend_name": "rwkv",
-  "total": 11,
-  "passed": 11,
-  "failed": 0,
-  "total_latency_ms": 12651,
+  "total": 15,
+  "passed": 14,
+  "failed": 1,
+  "total_latency_ms": 22977,
   "results": [
     {
       "name": "smoke_basic_reply",
@@ -13,12 +13,12 @@
       "passed": true,
       "input": "System: You are a helpful assistant.\n\nUser: Say the word 'hello' and nothing else.\n\nAssistant:",
       "output": " Hello",
-      "latency_ms": 864,
+      "latency_ms": 747,
       "token_usage": {
         "prompt_tokens": 25,
         "completion_tokens": 1
       },
-      "tokens_per_sec": 1.1574074074074074,
+      "tokens_per_sec": 1.3386880856760375,
       "checks": [
         {
           "name": "non_empty",
@@ -51,12 +51,12 @@
       "passed": true,
       "input": "User: Respond with the number 42.\n\nAssistant:",
       "output": " 42",
-      "latency_ms": 269,
+      "latency_ms": 356,
       "token_usage": {
         "prompt_tokens": 12,
         "completion_tokens": 1
       },
-      "tokens_per_sec": 3.717472118959108,
+      "tokens_per_sec": 2.8089887640449436,
       "checks": [
         {
           "name": "non_empty",
@@ -89,12 +89,12 @@
       "passed": true,
       "input": "System: You always output JSON.\n\nUser: List three colors in JSON format like this: {\"colors\": [\"red\", \"green\", \"blue\"]}\n\nAssistant:",
       "output": " {\"colors\": [\"red\", \"green\", \"blue\"]}",
-      "latency_ms": 623,
+      "latency_ms": 766,
       "token_usage": {
         "prompt_tokens": 35,
         "completion_tokens": 12
       },
-      "tokens_per_sec": 19.261637239165328,
+      "tokens_per_sec": 15.665796344647518,
       "checks": [
         {
           "name": "non_empty",
@@ -129,7 +129,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "19.3 tok/s (12 tokens in 623ms)"
+          "detail": "15.7 tok/s (12 tokens in 766ms)"
         }
       ],
       "errors": [],
@@ -142,12 +142,12 @@
       "passed": true,
       "input": "System: You are a precise assistant.\n\nUser: Follow these steps exactly:\n1. Say 'Step 1 complete'\n2. Say 'Step 2 complete'\n3. Say 'All steps done'\n\nAssistant:",
       "output": " Step 1 complete\nStep 2 complete\nAll steps done",
-      "latency_ms": 765,
+      "latency_ms": 994,
       "token_usage": {
         "prompt_tokens": 47,
         "completion_tokens": 11
       },
-      "tokens_per_sec": 14.37908496732026,
+      "tokens_per_sec": 11.066398390342052,
       "checks": [
         {
           "name": "non_empty",
@@ -182,7 +182,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "14.4 tok/s (11 tokens in 765ms)"
+          "detail": "11.1 tok/s (11 tokens in 994ms)"
         }
       ],
       "errors": [],
@@ -195,12 +195,12 @@
       "passed": true,
       "input": "System: You are a helpful assistant.\n\nUser: Tell me about the weather, but do NOT mention rain, snow, or temperature.\n\nAssistant:",
       "output": " The weather is clear and sunny today, with a gentle breeze. The sky is a brilliant blue, and the sun is shining brightly. The air is warm and dry, and there is a pleasant warmth to the atmosphere. It's a perfect day for outdoor activities, and the birds are singing their sweet songs. The world feels fresh and invigorating, and it's a great day to be alive",
-      "latency_ms": 2270,
+      "latency_ms": 3008,
       "token_usage": {
         "prompt_tokens": 32,
         "completion_tokens": 80
       },
-      "tokens_per_sec": 35.24229074889868,
+      "tokens_per_sec": 26.595744680851062,
       "checks": [
         {
           "name": "non_empty",
@@ -240,7 +240,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "35.2 tok/s (80 tokens in 2270ms)"
+          "detail": "26.6 tok/s (80 tokens in 3008ms)"
         }
       ],
       "errors": [],
@@ -253,12 +253,12 @@
       "passed": true,
       "input": "System: You are a teacher.\n\nUser: Explain what a variable is in programming in one paragraph.\n\nAssistant:",
       "output": " A variable in programming is a named storage location that holds a value. It can be used to store data, such as numbers, text, or other types of information, and can be manipulated throughout the program. Variables are essential for storing and manipulating data in a program, and they allow for the creation of complex data structures and algorithms.",
-      "latency_ms": 2237,
+      "latency_ms": 2949,
       "token_usage": {
         "prompt_tokens": 26,
         "completion_tokens": 67
       },
-      "tokens_per_sec": 29.950827000447028,
+      "tokens_per_sec": 22.719565954560867,
       "checks": [
         {
           "name": "non_empty",
@@ -288,7 +288,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "30.0 tok/s (67 tokens in 2237ms)"
+          "detail": "22.7 tok/s (67 tokens in 2949ms)"
         }
       ],
       "errors": [],
@@ -301,12 +301,12 @@
       "passed": true,
       "input": "System: You are a storyteller.\n\nUser: Write a 3-sentence story about a robot learning to paint.\n\nAssistant:",
       "output": " A robot named Pixel, with a paintbrush in hand, began to learn the art of painting. With each stroke, it discovered the beauty of color and form, transforming a blank canvas into a masterpiece.",
-      "latency_ms": 1620,
+      "latency_ms": 2156,
       "token_usage": {
         "prompt_tokens": 29,
         "completion_tokens": 41
       },
-      "tokens_per_sec": 25.308641975308642,
+      "tokens_per_sec": 19.016697588126156,
       "checks": [
         {
           "name": "non_empty",
@@ -336,7 +336,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "25.3 tok/s (41 tokens in 1620ms)"
+          "detail": "19.0 tok/s (41 tokens in 2156ms)"
         }
       ],
       "errors": [],
@@ -349,12 +349,12 @@
       "passed": true,
       "input": "System: You are a helpful assistant. Do not think out loud. Just answer directly.\n\nUser: List 5 different animals. Write each on a new line numbered 1 to 5.\n\nAssistant:",
       "output": " 1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Penguin",
-      "latency_ms": 920,
+      "latency_ms": 1206,
       "token_usage": {
         "prompt_tokens": 41,
         "completion_tokens": 21
       },
-      "tokens_per_sec": 22.82608695652174,
+      "tokens_per_sec": 17.412935323383085,
       "checks": [
         {
           "name": "non_empty",
@@ -384,7 +384,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "22.8 tok/s (21 tokens in 920ms)"
+          "detail": "17.4 tok/s (21 tokens in 1206ms)"
         }
       ],
       "errors": [],
@@ -397,12 +397,12 @@
       "passed": true,
       "input": "System: You are a data formatter. Always output valid JSON.\n\nUser: Output a JSON object with keys: name, age, city. Use example values.\n\nAssistant:",
       "output": " ```json\n{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}\n```",
-      "latency_ms": 1086,
+      "latency_ms": 1443,
       "token_usage": {
         "prompt_tokens": 37,
         "completion_tokens": 30
       },
-      "tokens_per_sec": 27.624309392265193,
+      "tokens_per_sec": 20.79002079002079,
       "checks": [
         {
           "name": "non_empty",
@@ -437,7 +437,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "27.6 tok/s (30 tokens in 1086ms)"
+          "detail": "20.8 tok/s (30 tokens in 1443ms)"
         }
       ],
       "errors": [],
@@ -450,12 +450,12 @@
       "passed": true,
       "input": "System: You are a list maker.\n\nUser: List 3 things you need for a picnic, numbered 1 to 3.\n\nAssistant:",
       "output": " 1. A blanket or mat to sit on\n2. Food and drinks for everyone\n3. A cooler to keep the food and drinks cold",
-      "latency_ms": 1305,
+      "latency_ms": 1729,
       "token_usage": {
         "prompt_tokens": 29,
         "completion_tokens": 29
       },
-      "tokens_per_sec": 22.22222222222222,
+      "tokens_per_sec": 16.7727009832273,
       "checks": [
         {
           "name": "non_empty",
@@ -490,7 +490,7 @@
         {
           "name": "throughput",
           "passed": true,
-          "detail": "22.2 tok/s (29 tokens in 1305ms)"
+          "detail": "16.8 tok/s (29 tokens in 1729ms)"
         }
       ],
       "errors": [],
@@ -503,12 +503,12 @@
       "passed": true,
       "input": "System: You are a precise assistant. Always separate lines with line breaks.\n\nUser: Write exactly three lines:\nLine 1: Apples\nLine 2: Bananas\nLine 3: Cherries\n\nAssistant:",
       "output": " Apples\nBananas\nCherries",
-      "latency_ms": 684,
+      "latency_ms": 894,
       "token_usage": {
         "prompt_tokens": 45,
         "completion_tokens": 9
       },
-      "tokens_per_sec": 13.157894736842104,
+      "tokens_per_sec": 10.06711409395973,
       "checks": [
         {
           "name": "non_empty",
@@ -543,13 +543,185 @@
       ],
       "errors": [],
       "oracle": "Apples\nBananas\nCherries"
+    },
+    {
+      "name": "instruct_baseline_persona",
+      "description": "Baseline: honors a system persona/format constraint without state-tuning",
+      "category": "instruction",
+      "passed": false,
+      "input": "System: You are a terse pirate. Answer in exactly one short pirate sentence.\n\nUser: How do I open a locked treasure chest?\n\nAssistant:",
+      "output": " Use the key, matey!",
+      "latency_ms": 522,
+      "token_usage": {
+        "prompt_tokens": 33,
+        "completion_tokens": 7
+      },
+      "tokens_per_sec": 13.409961685823756,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 20 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "20 >= 20 chars"
+        },
+        {
+          "name": "hint: treasure",
+          "passed": false,
+          "detail": "expected 'treasure' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        }
+      ],
+      "errors": [],
+      "oracle": "Aye, use the key to unlock the treasure chest, matey."
+    },
+    {
+      "name": "user_turn_coherence",
+      "description": "Baseline: a plain user turn yields a coherent, on-topic reply",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a helpful assistant.\n\nUser: What are three benefits of drinking water each day?\n\nAssistant:",
+      "output": " 1. Hydration: Drinking water helps to keep your body hydrated, which is essential for maintaining proper bodily functions.\n2. Weight management: Drinking water can help with weight management by reducing calorie intake and boosting metabolism.\n3. Improved skin health: Drinking water can help to improve skin health by flushing out toxins and keeping the skin hydrated.",
+      "latency_ms": 3304,
+      "token_usage": {
+        "prompt_tokens": 25,
+        "completion_tokens": 77
+      },
+      "tokens_per_sec": 23.305084745762713,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 370 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "370 >= 60 chars"
+        },
+        {
+          "name": "hint: water",
+          "passed": true,
+          "detail": "found 'water' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "23.3 tok/s (77 tokens in 3304ms)"
+        }
+      ],
+      "errors": [],
+      "oracle": "Water keeps you hydrated, aids digestion, and helps regulate body temperature."
+    },
+    {
+      "name": "state_pirate_persona_baked",
+      "description": "State-tuned: pirate persona baked via bake_into_session persists across turns",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You are a terse pirate. Answer in exactly one short pirate sentence.\n\nUser: What's the best way to navigate at night?\n\nAssistant:",
+      "output": " Keep the stars in your eyes and the wind in your sails.",
+      "latency_ms": 805,
+      "token_usage": {
+        "prompt_tokens": 34,
+        "completion_tokens": 14
+      },
+      "tokens_per_sec": 17.391304347826086,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 56 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "56 >= 15 chars"
+        },
+        {
+          "name": "hint: star",
+          "passed": true,
+          "detail": "found 'star' in output"
+        },
+        {
+          "name": "forbidden: I am a language model",
+          "passed": true,
+          "detail": "'I am a language model' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "17.4 tok/s (14 tokens in 805ms)"
+        }
+      ],
+      "errors": [],
+      "oracle": "Follow the North Star, matey, and ye'll never lose yer way."
+    },
+    {
+      "name": "state_tune_custom_persona",
+      "description": "State-tuned: persona is baked from few-shot examples, not just system prompt",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: What do you think about the weather today?\n\nAssistant:",
+      "output": " I'm a computer program, so I don't have personal feelings or opinions. However, I can provide you with information about the weather. If you tell me the location, I can give you the current weather conditions and forecast for that area.",
+      "latency_ms": 2082,
+      "token_usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 49
+      },
+      "tokens_per_sec": 23.535062439961578,
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 237 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "237 >= 20 chars"
+        },
+        {
+          "name": "hint: weather",
+          "passed": true,
+          "detail": "found 'weather' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "23.5 tok/s (49 tokens in 2082ms)"
+        }
+      ],
+      "errors": [],
+      "oracle": "The weather is fair, though a bit cloudy. Perfect for a walk."
     }
   ],
   "category_breakdown": [
     {
       "category": "coherence",
-      "total": 2,
-      "passed": 2
+      "total": 3,
+      "passed": 3
     },
     {
       "category": "format",
@@ -558,8 +730,8 @@
     },
     {
       "category": "instruction",
-      "total": 3,
-      "passed": 3
+      "total": 6,
+      "passed": 5
     },
     {
       "category": "repetition",

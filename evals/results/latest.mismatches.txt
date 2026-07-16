@@ -26,3 +26,21 @@
 2. A cooler or basket to carry food and drinks
 3. A portable grill or stove for cooking
 
+--- instruct_baseline_persona ---
+  actual: Use the key, matey!
+  oracle: Aye, use the key to unlock the treasure chest, matey.
+
+--- user_turn_coherence ---
+  actual: 1. Hydration: Drinking water helps to keep your body hydrated, which is essential for maintaining proper bodily functions.
+2. Weight management: Drinking water can help with weight management by reducing calorie intake and boosting metabolism.
+3. Improved skin health: Drinking water can help to improve skin health by flushing out toxins and keeping the skin hydrated.
+  oracle: Water keeps you hydrated, aids digestion, and helps regulate body temperature.
+
+--- state_pirate_persona_baked ---
+  actual: Keep the stars in your eyes and the wind in your sails.
+  oracle: Follow the North Star, matey, and ye'll never lose yer way.
+
+--- state_tune_custom_persona ---
+  actual: I'm a computer program, so I don't have personal feelings or opinions. However, I can provide you with information about the weather. If you tell me the location, I can give you the current weather conditions and forecast for that area.
+  oracle: The weather is fair, though a bit cloudy. Perfect for a walk.
+

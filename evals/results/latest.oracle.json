@@ -3,11 +3,15 @@
   "coherence_story": "The robot, with its metallic frame and glowing eyes, stood before the blank canvas. It had been programmed to paint, but it had never seen a brush in its life. As it dipped its mechanical hand into the paint, it felt the texture and the weight of the brush. With each stroke, it learned to feel the colors and the shapes, and soon, it was creating beautiful paintings that no one had ever seen before.",
   "format_json": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
   "format_list": "1. A blanket or mat to sit on\n2. A cooler or basket to carry food and drinks\n3. A portable grill or stove for cooking",
+  "instruct_baseline_persona": "Aye, use the key to unlock the treasure chest, matey.",
   "instruct_format_constraint": "{\"colors\": [\"red\", \"green\", \"blue\"]}",
   "instruct_negative": "The weather is clear and sunny today.",
   "instruct_step_by_step": "Step 1 complete\nStep 2 complete\nAll steps done",
   "newline_handling": "Apples\nBananas\nCherries",
   "repetition_avoidance": "1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Penguin",
   "smoke_basic_reply": "Hello.",
-  "smoke_empty_system": "<think>Okay, the user asked me to respond with the number 42. I remember that 42"
+  "smoke_empty_system": "<think>Okay, the user asked me to respond with the number 42. I remember that 42",
+  "state_pirate_persona_baked": "Follow the North Star, matey, and ye'll never lose yer way.",
+  "state_tune_custom_persona": "The weather is fair, though a bit cloudy. Perfect for a walk.",
+  "user_turn_coherence": "Water keeps you hydrated, aids digestion, and helps regulate body temperature."
 }
