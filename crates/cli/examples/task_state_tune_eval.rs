@@ -72,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
             "wiki_generation" => "Generate a wiki entry for the Shadow Guild.",
             "project_planning" => "Plan the implementation of a multi-agent story generation system.",
             "summarization" => "Summarize: Mara stole the shadow box from the Grand Archive. The shadows began spreading through Duskfall City. The Umbral Order imposed martial law. Mara had to choose between returning the box or letting the shadows reveal the city's buried history.",
+            "dataset_generation" => "Generate 3 new training examples for the story_writing task. The model should learn to write story chapters from a plan and wiki.",
             _ => "Test input.",
         };
         
