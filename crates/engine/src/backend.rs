@@ -209,6 +209,7 @@ pub async fn bake_persona(
             output_schema: None,
             on_token: None,
             session: None,
+            bnf_mask: None,
         };
         backend.complete(req).await?;
         let req_assistant = CompletionRequest {
@@ -223,6 +224,7 @@ pub async fn bake_persona(
             output_schema: None,
             on_token: None,
             session: None,
+            bnf_mask: None,
         };
         backend.complete(req_assistant).await?;
     }

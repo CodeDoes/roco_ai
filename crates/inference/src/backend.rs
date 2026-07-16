@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use crate::actor::{ActorMessage, CompleteReq, RwkvActor};
+use tokio::sync::oneshot;
 
 /// Thread-safe handle to the RWKV inference actor.
 pub struct RwkvBackend {
@@ -80,6 +81,24 @@ impl RwkvBackend {
     }
 }
 
+impl RwkvBackend {
+    /// Get the model's vocabulary bytes (token_id → raw bytes).
+    /// Used by the application layer to create `BnfMask` instances.
+    #[cfg(feature = "grammar")]
+    pub fn vocab_bytes(&self) -> Result<Vec<Vec<u8>>, EngineError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let tx = self.tx.clone().ok_or_else(||
+            EngineError::Backend("backend shut down".into())
+        )?;
+        futures::executor::block_on(async {
+            tx.send(ActorMessage::GetVocabBytes(reply_tx)).await
+                .map_err(|e| EngineError::Backend(format!("get_vocab_bytes send: {e}")))?;
+            reply_rx.await
+                .map_err(|e| EngineError::Backend(format!("get_vocab_bytes recv: {e}")))
+        })
+    }
+}
+
 impl ModelBackend for RwkvBackend {
     fn name(&self) -> &str { &self.name }
 
@@ -89,18 +108,11 @@ impl ModelBackend for RwkvBackend {
             let started = Instant::now();
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
-            #[cfg(feature = "grammar")]
-            let grammar = {
-                let g = req.grammar.as_ref().and_then(|g| if !g.trim().is_empty() { Some(g.clone()) } else { None })
-                    .or_else(|| std::env::var("RWKV_GRAMMAR").ok().filter(|g| !g.trim().is_empty()));
-                g
-            };
-            #[cfg(not(feature = "grammar"))]
-            let grammar: Option<String> = None;
-
             tx.send(CompleteReq {
                 system: req.system, prompt: req.prompt, max_tokens: req.max_tokens,
-                temperature: req.temperature, grammar, reply: reply_tx,
+                temperature: req.temperature, grammar: req.grammar,
+                bnf_mask: req.bnf_mask,
+                reply: reply_tx,
                 preserve_state: req.preserve_state, on_token: req.on_token,
                 session: req.session,
             }.into()).await

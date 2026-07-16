@@ -175,6 +175,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         preserve_state: false,
         on_token,
         session: None,
+        bnf_mask: None,
     };
 
     let start = Instant::now();

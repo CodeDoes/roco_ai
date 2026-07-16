@@ -13,3 +13,5 @@ pub use backend::*;
 pub use types::*;
 pub use eval::*;
 pub use cases::*;
+
+pub use types::BnfMask;

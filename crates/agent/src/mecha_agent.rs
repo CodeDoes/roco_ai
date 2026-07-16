@@ -614,6 +614,7 @@ async fn backend_call(
         preserve_state: false,
         on_token: None,
         session: None,
+        bnf_mask: None,
     };
     let resp = backend
         .complete(req)
@@ -768,9 +769,10 @@ mod tests {
                 estimated_prompt_tokens: 0,
                 thinking: false,
                 preserve_state: false,
+                output_schema: None,
                 on_token: None,
                 session: None,
-                output_schema: None,
+                bnf_mask: None,
             };
             let resp = futures::executor::block_on(backend.complete(req))
                 .map(|r| r.text)

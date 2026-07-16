@@ -20,10 +20,9 @@ safetensors = { version = "0.6" }
 fastrand = { version = "2.3" }
 bit-set = { version = "0.5" }
 futures.workspace = true
-schoolmarm = { version = "0.1", optional = true }
 web-rwkv = { version = "0.10", default-features = false, features = ["native"] }
 wgpu = "29.0"
 
 [features]
 default = ["grammar"]
-grammar = ["dep:roco-grammar", "dep:schoolmarm"]
+grammar = ["dep:roco-grammar"]

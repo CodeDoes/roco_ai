@@ -256,6 +256,7 @@ impl Agent {
                 preserve_state: false,
                 on_token: None,
                 session: None,
+                bnf_mask: None,
             };
 
             let retry_config = RetryConfig::default();
@@ -342,6 +343,7 @@ impl Agent {
             preserve_state: false,
             on_token: None,
             session: None,
+            bnf_mask: None,
         };
         let resp = backend.complete(req).await.map_err(|e| AgentError::BackendError(e.to_string()))?;
         let text = resp.text.clone();

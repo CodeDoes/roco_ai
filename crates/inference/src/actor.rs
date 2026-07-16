@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use half::f16;
 use web_rwkv::runtime::model::State as RwkvState;
-use roco_engine::{EngineError, TokenUsage};
+use roco_engine::{BnfMask, EngineError, TokenUsage};
 use safetensors::SafeTensors;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
@@ -27,10 +27,10 @@ use web_rwkv::runtime::TokioRuntime;
 use web_rwkv::tensor::{TensorCpu, TensorError, TensorInit, TensorShape};
 use web_rwkv::tokenizer::Tokenizer;
 
-#[cfg(feature = "grammar")]
-use roco_grammar::BnfConstraint;
-#[cfg(feature = "grammar")]
-use schoolmarm::{Grammar, GrammarState};
+// NOTE: roco-bnf-engine MUST NOT be imported here — its kbnf types
+// trigger a compiler overflow (string-interner recursion) when they
+// appear in the same compilation unit as web-rwkv's TokioRuntime.
+// Grammar constraints are pre-built as Box<dyn BnfMask> outside this crate.
 
 use crate::config::{auto_quant, get_pipeline_cache_path, get_quant_cache_dir, default_model_path};
 use crate::sampling;
@@ -90,6 +90,10 @@ pub struct CompleteReq {
     pub temperature: f32,
     #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
     pub grammar: Option<String>,
+    /// Opaque grammar constraint callback, created outside this crate
+    /// so grammar-engine types never enter this compilation unit.
+    #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
+    pub bnf_mask: Option<Box<dyn BnfMask>>,
     pub reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
     pub preserve_state: bool,
     pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
@@ -99,6 +103,8 @@ pub struct CompleteReq {
 pub enum ActorMessage {
     Complete(CompleteReq),
     Cancel,
+    #[cfg(feature = "grammar")]
+    GetVocabBytes(oneshot::Sender<Vec<Vec<u8>>>),
 }
 
 impl From<CompleteReq> for ActorMessage {
@@ -115,8 +121,11 @@ pub struct RwkvActor {
     pub(crate) state: AnyState,
     pub initial_state: TensorCpu<f32>,
     pub tokenizer: Tokenizer,
-    #[cfg(feature = "grammar")]
-    pub token_strings: Vec<String>,
+    /// Vocab bytes (token_id → raw bytes) used by application layer to create
+    /// `BnfMask` instances. Stored as plain bytes — no kbnf types ever enter
+    /// this crate.
+    #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
+    pub vocab_bytes: Vec<Vec<u8>>,
     pub token_chunk_size: usize,
     pub _model_data: Vec<u8>,
     pub cancel: Arc<AtomicBool>,
@@ -147,6 +156,7 @@ impl RwkvActor {
         let vocab_text = tokio::fs::read_to_string(&vocab_path).await?;
         let tokenizer = Tokenizer::new(&vocab_text)?;
         info!("tokenizer loaded");
+        let vocab_bytes = tokenizer.token_index_to_bytes().to_vec();
 
         let model_data = std::fs::read(&model_path)?;
         let model = SafeTensors::deserialize(&model_data)?;
@@ -283,24 +293,9 @@ impl RwkvActor {
 
         info!("RWKV runtime initialized");
 
-        #[cfg(feature = "grammar")]
-        let token_strings = {
-            let bytes = tokenizer.token_index_to_bytes();
-            bytes.iter().map(|b| {
-                let mut s = String::with_capacity(b.len());
-                for &byte in b {
-                    if byte < 0x80 { s.push(byte as char); }
-                    else { s.push(char::from_u32(0xE000 + (byte as u32 - 0x80)).unwrap()); }
-                }
-                s
-            }).collect::<Vec<String>>()
-        };
-
         Ok(Self {
             context, runtime, state, initial_state, tokenizer,
-            #[cfg(feature = "grammar")]
-            token_strings,
-            token_chunk_size, _model_data: model_data,
+            vocab_bytes, token_chunk_size, _model_data: model_data,
             cancel: Arc::new(AtomicBool::new(false)),
             state_pool: HashMap::new(), session_lru: VecDeque::new(), max_sessions: 8,
         })
@@ -314,8 +309,9 @@ impl RwkvActor {
         temperature: f32,
         preserve_state: bool,
         on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
-        grammar: Option<String>,
+        _grammar: Option<String>,
         session: Option<String>,
+        mut bnf_mask: Option<Box<dyn BnfMask>>,
     ) -> Result<(String, TokenUsage), EngineError> {
         let session_id = session.as_ref().cloned();
 
@@ -340,31 +336,9 @@ impl RwkvActor {
                 .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
         }
 
-        // Grammar setup
-        #[cfg(feature = "grammar")]
-        let mut bnf_constraint: Option<BnfConstraint> = None;
-        #[cfg(feature = "grammar")]
-        let mut grammar_state: Option<GrammarState> = None;
-
-        #[cfg(feature = "grammar")]
-        match grammar.as_deref() {
-            Some(g) if !g.trim().is_empty() => {
-                match BnfConstraint::new(g, &self.tokenizer) {
-                    Ok(c) => { bnf_constraint = Some(c); }
-                    Err(e) => {
-                        info!(error = %e, "BnfConstraint failed, falling back to schoolmarm");
-                        let compiled = Grammar::new(g)
-                            .map_err(|e| EngineError::Backend(format!("GBNF compile error: {e:?}")))?;
-                        grammar_state = Some(GrammarState::new(compiled)
-                            .map_err(|e| EngineError::Backend(format!("GrammarState init error: {e:?}")))?);
-                    }
-                }
-            }
-            _ => {}
-        }
-        #[cfg(feature = "grammar")]
-        let vocab_refs: Option<Vec<&str>> = grammar_state.as_ref()
-            .map(|_| self.token_strings.iter().map(String::as_str).collect());
+        // Grammar constraint — passed in as opaque Box<dyn BnfMask>.
+        // Cannot be created here — kbnf types would overflow the compiler.
+        // The application layer creates BnfMask from grammar + vocab_bytes.
 
         // Build prompt
         let full = if system.is_empty() {
@@ -409,21 +383,22 @@ impl RwkvActor {
                 .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?)
                 .await.map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
 
+            let mut p = probs.data().to_vec();
+
             #[cfg(feature = "grammar")]
             let token = {
-                let mut p = probs.data().to_vec();
-                if let Some(c) = bnf_constraint.as_mut() {
-                    let allowed = sampling::bitset_to_allowed(c.allowed_tokens(), p.len());
-                    match sampling::constrained_sample_token(&mut p, &allowed, temperature, top_p) {
-                        Some(t) => { let _ = c.accept_token(t); t }
-                        None => break,
+                if let Some(mask) = bnf_mask.as_mut() {
+                    mask.mask(&mut p);
+                    // Renormalize so grammar-constrained tokens have full probability mass
+                    let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
+                    if sum > 0.0 {
+                        for v in p.iter_mut() { if v.is_finite() { *v /= sum; } }
                     }
-                } else if let (Some(gs), Some(vrefs)) = (grammar_state.as_mut(), vocab_refs.as_ref()) {
-                    let allowed = gs.allowed_tokens(vrefs);
-                    match sampling::constrained_sample_token(&mut p, &allowed, temperature, top_p) {
-                        Some(t) => { let _ = gs.accept_token(&String::new()); t }
-                        None => break,
-                    }
+                    let t = sampling::sample_token(&p, temperature, 1.0);
+                    if t > 0 {
+                        mask.accept(t);
+                        t
+                    } else { break }
                 } else { sampling::sample_token(&p, temperature, top_p) }
             };
             #[cfg(not(feature = "grammar"))]
@@ -468,12 +443,18 @@ impl RwkvActor {
             #[cfg(feature = "grammar")]
             let token_opt: Option<u32> = {
                 let mut p = probs.data().to_vec();
-                if let Some(c) = bnf_constraint.as_mut() {
-                    let allowed = sampling::bitset_to_allowed(c.allowed_tokens(), p.len());
-                    sampling::constrained_sample_token(&mut p, &allowed, temperature, top_p)
-                } else if let (Some(gs), Some(vrefs)) = (grammar_state.as_mut(), vocab_refs.as_ref()) {
-                    let allowed = gs.allowed_tokens(vrefs);
-                    sampling::constrained_sample_token(&mut p, &allowed, temperature, top_p)
+                if let Some(mask) = bnf_mask.as_mut() {
+                    mask.mask(&mut p);
+                    // Renormalize so grammar-constrained tokens have full probability mass
+                    let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
+                    if sum > 0.0 {
+                        for v in p.iter_mut() { if v.is_finite() { *v /= sum; } }
+                    }
+                    let t = sampling::sample_token(&p, temperature, 1.0);
+                    if t > 0 {
+                        mask.accept(t);
+                        Some(t)
+                    } else { None }
                 } else { Some(sampling::sample_token(&p, temperature, top_p)) }
             };
             #[cfg(not(feature = "grammar"))]
@@ -488,12 +469,6 @@ impl RwkvActor {
             let word = String::from_utf8_lossy(&decoded).to_string();
 
             if let Some(ref cb) = on_token { cb(&word); }
-
-            #[cfg(feature = "grammar")]
-            {
-                if let Some(c) = bnf_constraint.as_mut() { let _ = c.accept_token(token); }
-                else if let Some(gs) = grammar_state.as_mut() { let _ = gs.accept_token(&word); }
-            }
 
             if word == "\n\n" || word == "\nUser:" || word == "\nHuman:" { break; }
 
@@ -542,17 +517,26 @@ impl RwkvActor {
                         max_tokens,
                         temperature,
                         grammar,
+                        bnf_mask,
                         reply,
                         preserve_state,
                         on_token,
                         session,
                     } = req;
                     let result = self
-                        .handle_complete(system, prompt, max_tokens, temperature, preserve_state, on_token, grammar, session)
+                        .handle_complete(
+                            system, prompt, max_tokens, temperature,
+                            preserve_state, on_token, grammar, session,
+                            bnf_mask,
+                        )
                         .await;
                     let _ = reply.send(result);
                 }
                 Cancel => { self.cancel.store(true, Ordering::Relaxed); }
+                #[cfg(feature = "grammar")]
+                GetVocabBytes(reply) => {
+                    let _ = reply.send(self.vocab_bytes.clone());
+                }
             }
         }
     }

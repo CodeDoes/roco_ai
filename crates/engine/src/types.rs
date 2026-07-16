@@ -44,6 +44,11 @@ pub struct CompletionRequest {
     #[serde(skip)]
     pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
     pub session: Option<String>,
+    /// Opaque grammar constraint. Created by the application layer using
+    /// `roco-bnf-engine::BnfEngine` to avoid pulling kbnf types into
+    /// downstream crates that depend on `web-rwkv`.
+    #[serde(skip)]
+    pub bnf_mask: Option<Box<dyn BnfMask>>,
 }
 
 impl Clone for CompletionRequest {
@@ -60,6 +65,7 @@ impl Clone for CompletionRequest {
             preserve_state: self.preserve_state,
             session: self.session.clone(),
             on_token: None,
+            bnf_mask: None,
         }
     }
 }
@@ -78,6 +84,7 @@ impl std::fmt::Debug for CompletionRequest {
             .field("preserve_state", &self.preserve_state)
             .field("session", &self.session)
             .field("on_token", &self.on_token.as_ref().map(|_| "<callback>"))
+            .field("bnf_mask", &self.bnf_mask.as_ref().map(|_| "<BnfMask>"))
             .finish()
     }
 }
@@ -96,6 +103,7 @@ impl Default for CompletionRequest {
             preserve_state: false,
             on_token: None,
             session: None,
+            bnf_mask: None,
         }
     }
 }
@@ -117,6 +125,25 @@ pub struct CompletionResponse {
     pub usage: TokenUsage,
     pub parsed: Option<serde_json::Value>,
     pub think_trace: Option<String>,
+}
+
+/// Opaque BNF/logit-masking callback for grammar-constrained generation.
+///
+/// This trait is deliberately minimal — no references to kbnf, schoolmarm,
+/// or any other grammar engine. The inference loop calls [`mask`] on each
+/// step to zero out disallowed logits, then calls [`accept`] after sampling
+/// a token to advance the grammar state.
+///
+/// Implementations live outside this crate (e.g. in `roco-bnf-engine`)
+/// and are passed in as `Box<dyn BnfMask>` to avoid pulling grammar-engine
+/// types into the inference compilation unit.
+pub trait BnfMask: Send {
+    /// Modify `logits` in place, setting disallowed tokens to
+    /// `f32::NEG_INFINITY`.
+    fn mask(&mut self, logits: &mut [f32]);
+    /// Notify the grammar that `token_id` was just sampled.
+    /// Returns `false` if the grammar is finished (no more tokens expected).
+    fn accept(&mut self, token_id: u32) -> bool;
 }
 
 /// Cheap heuristic tokenizer (~4 chars/token for English).

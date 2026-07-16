@@ -10,7 +10,7 @@ Live multi-stage story pipeline runs on undertrained RWKV models (1B–2.9B) val
 
 **Post-processing is a last resort.** Regex-based think block stripping is fragile because models often never close their tags. Architecture should prevent the problem at the sampling layer, not clean up after it.
 
-See: [gbnf.md](gbnf.md), [structured_output.md](structured_output.md), [thinking.md](thinking.md) for detailed learnings.
+See: [why_bnf.md](why_bnf.md) (overview), [gbnf.md](gbnf.md), [structured_output.md](structured_output.md), [thinking.md](thinking.md), [state_tuning.md](state_tuning.md) for detailed learnings.
 
 ## Goal Prerequisites
 

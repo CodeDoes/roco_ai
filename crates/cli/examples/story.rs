@@ -1,7 +1,9 @@
-//! Story generation using the MechanisticAgent with grammar-constrained output.
+//! Story generation using the MechanisticAgent with structured (schema→GBNF) output.
 //!
 //! Pipeline: outline → wiki → chapter (×3) → validate → synopsis → publish.
-//! Each handler uses grammar constraints to prevent think-tag contamination.
+//! Every model call is constrained by a GBNF grammar auto-generated from a
+//! JSON Schema — the model never outputs free-form text. Output is parsed
+//! directly into typed Rust structs via serde, then rendered to markdown.
 //!
 //! Workspace artifacts produced:
 //!   01-OUTLINE.md       — title, genre, tone, chapter summaries
@@ -21,62 +23,168 @@ use roco_agent::mechanistic::{
     HandlerResult, MechanisticAgent, Plan, RepairConfig, Task,
 };
 use roco_engine::{CompletionRequest, ModelBackend};
+use roco_grammar::{schema_to_gbnf, Schema};
 use roco_inference::RwkvBackend;
+use roco_tools::{ReadTool, WriteTool};
+use roco_tools::Tool;
 use roco_workspace::{Workspace, WorkspaceKind};
+use serde::Deserialize;
+use serde_json::json;
 
-// ── Grammar Constraints ─────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Typed output structs — one per pipeline stage
+// ═════════════════════════════════════════════════════════════════════════════
 
-/// Outline grammar: structured JSON with title, genre, tone, chapters.
-const OUTLINE_GRAMMAR: &str = r#"
-root  ::= "{" space "\"title\"" space ":" space string space "," space "\"genre\"" space ":" space string space "," space "\"tone\"" space ":" space string space "," space "\"chapters\"" space ":" space "[" space chapter ( "," space chapter )* "]" space "}"
-chapter ::= "{" space "\"number\"" space ":" space number space "," space "\"title\"" space ":" space string space "," space "\"summary\"" space ":" space string space "}"
-string ::= "\"" ( [ -~] )* "\""
-number ::= [0-9]+
-space ::= " "?
-"#;
+/// Model output for the outline stage.
+#[derive(Debug, Deserialize)]
+struct Outline {
+    title: String,
+    genre: String,
+    tone: String,
+    chapters: Vec<ChapterInfo>,
+}
 
-/// Wiki grammar: structured JSON with characters and setting.
-const WIKI_GRAMMAR: &str = r#"
-root  ::= "{" space "\"characters\"" space ":" space "[" space character ( "," space character )* "]" space "," space "\"setting\"" space ":" space string space "}"
-character ::= "{" space "\"name\"" space ":" space string space "," space "\"description\"" space ":" space string space "}"
-string ::= "\"" ( [ -~] )* "\""
-space ::= " "?
-"#;
+#[derive(Debug, Deserialize)]
+struct ChapterInfo {
+    number: u64,
+    title: String,
+    summary: String,
+}
 
-/// Chapter grammar: structured JSON with title and content.
-const CHAPTER_GRAMMAR: &str = r#"
-root  ::= "{" space "\"title\"" space ":" space string space "," space "\"content\"" space ":" space string space "}"
-string ::= "\"" ( [ -~] )* "\""
-space ::= " "?
-"#;
+impl Outline {
+    fn schema() -> Schema {
+        Schema::object()
+            .prop("title", Schema::string())
+            .prop("genre", Schema::string())
+            .prop("tone", Schema::string())
+            .prop("chapters", Schema::array(
+                Schema::object()
+                    .prop("number", Schema::integer())
+                    .prop("title", Schema::string())
+                    .prop("summary", Schema::string())
+                    .build()
+            ))
+            .build()
+    }
 
-/// Validation grammar: structured JSON with quality, issues, suggestion.
-const VALIDATION_GRAMMAR: &str = r#"
-root  ::= "{" space "\"quality\"" space ":" space quality space "," space "\"issues\"" space ":" space string space "," space "\"suggestion\"" space ":" space string space "}"
-quality ::= "\"pass\"" | "\"fail\"" | "\"needs-work\""
-string ::= "\"" ( [ -~] )* "\""
-space ::= " "?
-"#;
+    fn grammar() -> String {
+        schema_to_gbnf("root", Self::schema().to_json()).expect("Outline schema is valid")
+    }
+}
 
-/// Synopsis grammar: structured JSON with summary text.
-const SYNOPSIS_GRAMMAR: &str = r#"
-root  ::= "{" space "\"summary\"" space ":" space string space "}"
-string ::= "\"" ( [ -~] )* "\""
-space ::= " "?
-"#;
+/// Model output for the wiki/worldbuilding stage.
+#[derive(Debug, Deserialize)]
+struct Wiki {
+    characters: Vec<Character>,
+    setting: String,
+}
 
-// ── Grammar-constrained completion ──────────────────────────────────────────
+#[derive(Debug, Deserialize)]
+struct Character {
+    name: String,
+    description: String,
+}
 
-/// Make a grammar-constrained model call. No think-tag cleanup needed.
-fn constrained_complete(
+impl Wiki {
+    fn schema() -> Schema {
+        Schema::object()
+            .prop("characters", Schema::array(
+                Schema::object()
+                    .prop("name", Schema::string())
+                    .prop("description", Schema::string())
+                    .build()
+            ))
+            .prop("setting", Schema::string())
+            .build()
+    }
+
+    fn grammar() -> String {
+        schema_to_gbnf("root", Self::schema().to_json()).expect("Wiki schema is valid")
+    }
+}
+
+/// Model output for a single chapter.
+#[derive(Debug, Deserialize)]
+struct Chapter {
+    title: String,
+    content: String,
+}
+
+impl Chapter {
+    fn schema() -> Schema {
+        Schema::object()
+            .prop("title", Schema::string())
+            .prop("content", Schema::string())
+            .build()
+    }
+
+    fn grammar() -> String {
+        schema_to_gbnf("root", Self::schema().to_json()).expect("Chapter schema is valid")
+    }
+}
+
+/// Model output for validation.
+#[derive(Debug, Deserialize)]
+struct Validation {
+    quality: String,   // "pass" | "fail" | "needs-work"
+    issues: String,
+    suggestion: String,
+}
+
+impl Validation {
+    fn schema() -> Schema {
+        Schema::object()
+            .prop("quality", Schema::enum_values(vec![
+                serde_json::json!("pass"),
+                serde_json::json!("fail"),
+                serde_json::json!("needs-work"),
+            ]))
+            .prop("issues", Schema::string())
+            .prop("suggestion", Schema::string())
+            .build()
+    }
+
+    fn grammar() -> String {
+        schema_to_gbnf("root", Self::schema().to_json()).expect("Validation schema is valid")
+    }
+}
+
+/// Model output for the synopsis.
+#[derive(Debug, Deserialize)]
+struct Synopsis {
+    summary: String,
+}
+
+impl Synopsis {
+    fn schema() -> Schema {
+        Schema::object()
+            .prop("summary", Schema::string())
+            .build()
+    }
+
+    fn grammar() -> String {
+        schema_to_gbnf("root", Self::schema().to_json()).expect("Synopsis schema is valid")
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Structured completion — grammar-constrained model call with typed output
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Call the model with a grammar constraint derived from a JSON Schema,
+/// then deserialize the guaranteed-valid JSON output into the target type.
+fn structured_complete<T>(
     backend: &dyn ModelBackend,
     system: &str,
     prompt: &str,
     grammar: &str,
     temperature: f32,
     max_tokens: usize,
-) -> Result<String, String> {
-    let resp = futures::executor::block_on(backend.complete(CompletionRequest {
+) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let text = futures::executor::block_on(backend.complete(CompletionRequest {
         system: system.to_string(),
         prompt: prompt.to_string(),
         grammar: Some(grammar.to_string()),
@@ -84,52 +192,16 @@ fn constrained_complete(
         max_tokens,
         ..Default::default()
     }))
-    .map_err(|e| format!("model error: {e}"))?;
+    .map_err(|e| format!("model error: {e}"))?
+    .text;
 
-    Ok(resp.text)
+    serde_json::from_str::<T>(&text)
+        .map_err(|e| format!("parse error (grammar constraint violated?): {e}\nraw: {text}"))
 }
 
-// ── JSON helpers ────────────────────────────────────────────────────────────
-
-/// Parse JSON string value, handling escape sequences.
-fn parse_json_string(json: &str, key: &str) -> String {
-    // Simple JSON string extraction (handles basic cases)
-    let search = format!("\"{}\"", key);
-    if let Some(pos) = json.find(&search) {
-        let rest = &json[pos + search.len()..];
-        // Find the colon and opening quote
-        if let Some(colon_pos) = rest.find(':') {
-            let after_colon = &rest[colon_pos + 1..];
-            if let Some(quote_start) = after_colon.find('"') {
-                let value_start = &after_colon[quote_start + 1..];
-                // Find closing quote (handle escaped quotes)
-                let mut result = String::new();
-                let mut chars = value_start.chars().peekable();
-                while let Some(c) = chars.next() {
-                    if c == '\\' {
-                        if let Some(&next) = chars.peek() {
-                            match next {
-                                'n' => { result.push('\n'); chars.next(); }
-                                't' => { result.push('\t'); chars.next(); }
-                                '"' => { result.push('"'); chars.next(); }
-                                '\\' => { result.push('\\'); chars.next(); }
-                                _ => { result.push(c); }
-                            }
-                        }
-                    } else if c == '"' {
-                        break;
-                    } else {
-                        result.push(c);
-                    }
-                }
-                return result;
-            }
-        }
-    }
-    String::new()
-}
-
-// ── Handlers ────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Handlers
+// ═════════════════════════════════════════════════════════════════════════════
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -171,52 +243,38 @@ fn main() -> anyhow::Result<()> {
         let premise = task.spec.get("premise")
             .and_then(|v| v.as_str())
             .unwrap_or("a short story");
-        
-        let json = constrained_complete(
+
+        let outline: Outline = structured_complete(
             backend,
             "You are a story outliner. Output valid JSON only.",
             &format!(
                 "Outline a short story with 3 chapters based on this premise:\n{premise}\n\n\
-                 Output JSON with: title, genre, tone, chapters (array of 3 objects with number, title, summary)",
+                 Output JSON matching the schema: title, genre, tone, chapters \
+                 (array of 3 objects with number, title, summary)",
             ),
-            OUTLINE_GRAMMAR,
+            &Outline::grammar(),
             0.6,
             300,
-        ).unwrap_or_else(|_| {
-            serde_json::json!({
-                "title": "Untitled",
-                "genre": "Unknown",
-                "tone": "Unknown",
-                "chapters": [
-                    {"number": 1, "title": "Chapter 1", "summary": "Error generating outline"},
-                    {"number": 2, "title": "Chapter 2", "summary": ""},
-                    {"number": 3, "title": "Chapter 3", "summary": ""}
-                ]
-            }).to_string()
+        ).unwrap_or_else(|e| Outline {
+            title: "Untitled".into(),
+            genre: "Unknown".into(),
+            tone: "Unknown".into(),
+            chapters: (1..=3).map(|i| ChapterInfo {
+                number: i,
+                title: format!("Chapter {i}"),
+                summary: format!("Error generating outline: {e}"),
+            }).collect(),
         });
 
-        // Convert JSON to markdown
-        let title = parse_json_string(&json, "title");
-        let genre = parse_json_string(&json, "genre");
-        let tone = parse_json_string(&json, "tone");
-        
-        let mut md = format!("Title: {title}\nGenre: {genre}\nTone: {tone}\n\n");
-        
-        // Parse chapters array
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
-            if let Some(chapters) = parsed.get("chapters").and_then(|c| c.as_array()) {
-                for ch in chapters {
-                    let num = ch.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
-                    let ch_title = ch.get("title").and_then(|t| t.as_str()).unwrap_or("");
-                    let summary = ch.get("summary").and_then(|s| s.as_str()).unwrap_or("");
-                    md.push_str(&format!("Chapter {num}: {ch_title}\n{summary}\n\n"));
-                }
-            }
+        // Render to markdown
+        let mut md = format!("Title: {}\nGenre: {}\nTone: {}\n\n", outline.title, outline.genre, outline.tone);
+        for ch in &outline.chapters {
+            md.push_str(&format!("Chapter {}: {}\n{}\n\n", ch.number, ch.title, ch.summary));
         }
 
         let path = ws.resolve("01-OUTLINE.md").unwrap();
-        std::fs::write(&path, &md).ok();
-        
+        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
+
         HandlerResult {
             task: task.clone(),
             output: md,
@@ -233,43 +291,37 @@ fn main() -> anyhow::Result<()> {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        let json = constrained_complete(
+        let wiki: Wiki = structured_complete(
             backend,
             "You are a worldbuilding assistant. Output valid JSON only.",
             &format!(
                 "Based on this premise and outline, create character bios and setting lore:\n\n\
                  Premise: {premise}\nOutline: {outline}\n\n\
-                 Output JSON with: characters (array of objects with name, description), setting (string)",
+                 Output JSON matching the schema: characters (array of objects with name, description), \
+                 setting (string)",
             ),
-            WIKI_GRAMMAR,
+            &Wiki::grammar(),
             0.7,
             400,
-        ).unwrap_or_else(|_| {
-            serde_json::json!({
-                "characters": [{"name": "Unknown", "description": "Error generating wiki"}],
-                "setting": "Unknown"
-            }).to_string()
+        ).unwrap_or_else(|e| Wiki {
+            characters: vec![Character {
+                name: "Unknown".into(),
+                description: format!("Error generating wiki: {e}"),
+            }],
+            setting: "Unknown".into(),
         });
 
-        // Convert JSON to markdown
-        let mut md = String::new();
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
-            md.push_str("Characters:\n");
-            if let Some(chars) = parsed.get("characters").and_then(|c| c.as_array()) {
-                for ch in chars {
-                    let name = ch.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
-                    let desc = ch.get("description").and_then(|d| d.as_str()).unwrap_or("");
-                    md.push_str(&format!("  - {name}: {desc}\n"));
-                }
-            }
-            md.push('\n');
-            let setting = parsed.get("setting").and_then(|s| s.as_str()).unwrap_or("Unknown");
-            md.push_str(&format!("Setting:\n  - {setting}\n"));
+        // Render to markdown
+        let mut md = String::from("Characters:\n");
+        for ch in &wiki.characters {
+            md.push_str(&format!("  - {}: {}\n", ch.name, ch.description));
         }
+        md.push('\n');
+        md.push_str(&format!("Setting:\n  - {}\n", wiki.setting));
 
         let path = ws.resolve("02-WIKI.md").unwrap();
-        std::fs::write(&path, &md).ok();
-        
+        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
+
         HandlerResult {
             task: task.clone(),
             output: md,
@@ -308,29 +360,24 @@ fn main() -> anyhow::Result<()> {
             )
         };
 
-        let json = constrained_complete(
+        let chapter: Chapter = structured_complete(
             backend,
             "You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.",
             &directive,
-            CHAPTER_GRAMMAR,
+            &Chapter::grammar(),
             0.8,
             600,
-        ).unwrap_or_else(|e| {
-            serde_json::json!({
-                "title": chapter_label,
-                "content": format!("Error writing chapter: {e}")
-            }).to_string()
+        ).unwrap_or_else(|e| Chapter {
+            title: chapter_label.into(),
+            content: format!("Error writing chapter: {e}"),
         });
 
-        // Convert JSON to markdown
-        let title = parse_json_string(&json, "title");
-        let content = parse_json_string(&json, "content");
-        let md = format!("# {title}\n\n{content}");
+        let md = format!("# {}\n\n{}", chapter.title, chapter.content);
 
         let filename = format!("03-CHAPTER_{}.md", chapter_num);
         let path = ws.resolve(&filename).unwrap();
-        std::fs::write(&path, &md).ok();
-        
+        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
+
         HandlerResult {
             task: task.clone(),
             output: md,
@@ -347,56 +394,43 @@ fn main() -> anyhow::Result<()> {
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        if chapter_text.trim().is_empty() {
-            let note = format!("[validation skipped — chapter {chapter_num} is empty]");
-            let path = ws.resolve("04-VALIDATION.md").unwrap();
-            std::fs::write(&path, &note).ok();
-            return HandlerResult {
-                task: task.clone(),
-                output: note,
-                files: HashMap::new(),
-            };
-        }
-
-        let json = constrained_complete(
-            backend,
-            "You are a quality reviewer. Be strict. Output valid JSON only.",
-            &format!(
-                "Review this chapter and check for:\n\
-                 1. Does it read like a coherent story (not meta-commentary)?\n\
-                 2. Is the prose engaging?\n\n\
-                 Chapter:\n{chapter_text}\n\n\
-                 Output JSON with: quality (\"pass\" | \"fail\" | \"needs-work\"), issues (string), suggestion (string)",
-            ),
-            VALIDATION_GRAMMAR,
-            0.3,
-            200,
-        ).unwrap_or_else(|_| {
-            serde_json::json!({
-                "quality": "fail",
-                "issues": "Model error during validation",
-                "suggestion": "Retry chapter generation"
-            }).to_string()
-        });
-
-        // Convert JSON to markdown
-        let mut md = String::new();
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
-            let quality = parsed.get("quality").and_then(|q| q.as_str()).unwrap_or("fail");
-            let issues = parsed.get("issues").and_then(|i| i.as_str()).unwrap_or("");
-            let suggestion = parsed.get("suggestion").and_then(|s| s.as_str()).unwrap_or("");
-            md.push_str(&format!("Quality: {quality}\nIssues: {issues}\nSuggestion: {suggestion}\n"));
-        }
+        let entry = if chapter_text.trim().is_empty() {
+            format!("\n## Chapter {chapter_num}\n[validation skipped — chapter is empty]\n")
+        } else {
+            structured_complete::<Validation>(
+                backend,
+                "You are a quality reviewer. Be strict. Output valid JSON only.",
+                &format!(
+                    "Review this chapter and check for:\n\
+                     1. Does it read like a coherent story (not meta-commentary)?\n\
+                     2. Is the prose engaging?\n\n\
+                     Chapter:\n{chapter_text}\n\n\
+                     Output JSON matching the schema: quality (\"pass\" | \"fail\" | \"needs-work\"), \
+                     issues (string), suggestion (string)",
+                ),
+                &Validation::grammar(),
+                0.3,
+                200,
+            ).map(|v: Validation| {
+                format!("\n## Chapter {chapter_num}\nQuality: {}\nIssues: {}\nSuggestion: {}\n",
+                        v.quality, v.issues, v.suggestion)
+            }).unwrap_or_else(|e| {
+                format!("\n## Chapter {chapter_num}\nQuality: fail\nIssues: Model error: {e}\nSuggestion: Retry\n")
+            })
+        };
 
         // Append to VALIDATION.md
         let path = ws.resolve("04-VALIDATION.md").unwrap();
-        let existing = std::fs::read_to_string(&path).unwrap_or_default();
-        let entry = format!("\n## Chapter {chapter_num}\n{md}");
-        std::fs::write(&path, existing + &entry).ok();
+        let existing = ReadTool
+            .call(json!({"path": path.to_string_lossy()}))
+            .ok()
+            .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
+            .unwrap_or_default();
+        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": existing + &entry}));
 
         HandlerResult {
             task: task.clone(),
-            output: md,
+            output: entry,
             files: HashMap::new(),
         }
     }));
@@ -406,31 +440,27 @@ fn main() -> anyhow::Result<()> {
         let chapters = task.spec.get("chapters")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        
-        let json = constrained_complete(
+
+        let synopsis: Synopsis = structured_complete(
             backend,
             "You are a literary summarizer. Output valid JSON only.",
             &format!(
                 "Write a one-paragraph synopsis of the complete story based on these chapters:\n\n\
                  {chapters}\n\n\
-                 Output JSON with: summary (string, one paragraph, ~100 words)",
+                 Output JSON matching the schema: summary (string, one paragraph, ~100 words)",
             ),
-            SYNOPSIS_GRAMMAR,
+            &Synopsis::grammar(),
             0.5,
             200,
-        ).unwrap_or_else(|e| {
-            serde_json::json!({
-                "summary": format!("Error writing synopsis: {e}")
-            }).to_string()
+        ).unwrap_or_else(|e| Synopsis {
+            summary: format!("Error writing synopsis: {e}"),
         });
 
-        // Convert JSON to markdown
-        let summary = parse_json_string(&json, "summary");
-        let md = format!("Synopsis:\n\n{summary}");
+        let md = format!("Synopsis:\n\n{}", synopsis.summary);
 
         let path = ws.resolve("05-SYNOPSIS.md").unwrap();
-        std::fs::write(&path, &md).ok();
-        
+        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
+
         HandlerResult {
             task: task.clone(),
             output: md,
@@ -440,8 +470,15 @@ fn main() -> anyhow::Result<()> {
 
     // ── publish/chapter ────────────────────────────────────────────
     agent.register("publish", "chapter", Box::new(|_task, _backend, ws| {
-        let outline = std::fs::read_to_string(ws.root().join("01-OUTLINE.md")).unwrap_or_default();
-        let wiki = std::fs::read_to_string(ws.root().join("02-WIKI.md")).unwrap_or_default();
+        let read_file = |name: &str| -> String {
+            ReadTool
+                .call(json!({"path": ws.root().join(name).to_string_lossy()}))
+                .ok()
+                .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
+                .unwrap_or_default()
+        };
+        let outline = read_file("01-OUTLINE.md");
+        let wiki = read_file("02-WIKI.md");
         let mut story = format!("# {}\n\n", extract_title(&outline));
 
         if !wiki.is_empty() {
@@ -451,7 +488,10 @@ fn main() -> anyhow::Result<()> {
         }
 
         for i in 1..=3 {
-            let ch = std::fs::read_to_string(ws.root().join(&format!("03-CHAPTER_{i}.md")))
+            let ch = ReadTool
+                .call(json!({"path": ws.root().join(format!("03-CHAPTER_{i}.md")).to_string_lossy()}))
+                .ok()
+                .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
                 .unwrap_or_default();
             if !ch.is_empty() {
                 story.push_str(&ch);
@@ -459,8 +499,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        let synopsis = std::fs::read_to_string(ws.root().join("05-SYNOPSIS.md"))
-            .unwrap_or_default();
+        let synopsis = read_file("05-SYNOPSIS.md");
         if !synopsis.is_empty() {
             story.push_str("## Synopsis\n\n");
             story.push_str(&synopsis);
@@ -468,7 +507,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         let path = ws.resolve("06-STORY.md").unwrap();
-        std::fs::write(&path, &story).ok();
+        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &story}));
 
         HandlerResult {
             task: Task {
@@ -551,11 +590,15 @@ fn main() -> anyhow::Result<()> {
 
         // Self-correction loop
         let val_path = ws.root().join("04-VALIDATION.md");
-        if let Ok(val_content) = std::fs::read_to_string(&val_path) {
+        if let Some(val_content) = ReadTool
+            .call(json!({"path": val_path.to_string_lossy()}))
+            .ok()
+            .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
+        {
             if val_content.contains("Quality: fail") || val_content.contains("needs-work") {
                 println!("⚠️  {} needs revision — retrying...", &chapter_label);
-                
-                // Retry with grammar constraint
+
+                // Retry — re-use the structured grammar constraint
                 let retry_task = Task {
                     r#type: "write".into(),
                     domain: "chapter".into(),
@@ -572,7 +615,7 @@ fn main() -> anyhow::Result<()> {
 
                 let filename = format!("03-CHAPTER_{}.md", i);
                 let path = ws.resolve(&filename).unwrap();
-                std::fs::write(&path, &retry_result.output).ok();
+                let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &retry_result.output}));
                 chapter_texts[i - 1] = retry_result.output;
             }
         }

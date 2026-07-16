@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/bnf-engine",
     "crates/engine",
     "crates/grammar",
     "crates/inference",

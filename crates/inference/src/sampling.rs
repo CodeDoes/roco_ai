@@ -14,7 +14,10 @@ pub fn sample_token(probs: &[f32], temperature: f32, top_p: f32) -> u32 {
             .map(|(i, _)| i as u32)
             .unwrap_or(0);
     }
-    let mut sorted: Vec<_> = probs.iter().copied().enumerate().collect();
+    let mut sorted: Vec<_> = probs.iter().copied().enumerate()
+        .filter(|&(_, p)| p.is_finite())
+        .collect();
+    if sorted.is_empty() { return 0; }
     sorted.sort_unstable_by(|a, b| a.1.total_cmp(&b.1).reverse());
 
     let mut cum = 0.0f32;

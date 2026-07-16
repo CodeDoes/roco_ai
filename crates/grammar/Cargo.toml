@@ -7,12 +7,12 @@ edition.workspace = true
 name = "roco_grammar"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+rand = "0.8"
+jsonschema = "0.18"
 schoolmarm = "0.1"
-bnf_sampler = "0.3"
-qp-trie = "0.8"
-bit-set = "0.5"
-rustc-hash = "1.1"
-web-rwkv = { version = "0.10", default-features = false, features = ["native"] }

@@ -1,0 +1,13 @@
+[package]
+name = "roco-bnf-engine"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roco_bnf_engine"
+
+[dependencies]
+kbnf = "0.5"
+ahash = "0.8"
+thiserror.workspace = true
+roco-engine = { path = "../engine" }
