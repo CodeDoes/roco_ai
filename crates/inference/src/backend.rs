@@ -12,7 +12,7 @@ use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBacke
 use tokio::sync::mpsc;
 use tracing::info;
 
-use crate::actor::{ActorMessage, CompleteReq, RwkvActor};
+use crate::actor::{ActorMessage, BlendReq, CompleteReq, RwkvActor};
 use tokio::sync::oneshot;
 
 /// Thread-safe handle to the RWKV inference actor.
@@ -95,6 +95,33 @@ impl RwkvBackend {
                 .map_err(|e| EngineError::Backend(format!("get_vocab_bytes send: {e}")))?;
             reply_rx.await
                 .map_err(|e| EngineError::Backend(format!("get_vocab_bytes recv: {e}")))
+        })
+    }
+
+    /// Blend two session states element-wise and store as a new session.
+    /// output = alpha * session_a + (1-alpha) * session_b
+    pub fn blend_states(
+        &self,
+        session_a: &str,
+        session_b: &str,
+        alpha: f32,
+        output_session: &str,
+    ) -> Result<(), EngineError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let tx = self.tx.clone().ok_or_else(||
+            EngineError::Backend("backend shut down".into())
+        )?;
+        futures::executor::block_on(async {
+            tx.send(ActorMessage::BlendStates(BlendReq {
+                session_a: session_a.to_string(),
+                session_b: session_b.to_string(),
+                alpha,
+                output_session: output_session.to_string(),
+                reply: reply_tx,
+            })).await
+                .map_err(|e| EngineError::Backend(format!("blend_states send: {e}")))?;
+            reply_rx.await
+                .map_err(|e| EngineError::Backend(format!("blend_states recv: {e}")))?
         })
     }
 }

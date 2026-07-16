@@ -255,7 +255,7 @@ pub async fn bake_into_session(
             system: if i == 0 { system.to_string() } else { String::new() },
             prompt: user_msg.to_string(),
             temperature: 0.0,
-            max_tokens: 1024,
+            max_tokens: 1,  // State-tuning: only need prompt processing, not generation
             preserve_state: true,
             session: Some(session.to_string()),
             ..Default::default()
@@ -265,7 +265,7 @@ pub async fn bake_into_session(
             system: String::new(),
             prompt: assistant_msg.to_string(),
             temperature: 0.0,
-            max_tokens: 1024,
+            max_tokens: 1,  // State-tuning: only need prompt processing, not generation
             preserve_state: true,
             session: Some(session.to_string()),
             ..Default::default()

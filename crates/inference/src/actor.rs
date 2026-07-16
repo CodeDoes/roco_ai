@@ -100,8 +100,17 @@ pub struct CompleteReq {
     pub session: Option<String>,
 }
 
+pub struct BlendReq {
+    pub session_a: String,
+    pub session_b: String,
+    pub alpha: f32,
+    pub output_session: String,
+    pub reply: oneshot::Sender<Result<(), EngineError>>,
+}
+
 pub enum ActorMessage {
     Complete(CompleteReq),
+    BlendStates(BlendReq),
     Cancel,
     #[cfg(feature = "grammar")]
     GetVocabBytes(oneshot::Sender<Vec<Vec<u8>>>),
@@ -109,6 +118,10 @@ pub enum ActorMessage {
 
 impl From<CompleteReq> for ActorMessage {
     fn from(req: CompleteReq) -> Self { Self::Complete(req) }
+}
+
+impl From<BlendReq> for ActorMessage {
+    fn from(req: BlendReq) -> Self { Self::BlendStates(req) }
 }
 
 // ---------------------------------------------------------------------------
@@ -299,6 +312,63 @@ impl RwkvActor {
             cancel: Arc::new(AtomicBool::new(false)),
             state_pool: HashMap::new(), session_lru: VecDeque::new(), max_sessions: 8,
         })
+    }
+
+    /// Blend two session states element-wise: output = alpha * a + (1-alpha) * b
+    pub fn blend_states(
+        &mut self,
+        session_a: String,
+        session_b: String,
+        alpha: f32,
+        output_session: String,
+    ) -> Result<(), EngineError> {
+        let state_a = self.state_pool.get(&session_a)
+            .and_then(|s| s.as_ref())
+            .ok_or_else(|| EngineError::Backend(format!("session '{}' not found", session_a)))?;
+        let state_b = self.state_pool.get(&session_b)
+            .and_then(|s| s.as_ref())
+            .ok_or_else(|| EngineError::Backend(format!("session '{}' not found", session_b)))?;
+
+        if state_a.data().len() != state_b.data().len() {
+            return Err(EngineError::Backend("state tensors have different sizes".into()));
+        }
+
+        let blended: Vec<f32> = state_a.data().iter()
+            .zip(state_b.data().iter())
+            .map(|(&a, &b)| alpha * a + (1.0 - alpha) * b)
+            .collect();
+
+        let blended_tensor = TensorCpu::from_data(state_a.shape(), blended)
+            .map_err(|e| EngineError::Backend(format!("tensor creation failed: {e}")))?;
+
+        // Store in state pool
+        self.state_pool.insert(output_session.clone(), Some(blended_tensor));
+        
+        // Update LRU
+        if let Some(pos) = self.session_lru.iter().position(|s| s == &output_session) {
+            self.session_lru.remove(pos);
+        }
+        self.session_lru.push_back(output_session.clone());
+        
+        // Evict if over capacity
+        while self.state_pool.len() > self.max_sessions {
+            if let Some(oldest) = self.session_lru.pop_front() {
+                self.state_pool.remove(&oldest);
+                info!(session = oldest, "evicted session (LRU)");
+            } else {
+                break;
+            }
+        }
+
+        info!(
+            session_a = %session_a,
+            session_b = %session_b,
+            alpha = alpha,
+            output_session = %output_session,
+            "blended states"
+        );
+
+        Ok(())
     }
 
     pub async fn handle_complete(
@@ -530,6 +600,17 @@ impl RwkvActor {
                             bnf_mask,
                         )
                         .await;
+                    let _ = reply.send(result);
+                }
+                BlendStates(req) => {
+                    let BlendReq {
+                        session_a,
+                        session_b,
+                        alpha,
+                        output_session,
+                        reply,
+                    } = req;
+                    let result = self.blend_states(session_a, session_b, alpha, output_session);
                     let _ = reply.send(result);
                 }
                 Cancel => { self.cancel.store(true, Ordering::Relaxed); }
