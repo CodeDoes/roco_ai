@@ -21,6 +21,11 @@ struct DatasetEntry {
     turns: Vec<ConversationTurn>,
 }
 
+/// Pre-think block to pre-fill during probing. This makes the model believe
+/// it has already done its thinking and continue directly into content.
+/// Note: The opening  must be properly escaped in the string literal.
+const PRETHINK_BLOCK: &str = "\n<think>Generating content.</think>\n";
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!("Loading RWKV backend...");
@@ -65,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
         bake_into_session(&backend, &session_name, system, &examples).await?;
         println!("  Baked into session '{}'\n", session_name);
         
-        // Probe with test input
+        // Probe with test input, using pre-think block
         let probe = match dataset_name.as_str() {
             "story_writing" => "Write a chapter where Mara discovers the shadow box is alive.",
             "plot_overview" => "Create an outline for a story about a time-traveling librarian.",
@@ -76,11 +81,14 @@ async fn main() -> anyhow::Result<()> {
             _ => "Test input.",
         };
         
+        // Pre-fill think block to prevent think-tag contamination
+        let probe_with_prethink = format!("{}\n{}", probe, PRETHINK_BLOCK);
+        
         println!("  Probe: {}", probe);
         let response = backend
             .complete(CompletionRequest {
                 system: String::new(),
-                prompt: probe.to_string(),
+                prompt: probe_with_prethink,
                 max_tokens: 150,
                 estimated_prompt_tokens: 0,
                 temperature: 0.7,
