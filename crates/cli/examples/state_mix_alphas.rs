@@ -57,19 +57,12 @@ async fn main() -> anyhow::Result<()> {
         backend.blend_states("sherlock", "tony", alpha, &session)?;
         
         let resp = backend.complete(CompletionRequest {
-            system: String::new(),
             prompt: probe.to_string(),
-            prefill: None,
-            grammar: None,
             temperature: 0.7,
             max_tokens: 150,
-            estimated_prompt_tokens: 0,
-            thinking: false,
             preserve_state: true,
-            output_schema: None,
-            on_token: None,
             session: Some(session),
-            bnf_mask: None,
+            ..Default::default()
         }).await?;
         println!("Response: {}\n", resp.text.trim());
     }

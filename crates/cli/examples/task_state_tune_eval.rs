@@ -84,19 +84,13 @@ async fn main() -> anyhow::Result<()> {
         println!("  Probe: {}", probe);
         let response = backend
             .complete(CompletionRequest {
-                system: String::new(),
                 prompt: probe.to_string(),
                 prefill: Some(PRETHINK_BLOCK.to_string()),
                 max_tokens: 150,
-                estimated_prompt_tokens: 0,
                 temperature: 0.7,
-                thinking: false,
                 session: Some(session_name.clone()),
                 preserve_state: true,
-                grammar: None,
-                bnf_mask: None,
-                output_schema: None,
-                on_token: None,
+                ..Default::default()
             })
             .await?;
         

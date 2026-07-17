@@ -17,6 +17,9 @@ roco-chat-common = { path = "../chat-common" }
 roco-tools = { path = "../tools" }
 roco-workspace = { path = "../workspace" }
 roco-bnf-engine = { path = "../bnf-engine" }
+roco-server = { path = "../server" }
+roco-gateway = { path = "../gateway" }
+roco-tui = { path = "../tui" }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
