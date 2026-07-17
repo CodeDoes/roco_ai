@@ -262,6 +262,62 @@ pub async fn bake_into_session(
     Ok(())
 }
 
+/// Prefill that closes the think channel immediately, so generation starts in
+/// *content* mode rather than planning mode.
+///
+/// Derived from `prompt_probe_eval`: after `Assistant: <think></think>` the
+/// model emits content and does **not** re-open `<think>`. Without any prefill
+/// a bare `Assistant:` start defaults to an open `<think>` block (the source
+/// of think-tag contamination in the story pipeline). System-prompt
+/// instructions like "never use think tags" backfire — they merely prime the
+/// model to emit `<think>`, so they must not be used.
+///
+/// NOTE: this prefill contains `<`/`>` and therefore cannot be combined with a
+/// grammar that forbids those characters (e.g. JSON-envelope grammars). For
+/// grammar-constrained generation, use [`bake_no_think_session`] instead and
+/// rely on the baked recurrent state to bias the opening token toward `{`.
+pub const NO_THINK_PREFILL: &str = "<think></think>";
+
+/// Bake a *no-think* session by replaying (user, assistant) turns where the
+/// assistant turn is injected as a **prefill** (the correct assistant role),
+/// so the recurrent state learns that assistant responses begin with content,
+/// never `<think>`.
+///
+/// This is the correctly-roled counterpart of [`bake_into_session`], which
+/// feeds the assistant text through `prompt` (the user role) and therefore
+/// leaves the baked state expecting another *user* turn — probe experiments
+/// showed that mistake makes the model emit spurious `User:` turns.
+pub async fn bake_no_think_session(
+    backend: &dyn ModelBackend,
+    session: &str,
+    system: &str,
+    examples: &[(&str, &str)],
+) -> Result<(), EngineError> {
+    for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
+        let user_req = CompletionRequest {
+            system: if i == 0 { system.to_string() } else { String::new() },
+            prompt: user_msg.to_string(),
+            temperature: 0.0,
+            max_tokens: 1, // State-tuning: only need prompt processing, not generation
+            preserve_state: true,
+            session: Some(session.to_string()),
+            ..Default::default()
+        };
+        backend.complete(user_req).await?;
+        let asst_req = CompletionRequest {
+            system: String::new(),
+            prefill: Some(assistant_msg.to_string()),
+            temperature: 0.0,
+            max_tokens: 1, // State-tuning: only need prompt processing, not generation
+            preserve_state: true,
+            session: Some(session.to_string()),
+            ..Default::default()
+        };
+        backend.complete(asst_req).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

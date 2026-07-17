@@ -397,11 +397,42 @@ rejects non-conforming tokens at every step — contamination literally cannot o
 
 ### The `<think>>` Tag Problem
 Undertrained base RWKV models consistently leak planning text into output:
-- System prompts saying "no thinking" have zero effect
+- System prompts saying "no thinking" have zero effect — and **backfire**: a
+  system instruction like "never use `<think>` tags" primes the model to emit
+  `<think>` (verified in `crates/cli/examples/prompt_probe_eval.rs`: the
+  "no-think instruction" probe emitted `<think>` on both runs).
 - Temperature decay has minimal impact — the behavior persists across all settings
-- Every stage gets contaminated unless blocked by grammar constraints
+- A **bare `Assistant:` start defaults to an open `<think>` block** (the root
+  cause of contamination in the story pipeline). Probing an empty context with
+  `prefill = None` produced `<think>` as the first tokens.
 - Post-processing stripping is fragile because models often never close their think tags
-- Pre-filling `<think>>...content...` before the prompt helps but doesn't solve root cause
+- Pre-filling a **CLOSED** think block (`<think></think>`) before the prompt puts
+  the model straight into content mode and it does **not** re-open `<think>`
+  (`NO_THINK_PREFILL` in `crates/engine/src/backend.rs`). This is the reliable
+  suppression lever — much better than banning `<`/`>` at the grammar level,
+  which also blocks legitimate prose and can starve the sampler.
+
+### Think-tag state-tuning (experimentally validated)
+The model's think-tag prior was probed directly (`prompt_probe_eval.rs`) by
+feeding the training-prompt prefixes as `prefill` after `Assistant:`:
+- `Assistant: <think` → model closes the tag (`>`) and emits chain-of-thought.
+- `Assistant: <think></think>` → model emits content, no re-open. **Reliable.**
+- `Assistant: <reason>…</reason>` → model emits a `<plan>` outline instead of
+  `<think>`. There are **alternate planning markers** (`<reason>`, `<plan>`) —
+  these are the "certain areas" where thinking is acceptable.
+- Baking a no-think session (`bake_no_think_session`) biases the recurrent state
+  away from `<think>`, but it is a *soft* bias and noisier than the prefill;
+  the correct-role bake still showed occasional `User:`-turn leakage. Prefer the
+  closed-think **prefill** for deterministic suppression.
+
+**Design:** suppress `<think>` by (a) prefilling `<think></think>` (or a content
+lead-in like "Sure! Here is the chapter:") whenever an assistant turn starts,
+and (b) generating free prose **outside** the JSON envelope via the per-handler
+BNF grammars in `GBNF/` with that prefill. For the stages that benefit from
+reasoning (outline expansion, plot-state extraction, quality critique), *intentionally*
+prefill `<think>` to get the trace, then strip the `<think>…</think>` span before
+parsing the JSON — so thinking is allowed only in those designated regions.
+The grammar-ban approach (`<`/`>` forbidden) is deprecated in favor of this.
 
 ### Architecture Decisions Proven Correct
 - Code owns control flow, LLM only fires at fixed grammar-bounded points
@@ -437,11 +468,25 @@ kbnf GBNF dialect. They are embedded and exposed by
 `roco_grammar::grammar_library::StoryGrammar` (with `source()` / `kbnf()`
 accessors) and validated against `roco-bnf-engine` in
 `crates/grammar/src/grammar_library.rs` tests — every grammar loads in
-the real engine and accepts a valid sample to completion. The remaining
-step is to route each prose handler through its grammar (generating
-prose **outside** the JSON envelope via `StoryGrammar::kbnf()`, then
-assembling the artifact in code), which replaces the pre-fill +
-strip-think workaround at the generation level.
+the real engine and accepts a valid sample to completion.
+
+**State-tune mechanism (experimentally validated, 2026-07-18):** rather
+than banning `<`/`>` at the grammar level, suppress `<think>` by
+prefilling `NO_THINK_PREFILL` (`<think></think>`, see
+`crates/engine/src/backend.rs`) whenever an assistant turn starts — the
+`prompt_probe_eval.rs` experiment confirmed this reliably yields content
+with no re-opened think block, whereas a bare `Assistant:` start defaults
+to `<think>` and a system "no-think" instruction *backfires*. The
+remaining step is to route each prose handler through its grammar,
+generating prose **outside** the JSON envelope via `StoryGrammar::kbnf()`
+(which structurally excludes `<`/`>`, so `<think>` cannot appear); for the
+JSON-envelope stages that must permit `<` (e.g. to capture a reasoning
+trace), prefill `NO_THINK_PREFILL` or strip a leading `<think>…</think>`
+span before parsing JSON. For the stages that benefit from reasoning
+(outline expansion, plot-state extraction, quality critique),
+intentionally prefill `<think>` to capture the trace, then strip the
+`<think>…</think>` span before parsing JSON — so thinking is confined to
+those designated regions.
 
 The `crates/grammar/src/strategies.rs` module already exposes
 `StrategySelector` so callers can pick a per-handler strategy; the

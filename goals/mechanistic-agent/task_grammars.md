@@ -37,8 +37,29 @@ During multi-step story pipeline runs on a 2.9B RWKV model, we observed:
 - ✅ GBNF→BNF converter wraps nonterminal names in angle brackets
 - ✅ JSON-Schema → GBNF converter (`crates/grammar/src/json_schema.rs`) handles objects, arrays, enums
 - ✅ Story-domain per-handler grammars (`GBNF/*.bnf`: outline, wiki, chapter_prose, validation_report, synopsis) — embedded + validated via `roco_grammar::grammar_library` against `roco-bnf-engine`
-- ⬜ Story pipeline stages wired to BNF constraints (current workaround: pre-fill think blocks)
+- ✅ Think-tag **state-tuning** primitives in `crates/engine/src/backend.rs`: `NO_THINK_PREFILL` (`<think></think>`) and `bake_no_think_session`. Validated by `crates/cli/examples/prompt_probe_eval.rs` (probe of the training-prompt prefixes as `prefill` after `Assistant:`).
+- ⬜ Story pipeline stages wired to BNF constraints + no-think prefill (current workaround: pre-fill think blocks)
 - ⬜ Per-handler grammars in mechanistic agent — this is the next critical gap
+
+## Think-tag state-tuning (experiment, 2026-07-18)
+Probed `System:`, `User:`, `Assistant:`, `Assistant: <think`, `Assistant: <think></think>`,
+`Assistant: <reason>…</reason>`, etc. by feeding them as `prefill` and observing the
+continuation. Findings:
+- A **bare `Assistant:` start defaults to an open `<think>` block** — the contamination source.
+- `Assistant: <think></think>` → content, no re-open. **Reliable suppression.**
+- `Assistant: <reason>…</reason>` → a `<plan>` outline instead of `<think>` — alternate
+  planning markers are the "certain areas" where thinking is acceptable.
+- A system prompt "never use `<think>` tags" **backfires** (primes `<think>`). Don't use it.
+- A baked no-think session is a *soft* bias (noisier than the prefill; occasional `User:`
+turn leakage). Prefer the closed-think **prefill** for deterministic suppression.
+
+**Design:** suppress `<think>` by prefilling `NO_THINK_PREFILL` at every assistant-turn
+start, and generate free prose **outside** the JSON envelope via the `GBNF/*.bnf`
+grammars (which structurally exclude `<`/`>`, so `<think>` cannot appear); for
+the JSON-envelope stages that must permit `<`, strip a leading `<think>…</think>`
+span before parsing. For reasoning stages, intentionally prefill `<think>` to
+capture the trace, then strip it before parsing JSON. This replaces the
+grammar-level `<`/`>` ban and the pre-fill + strip-think workaround.
 
 ## Reference
 - `mindful/spec/agent.md` — plan grammar BNF definition with `<task>`, `<type>`, `<domain>`, `<spec>` productions
