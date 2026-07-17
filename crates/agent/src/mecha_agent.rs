@@ -665,6 +665,7 @@ mod tests {
                 task: task.clone(),
                 output: "written".to_string(),
                 files: HashMap::new(),
+                pass: true,
             }
         }));
 
@@ -735,6 +736,7 @@ mod tests {
                 task: task.clone(),
                 output: format!("written: {title}"),
                 files: HashMap::new(),
+                pass: true,
             }
         }));
 
@@ -784,7 +786,7 @@ mod tests {
                 .unwrap_or_else(|_| "[generated]".to_string());
             let path = ws.resolve("OUTPUT.md").unwrap();
             std::fs::write(&path, &resp).ok();
-            HandlerResult { task: task.clone(), output: resp, files: HashMap::new() }
+            HandlerResult { task: task.clone(), output: resp, files: HashMap::new(), pass: true }
         }));
 
         let plan = Plan {

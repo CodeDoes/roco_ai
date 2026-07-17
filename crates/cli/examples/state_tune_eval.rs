@@ -7,6 +7,7 @@ use roco_inference::RwkvBackend;
 use serde::Deserialize;
 use std::path::Path;
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct Conversation {
     system: String,

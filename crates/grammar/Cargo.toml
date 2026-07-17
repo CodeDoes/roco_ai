@@ -16,3 +16,5 @@ anyhow.workspace = true
 rand = "0.8"
 jsonschema = "0.18"
 schoolmarm = "0.1"
+kbnf = "0.5.7"
+ahash = "0.8"

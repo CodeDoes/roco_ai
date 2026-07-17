@@ -21,6 +21,7 @@ use crate::error::AgentError;
 /// Note: this trait uses native async fn (Rust 2021), which requires static
 /// dispatch (`fn foo<T: BaseAgent>(agent: &T)`). Dynamic dispatch
 /// (`Box<dyn BaseAgent>`) would require the `async-trait` crate.
+#[allow(async_fn_in_trait)]
 pub trait BaseAgent: Send + Sync {
     /// Run the agent pipeline for a single human message.
     ///

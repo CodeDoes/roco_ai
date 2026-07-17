@@ -25,6 +25,7 @@ use serde_json::Value;
 // Shared output types (one per pipeline stage)
 // ═════════════════════════════════════════════════════════════════════════════
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Outline {
     title: String,
@@ -33,6 +34,7 @@ struct Outline {
     chapters: Vec<ChapterInfo>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ChapterInfo {
     number: u64,
@@ -40,24 +42,28 @@ struct ChapterInfo {
     summary: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Chapter {
     title: String,
     content: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Wiki {
     characters: Vec<Character>,
     setting: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Character {
     name: String,
     description: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Synopsis {
     summary: String,
