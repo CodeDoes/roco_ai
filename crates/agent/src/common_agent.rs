@@ -245,19 +245,11 @@ impl Agent {
             let prompt = self.render_prompt(task, &history);
 
             let req = CompletionRequest {
-                system: String::new(),
                 prompt,
-                prefill: None,
-                output_schema: None,
                 grammar,
                 temperature: self.config.temperature,
                 max_tokens: self.config.max_tokens_per_step,
-                estimated_prompt_tokens: 0,
-                thinking: false,
-                preserve_state: false,
-                on_token: None,
-                session: None,
-                bnf_mask: None,
+                ..Default::default()
             };
 
             let retry_config = RetryConfig::default();
@@ -333,19 +325,11 @@ impl Agent {
             self.config.system_prompt, subtask.objective, subtask.context
         );
         let req = CompletionRequest {
-            system: String::new(),
             prompt,
-            prefill: None,
-            output_schema: None,
-            grammar: None,
             temperature: subtask.temperature,
             max_tokens: subtask.max_tokens,
-            estimated_prompt_tokens: 0,
             thinking: self.config.enable_think,
-            preserve_state: false,
-            on_token: None,
-            session: None,
-            bnf_mask: None,
+            ..Default::default()
         };
         let resp = backend.complete(req).await.map_err(|e| AgentError::BackendError(e.to_string()))?;
         let text = resp.text.clone();

@@ -66,19 +66,12 @@ async fn main() -> anyhow::Result<()> {
         for (i, prompt) in probe_prompts.iter().enumerate() {
             println!("Probe {}: {}", i + 1, prompt);
             let req = CompletionRequest {
-                system: String::new(),
                 prompt: prompt.to_string(),
-                prefill: None,
-                grammar: None,
                 temperature: 0.7,
                 max_tokens: 150,
-                estimated_prompt_tokens: 0,
-                thinking: false,
                 preserve_state: true,
-                output_schema: None,
-                on_token: None,
                 session: Some(session.clone()),
-                bnf_mask: None,
+                ..Default::default()
             };
             let resp = backend.complete(req).await?;
             println!("Response: {}\n", resp.text.trim());

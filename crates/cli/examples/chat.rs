@@ -31,9 +31,24 @@ fn print_help() {
 fn do_prompt() -> io::Result<String> {
     print!("> ");
     io::stdout().flush()?;
-    let mut line = String::new();
-    io::stdin().lock().read_line(&mut line)?;
-    Ok(line.trim_end().to_string())
+    let mut full_input = String::new();
+    let stdin = io::stdin();
+    let mut handle = stdin.lock();
+    loop {
+        let mut line = String::new();
+        handle.read_line(&mut line)?;
+        let trimmed = line.trim_end();
+        if trimmed.ends_with('\\') {
+            full_input.push_str(&trimmed[..trimmed.len() - 1]);
+            full_input.push('\n');
+            print!(">> ");
+            io::stdout().flush()?;
+        } else {
+            full_input.push_str(trimmed);
+            break;
+        }
+    }
+    Ok(full_input.trim_end().to_string())
 }
 
 /// Parse a few-shot persona file into `(user, assistant)` pairs.

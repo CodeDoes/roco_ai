@@ -27,17 +27,11 @@ async fn main() -> anyhow::Result<()> {
     let req = CompletionRequest {
         system: "You are a helpful assistant.".into(),
         prompt: env::var("RWKV_GRAMMAR_PROMPT").unwrap_or_else(|_| DEFAULT_PROMPT.to_string()),
-        prefill: None,
-        output_schema: None,
         grammar: Some(grammar.clone()),
-        bnf_mask: None,
         temperature: 1.0,
         max_tokens: 8,
         estimated_prompt_tokens: 32,
-        thinking: false,
-        preserve_state: false,
-        on_token: None,
-        session: None,
+        ..Default::default()
     };
 
     println!("prompting…");
