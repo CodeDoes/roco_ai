@@ -170,7 +170,6 @@ fn escape_string(s: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
-    use schoolmarm::{Grammar, GrammarState};
 
     /// Helper: check GBNF output can be parsed by schoolmarm.
     /// (Dev-dependency only — not used in production.)
@@ -513,8 +512,8 @@ mod tests {
                 "type": "object",
                 "properties": {"a": {"type": "string"}}
             })).unwrap();
-            assert!(gbnf.contains("root ::= root-obj"));
-            assert!(gbnf.contains("root-obj ::= \"{\""));
+            assert!(gbnf.contains("root ::= root_obj"));
+            assert!(gbnf.contains("root_obj ::= \"{\""));
         }
     }
 
@@ -586,8 +585,8 @@ mod tests {
                 "type": "array",
                 "items": {"type": "integer"}
             })).unwrap();
-            assert!(gbnf.contains("root ::= root-arr"));
-            assert!(gbnf.contains("root-arr ::= \"[\""));
+            assert!(gbnf.contains("root ::= root_arr"));
+            assert!(gbnf.contains("root_arr ::= \"[\""));
         }
     }
 
@@ -696,6 +695,8 @@ mod tests {
 
     #[test]
     fn all_primitives_parse_through_schoolmarm() {
+        use kbnf::{Vocabulary, Config, Engine};
+        use ahash::AHashMap;
         for (label, schema) in [
             ("string", json!({"type":"string"})),
             ("integer", json!({"type":"integer"})),
@@ -708,8 +709,14 @@ mod tests {
         ] {
             let gbnf = schema_to_gbnf("root", &schema)
                 .unwrap_or_else(|e| panic!("{label}: convert error: {e}"));
-            Grammar::new(&gbnf)
-                .unwrap_or_else(|e| panic!("{label}: schoolmarm rejected: {e:?}\nGBNF:\n{gbnf}"));
+            let vocab = Vocabulary::new(AHashMap::new(), AHashMap::new()).unwrap();
+            let config = Config {
+                start_nonterminal: "root".to_string(),
+                ..Config::default()
+            };
+            if let Err(e) = Engine::with_config(&crate::kbnf_compat::gbnf_to_kbnf(&gbnf), vocab, config) {
+                panic!("{label}: kbnf rejected: {e:?}\nGBNF:\n{gbnf}");
+            }
         }
     }
 
@@ -746,24 +753,44 @@ mod tests {
         /// Perform a random walk through a grammar using allowed_tokens()
         /// Returns Some(output) if successful, None if stuck
         fn random_walk_grammar(gbnf: &str, max_steps: usize) -> Option<String> {
-            let grammar = Grammar::new(gbnf).ok()?;
-            let mut state = GrammarState::new(grammar).ok()?;
+            use kbnf::{Vocabulary, Token, Config, Engine};
+            use kbnf::engine_like::EngineLike;
+            use ahash::AHashMap;
+
             let vocab = json_vocab();
+            let mut id_to_token = AHashMap::new();
+            let mut id_to_token_string = AHashMap::new();
+
+            for (id, &token_str) in vocab.iter().enumerate() {
+                let token_id = id as u32;
+                id_to_token.insert(token_id, Token(token_str.as_bytes().to_vec().into_boxed_slice()));
+                id_to_token_string.insert(token_id, token_str.to_string());
+            }
+
+            let vocab_obj = Vocabulary::new(id_to_token, id_to_token_string).ok()?;
+            let config = Config {
+                start_nonterminal: "root".to_string(),
+                ..Config::default()
+            };
+
+            let mut engine = Engine::with_config(&crate::kbnf_compat::gbnf_to_kbnf(gbnf), vocab_obj, config).ok()?;
+            engine.compute_allowed_token_ids();
+
             let mut rng = thread_rng();
             let mut output = String::new();
 
             for _ in 0..max_steps {
-                if state.is_accepting() {
+                if engine.is_finished() {
                     return Some(output);
                 }
 
-                let allowed = state.allowed_tokens(&vocab);
-                let valid_indices: Vec<usize> = allowed
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, &is_allowed)| is_allowed)
-                    .map(|(i, _)| i)
-                    .collect();
+                let allowed_bitset = engine.allowed_token_ids_from_last_computation();
+                let mut valid_indices: Vec<usize> = Vec::new();
+                for id in 0..vocab.len() {
+                    if allowed_bitset.contains(id) {
+                        valid_indices.push(id);
+                    }
+                }
 
                 if valid_indices.is_empty() {
                     eprintln!("Grammar stuck at: {}\nGBNF:\n{}", output, gbnf);
@@ -775,15 +802,16 @@ mod tests {
                     .choose_weighted(&mut rng, |&i| vocab[i].len())
                     .unwrap();
                 let token = vocab[idx];
-                
-                if state.accept_token(token).is_err() {
+
+                if engine.try_accept_new_token(idx as u32).is_err() {
                     eprintln!("accept_token failed for '{}' at: {}", token, output);
                     return None;
                 }
+                engine.compute_allowed_token_ids();
                 output.push_str(token);
             }
 
-            if state.is_accepting() {
+            if engine.is_finished() {
                 Some(output)
             } else {
                 eprintln!("Grammar did not complete after {} steps: {}\nGBNF:\n{}", max_steps, output, gbnf);

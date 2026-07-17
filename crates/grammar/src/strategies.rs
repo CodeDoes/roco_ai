@@ -566,7 +566,7 @@ space ::= " "?
         // Should NOT have a space rule
         assert!(!gbnf.contains("space::"), "schema grammar should not have space rule:\n{gbnf}");
         // Should reference simple-obj
-        assert!(gbnf.contains("root ::= root-obj"), "schema grammar should reference root-obj:\n{gbnf}");
+        assert!(gbnf.contains("root ::= root_obj"), "schema grammar should reference root_obj:\n{gbnf}");
     }
 
     #[test]

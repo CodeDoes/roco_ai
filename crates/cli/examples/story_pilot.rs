@@ -572,7 +572,7 @@ fn main() -> anyhow::Result<()> {
             spec: serde_json::json!({"premise": &premise, "outline": &outline_text}),
         }],
     };
-    let wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
+    let mut wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("wiki failed: {e}"))?;
 
     // Validate wiki quality before proceeding
@@ -591,7 +591,7 @@ fn main() -> anyhow::Result<()> {
         if let Some(path) = wiki_path {
             std::fs::write(&path, &retry_wiki.output).ok();
         }
-        let wiki_result = retry_wiki;
+        wiki_result = retry_wiki;
     }
 
     // Phase 3: Chapters ×3

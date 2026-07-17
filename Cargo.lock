@@ -1893,8 +1893,10 @@ dependencies = [
 name = "roco-grammar"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "jsonschema",
+ "kbnf",
  "rand",
  "schoolmarm",
  "serde",

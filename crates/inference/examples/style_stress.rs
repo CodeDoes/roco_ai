@@ -90,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
                 thinking: false, preserve_state: false,
                 on_token: Some(Box::new(move |t: &str| cloned.lock().unwrap().push_str(t))),
                 session: None,
+                ..Default::default()
             }).await?;
 
             let text = streamed.lock().unwrap().clone();

@@ -257,6 +257,7 @@ async fn main() -> anyhow::Result<()> {
                     cloned.lock().unwrap().push_str(token);
                 })),
                 session: Some(current_session.clone()),
+                ..Default::default()
             })
             .await;
 

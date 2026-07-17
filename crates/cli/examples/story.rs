@@ -279,6 +279,7 @@ fn main() -> anyhow::Result<()> {
             task: task.clone(),
             output: md,
             files: HashMap::new(),
+            pass: true,
         }
     }));
 
@@ -326,6 +327,7 @@ fn main() -> anyhow::Result<()> {
             task: task.clone(),
             output: md,
             files: HashMap::new(),
+            pass: true,
         }
     }));
 
@@ -382,6 +384,7 @@ fn main() -> anyhow::Result<()> {
             task: task.clone(),
             output: md,
             files: HashMap::new(),
+            pass: true,
         }
     }));
 
@@ -432,6 +435,7 @@ fn main() -> anyhow::Result<()> {
             task: task.clone(),
             output: entry,
             files: HashMap::new(),
+            pass: true,
         }
     }));
 
@@ -465,6 +469,7 @@ fn main() -> anyhow::Result<()> {
             task: task.clone(),
             output: md,
             files: HashMap::new(),
+            pass: true,
         }
     }));
 
@@ -517,6 +522,7 @@ fn main() -> anyhow::Result<()> {
             },
             output: format!("published {} bytes", story.len()),
             files: HashMap::new(),
+            pass: true,
         }
     }));
 
@@ -595,7 +601,21 @@ fn main() -> anyhow::Result<()> {
             .ok()
             .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
         {
-            if val_content.contains("Quality: fail") || val_content.contains("needs-work") {
+            let chapter_header = format!("## Chapter {i}");
+            let needs_revision = if let Some(start_idx) = val_content.find(&chapter_header) {
+                let segment = &val_content[start_idx..];
+                let next_chapter_header = format!("## Chapter {}", i + 1);
+                let segment = if let Some(end_idx) = segment.find(&next_chapter_header) {
+                    &segment[..end_idx]
+                } else {
+                    segment
+                };
+                segment.contains("Quality: fail") || segment.contains("Quality: needs-work") || segment.contains("needs-work")
+            } else {
+                false
+            };
+
+            if needs_revision {
                 println!("⚠️  {} needs revision — retrying...", &chapter_label);
 
                 // Retry — re-use the structured grammar constraint
