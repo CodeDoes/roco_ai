@@ -2297,6 +2297,7 @@ dependencies = [
  "jsonschema",
  "kbnf",
  "rand 0.8.7",
+ "roco-bnf-engine",
  "schoolmarm",
  "serde",
  "serde_json",

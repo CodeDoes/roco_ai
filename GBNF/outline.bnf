@@ -1,0 +1,9 @@
+root ::= chapter { chapter } ;
+chapter ::= "Chapter " number ": " title "\n" summary "\n" "\n" ;
+number ::= digit { digit } ;
+title ::= word { (" " word) } ;
+summary ::= sentence { (" " sentence) } ( "." | "!" | "?" ) ;
+sentence ::= word { (" " word) } ;
+word ::= letter { letter | digit | "'" } ;
+letter ::= #'[A-Za-z]' ;
+digit ::= #'[0-9]' ;

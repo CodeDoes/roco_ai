@@ -1,0 +1,8 @@
+root ::= status "\n" finding { finding } ;
+status ::= "PASS" | "REVISION" ;
+finding ::= "-" severity ": " issue "\n" ;
+severity ::= "low" | "medium" | "high" ;
+issue ::= word { (" " word) } ( "." | "!" | "?" ) ;
+word ::= letter { letter | digit | "'" } ;
+letter ::= #'[A-Za-z]' ;
+digit ::= #'[0-9]' ;

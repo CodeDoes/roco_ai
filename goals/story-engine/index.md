@@ -38,7 +38,7 @@ Prerequisite order (top to bottom):
 
 ### Phase 3: Quality & Polish (🔴 CURRENT FOCUS)
 11. 🟡 **prose_quality_metrics** — `QualityAnalyzer` (7 dimensions) and `StoryEvaluator` (arc / continuity / prose / character / pacing) cover the metrics; what's open is wiring them into the live CLI's per-chapter feedback loop and lowering false-positive revisions on g1h.
-12. 🔴 **per_handler_grammars** — the JSON envelope of every stage is BNF-constrained (`Schema::to_gbnf`); the prose body of chapter / outline / wiki / synopsis / validation handlers is still free-form and uses pre-fill + strip-think as interim coverage. Real domain BNFs (`outline.bnf`, `wiki.bnf`, `chapter_prose.bnf`, `validation_report.bnf`, `synopsis.bnf`) are the next planned work.
+12. 🟡 **per_handler_grammars** — the JSON envelope of every stage is BNF-constrained (`Schema::to_gbnf`); the prose body of chapter / outline / wiki / synopsis / validation handlers is still free-form and uses pre-fill + strip-think as interim coverage. The domain BNFs (`outline.bnf`, `wiki.bnf`, `chapter_prose.bnf`, `validation_report.bnf`, `synopsis.bnf`) now **exist** in `GBNF/` and are exposed via `roco_grammar::grammar_library` (validated against `roco-bnf-engine`). Remaining: route each prose handler through its grammar so prose is generated outside the JSON envelope.
 
 ### Phase 4: Persistence & Sharing (🟡 IN PROGRESS)
 13. 🟡 **session_persistence** — `StoryPersistence` saves/loads complete `StoryState` (premise + outline + chapters + plot_state + revisions + scores); `crates/cli/examples/story_human.rs --resume` resumes. What remains is surfacing story listing / destructive-load UX.
@@ -184,7 +184,7 @@ AI: Rewrites Chapter 2 to include the stranger
 ### Phase 3: Quality & Polish — 🔴 FUTURE
 
 11. **prose_quality_metrics** 🔴 — multi-dimensional scoring
-12. **per_handler_grammars** 🔴 — domain-specific BNF for prose content
+12. **per_handler_grammars** 🟡 — domain-specific BNF for prose content (grammars exist in `GBNF/` + `roco_grammar::grammar_library`; wiring pending)
 
 ### Phase 4: Persistence & Sharing — 🔴 FUTURE
 

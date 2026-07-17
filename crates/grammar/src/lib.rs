@@ -10,6 +10,7 @@
 //! not through this crate.
 
 pub mod bnf;
+pub mod grammar_library;
 pub mod json_schema;
 pub mod kbnf_compat;
 pub mod schema;

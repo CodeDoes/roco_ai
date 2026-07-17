@@ -18,3 +18,4 @@ jsonschema = "0.18"
 schoolmarm = "0.1"
 kbnf = "0.5.7"
 ahash = "0.8"
+roco-bnf-engine = { path = "../bnf-engine" }

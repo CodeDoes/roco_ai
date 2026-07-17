@@ -36,6 +36,7 @@ During multi-step story pipeline runs on a 2.9B RWKV model, we observed:
 - ✅ BNF infrastructure: `BnfConstraint` (`crates/grammar/src/bnf.rs`) + `bnf_sampler` v0.3.8
 - ✅ GBNF→BNF converter wraps nonterminal names in angle brackets
 - ✅ JSON-Schema → GBNF converter (`crates/grammar/src/json_schema.rs`) handles objects, arrays, enums
+- ✅ Story-domain per-handler grammars (`GBNF/*.bnf`: outline, wiki, chapter_prose, validation_report, synopsis) — embedded + validated via `roco_grammar::grammar_library` against `roco-bnf-engine`
 - ⬜ Story pipeline stages wired to BNF constraints (current workaround: pre-fill think blocks)
 - ⬜ Per-handler grammars in mechanistic agent — this is the next critical gap
 

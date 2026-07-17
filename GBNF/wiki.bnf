@@ -1,0 +1,9 @@
+root ::= entry { entry } ;
+entry ::= "[" kind "] " name "\n" body "\n" "\n" ;
+kind ::= "character" | "location" | "lore" | "item" ;
+name ::= word { (" " word) } ;
+body ::= sentence { (" " sentence) } ( "." | "!" | "?" ) ;
+sentence ::= word { (" " word) } ;
+word ::= letter { letter | digit | "'" } ;
+letter ::= #'[A-Za-z]' ;
+digit ::= #'[0-9]' ;

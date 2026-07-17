@@ -227,7 +227,7 @@ roco_ai/
 ├── models/                 # RWKV .st files; on-disk truth for model resolution (gitignored)
 ├── assets/vocab/           # rwkv_vocab_v20230424.json (the tokenizer)
 ├── scripts/                # pth_to_st/ and gguf_to_st/ model converters
-├── GBNF/                   # hand-written GBNF grammars (story, wiki, etc.)
+├── GBNF/                   # hand-written kbnf-dialect grammars for story prose handlers
 ├── templates/              # prompt templates used by the story engine
 ├── memory/                 # agent memory store scratchpads
 ├── datasets/               # in-tree training/eval datasets (plot_overview, project_planning, …)
@@ -250,7 +250,7 @@ roco_ai/
 |---|---|---|
 | `engine` | `backend.rs`, `eval.rs`, `cases.rs`, `types.rs` | `ModelBackend` trait, `MockBackend`, eval harness + cases |
 | `bnf-engine` | `lib.rs` | Isolated `kbnf 0.5` wrapper exposing `BnfMask`-compat API; separate crate to avoid E0275 vs `web-rwkv` |
-| `grammar` | `bnf.rs`, `schema.rs`, `strategies.rs`, `json_schema.rs`, `kbnf_compat.rs` | `BnfConstraint` (over `bnf-engine`), `Schema` builder, JSON-Schema→GBNF |
+| `grammar` | `bnf.rs`, `schema.rs`, `strategies.rs`, `json_schema.rs`, `kbnf_compat.rs`, `grammar_library.rs` | `BnfConstraint` (over `bnf-engine`), `Schema` builder, JSON-Schema→GBNF, `StoryGrammar` registry |
 | `inference` | `backend.rs`, `actor.rs`, `sampling.rs`, `quant.rs`, `config.rs` | `RwkvBackend`, `RwkvActor` thread, sampling, quant proxy |
 | `message` | `format.rs`, `roles.rs`, `gbnf.rs`, `error.rs` | Role prefixes, prompt formatting, message GBNF, retry/error recovery |
 | `session` | `pool.rs`, `store.rs`, `types.rs`, `error.rs` | `LruSessionPool`, session transcript stores, session types |
@@ -429,9 +429,24 @@ explicit signals that domain-specific BNF grammars should be added:
 - validation handler → needs `validation_report.bnf`
 - synopsis handler → needs `synopsis.bnf`
 
+**Status (2026-07-18):** the per-handler grammars now **exist** — the
+broken zero-byte `GBNF` placeholder has been replaced by a real
+`GBNF/` directory containing `outline.bnf`, `wiki.bnf`,
+`chapter_prose.bnf`, `validation_report.bnf`, and `synopsis.bnf`, all in
+kbnf GBNF dialect. They are embedded and exposed by
+`roco_grammar::grammar_library::StoryGrammar` (with `source()` / `kbnf()`
+accessors) and validated against `roco-bnf-engine` in
+`crates/grammar/src/grammar_library.rs` tests — every grammar loads in
+the real engine and accepts a valid sample to completion. The remaining
+step is to route each prose handler through its grammar (generating
+prose **outside** the JSON envelope via `StoryGrammar::kbnf()`, then
+assembling the artifact in code), which replaces the pre-fill +
+strip-think workaround at the generation level.
+
 The `crates/grammar/src/strategies.rs` module already exposes
-`StrategySelector` so callers can pick a per-handler strategy; making
-that coverage complete is the next planned work.
+`StrategySelector` so callers can pick a per-handler strategy; the
+`RawGbnfStrategy` / `StoryGrammar` pair is the intended vehicle for
+wiring the coverage in.
 
 ## Next Things
 
@@ -443,10 +458,12 @@ story direction persistence, chapter steering) are **implemented** in
 `crates/agent/src/`. What remains is wiring them into the production
 surface and tightening grammar coverage:
 
-1. **Per-handler BNF grammars** — replace pre-fill + strip-think-blocks
-   with real domain BNFs in the prose handlers (outline/wiki/chapter/
-   validation/synopsis). `crates/grammar/src/schema.rs` and the
-   `Grammar-First` lesson below call this out.
+1. **Per-handler BNF grammars** — the domain grammars for the prose
+   handlers (outline/wiki/chapter/validation/synopsis) now exist in
+   `GBNF/` and are exposed via `roco_grammar::grammar_library` (validated
+   against `roco-bnf-engine`). Remaining: route each prose handler
+   through its grammar so prose is generated outside the JSON envelope,
+   replacing the pre-fill + strip-think workaround.
 2. **Grammar coverage audit** — enumerate every free-form
    `backend.complete()` call in the story pipeline; each one is a
    contamination risk on under-trained RWKV models and should be

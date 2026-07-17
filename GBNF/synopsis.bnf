@@ -1,0 +1,5 @@
+root ::= sentence { (" " sentence) } ( "." | "!" | "?" ) ;
+sentence ::= word { (" " word) } ;
+word ::= letter { letter | digit | "'" } ;
+letter ::= #'[A-Za-z]' ;
+digit ::= #'[0-9]' ;
