@@ -45,20 +45,20 @@ pub struct WritingAnalysis {
 impl WritingAnalysis {
     pub fn schema() -> Schema {
         Schema::object()
-            .prop("themes", Schema::array(Schema::string().build()))
-            .prop("characters", Schema::array(Schema::string().build()))
-            .prop("locations", Schema::array(Schema::string().build()))
+            .prop("themes", Schema::array(Schema::string()))
+            .prop("characters", Schema::array(Schema::string()))
+            .prop("locations", Schema::array(Schema::string()))
             .prop("tone", Schema::string())
             .prop("style", Schema::string())
-            .prop("key_phrases", Schema::array(Schema::string().build()))
+            .prop("key_phrases", Schema::array(Schema::string()))
             .prop("sentiment", Schema::enum_values(vec![
                 serde_json::json!("positive"),
                 serde_json::json!("negative"),
                 serde_json::json!("neutral"),
                 serde_json::json!("mixed"),
             ]))
-            .prop("tags", Schema::array(Schema::string().build()))
-            .prop("plot_hooks", Schema::array(Schema::string().build()))
+            .prop("tags", Schema::array(Schema::string()))
+            .prop("plot_hooks", Schema::array(Schema::string()))
             .build()
     }
 
@@ -124,10 +124,10 @@ impl DiffAnalysis {
     pub fn schema() -> Schema {
         Schema::object()
             .prop("summary", Schema::string())
-            .prop("change_types", Schema::array(Schema::string().build()))
+            .prop("change_types", Schema::array(Schema::string()))
             .prop("story_impact", Schema::string())
-            .prop("suggestions", Schema::array(Schema::string().build()))
-            .prop("tags", Schema::array(Schema::string().build()))
+            .prop("suggestions", Schema::array(Schema::string()))
+            .prop("tags", Schema::array(Schema::string()))
             .build()
     }
 
@@ -359,12 +359,12 @@ pub struct CrossReference {
 impl CrossReference {
     pub fn schema() -> Schema {
         Schema::object()
-            .prop("character_refs", Schema::array(Schema::string().build()))
-            .prop("location_refs", Schema::array(Schema::string().build()))
-            .prop("theme_connections", Schema::array(Schema::string().build()))
-            .prop("plot_connections", Schema::array(Schema::string().build()))
-            .prop("contradictions", Schema::array(Schema::string().build()))
-            .prop("foreshadowing", Schema::array(Schema::string().build()))
+            .prop("character_refs", Schema::array(Schema::string()))
+            .prop("location_refs", Schema::array(Schema::string()))
+            .prop("theme_connections", Schema::array(Schema::string()))
+            .prop("plot_connections", Schema::array(Schema::string()))
+            .prop("contradictions", Schema::array(Schema::string()))
+            .prop("foreshadowing", Schema::array(Schema::string()))
             .build()
     }
 

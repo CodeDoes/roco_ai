@@ -7,12 +7,13 @@
 A Rust workspace whose only inference path is `crates/inference/src/backend.rs`
 (RWKV-7 via `web-rwkv` + WGPU). The repo has been pared down to the
 local-RWKV critical path and restructured into focused crates — the
-`crates/inference` library plus `crates/grammar`, `crates/engine`, and the
-supporting crates (`message`, `tools`, `session`, `workspace`, `agent`,
-`chat-common`, `cli`, `tui`, `server`, `gateway`), the `vendor/web-rwkv`
-patch, the `scripts/` model converters, and the `assets/vocab` tokenizer.
-Everything non-RWKV (orchestrator crates, gateway/web frontends, Docker,
-agent/eval scaffolding) has been removed; git history preserves it.
+`crates/inference` library plus `crates/grammar`, `crates/bnf-engine`,
+`crates/engine`, and the supporting crates (`message`, `tools`,
+`session`, `workspace`, `agent`, `chat-common`, `cli`, `tui`,
+`server`, `gateway`), the `vendor/web-rwkv` patch, the `scripts/`
+model converters, and the `assets/vocab` tokenizer. Everything non-RWKV
+(orchestrator crates, gateway/web frontends, Docker, agent/eval
+scaffolding) has been removed; git history preserves it.
 
 ## Primary Goal
 
@@ -98,12 +99,21 @@ The difference is whether the **iteration count** is predetermined or model-driv
 
 - **Inference**: works end-to-end on `RWKV-7 g1h 2.9B` (FP16 PTH → converted
   to SafeTensors → quantized to NF4 at runtime on RTX 2050 / AMD iGPU).
-- **Grammar-constrained decoding**: **`BnfConstraint`** (`bnf_sampler`
-  v0.3.8 + `qp-trie` vocabulary + GBNF→BNF converter) is the primary
-  engine in `crates/grammar/src/bnf.rs`. Falls back to schoolmarm
-  automatically when the GBNF uses features `bnf_sampler` can't parse
-  (character classes `[...]`, quantifiers `*`). JSON-Schema → GBNF converter
-  is done (`crates/grammar/src/json_schema.rs`) with object/array support.
+- **Grammar-constrained decoding**: **`BnfConstraint`** wraps the
+  token-level BNF engine provided by `crates/bnf-engine`, which itself
+  wraps `kbnf 0.5` (with `ahash`-backed vocabulary). The reason it's
+  isolated in its own crate: `kbnf`'s generic types (specifically
+  `string-interner`'s recursive `StringInterner`) trip Rust's
+  `error[E0275]` (type recursion overflow) when they enter the same
+  compilation unit as `web-rwkv`'s `TokioRuntime`; isolating it keeps
+  `inference` clean. `BnfConstraint` is still built on top in
+  `crates/grammar/src/bnf.rs` (vocab-built, `accept_token` /
+  `apply_mask` API). The `Schema` builder lives in
+  `crates/grammar/src/schema.rs` (`object().prop(...).build().to_gbnf()`),
+  with the JSON-Schema→GBNF converter in
+  `crates/grammar/src/json_schema.rs`. The old `bnf_sampler`+`qp-trie`
+  path and the `schoolmarm` fallback are no longer in the build; the
+  current rewrite happened in commit `22ebe66`.
 - **State-mixing / multi-session**: **Phase 1 implemented.**
   `CompletionRequest::session` → session-based state save/restore via
   `AnyState::back()`/`load()`, with an LRU pool (`max_sessions = 8`) in
@@ -115,7 +125,16 @@ The difference is whether the **iteration count** is predetermined or model-driv
   execution with topological sorting. Self-prompting chain assembly and inline
   eval verification are documented in `goals/` but not yet wired into production.
 - **Mechanistic agent**: **Implemented.** `MechanisticAgent` (`crates/agent/src/mecha_agent.rs`) provides a code-driven controller + router pattern: model only fires at fixed, grammar-constrained points (`classify` → `think_with_intent` → `repair_derive` → dispatch). Routes register `(type, domain)` handlers that write into a sandboxed workspace. Supports repair loops with temperature/tokens decay, context budget gating via `ContextManager`, and self-correction chains.
-- **Story generation engine**: **Implemented (core).** Dynamic outline expansion, plot state tracking, context assembly, chapter continuation, quality evaluation, revision support, session persistence. **Human-AI interaction in progress.**
+- **Story generation engine**: **Implemented end-to-end.** Dynamic
+  outline expansion, plot state tracking, context assembly, chapter
+  continuation, quality evaluation (model-as-judge, 7 dimensions),
+  revision support, and session persistence — all in
+  `crates/agent/src/story_engine.rs` and friends. The interaction layer
+  (outline editing, NL feedback, real-time preview, story direction,
+  chapter steering, writing assistant, commentary, interaction modes)
+  is also implemented; the surface that ties these into the live CLI
+  is `crates/cli/examples/story_human.rs` (the canonical entry point for
+  human-AI writing sessions).
 - **Observability**: **Implemented.** `ObservabilitySystem` records all model calls, decisions, actions, and quality assessments. Enables debugging, interpretability, and auditing.
 - **Reversibility**: **Implemented.** `VersionControl` provides workspace snapshots, action history, undo/redo, and rollback. Every agent action is reversible.
 - **Commentary**: **Implemented.** `Commentary` system provides bidirectional commentary — agent-generated explanations for every artifact, plus human annotations, verdicts, and notes. Every artifact can be reviewed and annotated by both agent and human.
@@ -132,6 +151,16 @@ The difference is whether the **iteration count** is predetermined or model-driv
   a terminal REPL with streaming output, session persistence, grammar
   constraints, and Ctrl+C interrupt. The `agent` example
   (`crates/cli/examples/agent.rs`) runs the ReAct loop.
+- **Story human workflow**: `crates/cli/examples/story_human.rs` is the
+  canonical entry point for end-to-end story generation with human-AI
+  collaboration. Other story examples (`story_collaborative`,
+  `story_engine`, `story_full`, `story_pilot`, `story_eval`,
+  `story_step_eval`) exercise narrower slices — pilots, pure evals, full
+  pipeline with all bells on, etc.
+- **bnf-engine**: a dedicated isolation crate (`crates/bnf-engine/`)
+  wraps `kbnf 0.5`. The reason it's its own crate is documented above
+  (avoids the `string-interner` recursion E0275 against `web-rwkv`'s
+  `TokioRuntime`).
 - **Model loading**: `crates/inference/src/backend.rs` auto-detects
   model shape from `Loader::info`, picks a quantization plan from
   on-disk file size, and resolves model paths from
@@ -144,10 +173,11 @@ The difference is whether the **iteration count** is predetermined or model-driv
 
 ```
 roco_ai/
-├── Cargo.toml              # workspace: 13 crates
+├── Cargo.toml              # workspace: 14 crates
 ├── crates/
 │   ├── engine/             # roco_engine — ModelBackend trait, MockBackend, eval suite
-│   ├── grammar/            # roco_grammar — BnfConstraint, schema_to_gbnf
+│   ├── bnf-engine/         # roco_bnf_engine — kbnf 0.5 isolation crate (E0275 workaround)
+│   ├── grammar/            # roco_grammar — BnfConstraint, Schema, schema_to_gbnf
 │   ├── inference/          # roco_inference — RwkvBackend, RwkvActor, quant proxy
 │   ├── message/            # roco_message — roles, format, gbnf, retry/error
 │   ├── session/            # roco_session — LruSessionPool
@@ -155,26 +185,58 @@ roco_ai/
 │   ├── workspace/          # roco_workspace — Workspace (sandbox boundary)
 │   ├── agent/              # roco_agent — ReAct loop, mechanistic controller, story engine
 │   │   ├── story_engine.rs      # Dynamic story generation
+│   │   ├── story_direction.rs   # Creative vision capture + application
+│   │   ├── outline_editing.rs   # Outline add/remove/move/modify
+│   │   ├── chapter_steering.rs  # Mid-generation pause/steer/resume
+│   │   ├── natural_feedback.rs  # NL feedback → structured directives
 │   │   ├── quality.rs           # Quality metrics and critique
 │   │   ├── evals.rs             # Model-as-judge evaluation
 │   │   ├── story_persistence.rs # Save/load story state
 │   │   ├── observability.rs     # Traces, logs, audit trail
-│   │   └── reversibility.rs     # Undo/redo, version control
+│   │   ├── reversibility.rs     # Undo/redo, version control
+│   │   ├── commentary.rs        # Bidirectional agent/human commentary
+│   │   ├── writing_assistant.rs # Continuation, fill-middle, analysis, diff
+│   │   ├── interaction.rs       # Interactive / automatic modes
+│   │   ├── agent_chat.rs        # Folder-bound session loop
+│   │   └── mecha_agent.rs       # Mechanistic controller + router
 │   ├── chat-common/        # roco_chat_common — Conversation, DisplaySettings
 │   ├── cli/                # roco_cli — `roco` bin + examples
 │   │   └── examples/
-│   │       ├── story.rs           # Basic story pipeline (3 chapters)
-│   │       ├── story_engine.rs    # Dynamic story engine
-│   │       └── story_full.rs      # Full example with all features
-│   ├── tui/                # roco_tui — terminal UI (stub)
-│   ├── server/             # roco_server — HTTP server (stub)
-│   └── gateway/            # roco_gateway — API gateway (stub)
+│   │       ├── story_human.rs       # ★ canonical human-AI story workflow
+│   │       ├── story_collaborative.rs # earlier conversational variant
+│   │       ├── story_engine.rs      # dynamic story engine (no UI)
+│   │       ├── story_full.rs        # full settings demo
+│   │       ├── story_pilot.rs       # grammar-constraint pilot
+│   │       ├── story.rs             # minimal 3-chapter pipeline
+│   │       ├── story_eval.rs        # story eval harness
+│   │       ├── story_step_eval.rs   # per-step eval tracking
+│   │       ├── chat.rs              # terminal REPL
+│   │       ├── agent.rs             # ReAct loop with tools
+│   │       ├── agent_chat.rs        # agent_chat session demo
+│   │       ├── eval_suite.rs        # suites the `roco eval` subcommand runs
+│   │       ├── grammar_smoke.rs     # grammar-constrained decode smoke test
+│   │       ├── state_mix_alphas.rs  # state-mixing experiments
+│   │       ├── state_mix_eval.rs    # state-mix eval cases
+│   │       ├── state_tune_eval.rs   # state-tune eval cases
+│   │       └── strategy_comparison.rs / task_state_tune_eval.rs # tuners
+│   ├── tui/                # roco_tui — story pane, plot state viewer, shortcuts
+│   ├── server/             # roco_server — HTTP + story routes
+│   └── gateway/            # roco_gateway — API gateway
 ├── vendor/web-rwkv/        # patched web-rwkv dependency ([patch.crates-io] in Cargo.toml)
+├── apps/                   # web frontends (chat, studio, editor) and editor plugins (vscode, zed)
 ├── models/                 # RWKV .st files; on-disk truth for model resolution (gitignored)
 ├── assets/vocab/           # rwkv_vocab_v20230424.json (the tokenizer)
 ├── scripts/                # pth_to_st/ and gguf_to_st/ model converters
+├── GBNF/                   # hand-written GBNF grammars (story, wiki, etc.)
+├── templates/              # prompt templates used by the story engine
+├── memory/                 # agent memory store scratchpads
+├── datasets/               # in-tree training/eval datasets (plot_overview, project_planning, …)
+├── docs/                   # long-form human docs (separate from goals/)
+├── agents/                 # agent run artifacts / scratch
 ├── goals/                  # product roadmap (see goals/index.md)
 │   ├── story-engine/       # Story engine roadmap (human-AI interaction focus)
+│   ├── agent/, agent_chat/, browser_use/, coder/, infer/, message/,
+│   │   mechanistic-agent/, testing/, workspace/  # prerequisite layers
 │   └── future/             # archived goals (FAISS, dreaming, UIs, etc.)
 ├── evals/results/          # rwkv benchmark JSON outputs
 ├── devenv.{yaml,nix}       # Nix dev shell (rust + Vulkan)
@@ -187,18 +249,19 @@ roco_ai/
 | Crate | Key modules | Responsibility |
 |---|---|---|
 | `engine` | `backend.rs`, `eval.rs`, `cases.rs`, `types.rs` | `ModelBackend` trait, `MockBackend`, eval harness + cases |
-| `grammar` | `bnf.rs`, `json_schema.rs` | `BnfConstraint` (bnf_sampler + vocab), JSON-Schema→GBNF |
+| `bnf-engine` | `lib.rs` | Isolated `kbnf 0.5` wrapper exposing `BnfMask`-compat API; separate crate to avoid E0275 vs `web-rwkv` |
+| `grammar` | `bnf.rs`, `schema.rs`, `strategies.rs`, `json_schema.rs`, `kbnf_compat.rs` | `BnfConstraint` (over `bnf-engine`), `Schema` builder, JSON-Schema→GBNF |
 | `inference` | `backend.rs`, `actor.rs`, `sampling.rs`, `quant.rs`, `config.rs` | `RwkvBackend`, `RwkvActor` thread, sampling, quant proxy |
 | `message` | `format.rs`, `roles.rs`, `gbnf.rs`, `error.rs` | Role prefixes, prompt formatting, message GBNF, retry/error recovery |
 | `session` | `pool.rs`, `store.rs`, `types.rs`, `error.rs` | `LruSessionPool`, session transcript stores, session types |
 | `tools` | `tool.rs`, `registry.rs`, `builtins.rs`, `parse.rs` | `Tool` trait, `ToolRegistry`, 6 built-ins, tool-call parsing |
 | `workspace` | `workspace.rs` | `Workspace` sandbox boundary |
-| `agent` | `story_engine.rs`, `quality.rs`, `evals.rs`, `story_persistence.rs`, `mecha_agent.rs`, `context.rs`, etc. | Story engine, quality metrics, evaluation, persistence, ReAct loop, mechanistic controller |
+| `agent` | `story_engine.rs`, `quality.rs`, `evals.rs`, `story_persistence.rs`, `mecha_agent.rs`, `context.rs`, `observability.rs`, `reversibility.rs`, `commentary.rs`, `writing_assistant.rs`, `interaction.rs`, `natural_feedback.rs`, `outline_editing.rs`, `story_direction.rs`, `chapter_steering.rs`, `agent_chat.rs`, etc. | Story engine, quality metrics, evaluation, persistence, ReAct loop, mechanistic controller, all human-AI interaction surfaces |
 | `chat-common` | `conversation.rs`, `display.rs` | `Conversation`, `DisplaySettings` (shared across frontends) |
 | `cli` | `bin/roco.rs` + `examples/` | `roco` binary, story examples |
-| `tui` | `app.rs`, `widgets/` | Terminal UI (stub) |
-| `server` | `server.rs`, `routes.rs` | HTTP server (stub) |
-| `gateway` | `gateway.rs`, `router.rs` | API gateway (stub) |
+| `tui` | `app.rs`, `widgets/` | Story pane, plot state viewer, keyboard shortcuts |
+| `server` | `lib.rs`, `routes.rs`, `story_routes.rs` | HTTP server with story routes |
+| `gateway` | `lib.rs` | API gateway |
 
 ## Goals
 
@@ -211,9 +274,9 @@ from the local RWKV-7 engine up to a collaborative story writing tool:
 | `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) | ✅ core done |
 | `workspace/` | the environment the agent acts in | ✅ sandbox + scoped tools |
 | `agent/` | the autonomous agent loop and its capabilities | ✅ core loop done |
-| `mechanistic-agent/` | code-driven controller + router | 🟡 grammar gap remains |
-| **story-engine/** | **collaborative story writing engine** | ✅ core done, 🟡 human-AI interaction in progress |
-| `agent_chat/` | persistent workspace or folder-bound agent sessions | ✅ working |
+| `mechanistic-agent/` | code-driven controller + router | ✅ implemented (grammar gap in story prose remains) |
+| `story-engine/` | collaborative story writing engine (outline → wiki → chapter → publish) | ✅ end-to-end (prose-BNF coverage still in progress) |
+| `agent_chat/` | persistent workspace or folder-bound agent sessions | ✅ working (`crates/cli/examples/agent_chat.rs`) |
 | `browser_use/` | driving a real browser | ⬜ not started |
 | `testing/` | eval harness, oracles, regression gates | ✅ done |
 | `coder/` | **(future)** the agent's own develop/test/lint loop | ⬜ not started |
@@ -236,17 +299,21 @@ cargo build --release                  # all crates (release for GPU work)
 ### Story generation
 
 ```bash
-# Basic story generation (3 chapters)
-RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+# Canonical entry point: human-AI collaborative story writing
+RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
   "Write a xianxia story about a lone cultivator"
 
-# Interactive mode (human-in-the-loop)
-RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+# Earlier conversational variant (slightly different UX)
+RWKV_MODEL=... cargo run --release --example story_collaborative -p roco-cli \
   --interactive "Write a dark fantasy"
 
-# Full example with all features
+# Full settings demo (interactive + unlimited + quality threshold)
 RWKV_MODEL=... cargo run --release --example story_full -p roco-cli \
   --interactive --unlimited "Write an epic fantasy"
+
+# Grammar-constrained pilot pipeline (proves every stage is BNF-bounded)
+RWKV_MODEL=... cargo run --release --example story_pilot -p roco-cli \
+  "Write a heist story"
 ```
 
 ### Testing convention
@@ -351,43 +418,53 @@ Undertrained base RWKV models consistently leak planning text into output:
 - Make the human feel empowered, not replaced
 
 ### Interim Workarounds (Signaling Where Grammars Are Needed)
-The story pipeline currently uses pre-fill + strip-think-blocks as interim measures.
-These patterns are explicit signals that domain-specific BNF grammars should be added:
+The story pipeline still uses pre-fill + strip-think-blocks as interim
+measures in the **prose-only** handlers (the JSON envelope of every
+stage is BNF-constrained via `crates/grammar/src/schema.rs`; the
+*content* inside the prose envelope is what's free-form). These are
+explicit signals that domain-specific BNF grammars should be added:
 - outline handler → needs `outline.bnf`
 - wiki handler → needs `wiki.bnf`
 - chapter handlers → need `chapter_prose.bnf`
 - validation handler → needs `validation_report.bnf`
 - synopsis handler → needs `synopsis.bnf`
 
+The `crates/grammar/src/strategies.rs` module already exposes
+`StrategySelector` so callers can pick a per-handler strategy; making
+that coverage complete is the next planned work.
+
 ## Next Things
 
-### Human-AI Interaction (Current Focus)
+### Status snapshot — what's left
 
-1. **Collaborative outline editing** — human and AI co-create the outline
-2. **Natural language feedback** — human gives feedback in plain English
-3. **Real-time preview** — show chapter being generated
-4. **Easy revision with diff** — show what changed
-5. **Story direction persistence** — capture and respect human's creative vision
-6. **Chapter steering** — pause and redirect mid-generation
+All Phase 2 human-AI interaction surfaces (collaborative outline editing,
+natural-language feedback, real-time preview, easy revision with diff,
+story direction persistence, chapter steering) are **implemented** in
+`crates/agent/src/`. What remains is wiring them into the production
+surface and tightening grammar coverage:
 
-### Infrastructure (Forward Work)
+1. **Per-handler BNF grammars** — replace pre-fill + strip-think-blocks
+   with real domain BNFs in the prose handlers (outline/wiki/chapter/
+   validation/synopsis). `crates/grammar/src/schema.rs` and the
+   `Grammar-First` lesson below call this out.
+2. **Grammar coverage audit** — enumerate every free-form
+   `backend.complete()` call in the story pipeline; each one is a
+   contamination risk on under-trained RWKV models and should be
+   bounded by a `BnfConstraint`.
+3. **Live eval continuity** — keep `cargo test -p roco-agent` and
+   `roco eval` green as code lands; don't regress the 14/15b baseline
+   on the g1h 2.9B model.
+4. **Story human CLI polish** — `story_human.rs` is the canonical UX;
+   fold bug reports from use into it.
 
-7. ~~JSON-Schema → GBNF converter~~ ~~**Done.**~~
-8. ~~Dead module cleanup~~ ~~**Done.**~~
-9. ~~Cleanup segfault~~ ~~**Fixed.**~~
-10. ~~`bnf_sampler` integration~~ ~~**Done.**~~
-11. ~~State pool Phase 1~~ ~~**Done.**~~
-12. ~~Monorepo restructuring~~ ~~**Done.**~~
-13. ~~Plan-and-execute architecture documented~~ ~~**Done.**~~
-14. ~~Mechanistic agent implementation~~ ~~**Done.**~~
-15. ~~Story engine core~~ ~~**Done.**~~
+### Infrastructure status (mostly resolved)
 
-### Active priorities
-1. **Collaborative outline editing** — human can say "add a chapter about X"
-2. **Natural language feedback** — parse "make it darker" into directives
-3. **Real-time preview** — stream chapter content to terminal
-4. **Easy revision** — show diff between original and revised
-5. **Story direction** — capture tone/style/themes at start
-6. **Chapter steering** — pause generation, accept direction, resume
-7. **Per-handler BNF grammars** — wire `BnfConstraint` into every story pipeline stage
-8. **Grammar coverage audit** — identify all free-form `backend.complete()` calls
+- ~~JSON-Schema → GBNF converter~~ ✅ done (`crates/grammar/src/json_schema.rs`)
+- ~~Dead module cleanup~~ ✅ done
+- ~~Cleanup segfault~~ ✅ fixed (commit on process exit path)
+- ~~`bnf_sampler` integration~~ ✅ done (later **replaced** by `kbnf` in `bnf-engine`, commit `22ebe66`)
+- ~~State pool Phase 1~~ ✅ done
+- ~~Monorepo restructuring~~ ✅ done (14 crates now)
+- ~~Plan-and-execute architecture documented~~ ✅ done
+- ~~Mechanistic agent implementation~~ ✅ done
+- ~~Story engine core~~ ✅ done

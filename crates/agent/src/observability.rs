@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -29,7 +30,7 @@ pub struct TraceId(pub String);
 
 impl TraceId {
     pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4().to_string())
+        Self(unique_id("trace"))
     }
 }
 
@@ -39,8 +40,14 @@ pub struct SpanId(pub String);
 
 impl SpanId {
     pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4().to_string())
+        Self(unique_id("span"))
     }
+}
+
+fn unique_id(prefix: &str) -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{prefix}-{:x}-{:x}", now(), n)
 }
 
 /// A complete trace of an agent run

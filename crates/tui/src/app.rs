@@ -17,7 +17,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Span, Line},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame, Terminal,
 };
@@ -196,13 +196,13 @@ impl App {
     }
 
     fn draw_outline(&self, f: &mut Frame, area: Rect) {
-        let outline: Vec<Spans> = self.outline.iter().enumerate().map(|(i, item)| {
+        let outline: Vec<Line> = self.outline.iter().enumerate().map(|(i, item)| {
             let style = if i == self.current_chapter {
                 Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
-            Spans::from(vec![
+            Line::from(vec![
                 Span::styled(format!("{}. ", item.number), style),
                 Span::styled(&item.title, style),
             ])
@@ -239,27 +239,27 @@ impl App {
 
     fn draw_plot_state(&self, f: &mut Frame, area: Rect) {
         let mut lines = vec![
-            Spans::from(Span::styled("Characters", Style::default().fg(Color::Cyan))),
+            Line::from(Span::styled("Characters", Style::default().fg(Color::Cyan))),
         ];
         for ch in &self.plot_state.characters {
-            lines.push(Spans::from(Span::raw(format!("  • {}", ch))));
+            lines.push(Line::from(Span::raw(format!("  • {}", ch))));
         }
 
-        lines.push(Spans::from(Span::raw("")));
-        lines.push(Spans::from(Span::styled("Locations", Style::default().fg(Color::Cyan))));
+        lines.push(Line::from(Span::raw("")));
+        lines.push(Line::from(Span::styled("Locations", Style::default().fg(Color::Cyan))));
         for loc in &self.plot_state.locations {
-            lines.push(Spans::from(Span::raw(format!("  • {}", loc))));
+            lines.push(Line::from(Span::raw(format!("  • {}", loc))));
         }
 
-        lines.push(Spans::from(Span::raw("")));
-        lines.push(Spans::from(Span::styled("Conflicts", Style::default().fg(Color::Cyan))));
+        lines.push(Line::from(Span::raw("")));
+        lines.push(Line::from(Span::styled("Conflicts", Style::default().fg(Color::Cyan))));
         for con in &self.plot_state.conflicts {
-            lines.push(Spans::from(Span::raw(format!("  • {}", con))));
+            lines.push(Line::from(Span::raw(format!("  • {}", con))));
         }
 
-        lines.push(Spans::from(Span::raw("")));
-        lines.push(Spans::from(Span::styled("Arc Stage", Style::default().fg(Color::Cyan))));
-        lines.push(Spans::from(Span::raw(&self.plot_state.arc_stage)));
+        lines.push(Line::from(Span::raw("")));
+        lines.push(Line::from(Span::styled("Arc Stage", Style::default().fg(Color::Cyan))));
+        lines.push(Line::from(Span::raw(&self.plot_state.arc_stage)));
 
         let block = Block::default()
             .title("Plot State")
@@ -273,7 +273,7 @@ impl App {
     }
 
     fn draw_status(&self, f: &mut Frame, area: Rect) {
-        let status = Spans::from(vec![
+        let status = Line::from(vec![
             Span::styled(&self.status, Style::default().fg(Color::White)),
             Span::raw(" │ "),
             Span::styled(

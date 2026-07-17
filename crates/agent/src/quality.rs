@@ -83,8 +83,8 @@ impl QualityScore {
                     .prop("location", Schema::string())
                     .build()
             ))
-            .prop("strengths", Schema::array(Schema::string().build()))
-            .prop("suggestions", Schema::array(Schema::string().build()))
+            .prop("strengths", Schema::array(Schema::string()))
+            .prop("suggestions", Schema::array(Schema::string()))
             .build()
     }
 
@@ -164,7 +164,7 @@ impl StoryCritique {
             .prop("summary", Schema::string())
             .prop("scores", QualityScore::schema())
             .prop("should_revise", Schema::boolean())
-            .prop("priority_revisions", Schema::array(Schema::string().build()))
+            .prop("priority_revisions", Schema::array(Schema::string()))
             .build()
     }
 

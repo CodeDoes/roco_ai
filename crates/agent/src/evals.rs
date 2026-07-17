@@ -94,7 +94,7 @@ impl StoryEval {
             ))
             .prop("summary", Schema::string())
             .prop("recommend_revision", Schema::boolean())
-            .prop("revision_priorities", Schema::array(Schema::string().build()))
+            .prop("revision_priorities", Schema::array(Schema::string()))
             .build()
     }
 

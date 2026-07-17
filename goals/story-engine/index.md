@@ -28,22 +28,22 @@ Prerequisite order (top to bottom):
 3. ✅ **context_assembly** — pass plot state + last 2 chapters as context (not full history); solve context window limits
 4. ✅ **chapter_continuation** — resume writing from where a chapter left off (mid-scene, mid-dialogue)
 
-### Phase 2: Human-AI Interaction (CURRENT FOCUS)
-5. **collaborative_outline** — human and AI co-create the outline together
-6. **natural_feedback** — human gives feedback in natural language, AI understands and applies it
-7. **real_time_preview** — show what's being generated as it's generated
-8. **easy_revision** — one-command revision with clear before/after
-9. **story_direction** — human sets tone, style, themes; AI respects them throughout
-10. **chapter_steering** — human can steer a chapter mid-generation
+### Phase 2: Human-AI Interaction (✅ IMPLEMENTED)
+5. **collaborative_outline** ✅ — human and AI co-create the outline (`OutlineEditor`, `OutlineCommand`)
+6. **natural_feedback** ✅ — `FeedbackParser` (quick + model paths); "make it darker" → structured directive
+7. **real_time_preview** ✅ — streaming into `crates/cli/examples/story_human.rs`
+8. **easy_revision** ✅ — `DiffAnalysis` + revision-with-diff (WritingAssistant)
+9. **story_direction** ✅ — `StoryDirection` capture + persistent application
+10. **chapter_steering** ✅ — `ChapterSteerer` (pause / steer / resume)
 
-### Phase 3: Quality & Polish (FUTURE)
-11. **prose_quality_metrics** — multi-dimensional scoring: pacing, dialogue density, show-don't-tell
-12. **per_handler_grammars** — domain-specific BNF grammars for chapter prose, wiki, validation, synopsis
+### Phase 3: Quality & Polish (🔴 CURRENT FOCUS)
+11. 🟡 **prose_quality_metrics** — `QualityAnalyzer` (7 dimensions) and `StoryEvaluator` (arc / continuity / prose / character / pacing) cover the metrics; what's open is wiring them into the live CLI's per-chapter feedback loop and lowering false-positive revisions on g1h.
+12. 🔴 **per_handler_grammars** — the JSON envelope of every stage is BNF-constrained (`Schema::to_gbnf`); the prose body of chapter / outline / wiki / synopsis / validation handlers is still free-form and uses pre-fill + strip-think as interim coverage. Real domain BNFs (`outline.bnf`, `wiki.bnf`, `chapter_prose.bnf`, `validation_report.bnf`, `synopsis.bnf`) are the next planned work.
 
-### Phase 4: Persistence & Sharing (FUTURE)
-13. **session_persistence** — save/load story state; resume days later with continuity
-14. **export_formats** — export to markdown, PDF, epub, docx
-15. **story_sharing** — share stories with others
+### Phase 4: Persistence & Sharing (🟡 IN PROGRESS)
+13. 🟡 **session_persistence** — `StoryPersistence` saves/loads complete `StoryState` (premise + outline + chapters + plot_state + revisions + scores); `crates/cli/examples/story_human.rs --resume` resumes. What remains is surfacing story listing / destructive-load UX.
+14. ⬜ **export_formats** — markdown, PDF, epub, docx export
+15. ⬜ **story_sharing** — share stories with others
 
 ## Human-AI Interaction Design
 

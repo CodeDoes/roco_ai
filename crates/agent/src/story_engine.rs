@@ -86,15 +86,15 @@ impl PlotState {
                     .prop("name", Schema::string())
                     .prop("current_status", Schema::string())
                     .prop("last_seen", Schema::string())
-                    .prop("knowledge", Schema::array(Schema::string().build()))
+                    .prop("knowledge", Schema::array(Schema::string()))
                     .build()
             ))
-            .prop("active_conflicts", Schema::array(Schema::string().build()))
-            .prop("resolved_conflicts", Schema::array(Schema::string().build()))
-            .prop("foreshadowing", Schema::array(Schema::string().build()))
+            .prop("active_conflicts", Schema::array(Schema::string()))
+            .prop("resolved_conflicts", Schema::array(Schema::string()))
+            .prop("foreshadowing", Schema::array(Schema::string()))
             .prop("current_location", Schema::string())
-            .prop("recent_events", Schema::array(Schema::string().build()))
-            .prop("themes", Schema::array(Schema::string().build()))
+            .prop("recent_events", Schema::array(Schema::string()))
+            .prop("themes", Schema::array(Schema::string()))
             .prop("arc_stage", Schema::enum_values(vec![
                 serde_json::json!("setup"),
                 serde_json::json!("rising_action"),

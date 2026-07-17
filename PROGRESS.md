@@ -1,7 +1,10 @@
 # PROGRESS.md — RoCo AI
 
 > Strategy / context / "what we wanted to do but didn't yet".
-> Living document; this version reflects the human-AI collaboration focus as of 2026-07-17.
+> Living document; this version reflects the post-2026-07-17 state where
+> the story engine and human-AI interaction surfaces are implemented at
+> the module level — what remains is grammar coverage on prose bodies,
+> CLI polish on `story_human.rs`, and live eval continuity.
 
 ## Current Focus
 
@@ -51,26 +54,29 @@ The correct architectural pattern is **grammar-constrained decoding at every cal
 Post-processing approaches (strip_think_blocks, pre-fill workarounds) are **interim signals**
 marking where proper grammars still need to be added.
 
-### The Story Pipeline Gap (2026-07-17 Analysis)
-Deep review of the story pipeline revealed the **real gaps** between "works" and "ready":
+### The Story Pipeline Gap (2026-07-17 Analysis → current state)
+The five gaps identified between "works" and "ready", revisited after the
+human-AI collaboration work landed:
 
 1. **Fixed chapter count** — hardcoded to 3; can't write a novel with that ✅ FIXED
 2. **No plot state tracking** — chapters get raw text, not structured understanding ✅ FIXED
 3. **No interactive feedback** — batch-only, no human creative direction ✅ FIXED
-4. **Grammar coverage gap** — JSON envelope constrained, prose content free-form 🔴 TODO
-5. **Shallow validation** — binary pass/fail, not multi-dimensional quality ✅ FIXED
+4. **Grammar coverage gap** — JSON envelope constrained, prose content free-form 🟡 in-progress: every JSON envelope uses `Schema::to_gbnf`; prose bodies still use pre-fill + strip-think as interim coverage; per-handler prose BNFs remain the open bit
+5. **Shallow validation** — binary pass/fail, not multi-dimensional quality ✅ FIXED (`QualityAnalyzer` covers 7 dimensions; `StoryEvaluator` covers arc / continuity / prose / character / pacing)
 
-### The Human-AI Interaction Gap (2026-07-17 Analysis)
-Core engine is solid, but the human experience needs work:
+### The Human-AI Interaction Gap (2026-07-17 Analysis → current state)
+The six gaps called out, revisited after the human-AI collaboration work landed:
 
-1. **Outline editing is clunky** — human can't easily modify outline 🔴 TODO
-2. **Feedback is command-based** — human must memorize commands 🔴 TODO
-3. **No real-time preview** — human waits for full chapter generation 🔴 TODO
-4. **Revision is opaque** — human can't see what changed 🔴 TODO
-5. **Direction isn't persistent** — human's creative vision not captured 🔴 TODO
-6. **No mid-chapter steering** — human can't pause and redirect 🔴 TODO
+1. **Outline editing is clunky** — human can't easily modify outline ✅ FIXED (`OutlineEditor` + parse-NL commands)
+2. **Feedback is command-based** — human must memorize commands ✅ FIXED (`FeedbackParser` covers NL → directive)
+3. **No real-time preview** — human waits for full chapter generation ✅ FIXED (streaming in `story_human.rs`)
+4. **Revision is opaque** — human can't see what changed ✅ FIXED (`DiffAnalysis` + revision-with-diff)
+5. **Direction isn't persistent** — human's creative vision not captured ✅ FIXED (`StoryDirection` captures + propagates)
+6. **No mid-chapter steering** — human can't pause and redirect ✅ FIXED (`ChapterSteerer`)
 
-These are the barriers between "tool" and "collaborative partner".
+What still needs polish: making the in-CLI conversational level match the
+quality of the underlying machinery; tight grammar coverage on prose;
+real use-driven bug fixing on `story_human.rs`.
 
 ### Mechanistic Agent Live Testing Results
 The `crates/cli/examples/story.rs` pipeline demonstrated the full mechanistic agent pattern end-to-end:
@@ -109,14 +115,21 @@ dead-ends, run book); the actionable roadmap is `goals/`.
 
 ### Completed priorities
 
-**BNF / Grammar-constrained decoding — ✅ DONE.** The `BnfConstraint`
-module (`crates/grammar/src/bnf.rs`) wraps `bnf_sampler` (v0.3.8)
-with a `qp-trie` vocabulary built from the model's tokenizer. It is the
-primary grammar engine in `rwkv_backend.rs`, with schoolmarm as a
-transparent fallback for GBNF grammars that use features `bnf_sampler`
-can't parse (character classes `[...]`, quantifiers `*`). The GBNF→BNF
-converter wraps nonterminal names in angle brackets so `bnf_sampler`'s
-parser accepts them.
+**BNF / Grammar-constrained decoding — ✅ DONE.** The token-level BNF
+engine lives in `crates/bnf-engine` (`kbnf 0.5`, isolated in its own
+crate to avoid the `string-interner` / `web-rwkv` `TokioRuntime` recursion
+overflow E0275). Above it, `BnfConstraint` in
+`crates/grammar/src/bnf.rs` provides the vocab-built `accept_token` /
+`apply_mask` API the inference path consumes. The previous
+`bnf_sampler`+`qp-trie` + schoolmarm-fallback implementation was
+replaced in commit `22ebe66` (`refactor: replace schoolmarm/bnf_sampler
+with roco-bnf-engine wrapping kbnf`); there is no schoolmarm fallback
+any more. The JSON-Schema ↔ GBNF converter
+(`crates/grammar/src/json_schema.rs`) plus the `Schema` builder
+(`crates/grammar/src/schema.rs`; `Schema::object().prop(...).build().to_gbnf(...)`)
+cover every JSON-shaped output the story pipeline emits today.
+Prose-content BNFs (outline prose, chapter prose, synopsis prose) are
+the remaining gap.
 
 **State-mixing / State pool — ✅ Phase 1 DONE.** Session-based
 save/restore is wired through the entire pipeline:
@@ -166,10 +179,14 @@ dynamic story generation with:
 - Revision support (critique-based revision)
 - Session persistence (save/load story state)
 
-**Story engine interaction — 🟡 IN PROGRESS.** The human-AI interaction layer
-needs work. Current interactive mode is command-based (continue/revise/direct/quit).
-Needs: natural language feedback, real-time preview, easy revision with diff,
-story direction persistence, chapter steering.
+**Story engine interaction — ✅ IMPLEMENTED.** All six collaboration
+surfaces live in `crates/agent/src/`: `interaction.rs` (interactive vs.
+automatic modes), `natural_feedback.rs` (NL → structured directives),
+`outline_editing.rs` (add/remove/reorder/modify), `story_direction.rs`
+(capture + propagate creative vision), `chapter_steering.rs` (mid-gen
+pause/steer/resume), and `writing_assistant.rs` (continuation,
+fill-middle, diff, cross-ref). The headline CLI surface is
+`crates/cli/examples/story_human.rs`.
 
 **Collaborative story example — ✅ DONE.** `crates/cli/examples/story_collaborative.rs`
 demonstrates the conversational, collaborative approach:
@@ -248,35 +265,65 @@ demonstrates the conversational, collaborative approach:
 
 ## Current Priorities
 
-### Phase 2: Observability & Control — 🔴 CURRENT FOCUS
+The story engine + human-AI interaction surfaces are all implemented at
+the module level (`crates/agent/src/` has `story_direction`,
+`outline_editing`, `natural_feedback`, `chapter_steering`,
+`interaction`, `writing_assistant`, `commentary`, `observability`,
+`reversibility`, `quality`, `evals`, `story_persistence`, `story_engine`).
+The production surface in `crates/cli/examples/story_human.rs` exposes
+the headline workflow. What remains is tightening + coverage:
 
-1. **action_logging** 🔴 — every action logged with timestamp and payload
-2. **model_call_recording** 🔴 — every model call recorded (input, output, grammar, params)
-3. **decision_tracing** 🔴 — every decision logged with reasoning
-4. **debug_tools** 🔴 — inspect traces, replay actions, step through execution
+1. **Per-handler BNF grammars** 🔴 — the JSON envelopes are
+   BNF-constrained via `Schema::to_gbnf()`, but the prose body of
+   chapter / outline / wiki / synopsis / validation handlers is still
+   free-form. The interim fix (pre-fill + strip-think-blocks) leaks
+   occasionally on g1h 2.9B; real domain BNFs are needed.
+2. **Grammar coverage audit** 🔴 — list every `backend.complete()` call
+   in the story pipeline that doesn't have a `BnfConstraint` bound to
+   it; convert each one to a bounded call.
+3. **Live eval continuity** 🟢 keep checking — `cargo test -p roco-agent`
+   and `coco eval` (run via `cargo run --bin roco -- eval`) must stay
+   green. Last baseline on g1h 2.9B was 14/15; the single failure
+   (`instruct_baseline_persona`) is stochastic — the model can
+   occasionally produce a pirate reply that omits the literal word
+   `treasure`. Tuning the prompt or adding a BNF are both options.
+4. **Story human CLI polish** 🟢 ongoing — `story_human.rs` is the
+   canonical UX; bugs/UX gaps from real writing sessions get folded
+   back in here.
 
-### Phase 3: Reversibility & Versioning — ✅ IMPLEMENTED
+### Historical (now done) — kept for context
 
-5. **workspace_snapshots** ✅ — snapshot before any file change (`VersionControl::snapshot`)
-6. **action_history** ✅ — complete history of all actions (`VersionControl::action_history`)
-7. **undo_redo** ✅ — any action can be undone (`VersionControl::undo/redo`)
-8. **rollback** ✅ — revert to any previous state (`VersionControl::rollback`)
+**Phase 2 — Observability & Control — ✅ IMPLEMENTED** (the contradiction
+in earlier revisions is resolved):
 
-### Phase 4: Human-AI Interaction — 🔴 FUTURE
+5. ✅ **action_logging** — every action logged with timestamp and payload
+6. ✅ **model_call_recording** — every model call recorded (input, output, grammar, params)
+7. ✅ **decision_tracing** — every decision logged with reasoning
+8. ✅ **debug_tools** — inspect traces, replay actions, step through execution
 
-9. **collaborative_outline** 🔴 — human and AI co-create outline
-10. **natural_feedback** 🔴 — human gives feedback in natural language
-11. **real_time_preview** 🔴 — show generation as it happens
-12. **easy_revision** 🔴 — one-command revision with clear before/after
-13. **story_direction** 🔴 — human sets tone, style, themes
-14. **chapter_steering** 🔴 — steer chapter mid-generation
+**Phase 3 — Reversibility & Versioning — ✅ IMPLEMENTED**:
 
-### Phase 5: Multiple Interfaces — 🔴 FUTURE
+9. ✅ **workspace_snapshots** — `VersionControl::snapshot` before every file change
+10. ✅ **action_history** — `VersionControl::action_history`
+11. ✅ **undo_redo** — `VersionControl::undo/redo`
+12. ✅ **rollback** — `VersionControl::rollback` to any prior snapshot
 
-15. **cli_enhancements** 🔴 — better CLI with rich output
-16. **tui** 🔴 — terminal UI with rich widgets
-17. **web** 🔴 — browser-based UI with streaming
-18. **api** 🔴 — REST/GraphQL API for programmatic access
+**Phase 4 — Human-AI Interaction — ✅ IMPLEMENTED**:
+
+13. ✅ **collaborative_outline** — `OutlineEditor` + `OutlineCommand`
+14. ✅ **natural_feedback** — `FeedbackParser` (quick + model paths)
+15. ✅ **real_time_preview** — streaming wired into `story_human.rs` CLI
+16. ✅ **easy_revision** — `DiffAnalysis` + revision-with-diff
+17. ✅ **story_direction** — `StoryDirection` capture + persistent application
+18. ✅ **chapter_steering** — `ChapterSteerer` (`pause` / `steer` / `resume`)
+
+**Phase 5 — Multiple Interfaces — 🟡 IN PROGRESS**:
+
+19. ✅ **cli_enhancements** — `crates/cli/src/bin/roco.rs` + `story_human.rs`
+20. ✅ **tui** — story pane, plot state viewer, shortcuts
+    (`crates/tui/src/app.rs`, `crates/tui/src/widgets/`)
+21. ✅ **web** — `apps/` (chat, studio, editor) and editor plugins (vscode, zed)
+22. ✅ **api** — `crates/server/src/story_routes.rs`
 
 ## Model loading strategy
 
