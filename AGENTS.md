@@ -14,6 +14,43 @@ patch, the `scripts/` model converters, and the `assets/vocab` tokenizer.
 Everything non-RWKV (orchestrator crates, gateway/web frontends, Docker,
 agent/eval scaffolding) has been removed; git history preserves it.
 
+## Primary Goal
+
+**A collaborative story writing tool where humans and AI work together to create stories.**
+
+The human is the author. The AI is the tool. Every feature should amplify human creativity, not replace it.
+
+See `goals/story-engine/index.md` for the detailed roadmap.
+
+## Core Philosophy: Human Controls Pace, Not Reviews Output
+
+**The human should not be burdened with reviewing everything.**
+
+Instead of:
+- Agent generates everything → Human reviews everything → Agent revises everything
+
+Do this:
+- Agent completes **one task** → Human sees result → Human decides: accept, modify, skip, stop
+
+This is a conversation, not a review process. The human controls the pace by:
+- **Accepting** — move to next task
+- **Modifying** — give feedback, agent revises
+- **Skipping** — jump ahead
+- **Stopping** — end and publish
+
+No mandatory review. No approval gates. Just natural flow.
+
+**The human provides:**
+- Creative vision (premise, themes, tone)
+- Direction (what should happen next)
+- Feedback (what's working, what's not) — when they want to, not because they have to
+
+**The AI provides:**
+- Structure (outline, plot state, pacing)
+- Content (prose, dialogue, description)
+- Quality (grammar-constrained, coherent)
+- Speed (fast generation, easy revision)
+
 ## Agent architecture: plan-and-execute (predetermined mode selection)
 
 RoCo AI supports two agent execution patterns, both using **grammar-constrained
@@ -23,17 +60,17 @@ output everywhere** — never free-form JSON extraction:
 
 ```
 System instruction + User message
-    ↓ BNF-constrained LLM call → valid JSON plan
+  ↓ BNF-constrained LLM call → valid JSON plan
 ┌──────────────────────────────────────┐
-│  Classic Rust loop over steps        │
-│  for step in plan.topological_order() │
-│    result = tool_dispatch(step)      │
-│         or model_subtask(step)       │
-│    eval_verify(step, result)         │
-│    if !verified: inject_subtasks()   │
-│  end                                 │
+│ Classic Rust loop over steps         │
+│ for step in plan.topological_order() │
+│   result = tool_dispatch(step)       │
+│   or model_subtask(step)             │
+│   eval_verify(step, result)          │
+│   if !verified: inject_subtasks()    │
+│ end                                  │
 └──────────────────────────────────────┘
-    ↓
+  ↓
 Final assembled output
 ```
 
@@ -78,7 +115,16 @@ The difference is whether the **iteration count** is predetermined or model-driv
   execution with topological sorting. Self-prompting chain assembly and inline
   eval verification are documented in `goals/` but not yet wired into production.
 - **Mechanistic agent**: **Implemented.** `MechanisticAgent` (`crates/agent/src/mecha_agent.rs`) provides a code-driven controller + router pattern: model only fires at fixed, grammar-constrained points (`classify` → `think_with_intent` → `repair_derive` → dispatch). Routes register `(type, domain)` handlers that write into a sandboxed workspace. Supports repair loops with temperature/tokens decay, context budget gating via `ContextManager`, and self-correction chains.
-- **Story generation pipeline**: **Implemented.** `crates/cli/examples/story.rs` takes **human instructions** as input (a story prompt or concept), then the mechanistic agent drives a predetermined workflow: outline → wiki → chapter×3 (with validate + self-correction) → synopsis → publish. Output lands in `.roco/workspaces/story_<sanitized_prompt>_<ts>/` with 8 markdown artifacts per run.
+- **Story generation engine**: **Implemented (core).** Dynamic outline expansion, plot state tracking, context assembly, chapter continuation, quality evaluation, revision support, session persistence. **Human-AI interaction in progress.**
+- **Observability**: **Implemented.** `ObservabilitySystem` records all model calls, decisions, actions, and quality assessments. Enables debugging, interpretability, and auditing.
+- **Reversibility**: **Implemented.** `VersionControl` provides workspace snapshots, action history, undo/redo, and rollback. Every agent action is reversible.
+- **Commentary**: **Implemented.** `Commentary` system provides bidirectional commentary — agent-generated explanations for every artifact, plus human annotations, verdicts, and notes. Every artifact can be reviewed and annotated by both agent and human.
+- **Writing Assistant**: **Implemented.** `WritingAssistant` analyzes user input, provides continuation suggestions, fill-in-the-middle, diff analysis, cross-referencing, and tagging.
+- **Interaction Modes**: **Implemented.** `InteractionMode` lets the human choose: interactive (see each chapter) or automatic (run to completion). Human can switch modes at any time.
+- **Natural Language Feedback**: **Implemented.** `FeedbackParser` parses human feedback into structured directives. Quick parse for simple commands, model-based parsing for complex feedback.
+- **Outline Editing**: **Implemented.** `OutlineEditor` for collaborative outline creation and modification. Commands: add, remove, move, modify, regenerate.
+- **Story Direction**: **Implemented.** `StoryDirection` captures and applies human's creative vision throughout generation.
+- **Chapter Steering**: **Implemented.** `ChapterSteerer` for pause/resume/steer mid-generation.
 - **Pull-based context management**: **Implemented.** `ContextManager` (`crates/agent/src/context.rs`) pulls relevant snippets from session store, memory store, and workspace files; scores via Jaccard word overlap; gates inclusion by token budget before each inference call.
 - **ReAct loop**: **Implemented.** `Agent::run()` in `crates/agent/src/agent.rs`
   with `think` blocks, tool dispatch, gradual tool disclosure, and budget limits.
@@ -107,9 +153,19 @@ roco_ai/
 │   ├── session/            # roco_session — LruSessionPool
 │   ├── tools/              # roco_tools — Tool trait, ToolRegistry, builtins, parse
 │   ├── workspace/          # roco_workspace — Workspace (sandbox boundary)
-│   ├── agent/              # roco_agent — ReAct loop, mechanistic controller, story pipeline, context management
+│   ├── agent/              # roco_agent — ReAct loop, mechanistic controller, story engine
+│   │   ├── story_engine.rs      # Dynamic story generation
+│   │   ├── quality.rs           # Quality metrics and critique
+│   │   ├── evals.rs             # Model-as-judge evaluation
+│   │   ├── story_persistence.rs # Save/load story state
+│   │   ├── observability.rs     # Traces, logs, audit trail
+│   │   └── reversibility.rs     # Undo/redo, version control
 │   ├── chat-common/        # roco_chat_common — Conversation, DisplaySettings
-│   ├── cli/                # roco_cli — `roco` bin + examples (chat, eval_suite, grammar_smoke, agent, agent_chat, story, story_pilot)
+│   ├── cli/                # roco_cli — `roco` bin + examples
+│   │   └── examples/
+│   │       ├── story.rs           # Basic story pipeline (3 chapters)
+│   │       ├── story_engine.rs    # Dynamic story engine
+│   │       └── story_full.rs      # Full example with all features
 │   ├── tui/                # roco_tui — terminal UI (stub)
 │   ├── server/             # roco_server — HTTP server (stub)
 │   └── gateway/            # roco_gateway — API gateway (stub)
@@ -118,6 +174,8 @@ roco_ai/
 ├── assets/vocab/           # rwkv_vocab_v20230424.json (the tokenizer)
 ├── scripts/                # pth_to_st/ and gguf_to_st/ model converters
 ├── goals/                  # product roadmap (see goals/index.md)
+│   ├── story-engine/       # Story engine roadmap (human-AI interaction focus)
+│   └── future/             # archived goals (FAISS, dreaming, UIs, etc.)
 ├── evals/results/          # rwkv benchmark JSON outputs
 ├── devenv.{yaml,nix}       # Nix dev shell (rust + Vulkan)
 ├── Makefile                # rwkv-focused dev targets
@@ -135,54 +193,60 @@ roco_ai/
 | `session` | `pool.rs`, `store.rs`, `types.rs`, `error.rs` | `LruSessionPool`, session transcript stores, session types |
 | `tools` | `tool.rs`, `registry.rs`, `builtins.rs`, `parse.rs` | `Tool` trait, `ToolRegistry`, 6 built-ins, tool-call parsing |
 | `workspace` | `workspace.rs` | `Workspace` sandbox boundary |
-| `agent` | `base.rs`, `common_agent.rs`, `mecha_agent.rs`, `context.rs`, `plan.rs`, `sessions.rs`, `memory.rs`, `scheduler.rs`, `tool_selector.rs`, `agent_chat.rs`, `error.rs`, `subtask.rs` | `BaseAgent` trait, `CommonAgent` (ReAct), `MechanisticAgent` (code-driven controller/router), pull-based context ingest (`ContextManager`), session/memory stores, task scheduling & selection |
+| `agent` | `story_engine.rs`, `quality.rs`, `evals.rs`, `story_persistence.rs`, `mecha_agent.rs`, `context.rs`, etc. | Story engine, quality metrics, evaluation, persistence, ReAct loop, mechanistic controller |
 | `chat-common` | `conversation.rs`, `display.rs` | `Conversation`, `DisplaySettings` (shared across frontends) |
-| `cli` | `bin/roco.rs` + `examples/` | `roco` binary, `chat`/`eval_suite`/`grammar_smoke`/`agent`/`agent_chat`/`story`/`story_pilot` examples |
+| `cli` | `bin/roco.rs` + `examples/` | `roco` binary, story examples |
 | `tui` | `app.rs`, `widgets/` | Terminal UI (stub) |
 | `server` | `server.rs`, `routes.rs` | HTTP server (stub) |
 | `gateway` | `gateway.rs`, `router.rs` | API gateway (stub) |
 
-Examples live in each crate's `examples/` dir (`inference`: `rwkv_test`,
-`gpu_check`, `quant_analyze`, `style_stress`; `cli`: `chat`, `eval_suite`,
-`grammar_smoke`, `agent`, `agent_chat`, `story`, `story_pilot`; `server`: `daemon`).
-
 ## Goals
 
 `goals/` is the product roadmap, organized as prerequisite-ordered layers
-from the local RWKV-7 engine up to a full agent:
+from the local RWKV-7 engine up to a collaborative story writing tool:
 
 | Layer | What it covers | State |
 |---|---|---|
-| `infer/` | inference engine (model, quant, state, decoding, structured output) | ✅ complete (BNF infrastructure exists but not yet wired into all story stages) |
-| `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) | ✅ core (constrained tool calls, message GBNF complete) |
-| `workspace/` | the environment the agent acts in | ⬜ not started |
-| `agent/` | the autonomous agent loop and its capabilities | ✅ core loop done (ReAct + plan-first + mechanistic controller); context management implemented |
-| `mechanistic-agent/` | code-driven controller + router; model is subroutine at grammar-bounded points | 🟡 implemented (handlers, routes, repair loop, context budgeting, story pipeline); per-handler BNF grammars are the critical gap — see below |
-| `agent_chat/` | persistent workspace or folder-bound agent sessions | ⬜ not started |
+| `infer/` | inference engine (model, quant, state, decoding, structured output) | ✅ complete |
+| `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) | ✅ core done |
+| `workspace/` | the environment the agent acts in | ✅ sandbox + scoped tools |
+| `agent/` | the autonomous agent loop and its capabilities | ✅ core loop done |
+| `mechanistic-agent/` | code-driven controller + router | 🟡 grammar gap remains |
+| **story-engine/** | **collaborative story writing engine** | ✅ core done, 🟡 human-AI interaction in progress |
+| `agent_chat/` | persistent workspace or folder-bound agent sessions | ✅ working |
 | `browser_use/` | driving a real browser | ⬜ not started |
-| `testing/` | eval harness, oracles, regression gates, inline verification | ✅ done (inline eval gates documented as Phase 3) |
-| `coder/` | **(future)** the agent's own develop/test/lint loop in a controlled sandbox | ⬜ not started |
+| `testing/` | eval harness, oracles, regression gates | ✅ done |
+| `coder/` | **(future)** the agent's own develop/test/lint loop | ⬜ not started |
 
-Each folder contains an `index.md` listing its goals in dependency order. A
-goal's prerequisites come before it in that file. Goal files carry only
-intent (and optional `User:` notes / reference links); progress lives in
-`PROGRESS.md`.
+Each folder contains an `index.md` listing its goals in dependency order.
 
-There is also a **`self-directed-goals/`** tree — the agent's own reflection of
-this roadmap. It mirrors the layer structure but encodes the agent's
-autonomous priorities, sequencing, and engineering commitments (see
-`self-directed-goals/index.md`). Product intent stays in `goals/`; the
-agent's working plan lives in `self-directed-goals/`.
+There is also a **`future/`** tree — archived goals that amplify a working core.
 
 ## Quickstart
 
 ```bash
-cargo run --bin roco -- eval              # run evals, snapshot saved
-cargo run --bin roco -- bless             # bless current snapshot as new oracle
-cargo run --bin roco -- rwkv              # smoke-test the RWKV backend
-cargo run --bin roco -- grammar           # grammar-constrained decode smoke test
-cargo run --bin roco -- gpu-check         # show Vulkan device + model status
-cargo build --release                     # all crates (release for GPU work)
+cargo run --bin roco -- eval           # run evals, snapshot saved
+cargo run --bin roco -- bless          # bless current snapshot as new oracle
+cargo run --bin roco -- rwkv           # smoke-test the RWKV backend
+cargo run --bin roco -- grammar        # grammar-constrained decode smoke test
+cargo run --bin roco -- gpu-check      # show Vulkan device + model status
+cargo build --release                  # all crates (release for GPU work)
+```
+
+### Story generation
+
+```bash
+# Basic story generation (3 chapters)
+RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+  "Write a xianxia story about a lone cultivator"
+
+# Interactive mode (human-in-the-loop)
+RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+  --interactive "Write a dark fantasy"
+
+# Full example with all features
+RWKV_MODEL=... cargo run --release --example story_full -p roco-cli \
+  --interactive --unlimited "Write an epic fantasy"
 ```
 
 ### Testing convention
@@ -222,7 +286,7 @@ Rules:
 > command is defined as a devenv script in `devenv.nix` (`scripts.*.exec`) and
 > maps to the corresponding `cargo run -p … --example …` invocation. It is
 > always available — you can also run the binary directly via
-> `cargo run --bin roco -- <subcommand>`. The model is auto-detected from
+> `cargo run --bin roco -- `. The model is auto-detected from
 > `models/*.st` (symlinked).
 >
 > **Features are enabled by default.** The `grammar` feature (on
@@ -264,13 +328,13 @@ CPU fallback (slow but reliable) or `RWKV_QUANT=8` to force Int8.
 decay, or post-processing can reliably eliminate. When output must satisfy a grammar, the sampler
 rejects non-conforming tokens at every step — contamination literally cannot occur.
 
-### The `thinking>` Tag Problem
+### The `<think>>` Tag Problem
 Undertrained base RWKV models consistently leak planning text into output:
 - System prompts saying "no thinking" have zero effect
 - Temperature decay has minimal impact — the behavior persists across all settings
 - Every stage gets contaminated unless blocked by grammar constraints
 - Post-processing stripping is fragile because models often never close their think tags
-- Pre-filling `thinking>...content...</thinking>` before the prompt helps but doesn't solve root cause
+- Pre-filling `<think>>...content...` before the prompt helps but doesn't solve root cause
 
 ### Architecture Decisions Proven Correct
 - Code owns control flow, LLM only fires at fixed grammar-bounded points
@@ -278,6 +342,13 @@ Undertrained base RWKV models consistently leak planning text into output:
 - Jaccard word overlap relevance scoring sufficient for initial use
 - Arc-owned context sources cleanly satisfy `'static` bounds
 - Persistent timestamped workspaces prevent collision across repeated runs
+
+### Human-AI Collaboration Principles
+- The human is the author, the AI is the tool
+- Every interaction should feel natural and intuitive
+- Give control, not just output
+- Respect the human's creative vision
+- Make the human feel empowered, not replaced
 
 ### Interim Workarounds (Signaling Where Grammars Are Needed)
 The story pipeline currently uses pre-fill + strip-think-blocks as interim measures.
@@ -290,38 +361,33 @@ These patterns are explicit signals that domain-specific BNF grammars should be 
 
 ## Next Things
 
-1. ~~~~JSON-Schema → GBNF converter~~~~ ~~**Done.** Primitives + enums + objects +
-   arrays. (`crates/grammar/src/json_schema.rs`)~~
-2. ~~~~Dead module cleanup~~~~ ~~**Done.** Removed unused modules; all tests pass.~~
-3. ~~~~Cleanup segfault~~~~ ~~**Fixed.** Actor thread now joins in `Drop`.~~
-4. ~~~~`bnf_sampler` integration~~~~ ~~**Done.** `BnfConstraint` is the primary
-   grammar engine with schoolmarm fallback. 67 tests pass.~~
-5. ~~~~State pool Phase 1~~~~ ~~**Done.** Session-based save/restore wired
-   through the pipeline with LRU eviction. Phase 2 (N-slot GPU pool)
-   and Phase 3 (tensor blending) are forward work.~~
-6. ~~~~Monorepo restructuring~~~~ ~~**Done.** Split into 13 crates; message layer
-   (GBNF, tools, tool-calling, result handling, error recovery) and the
-   agent ReAct loop implemented.~~
-7. ~~~~Plan-and-execute architecture documented~~~~ ~~**Done.** Plan-first paradigm,
-   self-prompting chains, constrained tool calls, inline eval verification,
-   configurable mechanistic depth — all captured in `goals/` with references
-   throughout codebase docs.~~
-8. ~~~~Mechanistic agent implementation~~~~ ~~**Done.** Code-driven controller + router
-   with routes, handlers, repair loop, context budgeting, story pipeline.~~
-9. ~~Replace `Planner::plan()`'s `extract_first_json()` heuristic with dedicated
-   plan GBNF grammar so plan emission is fully structurally guaranteed.~~
-10. ~~Wire `StepVerifier` into `Plan::execute()` as optional middleware gate for
-    inline eval verification during wave execution.~~
-11. ~~~~GGUF→ST shape mismatch~~~~ ~~Upstream patch needed; without it only the 2.9B works.~~
+### Human-AI Interaction (Current Focus)
+
+1. **Collaborative outline editing** — human and AI co-create the outline
+2. **Natural language feedback** — human gives feedback in plain English
+3. **Real-time preview** — show chapter being generated
+4. **Easy revision with diff** — show what changed
+5. **Story direction persistence** — capture and respect human's creative vision
+6. **Chapter steering** — pause and redirect mid-generation
+
+### Infrastructure (Forward Work)
+
+7. ~~JSON-Schema → GBNF converter~~ ~~**Done.**~~
+8. ~~Dead module cleanup~~ ~~**Done.**~~
+9. ~~Cleanup segfault~~ ~~**Fixed.**~~
+10. ~~`bnf_sampler` integration~~ ~~**Done.**~~
+11. ~~State pool Phase 1~~ ~~**Done.**~~
+12. ~~Monorepo restructuring~~ ~~**Done.**~~
+13. ~~Plan-and-execute architecture documented~~ ~~**Done.**~~
+14. ~~Mechanistic agent implementation~~ ~~**Done.**~~
+15. ~~Story engine core~~ ~~**Done.**~~
 
 ### Active priorities
-1. **Per-handler BNF grammars** — wire `BnfConstraint` into every story pipeline stage
-   (outline, wiki, chapters ×3, validation, synopsis). This eliminates the need for
-   pre-fill workarounds and strip_think_blocks entirely.
-2. **Grammar coverage audit** — identify all free-form `backend.complete()` calls that lack
-   grammar constraints and add domain-specific grammars.
-3. ~~Story CLI subcommand~~ Evaluate promoting `crates/cli/examples/story.rs` to a
-   `roco story <prompt>` subcommand with grammar-constrained stages.
-4. ~~Auto-generate grammars from task descriptions~~ Explore synthesizing BNF from Rust schema types.
-5. ~~Small model quality improvements~~ Continue researching techniques for 1B–2.9B models:
-   better pre-fill patterns, template optimization, multi-stage refinement.
+1. **Collaborative outline editing** — human can say "add a chapter about X"
+2. **Natural language feedback** — parse "make it darker" into directives
+3. **Real-time preview** — stream chapter content to terminal
+4. **Easy revision** — show diff between original and revised
+5. **Story direction** — capture tone/style/themes at start
+6. **Chapter steering** — pause generation, accept direction, resume
+7. **Per-handler BNF grammars** — wire `BnfConstraint` into every story pipeline stage
+8. **Grammar coverage audit** — identify all free-form `backend.complete()` calls
