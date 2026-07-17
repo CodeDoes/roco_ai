@@ -218,6 +218,69 @@ impl Tool for WorkspaceSearchTool {
     }
 }
 
+// ── WorkspaceGrepTool ───────────────────────────────────────────
+
+pub struct WorkspaceGrepTool {
+    pub(crate) ws: Arc<Workspace>,
+}
+
+impl Tool for WorkspaceGrepTool {
+    fn name(&self) -> &str {
+        "grep"
+    }
+    fn description(&self) -> &str {
+        "Perform a regex-based search/grep across files inside the workspace."
+    }
+    fn schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Regex pattern to search for"},
+                "path": {"type": "string", "description": "Workspace-relative dir/file to scan (default: workspace root)"},
+                "max_results": {"type": "integer", "description": "Max matches to return"}
+            },
+            "required": ["pattern"]
+        })
+    }
+    fn call(&self, args: Value) -> Result<Value, ToolError> {
+        let pattern_str = arg_str(&args, "pattern")?;
+        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+        let base = match arg_opt_str(&args, "path") {
+            Some(p) if !p.is_empty() => self.ws.resolve(p).map_err(|e| ToolError(e.to_string()))?,
+            _ => self.ws.root().to_path_buf(),
+        };
+
+        let re = regex::Regex::new(&pattern_str)
+            .map_err(|e| ToolError(format!("Invalid regex pattern '{}': {}", pattern_str, e)))?;
+
+        let mut results = Vec::new();
+        for entry in walkdir::WalkDir::new(&base).into_iter().filter_map(|e| e.ok()) {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            if results.len() >= max_results {
+                break;
+            }
+            if let Ok(contents) = std::fs::read_to_string(entry.path()) {
+                for (lineno, line) in contents.lines().enumerate() {
+                    if results.len() >= max_results {
+                        break;
+                    }
+                    if re.is_match(line) {
+                        results.push(serde_json::json!({
+                            "file": entry.path().display().to_string(),
+                            "line": lineno + 1,
+                            "text": line
+                        }));
+                    }
+                }
+            }
+        }
+
+        Ok(serde_json::json!({ "matches": results, "count": results.len() }))
+    }
+}
+
 // ── WorkspaceListTool ───────────────────────────────────────────
 
 pub struct WorkspaceListTool {
@@ -370,6 +433,19 @@ mod tests {
         let r = search.call(serde_json::json!({"pattern": "needle"})).unwrap();
         assert_eq!(r["count"], 1);
         assert_eq!(r["matches"][0]["line"], 1);
+    }
+
+    #[test]
+    fn grep_finds_pattern_with_regex() {
+        let ws = make_ws();
+        let tools = Workspace::scoped_tools(ws.clone());
+        let write = tools.iter().find(|t| t.name() == "write").unwrap();
+        write.call(serde_json::json!({"path": "y.txt", "content": "hello 123 world\nno digits here"})).unwrap();
+        let grep = tools.iter().find(|t| t.name() == "grep").unwrap();
+        let r = grep.call(serde_json::json!({"pattern": r"\d+"})).unwrap();
+        assert_eq!(r["count"], 1);
+        assert_eq!(r["matches"][0]["line"], 1);
+        assert!(r["matches"][0]["text"].as_str().unwrap().contains("123"));
     }
 
     #[test]

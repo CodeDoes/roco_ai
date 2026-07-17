@@ -212,9 +212,115 @@ impl Workspace {
             std::sync::Arc::new(crate::tools::WorkspaceWriteTool { ws: ws.clone() }),
             std::sync::Arc::new(crate::tools::WorkspaceEditTool { ws: ws.clone() }),
             std::sync::Arc::new(crate::tools::WorkspaceSearchTool { ws: ws.clone() }),
+            std::sync::Arc::new(crate::tools::WorkspaceGrepTool { ws: ws.clone() }),
             std::sync::Arc::new(crate::tools::WorkspaceListTool { ws: ws.clone() }),
             std::sync::Arc::new(crate::tools::WorkspaceBashTool { ws }),
         ]
+    }
+
+    /// Garbage collect temporary workspace files/folders older than `max_age`.
+    pub fn vacuum_temp_files(dir: &Path, max_age: std::time::Duration) -> Result<usize, std::io::Error> {
+        let mut count = 0;
+        let now = SystemTime::now();
+        if !dir.exists() {
+            return Ok(0);
+        }
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(age) = now.duration_since(modified) {
+                        if age > max_age {
+                            if path.is_dir() {
+                                if std::fs::remove_dir_all(&path).is_ok() {
+                                    count += 1;
+                                }
+                            } else {
+                                if std::fs::remove_file(&path).is_ok() {
+                                    count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(count)
+    }
+
+    /// Recursively backup the workspace root directory into a backup folder.
+    pub fn backup(&self, destination_dir: &Path) -> Result<PathBuf, WorkspaceError> {
+        if !destination_dir.exists() {
+            std::fs::create_dir_all(destination_dir)
+                .map_err(|e| WorkspaceError(format!("Failed to create backup dir: {e}")))?;
+        }
+        let backup_folder = destination_dir.join(format!("{}_backup_{}", self.name(), self.created_at));
+        std::fs::create_dir_all(&backup_folder)
+            .map_err(|e| WorkspaceError(format!("Failed to create sub backup folder: {e}")))?;
+
+        for entry in walkdir::WalkDir::new(&self.root) {
+            let entry = entry.map_err(|e| WorkspaceError(format!("WalkDir error: {e}")))?;
+            let path = entry.path();
+            let relative = path.strip_prefix(&self.root)
+                .map_err(|e| WorkspaceError(format!("Failed to strip prefix: {e}")))?;
+            let dest = backup_folder.join(relative);
+
+            if entry.file_type().is_dir() {
+                std::fs::create_dir_all(&dest)
+                    .map_err(|e| WorkspaceError(format!("Failed to create dir {}: {}", dest.display(), e)))?;
+            } else {
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| WorkspaceError(format!("Failed to create parent dir: {e}")))?;
+                }
+                std::fs::copy(path, &dest)
+                    .map_err(|e| WorkspaceError(format!("Failed to copy file from {} to {}: {}", path.display(), dest.display(), e)))?;
+            }
+        }
+        Ok(backup_folder)
+    }
+
+    /// Restore the workspace root from a previously taken backup.
+    pub fn restore(&self, backup_dir: &Path) -> Result<(), WorkspaceError> {
+        if !backup_dir.exists() {
+            return Err(WorkspaceError(format!("Backup folder does not exist: {}", backup_dir.display())));
+        }
+        // Clear current root files safely
+        for entry in std::fs::read_dir(&self.root)
+            .map_err(|e| WorkspaceError(format!("Failed to read root for clearing: {e}")))? {
+            let entry = entry.map_err(|e| WorkspaceError(format!("Failed to read entry: {e}")))?;
+            let path = entry.path();
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+                    .map_err(|e| WorkspaceError(format!("Failed to delete dir {}: {}", path.display(), e)))?;
+            } else {
+                std::fs::remove_file(&path)
+                    .map_err(|e| WorkspaceError(format!("Failed to delete file {}: {}", path.display(), e)))?;
+            }
+        }
+
+        // Copy files back
+        for entry in walkdir::WalkDir::new(backup_dir) {
+            let entry = entry.map_err(|e| WorkspaceError(format!("WalkDir error during restore: {e}")))?;
+            let path = entry.path();
+            let relative = path.strip_prefix(backup_dir)
+                .map_err(|e| WorkspaceError(format!("Failed to strip prefix: {e}")))?;
+            let dest = self.root.join(relative);
+
+            if entry.file_type().is_dir() {
+                std::fs::create_dir_all(&dest)
+                    .map_err(|e| WorkspaceError(format!("Failed to create dir: {e}")))?;
+            } else {
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| WorkspaceError(format!("Failed to create parent: {e}")))?;
+                }
+                std::fs::copy(path, &dest)
+                    .map_err(|e| WorkspaceError(format!("Failed to restore file {}: {}", dest.display(), e)))?;
+            }
+        }
+        Ok(())
     }
 
     /// Metadata describing this workspace, useful for logging / debugging.
@@ -449,6 +555,50 @@ mod tests {
         let resolved = ws.resolve("ok.txt").unwrap();
         assert!(resolved.starts_with(ws.root()));
         assert_eq!(std::fs::read_to_string(&resolved).unwrap(), "safe");
+    }
+
+    #[test]
+    fn test_backup_and_restore() {
+        let ws = temp();
+        let file1 = ws.root().join("test_file.txt");
+        std::fs::write(&file1, "workspace-content").unwrap();
+
+        let backup_dest = std::env::temp_dir().join(format!("roco-backups-{}", std::process::id()));
+        let backup_folder = ws.backup(&backup_dest).unwrap();
+        assert!(backup_folder.exists());
+        assert!(backup_folder.join("test_file.txt").exists());
+
+        // Change workspace file content
+        std::fs::write(&file1, "changed-content").unwrap();
+
+        // Restore
+        ws.restore(&backup_folder).unwrap();
+        let restored_content = std::fs::read_to_string(&file1).unwrap();
+        assert_eq!(restored_content, "workspace-content");
+
+        let _ = std::fs::remove_dir_all(&backup_dest);
+    }
+
+    #[test]
+    fn test_vacuum_temp_files() {
+        let temp_dir = std::env::temp_dir().join(format!("roco-vacuum-{}", std::process::id()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let old_file = temp_dir.join("old_file.txt");
+        std::fs::write(&old_file, "old-content").unwrap();
+
+        // Modify time of old_file to 10 minutes ago
+        let filetime = filetime::FileTime::from_system_time(
+            SystemTime::now() - std::time::Duration::from_secs(600)
+        );
+        filetime::set_file_times(&old_file, filetime, filetime).unwrap();
+
+        // Vacuum files older than 5 minutes (300 secs)
+        let deleted = Workspace::vacuum_temp_files(&temp_dir, std::time::Duration::from_secs(300)).unwrap();
+        assert_eq!(deleted, 1);
+        assert!(!old_file.exists());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     /// Best-effort cleanup helper so planted secrets don't leak between runs.
