@@ -1,0 +1,11 @@
+{
+  "id": "roco-ai",
+  "name": "RoCo AI",
+  "version": "0.1.0",
+  "minAppVersion": "0.15.0",
+  "description": "AI-powered story writing assistant",
+  "author": "RoCo AI",
+  "authorUrl": "https://github.com/CodeDoes/roco_ai",
+  "fundingUrl": "",
+  "isDesktopOnly": false
+}

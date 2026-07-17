@@ -1,0 +1,68 @@
+{
+  "name": "roco-ai",
+  "displayName": "RoCo AI",
+  "description": "AI-powered story writing assistant",
+  "version": "0.1.0",
+  "publisher": "roco-ai",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "roco.generateChapter",
+        "title": "RoCo: Generate Chapter"
+      },
+      {
+        "command": "roco.continueWriting",
+        "title": "RoCo: Continue Writing"
+      },
+      {
+        "command": "roco.getSuggestions",
+        "title": "RoCo: Get Suggestions"
+      },
+      {
+        "command": "roco.reviseSelection",
+        "title": "RoCo: Revise Selection"
+      },
+      {
+        "command": "roco.addComment",
+        "title": "RoCo: Add Comment"
+      },
+      {
+        "command": "roco.showPlotState",
+        "title": "RoCo: Show Plot State"
+      }
+    ],
+    "configuration": {
+      "title": "RoCo AI",
+      "properties": {
+        "roco.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "URL of the RoCo API server"
+        },
+        "roco.autoSuggest": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically show suggestions while typing"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
