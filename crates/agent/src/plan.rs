@@ -17,6 +17,34 @@ use serde_json::Value;
 
 use crate::error::AgentError;
 
+use futures::future::BoxFuture;
+
+/// Trait to verify the output of a single plan step during wave execution.
+pub trait StepVerifier: Send + Sync {
+    fn verify<'a>(
+        &'a self,
+        step_id: &'a str,
+        description: &'a str,
+        output: &'a str,
+    ) -> BoxFuture<'a, Result<bool, String>>;
+}
+
+/// A simple MockStepVerifier that always returns a fixed validation result.
+pub struct MockStepVerifier {
+    pub should_pass: bool,
+}
+
+impl StepVerifier for MockStepVerifier {
+    fn verify<'a>(
+        &'a self,
+        _step_id: &'a str,
+        _description: &'a str,
+        _output: &'a str,
+    ) -> BoxFuture<'a, Result<bool, String>> {
+        Box::pin(async move { Ok(self.should_pass) })
+    }
+}
+
 /// A single step in a plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanStep {
@@ -160,6 +188,7 @@ impl Plan {
         &self,
         backend: &dyn ModelBackend,
         tools: Option<&ToolRegistry>,
+        verifier: Option<&dyn StepVerifier>,
     ) -> Result<PlanResult, AgentError> {
         let order = self.topological_order();
         let levels = self.wave_levels();
@@ -171,7 +200,7 @@ impl Plan {
             for &idx in wave {
                 let step = &self.steps[idx];
                 let prompt = self.build_step_prompt(step, &outputs);
-                futures.push(self.run_step(step, backend, tools, prompt));
+                futures.push(self.run_step_with_verification(step, backend, tools, prompt, verifier));
             }
             let results = join_all(futures).await;
             for (i, res) in results.into_iter().enumerate() {
@@ -189,6 +218,41 @@ impl Plan {
             }
         }
         Ok(PlanResult { outcomes, success: true })
+    }
+
+    async fn run_step_with_verification(
+        &self,
+        step: &PlanStep,
+        backend: &dyn ModelBackend,
+        tools: Option<&ToolRegistry>,
+        prompt: String,
+        verifier: Option<&dyn StepVerifier>,
+    ) -> Result<StepOutcome, AgentError> {
+        let mut attempts = 0;
+        let mut current_prompt = prompt;
+        loop {
+            let outcome = self.run_step(step, backend, tools, current_prompt.clone()).await?;
+            if let Some(v) = verifier {
+                match v.verify(&step.id, &step.description, &outcome.output).await {
+                    Ok(true) => {
+                        return Ok(outcome);
+                    }
+                    Ok(false) | Err(_) => {
+                        attempts += 1;
+                        if attempts >= 2 {
+                            // Max retries reached, proceed with current outcome
+                            return Ok(outcome);
+                        }
+                        current_prompt = format!(
+                            "{}\n\n[System feedback: Your prior output failed validation/verification. Please refine and try again.]\nPrior output: {}\nNew Result:",
+                            current_prompt, outcome.output
+                        );
+                    }
+                }
+            } else {
+                return Ok(outcome);
+            }
+        }
     }
 
     /// Split step indices into dependency waves (see [`Plan::execute`]).
@@ -300,6 +364,24 @@ pub struct StepOutcome {
     pub used_tool: Option<String>,
 }
 
+/// Generate a strict GBNF grammar for our Plan structure using `roco-grammar`.
+pub fn plan_grammar() -> String {
+    use roco_grammar::{schema_to_gbnf, Schema};
+    let step_schema = Schema::object()
+        .prop("id", Schema::string())
+        .prop("description", Schema::string())
+        .prop("tool", Schema::string())
+        .prop("depends_on", Schema::array(Schema::string()))
+        .build();
+
+    let plan_schema = Schema::object()
+        .prop("task", Schema::string())
+        .prop("steps", Schema::array(step_schema))
+        .build();
+
+    schema_to_gbnf("root", plan_schema.to_json()).expect("Plan schema is valid")
+}
+
 /// The planner: turns a natural-language goal into a [`Plan`].
 pub struct Planner;
 
@@ -310,12 +392,12 @@ impl Planner {
     /// plan JSON, so a run can always proceed.
     pub async fn plan(backend: &dyn ModelBackend, task: &str) -> Result<Plan, AgentError> {
         let system = "You are a meticulous planner. Decompose the user's goal into an ordered, \
-            dependency-tracked plan. Respond with a single JSON object and no other text: \
-            {\"task\": <string>, \"steps\": [{\"id\": <string>, \"description\": <string>, \
-            \"tool\": <optional string>, \"depends_on\": [<string>]}]}.";
+            dependency-tracked plan. Respond with a single JSON object matching the plan schema.";
+        let grammar = plan_grammar();
         let req = CompletionRequest {
             system: system.to_string(),
             prompt: format!("Goal: {task}"),
+            grammar: Some(grammar),
             max_tokens: 1024,
             temperature: 0.3,
             ..Default::default()
@@ -324,6 +406,13 @@ impl Planner {
             .complete(req)
             .await
             .map_err(|e| AgentError::BackendError(e.to_string()))?;
+
+        if let Ok(p) = serde_json::from_str::<Plan>(&resp.text) {
+            if !p.steps.is_empty() {
+                return Ok(p);
+            }
+        }
+
         match extract_first_json(&resp.text) {
             Some(v) => Ok(Plan::from_value(&v, task).unwrap_or_else(|| Plan::single(task))),
             None => Ok(Plan::single(task)),
@@ -457,7 +546,7 @@ mod tests {
     #[tokio::test]
     async fn execute_runs_steps_and_collects_outputs() {
         let plan = Plan::single("greet the user");
-        let result = plan.execute(&MockBackend::default(), None).await.unwrap();
+        let result = plan.execute(&MockBackend::default(), None, None).await.unwrap();
         assert!(result.success);
         assert_eq!(result.outcomes.len(), 1);
         assert!(!result.outcomes[0].output.is_empty());
@@ -489,12 +578,21 @@ mod tests {
                 PlanStep { id: "3".into(), description: "c".into(), tool: None, depends_on: vec!["1".into(), "2".into()] },
             ],
         };
-        let result = plan.execute(&MockBackend::default(), None).await.unwrap();
+        let result = plan.execute(&MockBackend::default(), None, None).await.unwrap();
         assert_eq!(result.outcomes.len(), 3);
         // Outcomes returned in topological (review) order.
         assert_eq!(result.outcomes[0].step_id, "1");
         assert_eq!(result.outcomes[1].step_id, "2");
         assert_eq!(result.outcomes[2].step_id, "3");
+    }
+
+    #[tokio::test]
+    async fn execute_with_step_verifier_retries_on_failure() {
+        let plan = Plan::single("perform critical test");
+        let verifier = MockStepVerifier { should_pass: false };
+        let result = plan.execute(&MockBackend::default(), None, Some(&verifier)).await.unwrap();
+        assert!(result.success);
+        assert_eq!(result.outcomes.len(), 1);
     }
 
     #[test]

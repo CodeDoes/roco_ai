@@ -608,17 +608,10 @@ async fn backend_call(
     let req = CompletionRequest {
         system: system.to_string(),
         prompt: prompt.to_string(),
-        prefill: None,
-        output_schema: None,
         grammar: grammar.map(|s| s.to_string()),
         temperature,
         max_tokens,
-        estimated_prompt_tokens: 0,
-        thinking: false,
-        preserve_state: false,
-        on_token: None,
-        session: None,
-        bnf_mask: None,
+        ..Default::default()
     };
     let resp = backend
         .complete(req)
@@ -767,19 +760,10 @@ mod tests {
         agent.register("write", "prose", Box::new(|task, backend, ws| {
             let prompt = task.spec.get("prompt").and_then(|v| v.as_str()).unwrap_or("write");
             let req = CompletionRequest {
-                system: String::new(),
                 prompt: format!("Generate: {prompt}"),
-                prefill: None,
-                grammar: None,
                 temperature: 0.0,
                 max_tokens: 100,
-                estimated_prompt_tokens: 0,
-                thinking: false,
-                preserve_state: false,
-                output_schema: None,
-                on_token: None,
-                session: None,
-                bnf_mask: None,
+                ..Default::default()
             };
             let resp = futures::executor::block_on(backend.complete(req))
                 .map(|r| r.text)

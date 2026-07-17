@@ -190,9 +190,16 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
         let p = dir.join(candidate);
         if p.is_dir() { search_dirs.push(p); }
     }
+
+    // Also scan user cache directories like ~/.cache/roco
+    if let Ok(home) = env::var("HOME") {
+        let p_home_cache = PathBuf::from(home).join(".cache").join("roco");
+        if p_home_cache.is_dir() { search_dirs.push(p_home_cache); }
+    }
+
     if search_dirs.is_empty() {
         anyhow::bail!(
-            "no models/ directory found (tried {dir:?}models and {dir:?}../models). \
+            "no models/ or ~/.cache/roco/ directory found (tried {dir:?}models, {dir:?}../models, and ~/.cache/roco/). \
              Set $RWKV_MODEL explicitly or place a rwkv7 .st file in models/."
         );
     }

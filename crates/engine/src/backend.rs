@@ -200,33 +200,18 @@ pub async fn bake_persona(
         let req = CompletionRequest {
             system: if i == 0 { system.to_string() } else { String::new() },
             prompt: user_msg.to_string(),
-            prefill: None,
-            grammar: None,
             temperature: 0.0,
             max_tokens: 1024,
-            estimated_prompt_tokens: 0,
-            thinking: false,
             preserve_state: i > 0,
-            output_schema: None,
-            on_token: None,
-            session: None,
-            bnf_mask: None,
+            ..Default::default()
         };
         backend.complete(req).await?;
         let req_assistant = CompletionRequest {
-            system: String::new(),
-            prompt: String::new(),
             prefill: Some(assistant_msg.to_string()),
-            grammar: None,
             temperature: 0.0,
             max_tokens: 1024,
-            estimated_prompt_tokens: 0,
-            thinking: false,
             preserve_state: true,
-            output_schema: None,
-            on_token: None,
-            session: None,
-            bnf_mask: None,
+            ..Default::default()
         };
         backend.complete(req_assistant).await?;
     }

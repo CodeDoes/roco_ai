@@ -89,6 +89,7 @@ pub struct CompleteReq {
     pub prefill: Option<String>,
     pub max_tokens: usize,
     pub temperature: f32,
+    pub top_a: Option<f32>,
     #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
     pub grammar: Option<String>,
     /// Opaque grammar constraint callback, created outside this crate
@@ -379,6 +380,7 @@ impl RwkvActor {
         prefill: Option<String>,
         max_tokens: usize,
         temperature: f32,
+        top_a: Option<f32>,
         preserve_state: bool,
         on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
         _grammar: Option<String>,
@@ -434,6 +436,7 @@ impl RwkvActor {
         let prompt_len = prompt_tokens.len();
 
         let top_p = if temperature < 0.3 { 0.8 } else if temperature < 0.7 { 0.9 } else { 0.95 };
+        let top_a_val = top_a.unwrap_or(0.0);
 
         // Combine prompt tokens with prefill tokens if any
         let mut all_prompt_tokens = prompt_tokens;
@@ -481,15 +484,15 @@ impl RwkvActor {
                     if sum > 0.0 {
                         for v in p.iter_mut() { if v.is_finite() { *v /= sum; } }
                     }
-                    let t = sampling::sample_token(&p, temperature, 1.0);
+                    let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
                     if t > 0 {
                         mask.accept(t);
                         t
                     } else { break }
-                } else { sampling::sample_token(&p, temperature, top_p) }
+                } else { sampling::sample_token(&p, temperature, top_p, top_a_val) }
             };
             #[cfg(not(feature = "grammar"))]
-            let token = sampling::sample_token(probs.data(), temperature, top_p);
+            let token = sampling::sample_token(probs.data(), temperature, top_p, top_a_val);
 
             if token == 0 { break; }
 
@@ -537,15 +540,15 @@ impl RwkvActor {
                     if sum > 0.0 {
                         for v in p.iter_mut() { if v.is_finite() { *v /= sum; } }
                     }
-                    let t = sampling::sample_token(&p, temperature, 1.0);
+                    let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
                     if t > 0 {
                         mask.accept(t);
                         Some(t)
                     } else { None }
-                } else { Some(sampling::sample_token(&p, temperature, top_p)) }
+                } else { Some(sampling::sample_token(&p, temperature, top_p, top_a_val)) }
             };
             #[cfg(not(feature = "grammar"))]
-            let token_opt: Option<u32> = Some(sampling::sample_token(probs.data(), temperature, top_p));
+            let token_opt: Option<u32> = Some(sampling::sample_token(probs.data(), temperature, top_p, top_a_val));
 
             let token = match token_opt { Some(t) => t, None => break };
 
@@ -604,6 +607,7 @@ impl RwkvActor {
                         prefill,
                         max_tokens,
                         temperature,
+                        top_a,
                         grammar,
                         bnf_mask,
                         reply,
@@ -614,7 +618,7 @@ impl RwkvActor {
                     let result = self
                         .handle_complete(
                             system, prompt, prefill, max_tokens, temperature,
-                            preserve_state, on_token, grammar, session,
+                            top_a, preserve_state, on_token, grammar, session,
                             bnf_mask,
                         )
                         .await;
