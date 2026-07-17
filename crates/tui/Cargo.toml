@@ -12,3 +12,5 @@ roco-chat-common = { path = "../chat-common" }
 tokio.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
+ratatui = "0.26"
+crossterm = "0.27"

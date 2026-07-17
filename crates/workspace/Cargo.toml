@@ -14,3 +14,7 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 walkdir = "2"
+regex = "1"
+
+[dev-dependencies]
+filetime = "0.2"

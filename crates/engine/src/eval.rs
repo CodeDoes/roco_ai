@@ -170,17 +170,11 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let request = CompletionRequest {
         system: case.system.clone(),
         prompt: case.prompt.clone(),
-        prefill: None,
-        output_schema: None,
         grammar: case.grammar.clone(),
         temperature: case.temperature,
         max_tokens: case.max_tokens,
-        estimated_prompt_tokens: 0,
-        thinking: false,
-        preserve_state: false,
         on_token,
-        session: None,
-        bnf_mask: None,
+        ..Default::default()
     };
 
     let start = Instant::now();

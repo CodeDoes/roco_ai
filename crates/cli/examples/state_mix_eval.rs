@@ -64,37 +64,23 @@ async fn main() -> anyhow::Result<()> {
     
     println!("=== Probe: Sherlock (unmixed) ===");
     let resp = backend.complete(CompletionRequest {
-        system: String::new(),
         prompt: probe.to_string(),
-        prefill: None,
-        grammar: None,
         temperature: 0.7,
         max_tokens: 150,
-        estimated_prompt_tokens: 0,
-        thinking: false,
         preserve_state: true,
-        output_schema: None,
-        on_token: None,
         session: Some("sherlock".to_string()),
-        bnf_mask: None,
+        ..Default::default()
     }).await?;
     println!("Response: {}\n", resp.text.trim());
 
     println!("=== Probe: Tony (unmixed) ===");
     let resp = backend.complete(CompletionRequest {
-        system: String::new(),
         prompt: probe.to_string(),
-        prefill: None,
-        grammar: None,
         temperature: 0.7,
         max_tokens: 150,
-        estimated_prompt_tokens: 0,
-        thinking: false,
         preserve_state: true,
-        output_schema: None,
-        on_token: None,
         session: Some("tony".to_string()),
-        bnf_mask: None,
+        ..Default::default()
     }).await?;
     println!("Response: {}\n", resp.text.trim());
 
@@ -106,19 +92,12 @@ async fn main() -> anyhow::Result<()> {
     // Probe the blended state
     println!("=== Probe: Mixed (blended) ===");
     let resp = backend.complete(CompletionRequest {
-        system: String::new(),
         prompt: probe.to_string(),
-        prefill: None,
-        grammar: None,
         temperature: 0.7,
         max_tokens: 150,
-        estimated_prompt_tokens: 0,
-        thinking: false,
         preserve_state: true,
-        output_schema: None,
-        on_token: None,
         session: Some("mixed".to_string()),
-        bnf_mask: None,
+        ..Default::default()
     }).await?;
     println!("Response: {}\n", resp.text.trim());
 

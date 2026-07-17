@@ -174,10 +174,10 @@ impl<T: DeserializeOwned> OutputParser<T> for LooseJsonStrategy {
 /// classes, etc.), but parsing is manual and prone to schema drift.
 pub struct RawGbnfStrategy<T> {
     grammar: String,
-    parser: Box<dyn Fn(&str) -> Result<T, String>>,
+    parser: Box<dyn Fn(&str) -> Result<T, String> + Send + Sync>,
 }
 
-impl<T: DeserializeOwned> RawGbnfStrategy<T> {
+impl<T: DeserializeOwned + Send + Sync + 'static> RawGbnfStrategy<T> {
     /// Create from a raw GBNF string and a serde-compatible parser.
     ///
     /// The parser is typically just `|s| serde_json::from_str(s).map_err(...)`.
@@ -197,7 +197,7 @@ impl<T: DeserializeOwned> RawGbnfStrategy<T> {
     }
 
     /// Create with a custom parser (e.g., for non-JSON output formats).
-    pub fn with_parser(grammar: &str, parser: Box<dyn Fn(&str) -> Result<T, String>>) -> Self {
+    pub fn with_parser(grammar: &str, parser: Box<dyn Fn(&str) -> Result<T, String> + Send + Sync>) -> Self {
         Self {
             grammar: grammar.to_string(),
             parser,

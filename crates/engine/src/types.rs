@@ -40,6 +40,7 @@ pub struct CompletionRequest {
     pub output_schema: Option<String>,
     pub grammar: Option<String>,
     pub temperature: f32,
+    pub top_a: Option<f32>,
     pub max_tokens: usize,
     pub estimated_prompt_tokens: usize,
     pub thinking: bool,
@@ -63,6 +64,7 @@ impl Clone for CompletionRequest {
             output_schema: self.output_schema.clone(),
             grammar: self.grammar.clone(),
             temperature: self.temperature,
+            top_a: self.top_a,
             max_tokens: self.max_tokens,
             estimated_prompt_tokens: self.estimated_prompt_tokens,
             thinking: self.thinking,
@@ -83,6 +85,7 @@ impl std::fmt::Debug for CompletionRequest {
             .field("output_schema", &self.output_schema)
             .field("grammar", &self.grammar)
             .field("temperature", &self.temperature)
+            .field("top_a", &self.top_a)
             .field("max_tokens", &self.max_tokens)
             .field("estimated_prompt_tokens", &self.estimated_prompt_tokens)
             .field("thinking", &self.thinking)
@@ -103,6 +106,7 @@ impl Default for CompletionRequest {
             output_schema: None,
             grammar: None,
             temperature: 0.2,
+            top_a: None,
             max_tokens: 512,
             estimated_prompt_tokens: 0,
             thinking: false,

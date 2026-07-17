@@ -138,7 +138,9 @@ impl ModelBackend for RwkvBackend {
             tx.send(CompleteReq {
                 system: req.system, prompt: req.prompt, prefill: req.prefill,
                 max_tokens: req.max_tokens,
-                temperature: req.temperature, grammar: req.grammar,
+                temperature: req.temperature,
+                top_a: req.top_a,
+                grammar: req.grammar,
                 bnf_mask: req.bnf_mask,
                 reply: reply_tx,
                 preserve_state: req.preserve_state, on_token: req.on_token,
