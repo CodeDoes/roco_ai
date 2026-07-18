@@ -53,7 +53,16 @@ impl zed::Extension for RoCoExtension {
         _language_server_id: &zed::LanguageServerId,
         _worktree: &zed::Worktree,
     ) -> Result<Command, String> {
-        Err("No language server".to_string())
+        let roco_path = std::env::var("ROCO_PATH").unwrap_or_else(|_| "roco".to_string());
+        Ok(Command {
+            command: roco_path,
+            args: vec![
+                "server".to_string(),
+                "--story".to_string(),
+                "--stdio-lsp".to_string(),
+            ],
+            env: vec![],
+        })
     }
 
     fn run_slash_command(

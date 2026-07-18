@@ -14,6 +14,9 @@ use std::fs;
 #[path = "../story_routes.rs"]
 mod story_routes;
 
+#[path = "../lsp.rs"]
+mod lsp_handler;
+
 /// Spawn a detached child process for `roco server` or `roco gateway`.
 /// The parent redirects stdio to a log file, writes a PID file, and exits.
 fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path) {
@@ -171,6 +174,7 @@ fn cmd_server(extra: &[&str]) {
     let port_str = parse_opt("--port", extra).unwrap_or("8080");
     let port = port_str.parse::<u16>().unwrap_or(8080);
     let story_mode = extra.iter().any(|&a| a == "--story" || a == "-s");
+    let stdio_lsp = extra.iter().any(|&a| a == "--stdio-lsp");
 
     // Detach mode
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
@@ -207,6 +211,16 @@ fn cmd_server(extra: &[&str]) {
             }
         };
         println!("Model loaded successfully.");
+
+        // If spawned by Zed via language_server_command, handle LSP initialize
+        if stdio_lsp {
+            tokio::spawn(async {
+                match crate::lsp_handler::handle_lsp_initialize().await {
+                    Ok(()) => tracing::info!("LSP handshake complete — roco is ready"),
+                    Err(e) => tracing::warn!("LSP handshake: {e}"),
+                }
+            });
+        }
 
         if story_mode {
             println!("Story mode enabled — initializing story engine...");

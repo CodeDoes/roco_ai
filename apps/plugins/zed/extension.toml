@@ -4,8 +4,8 @@ version = "0.1.0"
 schema_version = 1
 
 [language_servers.roco]
+languages = ["Markdown"]
 name = "RoCo AI"
-language = "markdown"
 
 [slash_commands.roco]
 description = "Generate story text with RoCo AI"
