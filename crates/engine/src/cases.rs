@@ -445,8 +445,11 @@ pub fn fim_eval_cases() -> Vec<EvalCase> {
         AFTER text, never use <fim> tags, never add commentary."
         .to_string();
 
-    // Closed think-block prefill: suppresses <?> leakage on this
-    let prefill = Some("?>".to_string());
+    // Closed think-block prefill: feeds the model its own assistant turn
+    // opening with a closed think block, so `<think>` doesn't re-open and
+    // contaminate the JSON/prose output. See crates/engine/src/backend.rs
+    // NO_THINK_PREFILL for the same pattern across all eval cases.
+    let prefill = Some("</think></think>".to_string());
 
     // Both-sides bridge: resumes the baked few-shot session.
     //
