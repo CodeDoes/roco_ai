@@ -10,6 +10,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "../story_routes.rs"]
+mod story_routes;
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let sub = args.get(1).map(|s| s.as_str()).unwrap_or("help");
@@ -20,7 +23,7 @@ fn main() {
         "bless" => cmd_bless(&extra),
         "rwkv" => run_cargo("run", &["-p", "roco-cli", "--example", "rwkv_test", "--release"], &extra),
         "grammar" => run_cargo("run", &["-p", "roco-cli", "--example", "grammar_smoke", "--release"], &extra),
-        "gpu-check" => cmd_gpu_check(),
+        "gpu-check" => cmd_gpu_check(&extra),
         "server" => cmd_server(&extra),
         "gateway" => cmd_gateway(&extra),
         "tui" => cmd_tui(&extra),
@@ -90,11 +93,14 @@ fn cmd_gateway(extra: &[&str]) {
 fn cmd_server(extra: &[&str]) {
     use roco_server::{Server, ServerConfig};
     use roco_inference::RwkvBackend;
+    use crate::story_routes::create_story_router;
+    use roco_agent::story_engine::{StoryEngine, StoryConfig};
     use std::sync::Arc;
 
     let host = parse_opt("--host", extra).unwrap_or("127.0.0.1");
     let port_str = parse_opt("--port", extra).unwrap_or("8080");
     let port = port_str.parse::<u16>().unwrap_or(8080);
+    let story_mode = extra.iter().any(|&a| a == "--story" || a == "-s");
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -117,14 +123,41 @@ fn cmd_server(extra: &[&str]) {
         };
         println!("Model loaded successfully.");
 
-        let config = ServerConfig {
-            host: host.to_string(),
-            port,
-        };
-        let server = Server::new(config, backend);
-        println!("Starting server on {host}:{port}...");
-        if let Err(e) = server.run().await {
-            eprintln!("Server error: {e}");
+        if story_mode {
+            println!("Story mode enabled — initializing story engine...");
+            let story_config = StoryConfig {
+                interactive: true,
+                validate_quality: true,
+                ..Default::default()
+            };
+            let engine = match StoryEngine::new(story_config) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("Error creating story engine: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+            let app = roco_server::routes::create_router(backend.clone())
+                .merge(create_story_router(backend.clone(), engine));
+
+            let addr = format!("{host}:{port}");
+            println!("Starting story server on {addr}...");
+            let listener = tokio::net::TcpListener::bind(&addr).await
+                .expect("Failed to bind TCP listener");
+            if let Err(e) = axum::serve(listener, app).await {
+                eprintln!("Server error: {e}");
+            }
+        } else {
+            let config = ServerConfig {
+                host: host.to_string(),
+                port,
+            };
+            let server = Server::new(config, backend);
+            println!("Starting server on {host}:{port}...");
+            if let Err(e) = server.run().await {
+                eprintln!("Server error: {e}");
+            }
         }
     });
 }
@@ -231,13 +264,58 @@ fn run_cargo_get_code(cmd: &str, args: &[&str], extra: &[&str]) -> i32 {
     c.status().map(|s| s.code().unwrap_or(1)).unwrap_or(1)
 }
 
-fn cmd_gpu_check() {
-    println!("=== Vulkan devices ===");
-    let _ = Command::new("vulkaninfo").arg("--summary").status();
-    println!("\n=== RWKV model ===");
-    let _ = Command::new("ls").args(["-lh", "models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st"]).status();
-    println!("=== RWKV vocab ===");
-    let _ = Command::new("ls").args(["-lh", "assets/vocab/rwkv_vocab_v20230424.json"]).status();
+fn cmd_gpu_check(extra: &[&str]) {
+    let json_mode = extra.iter().any(|&a| a == "--json" || a == "-j");
+    let model_path = "models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st";
+    let vocab_path = "assets/vocab/rwkv_vocab_v20230424.json";
+
+    // Gather info
+    let vulkan_ok = Command::new("vulkaninfo")
+        .arg("--summary")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    let model_exists = std::path::Path::new(model_path).exists();
+    let vocab_exists = std::path::Path::new(vocab_path).exists();
+
+    if json_mode {
+        let info = serde_json::json!({
+            "vulkan": {
+                "available": vulkan_ok,
+            },
+            "model": {
+                "path": model_path,
+                "exists": model_exists,
+            },
+            "vocab": {
+                "path": vocab_path,
+                "exists": vocab_exists,
+            },
+        });
+        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+    } else {
+        println!("=== Vulkan devices ===");
+        let _ = Command::new("vulkaninfo").arg("--summary").status();
+        if !vulkan_ok {
+            eprintln!("(vulkaninfo not available — GPU check may be limited)");
+        }
+        println!();
+        println!("=== RWKV model ===");
+        if model_exists {
+            let _ = Command::new("ls").args(["-lh", model_path]).status();
+        } else {
+            eprintln!("Model not found at {model_path}");
+        }
+        println!("=== RWKV vocab ===");
+        if vocab_exists {
+            let _ = Command::new("ls").args(["-lh", vocab_path]).status();
+        } else {
+            eprintln!("Vocab not found at {vocab_path}");
+        }
+    }
 }
 
 fn help(sub: &str) {
@@ -246,8 +324,8 @@ fn help(sub: &str) {
     eprintln!("  bless [--snapshot PATH]            Bless snapshot as new oracle");
     eprintln!("  rwkv                              Smoke-test the RWKV backend");
     eprintln!("  grammar                           Grammar-constrained decode");
-    eprintln!("  gpu-check                         Show Vulkan + model info");
-    eprintln!("  server [--host ADDR] [--port PORT] Run the local HTTP server");
+    eprintln!("  gpu-check [--json|-j]              Show Vulkan + model info (--json for machine-readable)");
+    eprintln!("  server [--host ADDR] [--port PORT] [--story] Run the local HTTP server; --story adds story API");
     eprintln!("  gateway [--host ADDR] [--port PORT] [--target URL] [--rate-limit L] Run the API gateway");
     eprintln!("  tui                               Start the interactive terminal chat UI");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");

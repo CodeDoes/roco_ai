@@ -28,3 +28,4 @@ serde_json.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 futures.workspace = true
+axum = { version = "0.7", features = ["macros"] }

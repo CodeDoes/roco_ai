@@ -192,11 +192,11 @@ async fn get_chapter(
     }
 
     let content = &chapters[num - 1];
-    Json(Chapter {
-        number: num,
-        title: format!("Chapter {}", num),
-        content: content.clone(),
-    })
+    Json(serde_json::json!({
+        "number": num,
+        "title": format!("Chapter {}", num),
+        "content": content,
+    }))
 }
 
 async fn save_chapter(

@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
 
-const API_BASE = 'http://localhost:3000';
+function apiBase(): string {
+    const config = vscode.workspace.getConfiguration('roco');
+    return config.get<string>('apiUrl', 'http://localhost:8080');
+}
 
 async function apiRequest(path: string, options?: RequestInit): Promise<any> {
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await fetch(`${apiBase()}${path}`, {
         headers: { 'Content-Type': 'application/json' },
         ...options,
     });
