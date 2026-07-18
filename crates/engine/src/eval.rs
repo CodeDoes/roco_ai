@@ -151,6 +151,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     backend: &B,
     case: EvalCase,
     trace_path: Option<&std::path::Path>,
+    live_console: bool,
 ) -> EvalResult {
     let mut errors: Vec<String> = Vec::new();
     let mut checks: Vec<CheckResult> = Vec::new();
@@ -186,6 +187,21 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         }
         None => None,
     };
+
+    // Standalone live console streaming (used by `--live` in the example when
+    // no trace file is requested). Mirrors the trace behavior but writes to
+    // stdout so the user watches tokens arrive in real time.
+    let on_token = on_token.or_else(|| {
+        if live_console {
+            Some(Box::new(|word: &str| {
+                use std::io::Write;
+                let _ = std::io::stdout().write_all(word.as_bytes());
+                let _ = std::io::stdout().flush();
+            }) as Box<dyn Fn(&str) + Send + Sync>)
+        } else {
+            None
+        }
+    });
 
     // Use a pre-built BNF mask if the case supplies one. The eval harness
     // (e.g. the `eval_suite` example) builds masks from `grammar` + the
@@ -317,6 +333,7 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
     cases: Vec<EvalCase>,
     filter: Option<&str>,
     trace_path: Option<&std::path::Path>,
+    live_console: bool,
 ) -> EvalReport {
     let mut results = Vec::new();
     let start = Instant::now();
@@ -327,7 +344,7 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
                 continue;
             }
         }
-        let result = run_eval(backend, case, trace_path).await;
+        let result = run_eval(backend, case, trace_path, live_console).await;
         results.push(result);
     }
 
