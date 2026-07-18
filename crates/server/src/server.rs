@@ -4,6 +4,39 @@ use crate::config::ServerConfig;
 use crate::routes::create_router;
 use tracing::info;
 
+/// Install Ctrl+C + SIGTERM (Unix) signal handlers and return a future that
+/// resolves (with output \`()\`) when either fires. Used by \`Server::run\` to
+/// shut down the HTTP server gracefully.
+///
+/// On Unix this listens for SIGTERM via \`tokio::signal::unix\` because the
+/// default disposition of SIGTERM is to terminate the process — we want to
+/// catch it first, run shutdown logic, and exit 0. On Windows or if we fail
+/// to install the Unix handler, fall back to Ctrl+C only.
+async fn install_shutdown() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let term = async {
+        use tokio::signal::unix::{signal, SignalKind};
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => { sigterm.recv().await; }
+            Err(_) => {
+                // Could not install SIGTERM handler — fall through to ctrl_c
+                // so the future still resolves eventually. The OS default
+                // disposition still kills us on SIGTERM, just without grace.
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let term = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => info!("received Ctrl+C, shutting down"),
+        _ = term => info!("received SIGTERM, shutting down"),
+    }
+}
+
 pub struct Server {
     pub config: ServerConfig,
     pub backend: Arc<dyn ModelBackend>,
@@ -20,8 +53,20 @@ impl Server {
         let listener = tokio::net::TcpListener::bind(&addr).await
             .map_err(|e| format!("Failed to bind to {addr}: {e}"))?;
         let app = create_router(self.backend.clone());
-        axum::serve(listener, app).await
+
+        // Graceful shutdown: respond to Ctrl+C / SIGTERM so the process can
+        // drop the backend (releasing the GPU / cleaning up the actor
+        // mailbox) instead of being killed mid-generation. \`axum::serve\`
+        // takes a future that, once resolved, stops accepting new
+        // connections and lets existing in-flight SSE closures wind down.
+        // After the serve future resolves, the backend Arc is dropped at the
+        // end of \`run\`, triggering the backend's own Drop impl.
+        let shutdown = install_shutdown();
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown)
+            .await
             .map_err(|e| format!("Server run error: {e}"))?;
+        info!("server stopped; backend will be dropped (GPU released)");
         Ok(())
     }
 }
