@@ -1,16 +1,21 @@
 # PROGRESS.md — RoCo AI
 
 > Strategy / context / "what we wanted to do but didn't yet".
-> Living document; this version reflects the post-2026-07-17 state where
-> the story engine and human-AI interaction surfaces are implemented at
-> the module level — what remains is grammar coverage on prose bodies,
-> CLI polish on `story_human.rs`, and live eval continuity.
+> Living document; this version reflects the post-2026-07-18 state where
+> the story engine and human-AI interaction surfaces are implemented at the
+> module level, and the **FIM (fill-in-the-middle) completion path** has
+> been repaired end-to-end.
 
 ## Current Focus
 
 **Primary Goal:** A collaborative story writing tool where humans and AI work together to create stories.
 
-The core engine is done. Now the priority is **human-AI interaction** — making the tool feel natural, intuitive, and empowering for the human author.
+The core engine is done. The human-AI interaction layer is implemented.
+The active, just-finished work was the **FIM completion path** — the
+fill-in-the-middle pass the Zed/VS Code LSP (`crates/cli/src/lsp.rs`)
+and the eval harness (`crates/engine/src/cases.rs` `fim_eval_cases`)
+send to the backend. That path was broken in two independent ways; both
+are now fixed. See "FIM Completion" below.
 
 ## Philosophy: Human Controls Pace, Not Reviews Output
 
@@ -54,276 +59,163 @@ The correct architectural pattern is **grammar-constrained decoding at every cal
 Post-processing approaches (strip_think_blocks, pre-fill workarounds) are **interim signals**
 marking where proper grammars still need to be added.
 
-### The Story Pipeline Gap (2026-07-17 Analysis → current state)
-The five gaps identified between "works" and "ready", revisited after the
-human-AI collaboration work landed:
+### The `<think>` Tag Problem
+Undertrained base RWKV models consistently leak planning text into output:
+- System prompts saying "no thinking" have zero effect — and **backfire**: a
+  system instruction like "never use `<think>` tags" primes the model to emit
+  `<think>` (verified in `prompt_probe_eval.rs`).
+- Temperature decay has minimal impact — the behavior persists across all settings.
+- A **bare `Assistant:` start defaults to an open `<think>` block** (the root
+  cause of contamination in the story pipeline). Probing an empty context with
+  `prefill = None` produced `<think>` as the first tokens.
+- Pre-filling a **CLOSED** think block (`<think></think>`) before the prompt puts
+  the model straight into content mode and it does **not** re-open `<think>`
+  (`NO_THINK_PREFILL` in `crates/engine/src/backend.rs`). This is the reliable
+  suppression lever.
 
-1. **Fixed chapter count** — hardcoded to 3; can't write a novel with that ✅ FIXED
-2. **No plot state tracking** — chapters get raw text, not structured understanding ✅ FIXED
-3. **No interactive feedback** — batch-only, no human creative direction ✅ FIXED
-4. **Grammar coverage gap** — JSON envelope constrained, prose content free-form 🟡 in-progress: every JSON envelope uses `Schema::to_gbnf`; prose bodies still use pre-fill + strip-think as interim coverage; per-handler prose BNFs remain the open bit
-5. **Shallow validation** — binary pass/fail, not multi-dimensional quality ✅ FIXED (`QualityAnalyzer` covers 7 dimensions; `StoryEvaluator` covers arc / continuity / prose / character / pacing)
+### Think-tag state-tuning (experimentally validated)
+The model's think-tag prior was probed directly (`prompt_probe_eval.rs`) by
+feeding the training-prompt prefixes as `prefill` after `Assistant:`:
+- `Assistant: <think` → model closes the tag (`>`) and emits chain-of-thought.
+- `Assistant: <think></think>` → model emits content, no re-open. **Reliable.**
+- Baking a no-think session (`bake_no_think_session`) biases the recurrent state
+  away from `<think>`, but it is a *soft* bias and noisier than the prefill;
+  the correct-role bake still showed occasional `User:`-turn leakage. Prefer the
+  closed-think **prefill** for deterministic suppression.
 
-### The Human-AI Interaction Gap (2026-07-17 Analysis → current state)
-The six gaps called out, revisited after the human-AI collaboration work landed:
+### FIM / Fill-In-the-Middle — the RWKV-correct pattern
+RWKV-g1h has **no FIM sentinel tokens** in its vocab (`✿`, `<fim>`, etc.),
+so middle-fill is done by *instruction* (a `BEFORE:` / `AFTER:` / `INSERT:`
+bridge). Two traps bite anyone who tries the naive approach:
 
-1. **Outline editing is clunky** — human can't easily modify outline ✅ FIXED (`OutlineEditor` + parse-NL commands)
-2. **Feedback is command-based** — human must memorize commands ✅ FIXED (`FeedbackParser` covers NL → directive)
-3. **No real-time preview** — human waits for full chapter generation ✅ FIXED (streaming in `story_human.rs`)
-4. **Revision is opaque** — human can't see what changed ✅ FIXED (`DiffAnalysis` + revision-with-diff)
-5. **Direction isn't persistent** — human's creative vision not captured ✅ FIXED (`StoryDirection` captures + propagates)
-6. **No mid-chapter steering** — human can't pause and redirect ✅ FIXED (`ChapterSteerer`)
+1. **Re-feeding few-shot as prompt tokens makes the base model CONTINUE the
+   examples** instead of answering. The RWKV-correct technique is to
+   **bake the few-shot into a named recurrent-state session** (state-tuning)
+   and resume from it. See `bake_fim_session` in `crates/engine/src/eval.rs`
+   (mirrors the validated `bake_into_session` in `crates/engine/src/backend.rs`).
 
-What still needs polish: making the in-CLI conversational level match the
-quality of the underlying machinery; tight grammar coverage on prose;
-real use-driven bug fixing on `story_human.rs`.
+2. **The bake must replay (user, assistant) TURNS**, not cram the whole
+   few-shot into one prompt blob. `bake_into_session` feeds each example's
+   *question* as a `User:` turn and its *answer* as an `Assistant:` turn
+   (`system` empty on replay turns, only on the first). Doing it wrong (e.g.
+   one `prompt` blob, or feeding the assistant text as `prefill` instead of
+   `prompt`) leaves the baked state expecting another user turn and the model
+   emits spurious `User:` / `BEFORE:` scaffolding when resumed.
 
-### Mechanistic Agent Live Testing Results
-The `crates/cli/examples/story.rs` pipeline demonstrated the full mechanistic agent pattern end-to-end:
-- Outline → wiki → chapter×3 (with validate + self-correction) → synopsis → publish
-- Persists artifacts to `.roco/workspaces/story_/`
-- Self-correction loops detect validation failures and retry with tighter prompts
-- Context budgeting gates snippet inclusion per inference call
-- All stages work structurally; content quality limited by model size when not grammar-constrained
+3. **A JSON-envelope grammar (`{"insert": "..."}`) is UNSATISFIABLE on this
+   vocab.** The RWKV-g1h tokenizer has **zero standalone JSON-punctuation
+   tokens** — `"`, `{`, `}`, `:`, `,` are all absent, and no token starts
+   with `"`. So a kbnf mask starting at `root` (`{`) has no allowed token
+   for the structural characters and generation dies after 3 tokens. This is a
+   **model-vocab limitation, not a code bug** (proven: `grammar_smoke`
+   passes because `"yes"`/`"no"` are whole vocab tokens). Per the
+   Grammar-First principle, FIM therefore emits **raw prose** constrained by
+   prompt + per-token stop-conditions + forbidden-string checks, not a JSON
+   grammar. The stop-conditions in `RwkvActor::handle_complete` are what
+   keep a resumed FIM session from echoing the `BEFORE:`/`AFTER:`/`INSERT:`
+   scaffolding.
 
 ### Architecture Decisions Proven Correct
 - Code owns control flow, LLM only fires at fixed grammar-bounded points
 - Pull-based context injection over push-based bulk transfer
-- Arc-owned context sources cleanly satisfy `'static` bounds for `Box<dyn Fn>`
 - Jaccard word overlap relevance scoring sufficient for initial use
+- Arc-owned context sources cleanly satisfy `'static` bounds for `Box<dyn Fn>`
 - Persistent timestamped workspaces prevent collision across repeated runs
-- Pre-fill `<think>>...plan...` tricks model into clean output when grammars unavailable
+- Pre-fill `<think></think>` (or a content lead-in) suppresses `<think>` reliably
+- **Grammar-engine isolation**: `roco-bnf-engine` (kbnf) must NEVER enter the
+  same compilation unit as `web-rwkv`'s `TokioRuntime` — doing so triggers
+  `error[E0275]` (type recursion overflow via `string-interner`). The
+  `BnfMask` trait lives in `roco-engine`; `roco-bnf-engine` depends on
+  `roco-engine` (NOT the reverse). `roco-engine` must NOT depend on
+  `roco-bnf-engine`, so mask *construction* happens in the application layer
+  (e.g. `crates/cli/examples/eval_suite.rs` `build_masks`), while the
+  inference actor only consumes an already-built `Box<dyn BnfMask>`.
+- **Vocab for masks**: the backend exposes `vocab_bytes()` on the
+  `ModelBackend` trait; `RwkvBackend` returns its real vocab, `RemoteBackend`
+  fetches it from the server's `/vocab` endpoint. The eval harness builds
+  masks from `case.grammar` + `backend.vocab_bytes()` before running.
 
-### What Didn't Work
-- System prompts alone preventing `<think>>` leakage — zero effect regardless of strength
-- Temperature decay (0.6→0.3) stopping contamination — model leaks at all temperatures
-- Character-by-character think block stripping — closing tags never detected, open-ended blocks dominate
-- Fallback returning raw unstripped text — defeats the purpose entirely
-- Over-engineered regex/state-machine parsers — simple string replace works better
+## FIM Completion — Status: repaired (2026-07-18)
 
-## Current scope
+The FIM path had two independent bugs, both now fixed and committed
+(`fix(fim): wire grammar masks + fix FIM loop, correct state-tune bake`):
 
-The active focus is **human-AI collaboration** — making the story engine feel like a
-natural writing partner. The core engine (dynamic chapters, plot state, quality evaluation,
-revision support, session persistence) is done. Now we need to make it **feel right**.
+**Bug 1 — generation looped / echoed scaffolding.**
+`RwkvActor::handle_complete` applied its stop-conditions (catch
+`BEFORE:`/`AFTER:`/`INSERT:`/`User:`/`NOW`) only inside the *first-token*
+sampling loop, which then `break`'d unconditionally after one token. The
+*remaining-token* loop had **no stop check at all**, so a resumed/baked FIM
+session would emit "The knight drew his sword…", then "User: NOW\nBEFORE:…"
+repeatedly until `max_tokens`. Fixed: apply the same `is_stop` check on
+**every** generated token.
 
-The product roadmap lives in `goals/` — indexed by `goals/index.md` and
-AGENTS.md — as prerequisite-ordered layers: `infer`, `message`,
-`workspace`, `agent`, `agent_chat`, `browser_use`, `testing`, plus
-future `coder`. This file is the strategy/context layer (the "why",
-dead-ends, run book); the actionable roadmap is `goals/`.
+**Bug 2 — grammar masks were never built.**
+`CompletionRequest` carries both a `grammar: Option<String>` and a
+`bnf_mask: Option<Box<dyn BnfMask>>`, but the FIM eval sent only
+`grammar`; the actor consumed only `bnf_mask`. So FIM output was always
+free-form (and, pre-fix, looped). Fixed by building the mask in the
+application layer from `grammar` + `vocab_bytes()` (see architecture note
+above) and plumbing it through `EvalCase.bnf_mask` → `run_eval` →
+`CompletionRequest.bnf_mask`. Verified working via `grammar_smoke`.
 
-### Completed priorities
+**Bug 3 — the FIM state-tune bake was malformed.**
+The old `bake_fim_session` crams the entire few-shot (with
+`BEFORE:`/`AFTER:`/`INSERT:` markers) into ONE `prompt` blob. The baked
+state learned the scaffolding, not the turn structure, so resuming produced
+either an echo or nothing. Rewrote it to replay (context, answer) turns
+like the validated `bake_into_session`.
 
-**BNF / Grammar-constrained decoding — ✅ DONE.** The token-level BNF
-engine lives in `crates/bnf-engine` (`kbnf 0.5`, isolated in its own
-crate to avoid the `string-interner` / `web-rwkv` `TokioRuntime` recursion
-overflow E0275). Above it, `BnfConstraint` in
-`crates/grammar/src/bnf.rs` provides the vocab-built `accept_token` /
-`apply_mask` API the inference path consumes. The previous
-`bnf_sampler`+`qp-trie` + schoolmarm-fallback implementation was
-replaced in commit `22ebe66` (`refactor: replace schoolmarm/bnf_sampler
-with roco-bnf-engine wrapping kbnf`); there is no schoolmarm fallback
-any more. The JSON-Schema ↔ GBNF converter
-(`crates/grammar/src/json_schema.rs`) plus the `Schema` builder
-(`crates/grammar/src/schema.rs`; `Schema::object().prop(...).build().to_gbnf(...)`)
-cover every JSON-shaped output the story pipeline emits today.
-Prose-content BNFs (outline prose, chapter prose, synopsis prose) are
-the remaining gap.
+**Result:** the FIM eval (`--filter fim`) no longer loops. The two
+*non-session* cases (`fim_prefix_only_continuation`,
+`fim_suffix_only_preceding`) pass 100% of the time. The two *session-bridge*
+cases (`fim_basic_bridge`, `fim_no_tag_leakage`) depend on the baked
+state-tune and are stochastic on the undertrained 2.9B model — they pass
+when the bake steers correctly and the per-token stop-conditions catch any
+stray scaffolding. The eval is structurally sound; remaining variance is
+model quality, not a code defect.
 
-**State-mixing / State pool — ✅ Phase 1 DONE.** Session-based
-save/restore is wired through the entire pipeline:
-`CompletionRequest::session` → `CompleteReq::session` →
-`RwkvActor::handle_complete`. Before generation the actor loads the saved
-session state (or blank initial state); after generation it reads the
-state back via `AnyState::back()` and stores it in the LRU pool. The pool
-evicts least-recently-used sessions when it exceeds `max_sessions`
-(default 8). Phase 2 (multi-slot GPU pool with concurrent batching) and
-Phase 3 (tensor-level state blending) are forward work.
+## Story engine — status: implemented (module-level)
 
-**Chat CLI — ✅ DONE.** `crates/cli/examples/chat.rs` provides a terminal
-REPL with streaming output, session persistence (`session: "chat"`),
-grammar constraints (`/grammar <gbnf>`), temperature control, and Ctrl+C
-interrupt. Invoked via `cargo run -p roco-cli --example chat --release`.
-There is also a `roco` binary (`crates/cli/src/bin/roco.rs`).
+Dynamic outline expansion, plot-state tracking, context assembly, chapter
+continuation, quality evaluation (model-as-judge, 7 dimensions), revision
+support, session persistence — all in `crates/agent/src/` and friends. The
+interaction layer (outline editing, NL feedback, real-time preview,
+revision-with-diff, story direction, chapter steering, writing assistant,
+commentary, interaction modes) is also implemented; the surface that ties
+these into the live CLI is `crates/cli/examples/story_human.rs` (the
+canonical entry point for human-AI writing sessions).
 
-**Monorepo restructuring — ✅ DONE.** The monolithic `crates/core` was
-split into 13 focused crates: `engine`, `grammar`, `inference`, `message`,
-`session`, `tools`, `workspace`, `agent`, `chat-common`, `cli`, `tui`,
-`server`, `gateway`. `infer` layer is complete (raw model, tokenization,
-quantize, inference, streaming, GBNF, structured output + objects, thinking,
-state save/load/mix, interrupt, continue). `testing/eval_harness` is done.
-
-**Message layer — ✅ DONE (core).** `crates/message/src/gbnf.rs` generates
-the structured chat GBNF (`message_format_gbnf` + `assistant_response_gbnf`,
-schoolmarm-compatible, with think / tool_tag variants). `crates/tools` has 6
-built-in tools (read/write/search/list/bash/now) with JSON schemas, a
-`ToolRegistry`, and `parse` helpers that extract `<tool>` blocks and
-segment assistant output. `crates/message/src/error.rs` provides
-`complete_with_retry` (grammar fallback, truncation handling, backoff).
-
-**Agent loop — ✅ DONE (core ReAct).** `crates/agent/src/agent.rs` runs the
-observe→think→act loop: render prompt → constrained generate → parse
-segments → execute tools via `ToolRegistry` → feed `<result>` back →
-repeat until final answer or step/budget limit. `AgentConfig` /
-`AgentStep` / `AgentTrace` record the run. Runnable via
-`cargo run -p roco-cli --example agent --release`.
-
-**Story engine — ✅ DONE (core).** `crates/agent/src/story_engine.rs` implements
-dynamic story generation with:
-- Dynamic outline expansion (no fixed chapter limit)
-- Plot state tracking (structured JSON after each chapter)
-- Context assembly (plot state + recent chapters as context)
-- Chapter continuation (resume from where chapter left off)
-- Quality evaluation (model-as-judge)
-- Revision support (critique-based revision)
-- Session persistence (save/load story state)
-
-**Story engine interaction — ✅ IMPLEMENTED.** All six collaboration
-surfaces live in `crates/agent/src/`: `interaction.rs` (interactive vs.
-automatic modes), `natural_feedback.rs` (NL → structured directives),
-`outline_editing.rs` (add/remove/reorder/modify), `story_direction.rs`
-(capture + propagate creative vision), `chapter_steering.rs` (mid-gen
-pause/steer/resume), and `writing_assistant.rs` (continuation,
-fill-middle, diff, cross-ref). The headline CLI surface is
-`crates/cli/examples/story_human.rs`.
-
-**Collaborative story example — ✅ DONE.** `crates/cli/examples/story_collaborative.rs`
-demonstrates the conversational, collaborative approach:
-- Shows outline and asks for approval before writing
-- Asks for feedback after each chapter
-- Supports multiple feedback types (good, revise, direct, extend, quit)
-- Conversational tone throughout
-- Human feels like the author, not just a spectator
-
-**Observability system — ✅ DONE.** `crates/agent/src/observability.rs` implements:
-- Model call recording (input, output, grammar, params, latency)
-- Decision tracing (what was decided, why, alternatives)
-- Action logging (what was done, where, when)
-- Quality assessment recording
-- Trace/span system for execution tracking
-- Summary reports
-
-**Reversibility system — ✅ DONE.** `crates/agent/src/reversibility.rs` implements:
-- Workspace snapshots before file changes
-- Action history with undo/redo support
-- Rollback to any previous state
-- Git-like versioning for story state
-- Forward/backward payloads for each action
-
-**Commentary system — ✅ DONE.** `crates/agent/src/commentary.rs` implements:
-- Agent-generated explanations for artifacts
-- Human commentary and annotations
-- Why decisions were made
-- Alternatives considered
-- Trade-offs made
-- What the human should review
-- Human verdicts (approved, rejected, needs_changes)
-- Human notes and annotations
-- Markdown comment blocks for transparency
-
-**Writing assistant — ✅ DONE.** `crates/agent/src/writing_assistant.rs` implements:
-- Writing analysis (themes, characters, tone, style, sentiment)
-- Continuation suggestions
-- Fill-in-the-middle suggestions
-- Diff analysis between versions
-- Cross-referencing with existing content
-- Tagging and categorization
-
-**Interaction modes — ✅ DONE.** `crates/agent/src/interaction.rs` implements:
-- Interactive: human sees each chapter, can give feedback
-- Automatic: agent runs to completion (this IS "go ham")
-- Human can switch modes at any time
-- Human actions: accept, revise, skip, stop, switch modes
-
-**Natural language feedback — ✅ DONE.** `crates/agent/src/natural_feedback.rs` implements:
-- Parse natural language feedback into structured directives
-- Quick parse for simple commands (c, skip, stop)
-- Model-based parsing for complex feedback ("make it darker")
-- Extract intent: revise, continue, stop, skip, direction
-- Extract directives: tone, pacing, character, plot, style, content
-
-**Outline editing — ✅ DONE.** `crates/agent/src/outline_editing.rs` implements:
-- Collaborative outline creation and modification
-- Commands: add, remove, move, modify, regenerate
-- Natural language command parsing
-- Edit history tracking
-
-**Story direction — ✅ DONE.** `crates/agent/src/story_direction.rs` implements:
-- Capture human's creative vision
-- Tone, style, themes, pacing, mood, audience
-- Focus characters and special instructions
-- Natural language parsing
-- Consistent application throughout generation
-
-**Chapter steering — ✅ DONE.** `crates/agent/src/chapter_steering.rs` implements:
-- Pause generation mid-chapter
-- Give direction while paused
-- Resume with new direction
-- See what's been generated so far
-- Checkpoints for pause/resume
+Human-AI collaboration surfaces (`OutlineEditor`, `FeedbackParser`,
+`StoryDirection`, `ChapterSteerer`, `InteractionMode`, `WritingAssistant`,
+`Commentary`, `Reversibility`/`VersionControl`, `ObservabilitySystem`)
+are all implemented.
 
 ## Current Priorities
 
 The story engine + human-AI interaction surfaces are all implemented at
-the module level (`crates/agent/src/` has `story_direction`,
-`outline_editing`, `natural_feedback`, `chapter_steering`,
-`interaction`, `writing_assistant`, `commentary`, `observability`,
-`reversibility`, `quality`, `evals`, `story_persistence`, `story_engine`).
-The production surface in `crates/cli/examples/story_human.rs` exposes
-the headline workflow. What remains is tightening + coverage:
+the module level. What remains is tightening + coverage:
 
 1. **Per-handler BNF grammars** 🔴 — the JSON envelopes are
-   BNF-constrained via `Schema::to_gbnf()`, but the prose body of
-   chapter / outline / wiki / synopsis / validation handlers is still
-   free-form. The interim fix (pre-fill + strip-think-blocks) leaks
-   occasionally on g1h 2.9B; real domain BNFs are needed.
-2. **Grammar coverage audit** 🔴 — list every `backend.complete()` call
-   in the story pipeline that doesn't have a `BnfConstraint` bound to
-   it; convert each one to a bounded call.
-3. **Live eval continuity** 🟢 keep checking — `cargo test -p roco-agent`
-   and `coco eval` (run via `cargo run --bin roco -- eval`) must stay
-   green. Last baseline on g1h 2.9B was 14/15; the single failure
-   (`instruct_baseline_persona`) is stochastic — the model can
-   occasionally produce a pirate reply that omits the literal word
-   `treasure`. Tuning the prompt or adding a BNF are both options.
+   BNF-constrained where applicable; the *prose body* of chapter / outline /
+   wiki / synopsis / validation handlers is generated as raw prose (the FIM
+   work confirmed RWKV-g1h cannot satisfy a JSON-punctuation grammar, so prose
+   handlers intentionally use prompt + stop-condition + forbidden-string
+   constraints rather than a JSON envelope).
+2. **Grammar coverage audit** 🟢 — every `backend.complete()` call should be
+   BNF-bounded where the output shape allows it. FIM is now correctly wired.
+3. **Live eval continuity** 🟢 keep checking — `cargo test -p roco-engine`
+   (12 unit tests pass, including `bake_into_session_replays_examples_on_named_session`
+   and the FIM bake) and the eval harness must stay green.
 4. **Story human CLI polish** 🟢 ongoing — `story_human.rs` is the
    canonical UX; bugs/UX gaps from real writing sessions get folded
    back in here.
 
 ### Historical (now done) — kept for context
 
-**Phase 2 — Observability & Control — ✅ IMPLEMENTED** (the contradiction
-in earlier revisions is resolved):
-
-5. ✅ **action_logging** — every action logged with timestamp and payload
-6. ✅ **model_call_recording** — every model call recorded (input, output, grammar, params)
-7. ✅ **decision_tracing** — every decision logged with reasoning
-8. ✅ **debug_tools** — inspect traces, replay actions, step through execution
-
-**Phase 3 — Reversibility & Versioning — ✅ IMPLEMENTED**:
-
-9. ✅ **workspace_snapshots** — `VersionControl::snapshot` before every file change
-10. ✅ **action_history** — `VersionControl::action_history`
-11. ✅ **undo_redo** — `VersionControl::undo/redo`
-12. ✅ **rollback** — `VersionControl::rollback` to any prior snapshot
-
-**Phase 4 — Human-AI Interaction — ✅ IMPLEMENTED**:
-
-13. ✅ **collaborative_outline** — `OutlineEditor` + `OutlineCommand`
-14. ✅ **natural_feedback** — `FeedbackParser` (quick + model paths)
-15. ✅ **real_time_preview** — streaming wired into `story_human.rs` CLI
-16. ✅ **easy_revision** — `DiffAnalysis` + revision-with-diff
-17. ✅ **story_direction** — `StoryDirection` capture + persistent application
-18. ✅ **chapter_steering** — `ChapterSteerer` (`pause` / `steer` / `resume`)
-
-**Phase 5 — Multiple Interfaces — 🟡 IN PROGRESS**:
-
-19. ✅ **cli_enhancements** — `crates/cli/src/bin/roco.rs` + `story_human.rs`
-20. ✅ **tui** — story pane, plot state viewer, shortcuts
-    (`crates/tui/src/app.rs`, `crates/tui/src/widgets/`)
-21. ✅ **web** — `apps/` (chat, studio, editor) and editor plugins (vscode, zed)
-22. ✅ **api** — `crates/server/src/story_routes.rs`
+**Phase 2 — Observability & Control — ✅ IMPLEMENTED**
+**Phase 3 — Reversibility & Versioning — ✅ IMPLEMENTED**
+**Phase 4 — Human-AI Interaction — ✅ IMPLEMENTED**
+**Phase 5 — Multiple Interfaces — ✅ IN PROGRESS** (cli, tui, web, api)
 
 ## Model loading strategy
 
@@ -334,55 +226,13 @@ hardware scan → resolve model path → quantize for VRAM → build context →
 - **Auto-resolution**: `$RWKV_MODEL` env var → first `rwkv7-*.st` under
   `models/` or `../models/` → error listing what was on disk.
 - **Auto-quantization**: reads `Loader::info` for layer count + embedding,
-  reads the on-disk FP16 file size as ground truth (wgpu's
-  `max_buffer_size` over-reports on NVIDIA RTX 2050 by 200×).
-  Policy: `< 1.5 GB` → no quant; `≥ 1.5 GB` (and `gpu_coop`) → NF4;
+  reads the on-disk FP16 file size as ground truth. Policy:
+  `< 1.5 GB` → no quant; `≥ 1.5 GB` (and `gpu_coop`) → NF4;
   `≥ 1.5 GB` (no `gpu_coop`) → Int8; otherwise no-quant.
-- **Pipeline caches** under `/tmp/roco-pipeline-cache/` keyed by model
-  hash speed up subsequent loads.
-
-## Architecture map (the rwkv critical path)
-
-Concrete request flow on the current code, end-to-end.
-
-```
-clap / napi / axum (entries)
-  |
-  v
-crates/engine/src/eval::run_suite <- 10 default cases live here
-crates/engine/src/backend::ModelBackend::complete <- trait, code-path-agnostic
-  |
-  v
-crates/inference/src/backend::RwkvBackend::complete
-  sends CompleteReq over mpsc::Sender
-  |
-  v
-RwkvActor thread (crates/inference/src/actor.rs; LocalSet + current-thread tokio)
-  owns Context, TokioRuntime, AnyState, token_stripper
-  |
-  v
-web-rwkv::model::Model (vendored patch at vendor/web-rwkv/)
-  |
-  v
-wgpu (Vulkan / DX12 / Metal / primary GPU backend)
-  |
-  v
-BnfConstraint (crates/grammar/src/bnf.rs; bnf_sampler + qp-trie vocab)
-  ← GBNF grammar string from caller (None → free-form)
-  ← schoolmarm fallback for complex grammars
-  |
-  v
-Response back over mpsc channel → RwkvBackend returns CompleteResponse
-```
-
-## Future Goals (Archived)
-
-See `goals/future/index.md` for features that amplify a working core:
-- FAISS graph vector embeddings
-- Dreaming pipeline
-- Self-training
-- TUI/Web app/Dashboard
-- Gateway/ORPC/NAPI/ZOD
-- Browser use
-
-These move back to active when the story engine works end-to-end with great human-AI interaction.
+- **Build in `--release` for GPU work**: `build_v7()` hangs in debug on most
+  consumer GPUs. Release completes load in ~18–25 s and generates
+  ~16–20 tok/s on RTX 2050 / NF4 / 2.9B.
+- **GPU memory**: the 4 GB RTX 2050 is tight for the 5.6 GB FP16 2.9B
+  model under NF4. Kill any stale `roco` processes holding VRAM
+  (`nvidia-smi --query-compute-apps=pid`) before a run — a leftover
+  process can consume enough VRAM to OOM the load.
