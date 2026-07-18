@@ -169,6 +169,28 @@ impl ModelBackend for RwkvBackend {
             Ok(())
         })
     }
+
+    fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
+        let tx = self.tx.clone().expect("rwkv backend already shut down (channel closed)");
+        Box::pin(async move {
+            let (rtx, rrx) = tokio::sync::oneshot::channel();
+            tx.send(ActorMessage::SaveState(rtx)).await
+                .map_err(|e| EngineError::Backend(format!("rwkv save_state send: {e}")))?;
+            rrx.await
+                .map_err(|e| EngineError::Backend(format!("rwkv save_state recv: {e}")))?
+        })
+    }
+
+    fn load_state(&self, state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
+        let tx = self.tx.clone().expect("rwkv backend already shut down (channel closed)");
+        Box::pin(async move {
+            let (rtx, rrx) = tokio::sync::oneshot::channel();
+            tx.send(ActorMessage::LoadState(state, rtx)).await
+                .map_err(|e| EngineError::Backend(format!("rwkv load_state send: {e}")))?;
+            rrx.await
+                .map_err(|e| EngineError::Backend(format!("rwkv load_state recv: {e}")))?
+        })
+    }
 }
 
 impl Drop for RwkvBackend {

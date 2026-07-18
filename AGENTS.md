@@ -119,7 +119,9 @@ The difference is whether the **iteration count** is predetermined or model-driv
   `AnyState::back()`/`load()`, with an LRU pool (`max_sessions = 8`) in
   `crates/session`. Enables persistent conversations across calls. Phase 2
   (N-slot GPU pool with concurrent batching) and Phase 3 (tensor blending)
-  are forward work.
+  are forward work. `RwkvBackend::save_state()`/`load_state()` now serialize the
+  recurrent vector (incl. per-head min-decay channels) to/from bytes — usable
+  for introspection (see `docs/imagined-usecases.md`).
 - **Plan-and-execute harness**: **Implemented.** `Planner::plan()` produces
   grammar-constrained plans; `Plan::execute()` runs wave-level dependency-aware
   execution with topological sorting. Self-prompting chain assembly and inline
@@ -433,6 +435,34 @@ reasoning (outline expansion, plot-state extraction, quality critique), *intenti
 prefill `<think>` to get the trace, then strip the `<think>…</think>` span before
 parsing the JSON — so thinking is allowed only in those designated regions.
 The grammar-ban approach (`<`/`>` forbidden) is deprecated in favor of this.
+
+### Prompt-format & format-lock experiments (2026-07-18)
+Probed alternative message formats, System-instruction limits, agentic
+induction, and newline masking (`crates/cli/examples/prompt_format_probe_eval.rs`):
+- **Format lock-in**: only the native `System:/User:/Assistant:` format is
+  followed. ChatML / Alpaca / `Human:/Assistant:` are out-of-distribution and
+  *trigger* `<think>` (the model falls back to its training prior). The
+  `NO_THINK_PREFILL` still suppresses `<think>` across **all** formats — it is a
+  token-level recurrent-state effect, format-independent. You cannot retrain
+  the model onto a new format by prompting, but you can apply the same
+  state-tune regardless of surface format.
+- **System instructions are inert for think suppression**: none / neutral /
+  "no think" / "think step by step" / contradictory *all* emitted `<think>` in
+  the probe. Do not rely on system prompts to control think emission.
+- **Agentic behavior is inducible by a simple prompt — but only with the
+  no-think prefill**: the agentic system prompt + `NO_THINK_PREFILL` emitted
+  `<action>plan_story_outline</action>`; without the prefill the model just
+  thought and never emitted the action. Closing think is what lets the
+  structured action surface.
+- **Line-prefix newline masking does NOT work via prefill**: a `▸ `/`> ` prefill
+  was dropped after the first token (0/3, 0/2 lines kept the prefix). To force
+  per-line structure, a **grammar** mandating a line-prefix nonterminal is
+  required, not a prefill.
+- **Min-decay state-vector monitoring works**: `RwkvBackend::save_state()`
+  serializes the recurrent vector (the per-head min-decay channels are the last
+  two of `head_size+2`). Their norm (~145–157) and 256-bin entropy (~0.6–0.8
+  bits) are cheap, computable signals that vary by prompt (e.g. a contradictory
+  system prompt gave the highest entropy). See `docs/imagined-usecases.md`.
 
 ### Architecture Decisions Proven Correct
 - Code owns control flow, LLM only fires at fixed grammar-bounded points

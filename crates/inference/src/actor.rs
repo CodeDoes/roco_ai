@@ -116,6 +116,11 @@ pub enum ActorMessage {
     Cancel,
     #[cfg(feature = "grammar")]
     GetVocabBytes(oneshot::Sender<Vec<Vec<u8>>>),
+    /// Serialize the current recurrent state (incl. the per-head min-decay
+    /// channels) to bytes for downstream introspection / monitoring.
+    SaveState(oneshot::Sender<Result<Vec<u8>, EngineError>>),
+    /// Restore a recurrent state previously produced by `SaveState`.
+    LoadState(Vec<u8>, oneshot::Sender<Result<(), EngineError>>),
 }
 
 impl From<CompleteReq> for ActorMessage {
@@ -640,7 +645,78 @@ impl RwkvActor {
                 GetVocabBytes(reply) => {
                     let _ = reply.send(self.vocab_bytes.clone());
                 }
+                SaveState(reply) => {
+                    let result = self.save_state_bytes().await;
+                    let _ = reply.send(result);
+                }
+                LoadState(bytes, reply) => {
+                    let result = self.load_state_bytes(&bytes).await;
+                    let _ = reply.send(result);
+                }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// State (de)serialization — recurrent vector (incl. min-decay channels)
+// ---------------------------------------------------------------------------
+
+/// Layout: 4 × u32 little-endian dims (num_emb, head_size+2, num_layer, 1)
+/// followed by f32 little-endian data in row-major order.
+fn serialize_state(t: &TensorCpu<f32>) -> Vec<u8> {
+    let shape = t.shape();
+    let data: Vec<f32> = t.data().iter().copied().collect();
+    let mut out = Vec::with_capacity(16 + data.len() * 4);
+    for d in shape.iter() {
+        out.extend_from_slice(&(d as u32).to_le_bytes());
+    }
+    for x in data {
+        out.extend_from_slice(&x.to_le_bytes());
+    }
+    out
+}
+
+fn deserialize_state(bytes: &[u8]) -> Result<(Vec<u32>, Vec<f32>), EngineError> {
+    if bytes.len() < 16 || (bytes.len() - 16) % 4 != 0 {
+        return Err(EngineError::Backend("state bytes malformed".into()));
+    }
+    let mut dims = [0u32; 4];
+    for (i, d) in dims.iter_mut().enumerate() {
+        *d = u32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());
+    }
+    let tail = &bytes[16..];
+    let n = tail.len() / 4;
+    let mut data = Vec::with_capacity(n);
+    for i in 0..n {
+        data.push(f32::from_le_bytes(tail[i * 4..i * 4 + 4].try_into().unwrap()));
+    }
+    Ok((dims.to_vec(), data))
+}
+
+impl RwkvActor {
+    async fn save_state_bytes(&self) -> Result<Vec<u8>, EngineError> {
+        let t = self
+            .state
+            .back(0)
+            .await
+            .map_err(|e| EngineError::Backend(format!("state back: {e:?}")))?;
+        Ok(serialize_state(&t))
+    }
+
+    async fn load_state_bytes(&self, bytes: &[u8]) -> Result<(), EngineError> {
+        let (dims, data) = deserialize_state(bytes)?;
+        let shape = [
+            dims[0] as usize,
+            dims[1] as usize,
+            dims[2] as usize,
+            dims[3] as usize,
+        ];
+        let tensor = TensorCpu::from_data(shape, data)
+            .map_err(|e| EngineError::Backend(format!("state from_data: {e:?}")))?;
+        self.state
+            .load(tensor, 0)
+            .map_err(|e| EngineError::Backend(format!("state load: {e:?}")))?;
+        Ok(())
     }
 }
