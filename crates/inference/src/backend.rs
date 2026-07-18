@@ -129,6 +129,10 @@ impl RwkvBackend {
 impl ModelBackend for RwkvBackend {
     fn name(&self) -> &str { &self.name }
 
+    fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
+        self.vocab_bytes().ok()
+    }
+
     fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         let tx = self.tx.clone().expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {

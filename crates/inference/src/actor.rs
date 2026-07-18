@@ -131,6 +131,13 @@ impl From<BlendReq> for ActorMessage {
     fn from(req: BlendReq) -> Self { Self::BlendStates(req) }
 }
 
+// Session name used for FIM (fill-in-the-middle) state-tuning.
+// When this session is active, the model has few-shot FIM examples baked
+// into its recurrent state. After generating the INSERT completion, we
+// must force-terminate with token 0 to prevent the model from continuing
+// the few-shot dialogue pattern.
+pub const FIM_SESSION_NAME: &str = "roco_fim";
+
 // ---------------------------------------------------------------------------
 // Actor
 // ---------------------------------------------------------------------------
@@ -388,11 +395,13 @@ impl RwkvActor {
         top_a: Option<f32>,
         preserve_state: bool,
         on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
-        _grammar: Option<String>,
+        #[cfg_attr(not(feature = "grammar"), allow(unused))]
+        grammar: Option<String>,
         session: Option<String>,
         mut bnf_mask: Option<Box<dyn BnfMask>>,
     ) -> Result<(String, TokenUsage), EngineError> {
         let session_id = session.as_ref().cloned();
+        let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
 
         // Load session state or reset
         if let Some(ref sid) = session_id {
@@ -416,13 +425,21 @@ impl RwkvActor {
         }
 
         // Grammar constraint — passed in as opaque Box<dyn BnfMask>.
-        // Cannot be created here — kbnf types would overflow the compiler.
-        // The application layer creates BnfMask from grammar + vocab_bytes.
+        // Cannot be created here — kbnf types would overflow the compiler
+        // (E0275 against web-rwkv's TokioRuntime). The application layer
+        // builds the BnfMask from grammar + vocab_bytes and passes it in.
 
-        // Build prompt
+        // Build prompt.
+        //
+        // When resuming a baked session (session_id.is_some()) the system
+        // prompt and few-shot context are already encoded in the recurrent
+        // state — re-prepending `System:` would double-feed it and make the
+        // model echo the scaffolding. So resumed calls feed only the
+        // incremental context. The bake call itself (preserve_state) also
+        // skips the System wrapper for the same reason.
         let full = if system.is_empty() {
             format!("User: {prompt}\n\nAssistant:")
-        } else if preserve_state {
+        } else if session_id.is_some() || preserve_state {
             format!("User: {prompt}\n\nAssistant:")
         } else {
             format!("System: {}\n\nUser: {prompt}\n\nAssistant:", system.trim())
@@ -507,13 +524,31 @@ impl RwkvActor {
 
             if let Some(ref cb) = on_token { cb(&word); }
 
-            if word == "\n\n" || word == "\nUser:" || word == "\nHuman:" { break; }
+            // Stop conditions - catch FIM template pattern variations so the
+            // model doesn't echo the BEFORE/AFTER/INSERT scaffolding.
+            let potential_text = format!("{}{}", text, word);
+            let is_stop = word == "\n\n"
+                || word.trim() == "User:"
+                || word.trim() == "Human:"
+                || word.trim() == "NOW"
+                || word.trim_start().starts_with("BEFORE:")
+                || word.trim_start().starts_with("AFTER:")
+                || word.trim_start().starts_with("INSERT:")
+                || potential_text.contains("User: NOW")
+                || potential_text.contains("BEFORE:")
+                || potential_text.contains("AFTER:")
+                || potential_text.contains("INSERT:");
+            if is_stop { break; }
 
             text.push_str(&word);
             generated.push(token);
             first_token_sampled = true;
             inference.batches[0].push(token);
-            break;
+
+            // If the generated span picked up template markers, stop now.
+            if text.contains("User: NOW") || text.contains("BEFORE:") || text.contains("AFTER:") || text.contains("INSERT:") {
+                break;
+            }
         }
 
         if !first_token_sampled {
@@ -521,6 +556,7 @@ impl RwkvActor {
         }
 
         // Generate remaining tokens
+        let mut fim_tokens_generated = 0usize;
         for _ in 1..max_tokens {
             if self.cancel.load(Ordering::Relaxed) { break; }
             let input = inference.clone();
@@ -565,11 +601,59 @@ impl RwkvActor {
 
             if let Some(ref cb) = on_token { cb(&word); }
 
-            if word == "\n\n" || word == "\nUser:" || word == "\nHuman:" { break; }
+            // General stop conditions — must run on EVERY token (not just the
+            // first) or the model echoes the FIM template and loops. This is
+            // the guard that keeps a resumed/baked FIM session from repeating
+            // the BEFORE/AFTER/INSERT scaffolding.
+            let potential_text = format!("{}{}", text, word);
+            let is_stop = word == "\n\n"
+                || word.trim() == "User:"
+                || word.trim() == "Human:"
+                || word.trim() == "NOW"
+                || word.trim_start().starts_with("BEFORE:")
+                || word.trim_start().starts_with("AFTER:")
+                || word.trim_start().starts_with("INSERT:")
+                || potential_text.contains("User: NOW")
+                || potential_text.contains("BEFORE:")
+                || potential_text.contains("AFTER:")
+                || potential_text.contains("INSERT:");
+            if is_stop {
+                // Don't append the stop marker to the output.
+                break;
+            }
 
             text.push_str(&word);
             generated.push(token);
             inference.batches[0] = RnnInputBatch::new(vec![token], RnnOption::Last);
+
+            // FIM session handling: after generating a reasonable INSERT,
+            // force-feed token 0 (end-of-sequence) to properly terminate
+            // the recurrent state, then break.
+            if is_fim_session {
+                fim_tokens_generated += 1;
+                // Allow at least 8 tokens for the INSERT, max 64 before forcing end
+                if fim_tokens_generated >= 8 {
+                    // Check if we've hit a natural stopping point (sentence end)
+                    // OR if we detect the FIM template pattern looping
+                    let is_template_loop = text.contains("User: NOW")
+                        || text.contains("BEFORE:")
+                        || text.contains("AFTER:")
+                        || text.contains("INSERT:");
+                    let should_force_end = fim_tokens_generated >= 64
+                        || word.ends_with('.')
+                        || word.ends_with('?')
+                        || word.ends_with('!')
+                        || is_template_loop;
+                    if should_force_end {
+                        // Feed token 0 to the model to update recurrent state with EOS
+                        let _ = self.runtime.infer(RnnInput::new(
+                            vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
+                            self.token_chunk_size,
+                        )).await;
+                        break;
+                    }
+                }
+            }
         }
 
         let result_text = if generated.is_empty() {

@@ -43,6 +43,13 @@ pub trait ModelBackend: Send + Sync {
     fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
         Box::pin(async move { Err(EngineError::Backend("interrupt not supported".into())) })
     }
+
+    /// Return the model's vocabulary as per-token byte sequences, used to
+    /// build BNF grammar masks. Returns `None` by default for backends that
+    /// don't expose their vocab (e.g. `MockBackend`).
+    fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
+        None
+    }
 }
 
 /// Deterministic backend for tests / pre-model development.

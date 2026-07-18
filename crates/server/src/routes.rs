@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use base64::Engine;
 use axum::{
     extract::State,
+    http::StatusCode,
     response::{sse::{Event, KeepAlive, Sse}, IntoResponse},
     routing::{get, post},
     Json, Router,
@@ -28,6 +30,14 @@ pub struct OpenAiCompletionRequest {
     pub stream: Option<bool>,
     pub thinking: Option<bool>,
     pub grammar: Option<String>,
+    pub prefill: Option<String>,
+    /// Named recurrent-state session to load before, and (with
+    /// `preserve_state`) save after, this completion. Enables state-tuning
+    /// (e.g. baking few-shot examples into a session the model resumes from).
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub preserve_state: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,6 +85,7 @@ pub fn create_router(backend: Arc<dyn ModelBackend>) -> Router {
     let state = AppState { backend };
     Router::new()
         .route("/health", get(handle_health))
+        .route("/vocab", get(handle_vocab))
         .route("/complete", post(handle_complete))
         .route("/v1/completions", post(handle_openai_completion))
         .with_state(state)
@@ -82,6 +93,24 @@ pub fn create_router(backend: Arc<dyn ModelBackend>) -> Router {
 
 async fn handle_health() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok", "backend": "rwkv" }))
+}
+
+/// Return the model vocabulary as base64-encoded per-token byte strings.
+/// Used by remote clients to build BNF grammar masks locally (the mask
+/// builder must run in the client's compilation unit, not the server's).
+async fn handle_vocab(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    match state.backend.vocab_bytes() {
+        Some(vocab) => {
+            let b64: Vec<String> = vocab
+                .iter()
+                .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes))
+                .collect();
+            Json(serde_json::json!({ "vocab": b64 })).into_response()
+        }
+        None => (StatusCode::NOT_IMPLEMENTED, "vocab not available").into_response(),
+    }
 }
 
 async fn handle_complete(
@@ -104,6 +133,8 @@ async fn handle_openai_completion(
     let temp = req.temperature.unwrap_or(0.2);
     let max_tok = req.max_tokens.unwrap_or(512);
     let think = req.thinking.unwrap_or(false);
+    let sess = req.session.clone();
+    let preserve = req.preserve_state.unwrap_or(false);
 
     let is_stream = req.stream.unwrap_or(false);
 
@@ -141,6 +172,9 @@ async fn handle_openai_completion(
                 max_tokens: max_tok,
                 thinking: think,
                 grammar: req.grammar,
+                prefill: req.prefill,
+                session: sess.clone(),
+                preserve_state: preserve,
                 on_token: Some(on_token),
                 ..Default::default()
             };
@@ -174,6 +208,9 @@ async fn handle_openai_completion(
             max_tokens: max_tok,
             thinking: think,
             grammar: req.grammar,
+            prefill: req.prefill,
+            session: sess.clone(),
+            preserve_state: preserve,
             ..Default::default()
         };
 

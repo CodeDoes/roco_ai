@@ -17,7 +17,7 @@ use crate::types::{CompletionRequest, TokenUsage};
 // Eval case definition
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct EvalCase {
     pub name: String,
     pub description: String,
@@ -30,6 +30,21 @@ pub struct EvalCase {
     pub min_output_chars: usize,
     #[serde(default)]
     pub grammar: Option<String>,
+    /// Pre-built BNF mask (overrides `grammar` when present). The eval
+    /// harness does not construct masks itself (that would pull grammar-engine
+    /// types into a compilation unit shared with the inference backend,
+    /// triggering `error[E0275]`); callers that want constrained decoding
+    /// build the mask from `grammar` + the backend's vocab and set this field.
+    #[serde(skip)]
+    pub bnf_mask: Option<Box<dyn crate::BnfMask>>,
+    #[serde(default)]
+    pub prefill: Option<String>,
+    /// Optional named recurrent-state session to resume from (state-tuning).
+    #[serde(default)]
+    pub session: Option<String>,
+    /// Whether to persist the resulting state into the session after this call.
+    #[serde(default)]
+    pub preserve_state: bool,
     pub category: EvalCategory,
     #[serde(default)]
     pub oracle: Option<String>,
@@ -45,6 +60,7 @@ pub enum EvalCategory {
     Throughput,
     Format,
     Context,
+    Fim,
 }
 
 impl std::fmt::Display for EvalCategory {
@@ -57,6 +73,7 @@ impl std::fmt::Display for EvalCategory {
             Self::Throughput => "throughput",
             Self::Format => "format",
             Self::Context => "context",
+            Self::Fim => "fim",
         })
     }
 }
@@ -127,9 +144,12 @@ impl EvalReport {
 // Running evals
 // ---------------------------------------------------------------------------
 
+/// Build a BNF mask from a GBNF grammar string, using the backend's
+/// vocabulary bytes.
+///
 pub async fn run_eval<B: ModelBackend + Send + Sync>(
     backend: &B,
-    case: &EvalCase,
+    case: EvalCase,
     trace_path: Option<&std::path::Path>,
 ) -> EvalResult {
     let mut errors: Vec<String> = Vec::new();
@@ -167,10 +187,21 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         None => None,
     };
 
+    // Use a pre-built BNF mask if the case supplies one. The eval harness
+    // (e.g. the `eval_suite` example) builds masks from `grammar` + the
+    // backend's vocabulary bytes and sets `bnf_mask` before running, since
+    // `roco-engine` itself must not depend on the grammar-engine crate
+    // (doing so triggers `error[E0275]` against the inference backend).
+    let bnf_mask = case.bnf_mask;
+
     let request = CompletionRequest {
         system: case.system.clone(),
         prompt: case.prompt.clone(),
         grammar: case.grammar.clone(),
+        bnf_mask,
+        prefill: case.prefill.clone(),
+        session: case.session.clone(),
+        preserve_state: case.preserve_state,
         temperature: case.temperature,
         max_tokens: case.max_tokens,
         on_token,
@@ -283,7 +314,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
 pub async fn run_suite<B: ModelBackend + Send + Sync>(
     suite_name: &str,
     backend: &B,
-    cases: &[EvalCase],
+    cases: Vec<EvalCase>,
     filter: Option<&str>,
     trace_path: Option<&std::path::Path>,
 ) -> EvalReport {
@@ -321,6 +352,92 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
         suite_name: suite_name.to_string(), backend_name: backend.name().to_string(),
         total, passed, failed, total_latency_ms, results, category_breakdown,
     }
+}
+
+/// Named recurrent-state session the few-shot FIM examples are baked into.
+pub const FIM_SESSION: &str = "roco_fim";
+
+/// Few-shot examples demonstrating the BEFORE/AFTER/INSERT bridge task.
+///
+/// These are baked into the recurrent state once (state-tuning), not re-fed
+/// as prompt tokens on every completion call. Each example is a (context,
+/// answer) pair: the `context` is what the model sees as a *user* turn
+/// (the BEFORE/AFTER/INSERT scaffold), and the `answer` is the *assistant*
+/// turn it should learn to produce (the bridging prose).
+///
+/// The bake replays these as proper (user, assistant) turns — mirroring
+/// `bake_into_session`, the validated state-tune pattern. Feeding the
+/// answer through `prompt` (not `prefill`) makes the baked state learn the
+/// assistant role from the User:/Assistant: framing. The bridge cases then
+/// resume from this state and, given a fresh BEFORE/AFTER/INSERT scaffold,
+/// emit only the bridging prose.
+///
+/// (Zed's Zeta-2 FIM uses literal `<[fim-*]>` sentinels; RWKV-g1h
+/// has no such tokens in its vocab, so we use a natural BEFORE/AFTER/INSERT
+/// bridge instead.)
+pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
+    (
+        "BEFORE: The knight drew his sword and stepped forward.\nAFTER: the dragon took to the air, wings blotting out the sun.\nINSERT:",
+        "He raised the blade, bracing for the clash.",
+    ),
+    (
+        "BEFORE: She whispered a spell under her breath.\nAFTER: the ward flared to life around them.\nINSERT:",
+        "Light gathered at her fingertips.",
+    ),
+    (
+        "BEFORE: A lone cultivator climbed the mist-shrouded peak.\nAFTER: and the sect elders bowed in recognition.\nINSERT:",
+        "At the summit he found the lost scripture waiting.",
+    ),
+];
+
+/// Bake the few-shot FIM examples into a named session on the backend.
+///
+/// RWKV is not FIM-sentinel trained and re-feeding few-shot as prompt tokens
+/// makes the base model continue the examples instead of answering. The
+/// RWKV-correct technique is to bake the examples into the recurrent state
+/// once (proper (user, assistant) turn replay) and resume from it. Returns
+/// an error if the backend cannot bake.
+///
+/// The system instruction is included only on the first user turn (the actor
+/// drops the `system` field for session/preserve_state calls), so the task
+/// persona and the few-shot both live in the recurrent state.
+pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(
+    backend: &B,
+) -> Result<(), String> {
+    let instruction = "You are RoCo, a collaborative story-writing assistant. \
+        Given the text BEFORE the cursor and the text AFTER the cursor, write \
+        ONLY the short passage that connects them (the INSERT field). Never \
+        repeat the BEFORE or AFTER text, never use <fim> tags, never add \
+        commentary.";
+    for (i, (context, answer)) in FIM_FEW_SHOT.iter().enumerate() {
+        let user_req = CompletionRequest {
+            system: if i == 0 { instruction.to_string() } else { String::new() },
+            prompt: context.to_string(),
+            prefill: Some("<think></think>".to_string()),
+            temperature: 0.0,
+            max_tokens: 1,
+            session: Some(FIM_SESSION.to_string()),
+            preserve_state: true,
+            ..Default::default()
+        };
+        if let Err(e) = backend.complete(user_req).await {
+            return Err(format!("FIM bake (user turn {i}) failed: {e}"));
+        }
+        let asst_req = CompletionRequest {
+            system: String::new(),
+            prompt: answer.to_string(),
+            prefill: Some("<think></think>".to_string()),
+            temperature: 0.0,
+            max_tokens: 1,
+            session: Some(FIM_SESSION.to_string()),
+            preserve_state: true,
+            ..Default::default()
+        };
+        if let Err(e) = backend.complete(asst_req).await {
+            return Err(format!("FIM bake (assistant turn {i}) failed: {e}"));
+        }
+    }
+    Ok(())
 }
 
 pub fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) {

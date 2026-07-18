@@ -1,18 +1,18 @@
 [package]
-name = "roco-engine"
+name = "roco-infer-client"
 version.workspace = true
 edition.workspace = true
 
 [lib]
-name = "roco_engine"
+name = "roco_infer_client"
 
 [dependencies]
+roco-engine = { path = "../engine" }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
 anyhow.workspace = true
-async-trait.workspace = true
 tracing.workspace = true
 futures.workspace = true
-roco-grammar = { path = "../grammar" }
+reqwest.workspace = true
+base64 = "0.22"

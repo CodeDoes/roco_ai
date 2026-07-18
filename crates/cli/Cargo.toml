@@ -19,6 +19,7 @@ roco-workspace = { path = "../workspace" }
 roco-bnf-engine = { path = "../bnf-engine" }
 roco-server = { path = "../server" }
 roco-gateway = { path = "../gateway" }
+roco-infer-client = { path = "../infer-client" }
 roco-tui = { path = "../tui" }
 tokio.workspace = true
 tracing.workspace = true

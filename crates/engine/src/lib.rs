@@ -15,3 +15,4 @@ pub use eval::*;
 pub use cases::*;
 
 pub use types::BnfMask;
+pub use roco_grammar::Schema;
