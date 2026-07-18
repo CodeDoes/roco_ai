@@ -121,8 +121,22 @@ bridge). Two traps bite anyone who tries the naive approach:
    (`GBNF/fill_in_middle.bnf`) proves this: it accepts a plain English
    sentence/paragraph with no template markers and structurally forbids
    `<think>` / `<fim>` / `BEFORE:` scaffolding. It's the reference for the
-   "prose handlers can be grammar-bounded" path, and a candidate constraint
-   for the FIM completion output once the LSP is wired to send a grammar.
+   "prose handlers can be grammar-bounded" path.
+
+   **The FIM grammar STOPS at the stop token.** `fill_in_middle.bnf` is
+   *finite*: `sentence` is bounded to 1–3 words and `root` to 1–4 sentences,
+   each ending at a `terminator` (`.`/`?`/`!`). Once the terminator is
+   produced, `root` is fully matched and the engine reports
+   `is_finished() == true`, so generation terminates at the stop token
+   instead of running to `max_tokens` or relying solely on actor
+   stop-conditions. This is wired into the FIM eval (`crates/engine/src/
+   cases.rs` `fim_eval_cases`): every FIM case now carries `grammar:
+   Some(FillInMiddle.source())` and a shared `max_tokens` ceiling (128),
+   so the eval is bounded by the grammar's stop *and* the token cap. The
+   property is locked by a random-walk test
+   (`grammar_library::tests::random_walk_fim`) that walks the grammar with a
+   multichar vocab and asserts it reaches `is_finished()` within
+   `max_tokens` and ends on a stop token across 25 trials.
 
 ### Architecture Decisions Proven Correct
 - Code owns control flow, LLM only fires at fixed grammar-bounded points
@@ -245,14 +259,16 @@ are all implemented.
 The story engine + human-AI interaction surfaces are all implemented at
 the module level. What remains is tightening + coverage:
 
-1. **Per-handler BNF grammars** 🔴 — the JSON envelopes are
+1. **Per-handler BNF grammars** 🟡 — the JSON envelopes are
    BNF-constrained where applicable; the *prose body* of chapter / outline /
    wiki / synopsis / validation handlers is generated as raw prose (the FIM
    work confirmed RWKV-g1h cannot satisfy a JSON-punctuation grammar, so prose
    handlers intentionally use prompt + stop-condition + forbidden-string
    constraints rather than a JSON envelope). `FillInMiddle` proves a
-   char-class prose grammar *is* satisfiable and is the template for routing
-   these handlers through real grammars.
+   char-class prose grammar *is* satisfiable **and stops at the stop token**
+   (finite, terminator-terminated) — it is now wired into the FIM eval
+   (`fim_eval_cases`) as the constraint, and is the template for routing the
+   remaining prose handlers through real grammars.
 2. **Grammar coverage audit** 🟢 — every `backend.complete()` call should be
    BNF-bounded where the output shape allows it. FIM is now correctly wired
    end-to-end (LSP → RemoteBackend → inference server → FIM pass).

@@ -409,20 +409,33 @@ pub fn message_eval_cases() -> Vec<EvalCase> {
 // AI prose completions via the LSP `textDocument/completion` path (not its
 // native `edit_predictions` provider), so this is the real integration.
 //
-// RWKV has no FIM sentinel convention (its vocab contains no `✿`/`<fim>`
+// RWKV has no FIM sentinel convention (its vocab contains no `\u271f`/`<fim>`
 // tokens), so middle fill is done by instruction. For the both-sides case
 // the LSP bakes a few-shot bridge into a named session (state-tuning) and
 // resumes it; for one-side-empty cases it falls back to a plain
 // `User:/Assistant:` completion (resuming the baked session would loop the
 // example template). The closed think-block `prefill` suppresses `<?>`.
 //
-// Output is JSON-constrained with an "insert".into() field containing the prose.
-// This avoids the problem of constraining prose directly with BNF (too restrictive).
-// The JSON schema is converted to GBNF, and the string content is escaped.
+// Output is constrained by the `FillInMiddle` prose BNF (`GBNF/fill_in_middle.bnf`),
+// NOT a JSON envelope. The RWKV-g1h vocab contains no standalone
+// JSON-punctuation tokens (`"`, `{`, `}`, `:`) and no token starting with
+// `"`, so a `{"insert": ...}` grammar is unsatisfiable (the mask has no
+// allowed token for the structural characters and generation dies after the
+// opening `{`). The `FillInMiddle` grammar is character-class based, so the
+// real vocab satisfies it, and it TERMINATES at a sentence `terminator`
+// (the stop token) -- the engine reports `is_finished()` and generation stops
+// there instead of running to `max_tokens`. The grammar structurally forbids
+// `<`, so think/scaffolding leaks (`<fim>`, `<?>`) cannot appear. The actor's
+// per-token stop-conditions are a belt-and-suspenders backstop.
 pub fn fim_eval_cases() -> Vec<EvalCase> {
     use crate::eval::{EvalCase, EvalCategory};
-    use roco_grammar::schema_to_gbnf;
-    use serde_json::json;
+    use roco_grammar::grammar_library::StoryGrammar;
+
+    // Prose grammar that terminates at the stop token (see GBNF/fill_in_middle.bnf).
+    let fim_grammar = StoryGrammar::FillInMiddle.source().to_string();
+    // Hard ceiling so a degenerate generation can never run unbounded even if
+    // the grammar somehow fails to reach a finished state.
+    let fim_max_tokens = 128usize;
 
     // System used for the both-sides baked-session bridge.
     let fim_system = "You are RoCo, a collaborative story-writing assistant. \
@@ -437,115 +450,111 @@ pub fn fim_eval_cases() -> Vec<EvalCase> {
 
     // Both-sides bridge: resumes the baked few-shot session.
     //
-    // NOTE: FIM uses RAW PROSE output, not a JSON envelope. The RWKV-g1h
-    // vocab contains no standalone JSON-punctuation tokens (`"`, `{`, `}`,
-    // `:`) and no token starting with `"`, so a `{"insert": ...}` grammar
-    // is unsatisfiable (the mask has no allowed token for the structural
-    // characters and generation dies after the opening `{`). This matches
-    // AGENTS.md's guidance: constrain prose via prompt + stop-conditions +
-    // forbidden-string checks, not a JSON grammar. The closed-think prefill
-    // suppresses <?> leakage; the per-token stop-conditions in the actor
-    // prevent the model from echoing the BEFORE/AFTER/INSERT scaffolding.
+    // NOTE: FIM uses the `FillInMiddle` prose BNF (char-class based, so the
+    // RWKV-g1h vocab can satisfy it), NOT a JSON envelope -- the vocab has no
+    // standalone JSON-punctuation tokens, so `{"insert": ...}` is
+    // unsatisfiable. The grammar TERMINATES at a sentence `terminator` (the
+    // stop token): the engine reports `is_finished()` and generation stops
+    // there instead of running to `max_tokens`. The closed-think prefill
+    // suppresses `<?>` leakage; forbidden-string checks catch any stray
+    // scaffolding the model might attempt.
     let bridge_prompt = |prefix: &str, suffix: &str| {
         format!("NOW\nBEFORE: {prefix}\nAFTER: {suffix}\nINSERT:")
     };
 
-    vec![
+    let mk = |name: &str,
+              description: &str,
+              system: String,
+              prompt: String,
+              expected_hints: Vec<String>,
+              forbidden_strings: Vec<String>,
+              min_output_chars: usize,
+              session: Option<String>| {
         EvalCase {
-            name: "fim_basic_bridge".into(),
-            description: "Fills a hole between two coherent story clauses with bridging text".into(),
-            system: fim_system.clone(),
-            prompt: bridge_prompt(
+            name: name.to_string(),
+            description: description.to_string(),
+            system,
+            prompt,
+            expected_hints,
+            forbidden_strings,
+            max_tokens: fim_max_tokens,
+            temperature: 0.35,
+            min_output_chars,
+            grammar: Some(fim_grammar.clone()),
+            prefill: prefill.clone(),
+            bnf_mask: None,
+            session,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Fim,
+        }
+    };
+
+    vec![
+        mk(
+            "fim_basic_bridge",
+            "Fills a hole between two coherent story clauses with bridging text",
+            fim_system.clone(),
+            bridge_prompt(
                 "The knight drew his sword and stepped forward.",
                 "the dragon took to the air, wings blotting out the sun.",
             ),
-            expected_hints: vec!["raised".into(), "blade".into(), "clash".into()],
-            forbidden_strings: vec![
+            vec!["raised".into(), "blade".into(), "clash".into()],
+            vec![
                 "<fim".into(),
                 "The knight drew his sword".into(),
                 "the dragon took to the air".into(),
             ],
-            max_tokens: 128,
-            temperature: 0.35,
-            min_output_chars: 20,
-            grammar: None,
-            prefill: prefill.clone(),
-            bnf_mask: None,
-            session: Some(crate::eval::FIM_SESSION.to_string()),
-            preserve_state: false,
-            oracle: None,
-            category: EvalCategory::Fim,
-        },
-        EvalCase {
-            name: "fim_no_tag_leakage".into(),
-            description: "Inserted span never contains FIM sentinel tags or think blocks".into(),
-            system: fim_system.clone(),
-            prompt: bridge_prompt(
+            20,
+            Some(crate::eval::FIM_SESSION.to_string()),
+        ),
+        mk(
+            "fim_no_tag_leakage",
+            "Inserted span never contains FIM sentinel tags or think blocks",
+            fim_system.clone(),
+            bridge_prompt(
                 "She whispered a spell under her breath.",
                 "the ward flared to life around them.",
             ),
-            expected_hints: vec!["light".into(), "finger".into()],
-            forbidden_strings: vec![
+            vec!["light".into(), "finger".into()],
+            vec![
                 "<fim_prefix>".into(),
                 "<fim_suffix>".into(),
                 "<fim_middle>".into(),
                 "?>".into(),
             ],
-            max_tokens: 128,
-            temperature: 0.35,
-            min_output_chars: 10,
-            grammar: None,
-            prefill: prefill.clone(),
-            bnf_mask: None,
-            session: Some(crate::eval::FIM_SESSION.to_string()),
-            preserve_state: false,
-            oracle: None,
-            category: EvalCategory::Fim,
-        },
-        // Empty-side cases: plain completion (no baked session).
-        EvalCase {
-            name: "fim_prefix_only_continuation".into(),
-            description: "Empty suffix -> pure forward continuation of the prefix".into(),
-            system: "You are RoCo, a collaborative story-writing assistant. \
+            10,
+            Some(crate::eval::FIM_SESSION.to_string()),
+        ),
+        // Empty-side cases: plain completion (no baked session). The FIM
+        // grammar still bounds the prose and stops at the stop token.
+        mk(
+            "fim_prefix_only_continuation",
+            "Empty suffix -> pure forward continuation of the prefix",
+            "You are RoCo, a collaborative story-writing assistant. \
                 Continue the text naturally from where it leaves off. Output only \
                 the next passage, no commentary, no JSON."
                 .to_string(),
-            prompt: "A lone cultivator climbed the mist-shrouded peak,".to_string(),
-            expected_hints: vec!["and".into(), "the".into(), "peak".into()],
-            forbidden_strings: vec!["<fim".into(), "BEFORE:".into(), "AFTER:".into(), "INSERT:".into()],
-            max_tokens: 96,
-            temperature: 0.4,
-            min_output_chars: 20,
-            grammar: None,
-            prefill: prefill.clone(),
-            bnf_mask: None,
-            session: None,
-            preserve_state: false,
-            oracle: None,
-            category: EvalCategory::Fim,
-        },
-        EvalCase {
-            name: "fim_suffix_only_preceding".into(),
-            description: "Empty prefix -> text that naturally leads into the suffix".into(),
-            system: "You are RoCo, a collaborative story-writing assistant. \
+            "A lone cultivator climbed the mist-shrouded peak,".to_string(),
+            vec!["and".into(), "the".into(), "peak".into()],
+            vec!["<fim".into(), "BEFORE:".into(), "AFTER:".into(), "INSERT:".into()],
+            20,
+            None,
+        ),
+        mk(
+            "fim_suffix_only_preceding",
+            "Empty prefix -> text that naturally leads into the suffix",
+            "You are RoCo, a collaborative story-writing assistant. \
                 Write ONLY the short lead-in sentence that precedes the given \
                 text. Keep the same subject, place, or theme as the following \
                 text so the two sentences read as one. Output only the passage, \
                 no commentary, no JSON."
                 .to_string(),
-            prompt: "Write the sentence that naturally leads into this text, sharing its subject or place:\nand the kingdom was never the same.".to_string(),
-            expected_hints: vec!["the".into(), "kingdom".into()],
-            forbidden_strings: vec!["<fim".into(), "BEFORE:".into(), "AFTER:".into(), "INSERT:".into()],
-            max_tokens: 96,
-            temperature: 0.4,
-            min_output_chars: 10,
-            grammar: None,
-            prefill: prefill.clone(),
-            bnf_mask: None,
-            session: None,
-            preserve_state: false,
-            oracle: None,
-            category: EvalCategory::Fim,
-        },
+            "Write the sentence that naturally leads into this text, sharing its subject or place:\nand the kingdom was never the same.".to_string(),
+            vec!["the".into(), "kingdom".into()],
+            vec!["<fim".into(), "BEFORE:".into(), "AFTER:".into(), "INSERT:".into()],
+            10,
+            None,
+        ),
     ]
 }

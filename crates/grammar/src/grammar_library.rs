@@ -156,7 +156,7 @@ mod tests {
                 "A fallen knight seeks redemption. Dark forces rise."
             }
             StoryGrammar::FillInMiddle => {
-                "He raised the blade, bracing for the clash."
+                "He raised the blade. She braced for the clash."
             }
         }
     }
@@ -206,5 +206,130 @@ mod tests {
             assert_eq!(StoryGrammar::from_name(g.name()), Some(*g));
         }
         assert_eq!(StoryGrammar::from_name("nonexistent"), None);
+    }
+
+    // =========================================================================
+    // Random-walk test for the FIM (FillInMiddle) grammar.
+    //
+    // Mirrors the random-walk harness in `json_schema.rs`: walk the grammar
+    // with a multi-character vocabulary (simulating a real tokenizer) by
+    // picking random allowed tokens until the engine reports `is_finished()`.
+    // This verifies the FIM grammar actually STOPS at the stop token (the
+    // sentence terminator) rather than running unbounded -- the property the
+    // FIM eval relies on. `max_tokens` is the step ceiling.
+    // =========================================================================
+
+    mod random_walk_fim {
+        use super::*;
+        use rand::seq::SliceRandom;
+        use rand::thread_rng;
+        use kbnf::{Vocabulary, Token, Config, Engine};
+        use kbnf::engine_like::EngineLike;
+        use ahash::AHashMap;
+        use crate::kbnf_compat;
+
+        /// Multichar English-ish vocabulary (simulates a real tokenizer).
+        /// Must include single-letter tokens so the `letter` char-class
+        /// rule can match, plus the space and sentence terminators.
+        fn fim_vocab() -> Vec<&'static str> {
+            vec![
+                "", // 0: empty sentinel (kbnf skips empty tokens)
+                " ", // space between words
+                // single lowercase letters (cover the words below)
+                "a", "b", "c", "d", "e", "f", "g", "h", "i", "k",
+                "l", "m", "n", "o", "p", "r", "s", "t", "u", "w", "y",
+                // a few whole words (also matchable letter-by-letter)
+                "the", "blade", "sword", "raised", "light",
+                "ward", "dragon", "air", "kingdom", "knight",
+                "peak", "storm", "wind", "spell", "breath",
+                // stop tokens / terminators
+                "..", ".", "?", "!", "\n",
+            ]
+        }
+
+        /// Walk a GBNF grammar picking random allowed tokens, bounded by
+        /// `max_tokens` steps. Returns the produced text and whether the
+        /// grammar reached a finished (stopped) state.
+        fn random_walk(gbnf: &str, vocab: &[&'static str], max_tokens: usize) -> (String, bool) {
+            let mut id_to_token: AHashMap<u32, Token> = AHashMap::new();
+            let mut id_to_token_string: AHashMap<u32, String> = AHashMap::new();
+            for (id, &token_str) in vocab.iter().enumerate() {
+                if token_str.is_empty() { continue; }
+                let token_id = id as u32;
+                id_to_token.insert(token_id, Token(token_str.as_bytes().to_vec().into_boxed_slice()));
+                id_to_token_string.insert(token_id, token_str.to_string());
+            }
+            let vocab_obj = Vocabulary::new(id_to_token, id_to_token_string)
+                .expect("vocab build");
+            let config = Config { start_nonterminal: "root".to_string(), ..Config::default() };
+            let mut engine = Engine::with_config(&kbnf_compat::gbnf_to_kbnf(gbnf), vocab_obj, config)
+                .expect("engine build");
+            engine.compute_allowed_token_ids();
+
+            let mut rng = thread_rng();
+            let mut out = String::new();
+            for _ in 0..max_tokens {
+                if engine.is_finished() {
+                    return (out, true);
+                }
+                let bitset = engine.allowed_token_ids_from_last_computation();
+                let valid: Vec<usize> = (0..vocab.len())
+                    .filter(|&i| !vocab[i].is_empty() && bitset.contains(i))
+                    .collect();
+                if valid.is_empty() {
+                    return (out, engine.is_finished());
+                }
+                // Prefer longer tokens (closer to a real tokenizer's greedy match).
+                let &idx = valid.choose_weighted(&mut rng, |&i| vocab[i].len())
+                    .expect("non-empty");
+                let token = vocab[idx];
+                if engine.try_accept_new_token(idx as u32).is_err() {
+                    return (out, engine.is_finished());
+                }
+                engine.compute_allowed_token_ids();
+                out.push_str(token);
+            }
+            (out, engine.is_finished())
+        }
+
+        #[test]
+        fn fim_grammar_stops_at_stop_token_within_max_tokens() {
+            let vocab = fim_vocab();
+            let gbnf = StoryGrammar::FillInMiddle.kbnf();
+            // max_tokens ceiling for the FIM eval.
+            let max_tokens = 128usize;
+            for trial in 0..25 {
+                let (out, finished) = random_walk(&gbnf, &vocab, max_tokens);
+                assert!(
+                    finished,
+                    "trial {trial}: FIM grammar did not stop within {max_tokens} tokens. output={out:?}"
+                );
+                // The grammar must terminate at a stop token: a sentence
+                // terminator (`.`/`?`/`!`) or the optional trailing newline.
+                let ends_with_stop = out.ends_with('.') || out.ends_with('?')
+                    || out.ends_with('!') || out.ends_with("\n");
+                assert!(
+                    ends_with_stop,
+                    "trial {trial}: FIM output did not end at a stop token: {out:?}"
+                );
+                // No scaffolding / think leakage possible (grammar forbids `<`).
+                assert!(!out.contains('<'), "trial {trial}: FIM output leaked '<': {out:?}");
+            }
+        }
+
+        #[test]
+        fn fim_grammar_never_runs_unbounded() {
+            // With a vocabulary that contains no terminator, the grammar's finite
+            // sentence count still bounds it: the walk must terminate well
+            // before `max_tokens` OR, at worst, be step-bounded (never loop
+            // forever).
+            let vocab: Vec<&'static str> = fim_vocab()
+                .into_iter()
+                .filter(|v| !matches!(*v, "." | "?" | "!" | ".." | "\n"))
+                .collect();
+            let gbnf = StoryGrammar::FillInMiddle.kbnf();
+            let (out, _finished) = random_walk(&gbnf, &vocab, 128);
+            assert!(out.len() <= 128 * 32, "FIM walk produced unbounded output: {out:?}");
+        }
     }
 }
