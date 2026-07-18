@@ -106,11 +106,7 @@ fn cmd_tui(_extra: &[&str]) {
     println!("Model loaded successfully.");
     println!("Starting TUI...");
 
-    // `roco_tui::app::run()` does not yet take a backend handle — the model
-    // load above is kept so a future `App::run_with_backend` can pick it up
-    // without re-loading. Suppress the unused-Arc lint in the meantime.
-    let _ = backend;
-    if let Err(e) = roco_tui::app::run() {
+    if let Err(e) = roco_tui::App::new(backend).run() {
         eprintln!("TUI run error: {e}");
     }
 }

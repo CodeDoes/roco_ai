@@ -6,4 +6,4 @@
 pub mod app;
 pub mod widgets;
 
-pub use app::App;
+pub use app::TuiApp as App;
