@@ -221,6 +221,23 @@ async fn main() {
                 let mut cases = default_eval_suite();
                 cases.extend(roco_engine::cases::message_eval_cases());
                 cases.extend(roco_engine::cases::fim_eval_cases());
+                // The FIM bridge cases resume from a named recurrent-state
+                // session (`roco_fim`) that was primed by bake_fim_session
+                // with 3 few-shot BEFORE/AFTER pairs. If we skip the bake
+                // here, the session is a *blank slate* and the prior model
+                // default for "<FIM scaffold>" is to echo the prompt as
+                // its own output — generating "BEFORE/AFTER/INSERT: ...
+                // INSERT" instead of a bridge — which the actor's
+                // substring-break on "INSERT" immediately truncates. So
+                // bake before --one too when the requested case is a FIM
+                // bridge.
+                let is_fim_bridge = cases.iter()
+                    .any(|c| c.name.contains(one) && c.session.as_deref() == Some(roco_engine::FIM_SESSION));
+                if is_fim_bridge {
+                    if let Err(e) = roco_engine::bake_fim_session(&backend).await {
+                        eprintln!("WARN: FIM session bake failed: {e}");
+                    }
+                }
                 run_one_streaming(&backend, cases, one).await;
             }
             "remote" => {
@@ -228,6 +245,13 @@ async fn main() {
                 let mut cases = default_eval_suite();
                 cases.extend(roco_engine::cases::message_eval_cases());
                 cases.extend(roco_engine::cases::fim_eval_cases());
+                let is_fim_bridge = cases.iter()
+                    .any(|c| c.name.contains(one) && c.session.as_deref() == Some(roco_engine::FIM_SESSION));
+                if is_fim_bridge {
+                    if let Err(e) = roco_engine::bake_fim_session(&backend).await {
+                        eprintln!("WARN: FIM session bake failed: {e}");
+                    }
+                }
                 run_one_streaming(&backend, cases, one).await;
             }
             other => { eprintln!("Unknown backend: {other}"); std::process::exit(1); }
