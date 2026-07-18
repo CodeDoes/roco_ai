@@ -3,8 +3,12 @@ name = "RoCo AI"
 version = "0.1.0"
 schema_version = 1
 
+# RoCo is a global language server: it provides AI prose completions for
+# every file type (Zed surfaces these via the LSP textDocument/completion
+# path, not its native edit_predictions provider). Running globally lets the
+# LSP state-tune the model on ALL open files for project-aware completions.
 [language_servers.roco]
-languages = ["Markdown"]
+languages = ["*"]
 name = "RoCo AI"
 
 [slash_commands.roco]

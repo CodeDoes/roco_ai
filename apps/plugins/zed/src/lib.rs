@@ -58,7 +58,6 @@ impl zed::Extension for RoCoExtension {
             command: roco_path,
             args: vec![
                 "server".to_string(),
-                "--story".to_string(),
                 "--stdio-lsp".to_string(),
             ],
             env: vec![],
@@ -209,6 +208,43 @@ mod tests {
             }]
         });
         assert!(response_json["choices"][0]["text"].as_str().is_none());
+    }
+
+    #[test]
+    fn test_request_body_matches_server_contract() {
+        // The `/roco` slash command POSTs JSON to the singleton inference
+        // API server's `POST /v1/completions`. The server's route
+        // (`crates/server/src/routes.rs` `OpenAiCompletionRequest`) requires
+        // `prompt` and optionally `system`/`temperature`/`max_tokens`.
+        // This locks the plugin→server request contract so a shape change
+        // on either side breaks the test.
+        let input = "a lone cultivator seeking immortality";
+        let body = serde_json::json!({
+            "prompt": input,
+            "max_tokens": 256,
+            "temperature": 0.4,
+            "system": "You are a creative writing assistant. Complete the text naturally with vivid prose.",
+        });
+
+        // Required field present and a string.
+        assert!(body["prompt"].is_string());
+        assert_eq!(body["prompt"].as_str().unwrap(), input);
+        // Optional fields the server accepts.
+        assert!(body["system"].is_string());
+        assert!(body["max_tokens"].is_u64());
+        assert!(body["temperature"].is_f64());
+        // No chat-completions-only fields are sent (server has no
+        // `/v1/chat/completions`); the endpoint is text-completion only.
+        assert!(body.get("messages").is_none());
+        assert!(body.get("model").is_none());
+    }
+
+    #[test]
+    fn test_server_health_path() {
+        // The slash command checks `{api_base}/health` before calling.
+        let url = format!("{}/health", api_base());
+        assert!(url.ends_with("/health"));
+        assert!(!url.contains("//health"));
     }
 
     #[test]

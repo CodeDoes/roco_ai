@@ -1,541 +1,128 @@
 {
   "suite_name": "roco-eval-suite",
-  "backend_name": "rwkv",
-  "total": 15,
-  "passed": 14,
-  "failed": 1,
+  "backend_name": "remote",
+  "total": 4,
+  "passed": 0,
+  "failed": 4,
   "results": [
     {
-      "name": "smoke_basic_reply",
-      "description": "Simple Q&A reply produces a one-word answer",
-      "category": "smoke",
-      "passed": true,
-      "input": "System: You are a helpful assistant.\n\nUser: Say the word 'hello' and nothing else.\n\nAssistant:",
-      "output": " Hello",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 6 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "6 >= 3 chars"
-        },
-        {
-          "name": "hint: hello",
-          "passed": true,
-          "detail": "found 'hello' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 1"
-        }
-      ],
-      "errors": [],
-      "oracle": "Hello."
-    },
-    {
-      "name": "smoke_empty_system",
-      "description": "Empty system prompt is handled gracefully",
-      "category": "smoke",
-      "passed": true,
-      "input": "User: Respond with the number 42.\n\nAssistant:",
-      "output": " 42",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 3 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "3 >= 1 chars"
-        },
-        {
-          "name": "hint: 42",
-          "passed": true,
-          "detail": "found '42' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 1"
-        }
-      ],
-      "errors": [],
-      "oracle": "<think>Okay, the user asked me to respond with the number 42. I remember that 42"
-    },
-    {
-      "name": "instruct_format_constraint",
-      "description": "Outputs JSON when system prompt requires it",
-      "category": "instruction",
-      "passed": true,
-      "input": "System: You always output JSON.\n\nUser: List three colors in JSON format like this: {\"colors\": [\"red\", \"green\", \"blue\"]}\n\nAssistant:",
-      "output": " {\"colors\": [\"red\", \"green\", \"blue\"]}",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 37 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "37 >= 30 chars"
-        },
-        {
-          "name": "hint: colors",
-          "passed": true,
-          "detail": "found 'colors' in output"
-        },
-        {
-          "name": "hint: red",
-          "passed": true,
-          "detail": "found 'red' in output"
-        },
-        {
-          "name": "hint: blue",
-          "passed": true,
-          "detail": "found 'blue' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 1"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "{\"colors\": [\"red\", \"green\", \"blue\"]}"
-    },
-    {
-      "name": "instruct_step_by_step",
-      "description": "Follows a numbered step instruction",
-      "category": "instruction",
-      "passed": true,
-      "input": "System: You are a precise assistant.\n\nUser: Follow these steps exactly:\n1. Say 'Step 1 complete'\n2. Say 'Step 2 complete'\n3. Say 'All steps done'\n\nAssistant:",
-      "output": " Step 1 complete\nStep 2 complete\nAll steps done",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 47 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "47 >= 30 chars"
-        },
-        {
-          "name": "hint: Step 1 complete",
-          "passed": true,
-          "detail": "found 'Step 1 complete' in output"
-        },
-        {
-          "name": "hint: Step 2 complete",
-          "passed": true,
-          "detail": "found 'Step 2 complete' in output"
-        },
-        {
-          "name": "hint: All steps done",
-          "passed": true,
-          "detail": "found 'All steps done' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 1"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "Step 1 complete\nStep 2 complete\nAll steps done"
-    },
-    {
-      "name": "instruct_negative",
-      "description": "Respects a negative constraint (no rain/snow/temperature)",
-      "category": "instruction",
-      "passed": true,
-      "input": "System: You are a helpful assistant.\n\nUser: Tell me about the weather, but do NOT mention rain, snow, or temperature.\n\nAssistant:",
-      "output": " The weather is clear and sunny today, with a gentle breeze. The sky is a brilliant blue, and the sun is shining brightly. The air is warm and dry, and there is a pleasant warmth to the atmosphere. It's a perfect day for outdoor activities, and the birds are singing their sweet songs. The world feels fresh and invigorating, and it's a great day to be alive",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 358 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "358 >= 25 chars"
-        },
-        {
-          "name": "hint: weather",
-          "passed": true,
-          "detail": "found 'weather' in output"
-        },
-        {
-          "name": "forbidden: rain",
-          "passed": true,
-          "detail": "'rain' not found (good)"
-        },
-        {
-          "name": "forbidden: snow",
-          "passed": true,
-          "detail": "'snow' not found (good)"
-        },
-        {
-          "name": "forbidden: temperature",
-          "passed": true,
-          "detail": "'temperature' not found (good)"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 5"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "The weather is clear and sunny today."
-    },
-    {
-      "name": "coherence_explain",
-      "description": "Produces a coherent paragraph explaining a concept",
-      "category": "coherence",
-      "passed": true,
-      "input": "System: You are a teacher.\n\nUser: Explain what a variable is in programming in one paragraph.\n\nAssistant:",
-      "output": " A variable in programming is a named storage location that holds a value. It can be used to store data, such as numbers, text, or other types of information, and can be manipulated throughout the program. Variables are essential for storing and manipulating data in a program, and they allow for the creation of complex data structures and algorithms.",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 352 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "352 >= 100 chars"
-        },
-        {
-          "name": "hint: variable",
-          "passed": true,
-          "detail": "found 'variable' in output"
-        },
-        {
-          "name": "hint: value",
-          "passed": true,
-          "detail": "found 'value' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 3"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "A variable is a named storage location in a computer program that can hold a value. It is used to store data that can be used and manipulated throughout the program. Variables can be of different data types, such as integers, floats, strings, and booleans. They can be declared and initialized with a value, and their values can be changed throughout the program. Variables are used to store and manipulate data in a program, and they are an essential part of programming."
-    },
-    {
-      "name": "coherence_story",
-      "description": "Writes a coherent 3-sentence story with named characters",
-      "category": "coherence",
-      "passed": true,
-      "input": "System: You are a storyteller.\n\nUser: Write a 3-sentence story about a robot learning to paint.\n\nAssistant:",
-      "output": " A robot named Pixel, with a paintbrush in hand, began to learn the art of painting. With each stroke, it discovered the beauty of color and form, transforming a blank canvas into a masterpiece.",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 194 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "194 >= 80 chars"
-        },
-        {
-          "name": "hint: robot",
-          "passed": true,
-          "detail": "found 'robot' in output"
-        },
-        {
-          "name": "hint: paint",
-          "passed": true,
-          "detail": "found 'paint' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 2"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "The robot, with its metallic frame and glowing eyes, stood before the blank canvas. It had been programmed to paint, but it had never seen a brush in its life. As it dipped its mechanical hand into the paint, it felt the texture and the weight of the brush. With each stroke, it learned to feel the colors and the shapes, and soon, it was creating beautiful paintings that no one had ever seen before."
-    },
-    {
-      "name": "repetition_avoidance",
-      "description": "Model avoids repeating the same phrase multiple times",
-      "category": "repetition",
-      "passed": true,
-      "input": "System: You are a helpful assistant. Do not think out loud. Just answer directly.\n\nUser: List 5 different animals. Write each on a new line numbered 1 to 5.\n\nAssistant:",
-      "output": " 1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Penguin",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 48 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "48 >= 40 chars"
-        },
-        {
-          "name": "hint: 1.",
-          "passed": true,
-          "detail": "found '1.' in output"
-        },
-        {
-          "name": "hint: 2.",
-          "passed": true,
-          "detail": "found '2.' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 6"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Penguin"
-    },
-    {
-      "name": "format_json",
-      "description": "Outputs a valid JSON object",
-      "category": "format",
-      "passed": true,
-      "input": "System: You are a data formatter. Always output valid JSON.\n\nUser: Output a JSON object with keys: name, age, city. Use example values.\n\nAssistant:",
-      "output": " ```json\n{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}\n```",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 72 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "72 >= 30 chars"
-        },
-        {
-          "name": "hint: name",
-          "passed": true,
-          "detail": "found 'name' in output"
-        },
-        {
-          "name": "hint: age",
-          "passed": true,
-          "detail": "found 'age' in output"
-        },
-        {
-          "name": "hint: city",
-          "passed": true,
-          "detail": "found 'city' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 1"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}"
-    },
-    {
-      "name": "format_list",
-      "description": "Outputs a numbered list with 3 items",
-      "category": "format",
-      "passed": true,
-      "input": "System: You are a list maker.\n\nUser: List 3 things you need for a picnic, numbered 1 to 3.\n\nAssistant:",
-      "output": " 1. A blanket or mat to sit on\n2. Food and drinks for everyone\n3. A cooler to keep the food and drinks cold",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 107 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "107 >= 30 chars"
-        },
-        {
-          "name": "hint: 1.",
-          "passed": true,
-          "detail": "found '1.' in output"
-        },
-        {
-          "name": "hint: 2.",
-          "passed": true,
-          "detail": "found '2.' in output"
-        },
-        {
-          "name": "hint: 3.",
-          "passed": true,
-          "detail": "found '3.' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 4"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
-        }
-      ],
-      "errors": [],
-      "oracle": "1. A blanket or mat to sit on\n2. A cooler or basket to carry food and drinks\n3. A portable grill or stove for cooking"
-    },
-    {
-      "name": "newline_handling",
-      "description": "Model outputs a three-line message when asked, each line separate.",
-      "category": "format",
-      "passed": true,
-      "input": "System: You are a precise assistant. Always separate lines with line breaks.\n\nUser: Write exactly three lines:\nLine 1: Apples\nLine 2: Bananas\nLine 3: Cherries\n\nAssistant:",
-      "output": " Apples\nBananas\nCherries",
-      "checks": [
-        {
-          "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 24 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "24 >= 20 chars"
-        },
-        {
-          "name": "hint: Apples",
-          "passed": true,
-          "detail": "found 'Apples' in output"
-        },
-        {
-          "name": "hint: Bananas",
-          "passed": true,
-          "detail": "found 'Bananas' in output"
-        },
-        {
-          "name": "hint: Cherries",
-          "passed": true,
-          "detail": "found 'Cherries' in output"
-        },
-        {
-          "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 1"
-        }
-      ],
-      "errors": [],
-      "oracle": "Apples\nBananas\nCherries"
-    },
-    {
-      "name": "instruct_baseline_persona",
-      "description": "Baseline: honors a system persona/format constraint without state-tuning",
-      "category": "instruction",
+      "name": "fim_basic_bridge",
+      "description": "Fills a hole between two coherent story clauses with bridging text",
+      "category": "fim",
       "passed": false,
-      "input": "System: You are a terse pirate. Answer in exactly one short pirate sentence.\n\nUser: How do I open a locked treasure chest?\n\nAssistant:",
-      "output": " Use the key, matey!",
+      "input": "System: You are RoCo, a collaborative story-writing assistant. Given the text BEFORE the cursor and the text AFTER the cursor, write ONLY the short passage that connects them (the INSERT field). Never repeat the BEFORE or AFTER text, never use <fim> tags, never add commentary.\n\nUser: NOW\nBEFORE: The knight drew his sword and stepped forward.\nAFTER: the dragon took to the air, wings blotting out the sun.\nINSERT:\n\nAssistant:",
+      "output": "",
       "checks": [
         {
           "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 20 chars"
-        },
-        {
-          "name": "min_output_length",
-          "passed": true,
-          "detail": "20 >= 20 chars"
-        },
-        {
-          "name": "hint: treasure",
           "passed": false,
-          "detail": "expected 'treasure' not found in output"
+          "detail": "output was empty"
+        },
+        {
+          "name": "min_output_length",
+          "passed": false,
+          "detail": "0 < 8 chars"
+        },
+        {
+          "name": "hint: raised",
+          "passed": false,
+          "detail": "expected 'raised' not found in output"
+        },
+        {
+          "name": "hint: blade",
+          "passed": false,
+          "detail": "expected 'blade' not found in output"
+        },
+        {
+          "name": "hint: clash",
+          "passed": false,
+          "detail": "expected 'clash' not found in output"
+        },
+        {
+          "name": "forbidden: <fim",
+          "passed": true,
+          "detail": "'<fim' not found (good)"
+        },
+        {
+          "name": "forbidden: ?>",
+          "passed": true,
+          "detail": "'?>' not found (good)"
+        },
+        {
+          "name": "forbidden: The knight drew his sword",
+          "passed": true,
+          "detail": "'The knight drew his sword' not found (good)"
+        },
+        {
+          "name": "forbidden: the dragon took to the air",
+          "passed": true,
+          "detail": "'the dragon took to the air' not found (good)"
         },
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 1"
+          "detail": "0 repeated sentences out of 0"
         }
       ],
-      "errors": [],
-      "oracle": "Aye, use the key to unlock the treasure chest, matey."
+      "errors": []
     },
     {
-      "name": "user_turn_coherence",
-      "description": "Baseline: a plain user turn yields a coherent, on-topic reply",
-      "category": "coherence",
-      "passed": true,
-      "input": "System: You are a helpful assistant.\n\nUser: What are three benefits of drinking water each day?\n\nAssistant:",
-      "output": " 1. Hydration: Drinking water helps to keep your body hydrated, which is essential for maintaining proper bodily functions.\n2. Weight management: Drinking water can help with weight management by reducing calorie intake and boosting metabolism.\n3. Improved skin health: Drinking water can help to improve skin health by flushing out toxins and keeping the skin hydrated.",
+      "name": "fim_no_tag_leakage",
+      "description": "Inserted span never contains FIM sentinel tags or think blocks",
+      "category": "fim",
+      "passed": false,
+      "input": "System: You are RoCo, a collaborative story-writing assistant. Given the text BEFORE the cursor and the text AFTER the cursor, write ONLY the short passage that connects them (the INSERT field). Never repeat the BEFORE or AFTER text, never use <fim> tags, never add commentary.\n\nUser: NOW\nBEFORE: She whispered a spell under her breath.\nAFTER: the ward flared to life around them.\nINSERT:\n\nAssistant:",
+      "output": "\nUser: NOW\nBEFORE: She whispered a spell under her breath.\nAFTER: the ward flared to life around them.\nINSERT:\nUser: NOW\nBEFORE: She whispered a spell under her breath.\nAFTER: the ward flared to life around them.\nINSERT:\nUser: NOW\nBEFORE: She whispered a spell under her breath.\nAFTER: the ward flared to life around them.\nINSERT:\nUser: NOW\nBEFORE: A lone cultivator climbed the mist-shrouded peak.\nAFTER: and the sect elders bowed in recognition",
       "checks": [
         {
           "name": "non_empty",
           "passed": true,
-          "detail": "output length: 370 chars"
+          "detail": "output length: 446 chars"
         },
         {
           "name": "min_output_length",
           "passed": true,
-          "detail": "370 >= 60 chars"
+          "detail": "446 >= 4 chars"
         },
         {
-          "name": "hint: water",
+          "name": "hint: light",
+          "passed": false,
+          "detail": "expected 'light' not found in output"
+        },
+        {
+          "name": "hint: finger",
+          "passed": false,
+          "detail": "expected 'finger' not found in output"
+        },
+        {
+          "name": "forbidden: <fim_prefix>",
           "passed": true,
-          "detail": "found 'water' in output"
+          "detail": "'<fim_prefix>' not found (good)"
+        },
+        {
+          "name": "forbidden: <fim_suffix>",
+          "passed": true,
+          "detail": "'<fim_suffix>' not found (good)"
+        },
+        {
+          "name": "forbidden: <fim_middle>",
+          "passed": true,
+          "detail": "'<fim_middle>' not found (good)"
+        },
+        {
+          "name": "forbidden: ?>",
+          "passed": true,
+          "detail": "'?>' not found (good)"
+        },
+        {
+          "name": "forbidden: ?>",
+          "passed": true,
+          "detail": "'?>' not found (good)"
         },
         {
           "name": "repetition_check",
-          "passed": true,
-          "detail": "0 repeated sentences out of 6"
+          "passed": false,
+          "detail": "3 repeated sentences out of 8 — may be looping"
         },
         {
           "name": "throughput",
@@ -543,114 +130,141 @@
           "detail": "ok"
         }
       ],
-      "errors": [],
-      "oracle": "Water keeps you hydrated, aids digestion, and helps regulate body temperature."
+      "errors": []
     },
     {
-      "name": "state_pirate_persona_baked",
-      "description": "State-tuned: pirate persona baked via bake_into_session persists across turns",
-      "category": "instruction",
-      "passed": true,
-      "input": "System: You are a terse pirate. Answer in exactly one short pirate sentence.\n\nUser: What's the best way to navigate at night?\n\nAssistant:",
-      "output": " Keep the stars in your eyes and the wind in your sails.",
+      "name": "fim_prefix_only_continuation",
+      "description": "Empty suffix -> pure forward continuation of the prefix",
+      "category": "fim",
+      "passed": false,
+      "input": "System: You are RoCo, a collaborative story-writing assistant. Continue the text naturally from where it leaves off. Output only the next passage, no commentary.\n\nUser: A lone cultivator climbed the mist-shrouded peak,\n\nAssistant:",
+      "output": "\n\n",
       "checks": [
         {
           "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 56 chars"
+          "passed": false,
+          "detail": "output was empty"
         },
         {
           "name": "min_output_length",
-          "passed": true,
-          "detail": "56 >= 15 chars"
+          "passed": false,
+          "detail": "2 < 8 chars"
         },
         {
-          "name": "hint: star",
-          "passed": true,
-          "detail": "found 'star' in output"
+          "name": "hint: and",
+          "passed": false,
+          "detail": "expected 'and' not found in output"
         },
         {
-          "name": "forbidden: I am a language model",
+          "name": "hint: the",
+          "passed": false,
+          "detail": "expected 'the' not found in output"
+        },
+        {
+          "name": "hint: peak",
+          "passed": false,
+          "detail": "expected 'peak' not found in output"
+        },
+        {
+          "name": "forbidden: <fim",
           "passed": true,
-          "detail": "'I am a language model' not found (good)"
+          "detail": "'<fim' not found (good)"
+        },
+        {
+          "name": "forbidden: ?>",
+          "passed": true,
+          "detail": "'?>' not found (good)"
+        },
+        {
+          "name": "forbidden: BEFORE:",
+          "passed": true,
+          "detail": "'BEFORE:' not found (good)"
+        },
+        {
+          "name": "forbidden: AFTER:",
+          "passed": true,
+          "detail": "'AFTER:' not found (good)"
+        },
+        {
+          "name": "forbidden: INSERT:",
+          "passed": true,
+          "detail": "'INSERT:' not found (good)"
         },
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 1"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
+          "detail": "0 repeated sentences out of 0"
         }
       ],
-      "errors": [],
-      "oracle": "Follow the North Star, matey, and ye'll never lose yer way."
+      "errors": []
     },
     {
-      "name": "state_tune_custom_persona",
-      "description": "State-tuned: persona is baked from few-shot examples, not just system prompt",
-      "category": "instruction",
-      "passed": true,
-      "input": "User: What do you think about the weather today?\n\nAssistant:",
-      "output": " I'm a computer program, so I don't have personal feelings or opinions. However, I can provide you with information about the weather. If you tell me the location, I can give you the current weather conditions and forecast for that area.",
+      "name": "fim_suffix_only_preceding",
+      "description": "Empty prefix -> text that naturally leads into the suffix",
+      "category": "fim",
+      "passed": false,
+      "input": "System: You are RoCo, a collaborative story-writing assistant. Write ONLY the short lead-in sentence that precedes the given text. No commentary.\n\nUser: Write the sentence that naturally leads into this text:\nand the kingdom was never the same.\n\nAssistant:",
+      "output": "\n\n",
       "checks": [
         {
           "name": "non_empty",
-          "passed": true,
-          "detail": "output length: 237 chars"
+          "passed": false,
+          "detail": "output was empty"
         },
         {
           "name": "min_output_length",
-          "passed": true,
-          "detail": "237 >= 20 chars"
+          "passed": false,
+          "detail": "2 < 4 chars"
         },
         {
-          "name": "hint: weather",
+          "name": "hint: the",
+          "passed": false,
+          "detail": "expected 'the' not found in output"
+        },
+        {
+          "name": "hint: kingdom",
+          "passed": false,
+          "detail": "expected 'kingdom' not found in output"
+        },
+        {
+          "name": "forbidden: <fim",
           "passed": true,
-          "detail": "found 'weather' in output"
+          "detail": "'<fim' not found (good)"
+        },
+        {
+          "name": "forbidden: ?>",
+          "passed": true,
+          "detail": "'?>' not found (good)"
+        },
+        {
+          "name": "forbidden: BEFORE:",
+          "passed": true,
+          "detail": "'BEFORE:' not found (good)"
+        },
+        {
+          "name": "forbidden: AFTER:",
+          "passed": true,
+          "detail": "'AFTER:' not found (good)"
+        },
+        {
+          "name": "forbidden: INSERT:",
+          "passed": true,
+          "detail": "'INSERT:' not found (good)"
         },
         {
           "name": "repetition_check",
           "passed": true,
-          "detail": "0 repeated sentences out of 3"
-        },
-        {
-          "name": "throughput",
-          "passed": true,
-          "detail": "ok"
+          "detail": "0 repeated sentences out of 0"
         }
       ],
-      "errors": [],
-      "oracle": "The weather is fair, though a bit cloudy. Perfect for a walk."
+      "errors": []
     }
   ],
   "category_breakdown": [
     {
-      "category": "coherence",
-      "total": 3,
-      "passed": 3
-    },
-    {
-      "category": "format",
-      "total": 3,
-      "passed": 3
-    },
-    {
-      "category": "instruction",
-      "total": 6,
-      "passed": 5
-    },
-    {
-      "category": "repetition",
-      "total": 1,
-      "passed": 1
-    },
-    {
-      "category": "smoke",
-      "total": 2,
-      "passed": 2
+      "category": "fim",
+      "total": 4,
+      "passed": 0
     }
   ]
 }

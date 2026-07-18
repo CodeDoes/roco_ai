@@ -162,6 +162,7 @@ fn cmd_gateway(extra: &[&str]) {
 fn cmd_server(extra: &[&str]) {
     use roco_server::{Server, ServerConfig};
     use roco_inference::RwkvBackend;
+    use roco_infer_client::RemoteBackend;
     use crate::story_routes::create_story_router;
     use roco_agent::story_engine::{StoryEngine, StoryConfig};
     use std::sync::Arc;
@@ -171,6 +172,9 @@ fn cmd_server(extra: &[&str]) {
     let port = port_str.parse::<u16>().unwrap_or(8080);
     let story_mode = extra.iter().any(|&a| a == "--story" || a == "-s");
     let stdio_lsp = extra.iter().any(|&a| a == "--stdio-lsp");
+    let inference_url = parse_opt("--inference-url", extra)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| std::env::var("ROCO_API_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string()));
 
     // Detach mode
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
@@ -184,6 +188,36 @@ fn cmd_server(extra: &[&str]) {
 
     if detach && !is_child {
         spawn_detached("server", extra, &log_path, &pid_path);
+        return;
+    }
+
+    // ── LSP front-end ──────────────────────────────────────────────────────
+    // When spawned by an editor (e.g. Zed's `language_server_command`), run
+    // only the LSP loop over stdin/stdout. The LSP is a thin client to the
+    // singleton inference API server and does NOT load its own model. This
+    // avoids binding a TCP port (which would conflict with the user's
+    // manually-started server) and lets the process exit cleanly when the
+    // editor closes stdin.
+    if stdio_lsp {
+        println!("Starting RoCo LSP (client → {inference_url})...");
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to build Tokio runtime");
+        rt.block_on(async move {
+            tracing_subscriber::fmt()
+                .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+                .init();
+            let client = Arc::new(RemoteBackend::new(inference_url));
+            match crate::lsp_handler::run_lsp(client).await {
+                Ok(()) => tracing::info!("RoCo LSP session ended"),
+                Err(e) => {
+                    eprintln!("RoCo LSP error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        });
         return;
     }
 
@@ -207,16 +241,6 @@ fn cmd_server(extra: &[&str]) {
             }
         };
         println!("Model loaded successfully.");
-
-        // If spawned by Zed via language_server_command, handle LSP initialize
-        if stdio_lsp {
-            tokio::spawn(async {
-                match crate::lsp_handler::handle_lsp_initialize().await {
-                    Ok(()) => tracing::info!("LSP handshake complete — roco is ready"),
-                    Err(e) => tracing::warn!("LSP handshake: {e}"),
-                }
-            });
-        }
 
         if story_mode {
             println!("Story mode enabled — initializing story engine...");
@@ -422,6 +446,8 @@ fn help(sub: &str) {
     eprintln!("  gpu-check [--json|-j]              Show Vulkan + model info (--json for machine-readable)");
     eprintln!("  server [--host ADDR] [--port PORT] [--story] [--detach|-d] Run the local HTTP server; --story adds story API");
     eprintln!("                                  [--log-file PATH] [--pid-file PATH]  detach options");
+    eprintln!("  server --stdio-lsp [--inference-url URL]        Run the editor LSP client (no model load; talks to the");
+    eprintln!("                                  inference API server at ROCO_API_URL / --inference-url)");
     eprintln!("  gateway [--host ADDR] [--port PORT] [--target URL] [--rate-limit L] Run the API gateway");
     eprintln!("                                  [--detach|-d] [--log-file PATH] [--pid-file PATH]");
     eprintln!("  tui                               Start the interactive terminal chat UI");

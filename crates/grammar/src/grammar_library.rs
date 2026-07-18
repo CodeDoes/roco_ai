@@ -34,13 +34,15 @@ pub enum StoryGrammar {
     ValidationReport,
     /// Story synopsis.
     Synopsis,
+    /// Fill-in-the-middle prose (no template markers, no think tags).
+    FillInMiddle,
 }
 
 impl StoryGrammar {
     /// All known story grammars.
     pub fn all() -> &'static [StoryGrammar] {
         use StoryGrammar::*;
-        &[ChapterProse, Outline, Wiki, ValidationReport, Synopsis]
+        &[ChapterProse, Outline, Wiki, ValidationReport, Synopsis, FillInMiddle]
     }
 
     /// Stable name used for the on-disk `.bnf` file and registry lookup.
@@ -51,6 +53,7 @@ impl StoryGrammar {
             StoryGrammar::Wiki => "wiki",
             StoryGrammar::ValidationReport => "validation_report",
             StoryGrammar::Synopsis => "synopsis",
+            StoryGrammar::FillInMiddle => "fill_in_middle",
         }
     }
 
@@ -62,6 +65,7 @@ impl StoryGrammar {
             StoryGrammar::Wiki => WIKI,
             StoryGrammar::ValidationReport => VALIDATION_REPORT,
             StoryGrammar::Synopsis => SYNOPSIS,
+            StoryGrammar::FillInMiddle => FILL_IN_MIDDLE,
         }
     }
 
@@ -81,6 +85,7 @@ const OUTLINE: &str = include_str!("../../../GBNF/outline.bnf");
 const WIKI: &str = include_str!("../../../GBNF/wiki.bnf");
 const VALIDATION_REPORT: &str = include_str!("../../../GBNF/validation_report.bnf");
 const SYNOPSIS: &str = include_str!("../../../GBNF/synopsis.bnf");
+const FILL_IN_MIDDLE: &str = include_str!("../../../GBNF/fill_in_middle.bnf");
 
 #[cfg(test)]
 mod tests {
@@ -149,6 +154,9 @@ mod tests {
             }
             StoryGrammar::Synopsis => {
                 "A fallen knight seeks redemption. Dark forces rise."
+            }
+            StoryGrammar::FillInMiddle => {
+                "He raised the blade, bracing for the clash."
             }
         }
     }

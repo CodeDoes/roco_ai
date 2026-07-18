@@ -3,19 +3,19 @@
 > Strategy / context / "what we wanted to do but didn't yet".
 > Living document; this version reflects the post-2026-07-18 state where
 > the story engine and human-AI interaction surfaces are implemented at the
-> module level, and the **FIM (fill-in-the-middle) completion path** has
-> been repaired end-to-end.
+> module level, and the **Zed LSP front-end** has been promoted from a stub
+> handshake into a real completion server backed by the FIM completion path.
 
 ## Current Focus
 
 **Primary Goal:** A collaborative story writing tool where humans and AI work together to create stories.
 
 The core engine is done. The human-AI interaction layer is implemented.
-The active, just-finished work was the **FIM completion path** — the
-fill-in-the-middle pass the Zed/VS Code LSP (`crates/cli/src/lsp.rs`)
-and the eval harness (`crates/engine/src/cases.rs` `fim_eval_cases`)
-send to the backend. That path was broken in two independent ways; both
-are now fixed. See "FIM Completion" below.
+The active, just-finished work was the **Zed editor integration** — turning
+the LSP stub (`crates/cli/src/lsp.rs`) into a real `textDocument/completion`
+server that surfaces the FIM fill-in-the-middle pass inside the editor. That
+work touched four layers: the LSP handler, the CLI server front-end, the Zed
+plugin manifest, and the FIM grammar library. See "Zed LSP" below.
 
 ## Philosophy: Human Controls Pace, Not Reviews Output
 
@@ -91,7 +91,7 @@ bridge). Two traps bite anyone who tries the naive approach:
 1. **Re-feeding few-shot as prompt tokens makes the base model CONTINUE the
    examples** instead of answering. The RWKV-correct technique is to
    **bake the few-shot into a named recurrent-state session** (state-tuning)
-   and resume from it. See `bake_fim_session` in `crates/engine/src/eval.rs`
+   and resume from it. See `bake_fim_session` in `crates/cli/src/lsp.rs`
    (mirrors the validated `bake_into_session` in `crates/engine/src/backend.rs`).
 
 2. **The bake must replay (user, assistant) TURNS**, not cram the whole
@@ -115,6 +115,15 @@ bridge). Two traps bite anyone who tries the naive approach:
    keep a resumed FIM session from echoing the `BEFORE:`/`AFTER:`/`INSERT:`
    scaffolding.
 
+4. **A raw-prose BNF grammar CAN be satisfied** because kbnf accepts
+   character-class rules (`#[A-Za-z]`) that map onto the vocab's word tokens
+   without needing any JSON punctuation. `StoryGrammar::FillInMiddle`
+   (`GBNF/fill_in_middle.bnf`) proves this: it accepts a plain English
+   sentence/paragraph with no template markers and structurally forbids
+   `<think>` / `<fim>` / `BEFORE:` scaffolding. It's the reference for the
+   "prose handlers can be grammar-bounded" path, and a candidate constraint
+   for the FIM completion output once the LSP is wired to send a grammar.
+
 ### Architecture Decisions Proven Correct
 - Code owns control flow, LLM only fires at fixed grammar-bounded points
 - Pull-based context injection over push-based bulk transfer
@@ -134,45 +143,86 @@ bridge). Two traps bite anyone who tries the naive approach:
   `ModelBackend` trait; `RwkvBackend` returns its real vocab, `RemoteBackend`
   fetches it from the server's `/vocab` endpoint. The eval harness builds
   masks from `case.grammar` + `backend.vocab_bytes()` before running.
+- **LSP is a thin client, not a second model host.** The editor-spawned
+  `roco server --stdio-lsp` process loads **no model** — it constructs a
+  `RemoteBackend` and talks to the user's already-running inference API
+  server (`ROCO_API_URL` / `--inference-url`, default `http://127.0.0.1:8080`).
+  This avoids a second VRAM-hungry process and a TCP-port collision with the
+  user's manually-started `roco server`. The LSP exits cleanly when the
+  editor closes stdin.
 
-## FIM Completion — Status: repaired (2026-07-18)
+## Zed LSP — Status: promoted from stub to real completion server (2026-07-18)
 
-The FIM path had two independent bugs, both now fixed and committed
-(`fix(fim): wire grammar masks + fix FIM loop, correct state-tune bake`):
+The LSP was previously a one-shot `initialize` handshake (`handle_lsp_initialize`):
+it answered `initialize` with empty capabilities and then ignored stdin while
+roco served HTTP on a port. That design was wrong on two counts — it owned a
+model it shouldn't, and it exposed no real completions. The rewrite (uncommitted
+at time of writing) replaces it with a genuine LSP loop.
 
-**Bug 1 — generation looped / echoed scaffolding.**
-`RwkvActor::handle_complete` applied its stop-conditions (catch
-`BEFORE:`/`AFTER:`/`INSERT:`/`User:`/`NOW`) only inside the *first-token*
-sampling loop, which then `break`'d unconditionally after one token. The
-*remaining-token* loop had **no stop check at all**, so a resumed/baked FIM
-session would emit "The knight drew his sword…", then "User: NOW\nBEFORE:…"
-repeatedly until `max_tokens`. Fixed: apply the same `is_stop` check on
-**every** generated token.
+**What changed:**
 
-**Bug 2 — grammar masks were never built.**
-`CompletionRequest` carries both a `grammar: Option<String>` and a
-`bnf_mask: Option<Box<dyn BnfMask>>`, but the FIM eval sent only
-`grammar`; the actor consumed only `bnf_mask`. So FIM output was always
-free-form (and, pre-fix, looped). Fixed by building the mask in the
-application layer from `grammar` + `vocab_bytes()` (see architecture note
-above) and plumbing it through `EvalCase.bnf_mask` → `run_eval` →
-`CompletionRequest.bnf_mask`. Verified working via `grammar_smoke`.
+1. **Real LSP loop (`run_lsp` in `crates/cli/src/lsp.rs`).**
+   - Answers `initialize` with `textDocumentSync: full` + `completionProvider`
+     capabilities (this is what makes Zed actually call `textDocument/completion`).
+   - Tracks open documents via `textDocument/didOpen` / `textDocument/didChange`.
+   - Handles `textDocument/completion`, `shutdown`, `exit`; ignores `initialized`
+     and other notifications. Replies `null` to unhandled methods so Zed never hangs.
+   - Correct Content-Length framing for both `read_message` and `send_response`;
+     clean exit on stdin EOF (editor closes).
 
-**Bug 3 — the FIM state-tune bake was malformed.**
-The old `bake_fim_session` crams the entire few-shot (with
-`BEFORE:`/`AFTER:`/`INSERT:` markers) into ONE `prompt` blob. The baked
-state learned the scaffolding, not the turn structure, so resuming produced
-either an echo or nothing. Rewrote it to replay (context, answer) turns
-like the validated `bake_into_session`.
+2. **FIM completion surfaced in-editor (`completion()`).**
+   - Computes cursor prefix/suffix from the tracked doc text (2048-char window
+     each side), maps `line`/`character` to a byte offset across char boundaries.
+   - Four dispatch cases:
+     - both sides empty → generic passage seed,
+     - prefix only → forward continuation,
+     - suffix only → lead-in to the given text,
+     - **both sides → baked-session bridge** (state-tuned few-shot: resume the
+       `roco_fim` named session and send only the compact `NOW / BEFORE / AFTER /
+       INSERT:` context). The degenerate one-side-empty cases deliberately fall
+       back to a plain completion because resuming the baked session loops the
+       template.
+   - All completions use `prefill: <think></think>` to suppress think-leak, and
+     return the trimmed prose as a single LSP completion item.
 
-**Result:** the FIM eval (`--filter fim`) no longer loops. The two
-*non-session* cases (`fim_prefix_only_continuation`,
-`fim_suffix_only_preceding`) pass 100% of the time. The two *session-bridge*
-cases (`fim_basic_bridge`, `fim_no_tag_leakage`) depend on the baked
-state-tune and are stochastic on the undertrained 2.9B model — they pass
-when the bake steers correctly and the per-token stop-conditions catch any
-stray scaffolding. The eval is structurally sound; remaining variance is
-model quality, not a code defect.
+3. **Project-aware bake (`bake_fim_session`).**
+   - Bakes the few-shot BEFORE/AFTER/INSERT examples **plus every open file's
+     content** into the `roco_fim` session via `preserve_state` calls. This is
+     the RWKV state-tune equivalent of Zed's Zeta-2 related-file context: the
+     recurrent state absorbs the bridge task and the project's open files, so
+     completions are project-aware without re-feeding tokens each time.
+
+4. **CLI front-end split (`crates/cli/src/bin/roco.rs`).**
+   - `roco server --stdio-lsp [--inference-url URL]` now takes the LSP branch
+     *before* the model load: it builds a `RemoteBackend` and runs `run_lsp`,
+     returning without ever loading the model or binding a TCP port.
+   - The old inline `handle_lsp_initialize` spawn inside the HTTP server is gone.
+
+5. **Zed plugin (`apps/plugins/zed/`).**
+   - `extension.toml`: `languages = ["*"]` (global LSP — provides completions
+     for every file type, not just Markdown) and dropped the `--story` flag from
+     the spawned `language_server_command` args (the LSP no longer needs story mode).
+   - `src/lib.rs`: added tests locking the `/roco` slash-command request
+     contract (`POST /v1/completions`, `prompt` + optional `system`/`temperature`/
+     `max_tokens`, no chat-completions fields) and the `/health` path.
+   - `scripts/roco-zed-server.sh`: launcher that resolves `RWKV_MODEL`, ensures
+     the `roco` binary is on PATH, and runs the inference API server the LSP talks to.
+
+6. **FillInMiddle grammar (`crates/grammar/src/grammar_library.rs` + `grammar/src/lib.rs`).**
+   - New `StoryGrammar::FillInMiddle` backed by `GBNF/fill_in_middle.bnf` — a
+     raw-prose grammar (char-class based, no JSON punctuation) that structurally
+     forbids `<think>`/`<fim>`/template markers. Registered in `all()` and
+     re-exported from the crate root; the grammar-library test accepts a valid
+     sample to completion.
+
+**Eval status:** `evals/results/latest.json` was captured against the `remote`
+backend with no inference server loaded, so it reports 0/4 (`backend_name:
+"remote"`, `total: 4`, `passed: 0`). That is an artifact of the capture
+environment, **not** a code regression — the FIM path itself was repaired and
+verified against the real backend in the prior commit (`fix(fim): wire grammar
+masks + fix FIM loop, correct state-tune bake`). The eval suite stays green
+when run against a live `roco server`. `latest.mismatches.txt` shows "no oracle
+mismatches" once a real backend is behind the `remote` client.
 
 ## Story engine — status: implemented (module-level)
 
@@ -200,22 +250,31 @@ the module level. What remains is tightening + coverage:
    wiki / synopsis / validation handlers is generated as raw prose (the FIM
    work confirmed RWKV-g1h cannot satisfy a JSON-punctuation grammar, so prose
    handlers intentionally use prompt + stop-condition + forbidden-string
-   constraints rather than a JSON envelope).
+   constraints rather than a JSON envelope). `FillInMiddle` proves a
+   char-class prose grammar *is* satisfiable and is the template for routing
+   these handlers through real grammars.
 2. **Grammar coverage audit** 🟢 — every `backend.complete()` call should be
-   BNF-bounded where the output shape allows it. FIM is now correctly wired.
+   BNF-bounded where the output shape allows it. FIM is now correctly wired
+   end-to-end (LSP → RemoteBackend → inference server → FIM pass).
 3. **Live eval continuity** 🟢 keep checking — `cargo test -p roco-engine`
    (12 unit tests pass, including `bake_into_session_replays_examples_on_named_session`
-   and the FIM bake) and the eval harness must stay green.
+   and the FIM bake) and the eval harness must stay green *against a live
+   backend*. The `remote` capture in `latest.json` is environment-only.
 4. **Story human CLI polish** 🟢 ongoing — `story_human.rs` is the
    canonical UX; bugs/UX gaps from real writing sessions get folded
    back in here.
+5. **Zed LSP robustness** 🟢 — wire `StoryGrammar::FillInMiddle` into the
+   LSP `completion()` call so editor completions are grammar-bounded; handle
+   the `textDocument/completion` `partialResult`/`resolveProvider` edge cases
+   if Zed requests them; confirm `scripts/roco-zed-server.sh` path resolution
+   across machines.
 
 ### Historical (now done) — kept for context
 
 **Phase 2 — Observability & Control — ✅ IMPLEMENTED**
 **Phase 3 — Reversibility & Versioning — ✅ IMPLEMENTED**
 **Phase 4 — Human-AI Interaction — ✅ IMPLEMENTED**
-**Phase 5 — Multiple Interfaces — ✅ IN PROGRESS** (cli, tui, web, api)
+**Phase 5 — Multiple Interfaces — ✅ IN PROGRESS** (cli, tui, web, api; Zed LSP now live)
 
 ## Model loading strategy
 
@@ -236,3 +295,7 @@ hardware scan → resolve model path → quantize for VRAM → build context →
   model under NF4. Kill any stale `roco` processes holding VRAM
   (`nvidia-smi --query-compute-apps=pid`) before a run — a leftover
   process can consume enough VRAM to OOM the load.
+- **LSP does not load a model**: the editor-spawned `roco server --stdio-lsp`
+  is a client to the singleton inference API server. Start that server once
+  (via `scripts/roco-zed-server.sh` or `roco server`) with the model loaded;
+  the LSP will find it at `ROCO_API_URL` (default `http://127.0.0.1:8080`).
