@@ -14,6 +14,8 @@ pub enum EngineError {
     EmptyResponse,
     #[error("context budget exceeded: used {used} of {max} tokens")]
     BudgetExceeded { used: usize, max: usize },
+    #[error("completion timed out after {ms} ms")]
+    TimedOut { ms: u64 },
 }
 
 /// Token accounting returned by a backend.
@@ -48,6 +50,12 @@ pub struct CompletionRequest {
     #[serde(skip)]
     pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
     pub session: Option<String>,
+    /// Wall-clock deadline for the entire completion (including prompt
+    /// processing and all generated tokens). Specified in milliseconds.
+    /// 0 = no deadline (default). When exceeded, the backend cancels
+    /// the in-flight generation and returns `EngineError::TimedOut`.
+    #[serde(default)]
+    pub deadline_ms: u64,
     /// Opaque grammar constraint. Created by the application layer using
     /// `roco-bnf-engine::BnfEngine` to avoid pulling kbnf types into
     /// downstream crates that depend on `web-rwkv`.
@@ -70,6 +78,7 @@ impl Clone for CompletionRequest {
             thinking: self.thinking,
             preserve_state: self.preserve_state,
             session: self.session.clone(),
+            deadline_ms: self.deadline_ms,
             on_token: None,
             bnf_mask: None,
         }
@@ -91,6 +100,7 @@ impl std::fmt::Debug for CompletionRequest {
             .field("thinking", &self.thinking)
             .field("preserve_state", &self.preserve_state)
             .field("session", &self.session)
+            .field("deadline_ms", &self.deadline_ms)
             .field("on_token", &self.on_token.as_ref().map(|_| "<callback>"))
             .field("bnf_mask", &self.bnf_mask.as_ref().map(|_| "<BnfMask>"))
             .finish()
@@ -113,6 +123,7 @@ impl Default for CompletionRequest {
             preserve_state: false,
             on_token: None,
             session: None,
+            deadline_ms: 0,
             bnf_mask: None,
         }
     }

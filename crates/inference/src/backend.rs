@@ -20,6 +20,9 @@ pub struct RwkvBackend {
     tx: Option<mpsc::Sender<ActorMessage>>,
     actor_thread: Option<std::thread::JoinHandle<()>>,
     name: String,
+    /// Default wall-clock deadline for completions (ms). 0 = no deadline.
+    /// Can be overridden per-request via CompletionRequest::deadline_ms.
+    default_deadline_ms: u64,
 }
 
 impl RwkvBackend {
@@ -28,6 +31,7 @@ impl RwkvBackend {
     /// Spawns a dedicated OS thread owning all non-Send GPU resources.
     /// Blocks until the model is fully loaded.
     pub fn from_env() -> anyhow::Result<Self> {
+        let default_deadline_ms = std::env::var("RWKV_DEADLINE_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
         let (tx, rx) = mpsc::channel::<ActorMessage>(4);
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<std::result::Result<(), String>>();
 
@@ -63,7 +67,7 @@ impl RwkvBackend {
             }
         })?;
 
-        Ok(Self { tx: Some(tx), actor_thread: Some(actor_thread), name: "rwkv".to_string() })
+        Ok(Self { tx: Some(tx), actor_thread: Some(actor_thread), name: "rwkv".to_string(), default_deadline_ms })
     }
 
     /// Build from explicit model/vocab paths.
@@ -149,12 +153,32 @@ impl ModelBackend for RwkvBackend {
                 reply: reply_tx,
                 preserve_state: req.preserve_state, on_token: req.on_token,
                 session: req.session,
+                deadline_ms: req.deadline_ms,
             }.into()).await
                 .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
 
-            let (text, usage) = reply_rx.await
-                .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
-                .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
+            // Wall-clock timeout on the entire generation (including prompt
+            // processing). If the deadline is exceeded we send a Cancel to the
+            // actor (cooperative interrupt, lands within one chunk thanks to
+            // the rx.try_recv drain in handle_complete) and return TimedOut.
+            // Priority: per-request deadline > default > none (0 = no deadline).
+            let effective_deadline_ms = if req.deadline_ms > 0 { req.deadline_ms } else { self.default_deadline_ms };
+            let (text, usage) = if effective_deadline_ms > 0 {
+                let timeout = tokio::time::Duration::from_millis(effective_deadline_ms);
+                match tokio::time::timeout(timeout, reply_rx).await {
+                    Ok(Ok(inner)) => inner
+                        .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?,
+                    Ok(Err(e)) => return Err(EngineError::Backend(format!("rwkv channel recv: {e}"))),
+                    Err(_elapsed) => {
+                        let _ = tx.send(ActorMessage::Cancel).await;
+                        return Err(EngineError::TimedOut { ms: effective_deadline_ms });
+                    }
+                }
+            } else {
+                reply_rx.await
+                    .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
+                    .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?
+            };
 
             info!(ms = started.elapsed().as_millis(), prompt_tokens = usage.prompt_tokens,
                 completion_tokens = usage.completion_tokens,
@@ -194,6 +218,23 @@ impl ModelBackend for RwkvBackend {
             rrx.await
                 .map_err(|e| EngineError::Backend(format!("rwkv load_state recv: {e}")))?
         })
+    }
+}
+
+impl RwkvBackend {
+    /// Gracefully shut down the backend: stop accepting new requests,
+    /// wait for any in-flight generation to finish (or be cancelled),
+    /// then join the actor thread and release GPU resources.
+    ///
+    /// This is idempotent and safe to call multiple times. After the
+    /// first call, subsequent calls are no-ops.
+    pub async fn shutdown(&mut self) {
+        // 1) Close the request channel so no new CompleteReq can be sent.
+        self.tx.take();
+        // 2) Join the actor thread (it will exit once its mailbox is closed).
+        if let Some(handle) = self.actor_thread.take() {
+            let _ = handle.join();
+        }
     }
 }
 

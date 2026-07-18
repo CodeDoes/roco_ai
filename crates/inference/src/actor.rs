@@ -100,6 +100,9 @@ pub struct CompleteReq {
     pub preserve_state: bool,
     pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
     pub session: Option<String>,
+    /// Wall-clock deadline for the entire completion in milliseconds.
+    /// 0 = no deadline.
+    pub deadline_ms: u64,
 }
 
 pub struct BlendReq {
@@ -405,6 +408,9 @@ impl RwkvActor {
         // loop is blocked inside this call and cannot poll its own mailbox
         // until `handle_complete` returns).
         rx: &mut mpsc::Receiver<ActorMessage>,
+        // Wall-clock deadline for the entire completion in milliseconds.
+        // 0 = no deadline.
+        deadline_ms: u64,
     ) -> Result<(String, TokenUsage), EngineError> {
         let session_id = session.as_ref().cloned();
         let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
@@ -725,6 +731,7 @@ impl RwkvActor {
                         preserve_state,
                         on_token,
                         session,
+                        deadline_ms,
                     } = req;
                     let result = self
                         .handle_complete(
@@ -732,6 +739,7 @@ impl RwkvActor {
                             top_a, preserve_state, on_token, grammar, session,
                             bnf_mask,
                             &mut rx,
+                            deadline_ms,
                         )
                         .await;
                     let _ = reply.send(result);
