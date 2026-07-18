@@ -85,28 +85,45 @@ impl ModelBackend for RemoteBackend {
         let client = self.client.clone();
         let extra_headers = self.extra_headers.clone();
         // Synchronous fetch (vocab is needed before building a grammar mask).
-        let rt = match tokio::runtime::Handle::try_current() {
-            Ok(h) => h,
-            Err(_) => return None,
-        };
-        rt.block_on(async move {
-            let mut req = client.get(&url);
-            for (k, v) in &extra_headers {
-                req = req.header(k, v);
-            }
-            let resp = req.send().await.ok()?;
-            if !resp.status().is_success() {
-                return None;
-            }
-            let body: serde_json::Value = resp.json().await.ok()?;
-            let arr = body.get("vocab")?.as_array()?;
-            let mut vocab = Vec::with_capacity(arr.len());
-            for item in arr {
-                let b64 = item.as_str()?;
-                let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
-                vocab.push(bytes);
-            }
-            Some(vocab)
+        //
+        // We cannot call `Handle::block_on` from inside an existing tokio
+        // runtime: the awaited HTTP work gets scheduled on the same reactor
+        // we just blocked, so `block_on` deadlocks the caller until the
+        // awaited future times out. (Stuck this for years if you call
+        // `RemoteBackend::vocab_bytes` from inside `#[tokio::main]`.) To
+        // avoid both the no-runtime (returning None) and the in-runtime
+        // (deadlock) paths, run the HTTP fetch on a dedicated blocking
+        // thread that owns its own single-threaded runtime. This is safe
+        // whether or not the caller is already inside a tokio runtime —
+        // the blocking thread just blocks; it doesn't tie up the caller's
+        // executor.
+        std::thread::scope(|s| {
+            let handle = s.spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .ok()?;
+                rt.block_on(async move {
+                    let mut req = client.get(&url);
+                    for (k, v) in &extra_headers {
+                        req = req.header(k, v);
+                    }
+                    let resp = req.send().await.ok()?;
+                    if !resp.status().is_success() {
+                        return None;
+                    }
+                    let body: serde_json::Value = resp.json().await.ok()?;
+                    let arr = body.get("vocab")?.as_array()?;
+                    let mut vocab = Vec::with_capacity(arr.len());
+                    for item in arr {
+                        let b64 = item.as_str()?;
+                        let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
+                        vocab.push(bytes);
+                    }
+                    Some(vocab)
+                })
+            });
+            handle.join().ok().flatten()
         })
     }
 
