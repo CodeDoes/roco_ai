@@ -438,11 +438,18 @@ pub fn fim_eval_cases() -> Vec<EvalCase> {
     let fim_max_tokens = 128usize;
 
     // System used for the both-sides baked-session bridge.
+    //
+    // NOTE: the bake (bake_fim_session) primes the recurrent state with
+    // *prose* answers to BEFORE/AFTER pairs (e.g. "He raised the blade,
+    // bracing for the clash."). The case system prompt must match or the
+    // state-tune gets cancelled by the contradiction: do NOT reintroduce
+    // JSON envelope here. Wrap-to-JSON was tried earlier and the model
+    // fell into opening <?> then echoing the prompt, defeating the bake.
     let fim_system = "You are RoCo, a collaborative story-writing assistant. \
         Given the text BEFORE the cursor and the text AFTER the cursor, \
-        write ONLY the short passage that connects them. Output JSON with a single \
-        field 'insert' containing the connecting text. Never repeat the BEFORE or \
-        AFTER text, never use <fim> tags, never add commentary."
+        write ONLY the short passage that connects them. Never repeat the \
+        BEFORE or AFTER text, never use <fim> or think tags, never add \
+        commentary."
         .to_string();
 
     // Closed think-block prefill: feeds the model its own assistant turn
