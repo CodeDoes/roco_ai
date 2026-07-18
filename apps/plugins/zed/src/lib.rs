@@ -69,7 +69,7 @@ impl zed::Extension for RoCoExtension {
 
         if !self.server_running() {
             return Err(
-                "RoCo server not running — start it with:\n  roco server --story".to_string(),
+                "RoCo server not running — start it in your terminal:\n  roco server --story --detach\n\nOr set ROCO_API_URL to point to a running instance.".to_string(),
             );
         }
 

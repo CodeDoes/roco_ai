@@ -9,9 +9,65 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::fs;
 
 #[path = "../story_routes.rs"]
 mod story_routes;
+
+/// Spawn a detached child process for `roco server` or `roco gateway`.
+/// The parent redirects stdio to a log file, writes a PID file, and exits.
+fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path) {
+    let exe = std::env::current_exe().expect("failed to get current exe path");
+
+    // Build args for the child: subcommand + modified extras
+    let mut child_args: Vec<String> = Vec::new();
+    child_args.push(subcmd.to_string());
+
+    let mut i = 0;
+    while i < extra.len() {
+        let a = extra[i];
+        if a == "--detach" || a == "-d" {
+            child_args.push(format!("--_child-{subcmd}"));
+        } else if a == "--pid-file" || a == "--log-file" {
+            child_args.push(a.to_string());
+            if i + 1 < extra.len() {
+                child_args.push(extra[i + 1].to_string());
+                i += 1;
+            }
+        } else {
+            child_args.push(a.to_string());
+        }
+        i += 1;
+    }
+
+    let log_file = fs::File::create(log_path)
+        .unwrap_or_else(|e| panic!("failed to create log file {}: {e}", log_path.display()));
+    let log_clone = log_file.try_clone()
+        .expect("failed to clone log file handle");
+
+    let child = Command::new(&exe)
+        .args(&child_args)
+        .stdin(fs::File::open("/dev/null").expect("no /dev/null"))
+        .stdout(log_file)
+        .stderr(log_clone)
+        .spawn()
+        .unwrap_or_else(|e| panic!("failed to spawn child: {e}"));
+
+    let pid = child.id();
+    fs::write(pid_path, pid.to_string())
+        .unwrap_or_else(|e| panic!("failed to write pid file {}: {e}", pid_path.display()));
+
+    println!("roco {subcmd} started (PID {pid})");
+    println!("  log:      {}", log_path.display());
+    println!("  pidfile:  {}", pid_path.display());
+}
+
+/// Compute a default path under `/tmp/roco/` for PID or log files.
+fn default_detach_path(subcmd: &str, port: u16, ext: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("roco");
+    let _ = fs::create_dir_all(&dir);
+    dir.join(format!("{subcmd}_{port}.{ext}"))
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -66,6 +122,20 @@ fn cmd_gateway(extra: &[&str]) {
     let limit_str = parse_opt("--rate-limit", extra).unwrap_or("60");
     let limit = limit_str.parse::<usize>().unwrap_or(60);
 
+    let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
+    let is_child = extra.iter().any(|&a| a == "--_child-gateway");
+    let log_path = parse_opt("--log-file", extra)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_detach_path("gateway", port, "log"));
+    let pid_path = parse_opt("--pid-file", extra)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_detach_path("gateway", port, "pid"));
+
+    if detach && !is_child {
+        spawn_detached("gateway", extra, &log_path, &pid_path);
+        return;
+    }
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -101,6 +171,21 @@ fn cmd_server(extra: &[&str]) {
     let port_str = parse_opt("--port", extra).unwrap_or("8080");
     let port = port_str.parse::<u16>().unwrap_or(8080);
     let story_mode = extra.iter().any(|&a| a == "--story" || a == "-s");
+
+    // Detach mode
+    let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
+    let is_child = extra.iter().any(|&a| a == "--_child-server");
+    let log_path = parse_opt("--log-file", extra)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_detach_path("server", port, "log"));
+    let pid_path = parse_opt("--pid-file", extra)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_detach_path("server", port, "pid"));
+
+    if detach && !is_child {
+        spawn_detached("server", extra, &log_path, &pid_path);
+        return;
+    }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -325,8 +410,10 @@ fn help(sub: &str) {
     eprintln!("  rwkv                              Smoke-test the RWKV backend");
     eprintln!("  grammar                           Grammar-constrained decode");
     eprintln!("  gpu-check [--json|-j]              Show Vulkan + model info (--json for machine-readable)");
-    eprintln!("  server [--host ADDR] [--port PORT] [--story] Run the local HTTP server; --story adds story API");
+    eprintln!("  server [--host ADDR] [--port PORT] [--story] [--detach|-d] Run the local HTTP server; --story adds story API");
+    eprintln!("                                  [--log-file PATH] [--pid-file PATH]  detach options");
     eprintln!("  gateway [--host ADDR] [--port PORT] [--target URL] [--rate-limit L] Run the API gateway");
+    eprintln!("                                  [--detach|-d] [--log-file PATH] [--pid-file PATH]");
     eprintln!("  tui                               Start the interactive terminal chat UI");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");
     std::process::exit(if sub == "help" { 0 } else { 1 });
