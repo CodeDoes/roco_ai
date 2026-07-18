@@ -399,6 +399,12 @@ impl RwkvActor {
         grammar: Option<String>,
         session: Option<String>,
         mut bnf_mask: Option<Box<dyn BnfMask>>,
+        // Receiver half of the actor's mailbox. We carry it into
+        // `handle_complete` so we can drain `Cancel` messages cooperatively
+        // without round-tripping through the actor's main loop (the main
+        // loop is blocked inside this call and cannot poll its own mailbox
+        // until `handle_complete` returns).
+        rx: &mut mpsc::Receiver<ActorMessage>,
     ) -> Result<(String, TokenUsage), EngineError> {
         let session_id = session.as_ref().cloned();
         let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
@@ -478,6 +484,15 @@ impl RwkvActor {
 
         // Flush prompt + sample first token
         loop {
+            // Cooperative cancellation: drain any pending `Cancel` message so
+            // an interrupt (e.g. SSE client disconnect in `roco server`)
+            // actually stops a long-running generation instead of waiting
+            // for it to finish naturally at `max_tokens`. The actor's main
+            // loop is currently blocked inside this call, so it cannot poll
+            // its own mailbox; we do it here at every generation step.
+            while let Ok(ActorMessage::Cancel) = rx.try_recv() {
+                self.cancel.store(true, Ordering::Relaxed);
+            }
             if self.cancel.load(Ordering::Relaxed) {
                 return Ok((text, TokenUsage { prompt_tokens: total_prompt_len, completion_tokens: generated.len() }));
             }
@@ -558,6 +573,13 @@ impl RwkvActor {
         // Generate remaining tokens
         let mut fim_tokens_generated = 0usize;
         for _ in 1..max_tokens {
+            // Cooperative cancellation (see note above): drain any pending
+            // `Cancel` so an SSE-disconnect / Ctrl+C interrupt reaches the
+            // generation within one token of arriving instead of waiting
+            // for `max_tokens`.
+            while let Ok(ActorMessage::Cancel) = rx.try_recv() {
+                self.cancel.store(true, Ordering::Relaxed);
+            }
             if self.cancel.load(Ordering::Relaxed) { break; }
             let input = inference.clone();
             let (input, output) = self.runtime.infer(input).await
@@ -709,6 +731,7 @@ impl RwkvActor {
                             system, prompt, prefill, max_tokens, temperature,
                             top_a, preserve_state, on_token, grammar, session,
                             bnf_mask,
+                            &mut rx,
                         )
                         .await;
                     let _ = reply.send(result);
