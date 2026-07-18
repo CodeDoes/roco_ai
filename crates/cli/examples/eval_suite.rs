@@ -3,18 +3,22 @@
 use std::env;
 use std::path::PathBuf;
 
-use roco_engine::{MockBackend, EvalReport, EvalCase,
+use roco_engine::{MockBackend, EvalReport, EvalCase, CheckResult, CompletionRequest,
     run_suite, cases::default_eval_suite, cases::message_eval_cases, cases::fim_eval_cases, write_report, print_report, write_sidecars,
 };
 use roco_inference::RwkvBackend;
-use roco_infer_client::RemoteBackend;
 use roco_bnf_engine::create_bnf_mask;
 use roco_grammar::gbnf_to_kbnf;
-use roco_engine::{ModelBackend, BnfMask};
+use roco_engine::{ModelBackend};
 
 struct Args {
     backend: String,
     filter: Option<String>,
+    /// Run a single case (by name substring) with live token streaming and an
+    /// immediate verdict, then exit. Skips report/sidecar writes.
+    one: Option<String>,
+    /// Stream every case's tokens to stdout live during a full-suite run.
+    live: bool,
     output: PathBuf,
     suite: String,
 }
@@ -23,6 +27,8 @@ fn parse_args() -> Args {
     let args: Vec<String> = env::args().collect();
     let mut backend = "mock".to_string();
     let mut filter: Option<String> = None;
+    let mut one: Option<String> = None;
+    let mut live = false;
     let mut output = PathBuf::from("evals/results/latest.json");
     let mut suite = "roco-eval-suite".to_string();
     let mut i = 1;
@@ -30,12 +36,16 @@ fn parse_args() -> Args {
         match args[i].as_str() {
             "--backend" => { i += 1; if i < args.len() { backend = args[i].clone(); } }
             "--filter" => { i += 1; if i < args.len() { filter = Some(args[i].clone()); } }
+            "--one" => { i += 1; if i < args.len() { one = Some(args[i].clone()); } }
+            "--live" | "-l" => { live = true; }
             "--output" => { i += 1; if i < args.len() { output = PathBuf::from(&args[i]); } }
             "--suite" => { i += 1; if i < args.len() { suite = args[i].clone(); } }
             "--help" | "-h" => {
                 println!("Usage: cargo run --example eval_suite [OPTIONS]");
                 println!("  --backend STR    mock, rwkv, or remote [default: mock]");
-                println!("  --filter STR     Filter eval cases");
+                println!("  --filter STR     Filter eval cases (name/desc/category substring)");
+                println!("  --one STR        Run ONE case (name substring) with live streaming, then exit");
+                println!("  --live, -l       Stream every case's tokens to stdout live");
                 println!("  --output PATH    Report path [default: evals/results/latest.json]");
                 println!("  --suite STR      Suite name [default: roco-eval-suite]");
                 std::process::exit(0);
@@ -44,7 +54,7 @@ fn parse_args() -> Args {
         }
         i += 1;
     }
-    Args { backend, filter, output, suite }
+    Args { backend, filter, one, live, output, suite }
 }
 
 /// Build BNF masks for every eval case that carries a `grammar` string, using
@@ -65,6 +75,123 @@ fn build_masks<B: ModelBackend + ?Sized>(backend: &B, cases: &mut [EvalCase]) {
     }
 }
 
+/// Run a single case with **live token streaming** to the terminal and an
+/// immediate pass/fail verdict. This is the “show me it working” mode used by
+/// `--one <name>`: tokens appear in real time, then static checks light up
+/// green/red.
+///
+/// We do NOT use `run_suite` here because the harness buffers results and
+/// dumps them at the end — that's the wrong UX for a one-case diagnostic.
+/// We also skip `build_masks` against the model vocab (it triggers a
+/// `block_on` from inside the `#[tokio::main]` runtime when targeting the
+/// `remote` backend, see `crates/infer-client/src/vocab_bytes` for the
+/// threaded-runtime fix that removed this only in the conventional path).
+/// Single-case mode is a diagnostic; unmasked generation is fine for a
+/// visual demo.
+async fn run_one_streaming<B: ModelBackend + Send + Sync>(
+    backend: &B,
+    mut cases: Vec<EvalCase>,
+    name: &str,
+) {
+    let idx = cases.iter().position(|c| c.name.contains(name));
+    let idx = match idx {
+        Some(i) => i,
+        None => {
+            eprintln!("No case matches '{name}'. Available cases:");
+            for c in &cases { eprintln!("  - {}", c.name); }
+            std::process::exit(1);
+        }
+    };
+    let case = cases.swap_remove(idx);
+
+    let full_input = if case.system.is_empty() {
+        format!("User: {}\n\nAssistant:", case.prompt)
+    } else {
+        format!("System: {}\n\nUser: {}\n\nAssistant:", case.system, case.prompt)
+    };
+
+    println!("╭───── EVAL (live): {}", case.name);
+    println!("│ category:    {}", case.category);
+    println!("│ description: {}", case.description);
+    println!("╰───────────────────────────────────────────────");
+    println!("\n{}\n", full_input);
+    println!("─── streaming output ────────────────────────────────────────────────");
+
+    let on_token: Box<dyn Fn(&str) + Send + Sync> = Box::new(|word: &str| {
+        use std::io::Write;
+        let _ = std::io::stdout().write_all(word.as_bytes());
+        let _ = std::io::stdout().flush();
+    });
+
+    let request = CompletionRequest {
+        system: case.system.clone(),
+        prompt: case.prompt.clone(),
+        grammar: case.grammar.clone(),
+        bnf_mask: case.bnf_mask,
+        prefill: case.prefill.clone(),
+        session: case.session.clone(),
+        preserve_state: case.preserve_state,
+        temperature: case.temperature,
+        max_tokens: case.max_tokens,
+        on_token: Some(on_token),
+        ..Default::default()
+    };
+
+    let start = std::time::Instant::now();
+    let response = backend.complete(request).await;
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    println!("\n──────────────────────────────────────────────────────────");
+    match response {
+        Ok(resp) => {
+            let output = &resp.text;
+            let usage = &resp.usage;
+            let tps = if usage.completion_tokens > 0 && latency_ms > 0 {
+                (usage.completion_tokens as f64 / latency_ms as f64) * 1000.0
+            } else { 0.0 };
+            println!("  latency: {}ms | {} tok | {:.1} tok/s", latency_ms, usage.completion_tokens, tps);
+
+            // Re-run the same static checks the harness uses, live.
+            let mut checks: Vec<CheckResult> = Vec::new();
+            checks.push(CheckResult {
+                name: "non_empty".into(), passed: !output.trim().is_empty(),
+                detail: format!("{} chars", output.len()),
+            });
+            checks.push(CheckResult {
+                name: "min_output_length".into(),
+                passed: output.len() >= case.min_output_chars,
+                detail: format!("{} >= {}", output.len(), case.min_output_chars),
+            });
+            for h in &case.expected_hints {
+                let f = output.to_lowercase().contains(&h.to_lowercase());
+                checks.push(CheckResult {
+                    name: format!("hint: {h}"), passed: f,
+                    detail: if f { "found".into() } else { "NOT found".into() },
+                });
+            }
+            for bad in &case.forbidden_strings {
+                let f = output.contains(bad);
+                checks.push(CheckResult {
+                    name: format!("forbidden: {bad}"), passed: !f,
+                    detail: if f { "LEAKED".into() } else { "clean".into() },
+                });
+            }
+            let passed = checks.iter().all(|c| c.passed);
+            println!("  checks:");
+            for c in &checks {
+                let s = if c.passed { "✅" } else { "❌" };
+                println!("    {} {} — {}", s, c.name, c.detail);
+            }
+            println!("\n  RESULT: {}\n", if passed { "✅ PASS" } else { "❌ FAIL" });
+        }
+        Err(e) => {
+            println!("  ERROR: {e}");
+            println!("\n  RESULT: ❌ ERROR\n");
+            std::process::exit(1);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -76,10 +203,42 @@ async fn main() {
         Some(args.output.with_file_name(stem))
     };
 
+    // `--one` takes precedence: run exactly one case, stream it live, exit.
+    // No report / sidecar / timestamped trace file is emitted; the verdict
+    // is the only output. See `run_one_streaming` for the rationale.
+    if let Some(one) = &args.one {
+        match args.backend.as_str() {
+            "mock" => {
+                let backend = MockBackend::new("mock-3b", 0);
+                run_one_streaming(&backend, default_eval_suite(), one).await;
+            }
+            "rwkv" => {
+                let backend = RwkvBackend::from_env().unwrap_or_else(|e| {
+                    eprintln!("ERROR: Failed to create RwkvBackend: {e}");
+                    eprintln!("Set RWKV_MODEL and RWKV_VOCAB environment variables.");
+                    std::process::exit(1);
+                });
+                let mut cases = default_eval_suite();
+                cases.extend(roco_engine::cases::message_eval_cases());
+                cases.extend(roco_engine::cases::fim_eval_cases());
+                run_one_streaming(&backend, cases, one).await;
+            }
+            "remote" => {
+                let backend = roco_infer_client::RemoteBackend::from_env();
+                let mut cases = default_eval_suite();
+                cases.extend(roco_engine::cases::message_eval_cases());
+                cases.extend(roco_engine::cases::fim_eval_cases());
+                run_one_streaming(&backend, cases, one).await;
+            }
+            other => { eprintln!("Unknown backend: {other}"); std::process::exit(1); }
+        }
+        return;
+    }
+
     let report: EvalReport = match args.backend.as_str() {
         "mock" => {
             let backend = MockBackend::new("mock-3b", 0);
-            run_suite(&args.suite, &backend, default_eval_suite(), args.filter.as_deref(), trace_path.as_deref()).await
+            run_suite(&args.suite, &backend, default_eval_suite(), args.filter.as_deref(), trace_path.as_deref(), args.live).await
         }
         "rwkv" => {
             let backend = RwkvBackend::from_env().unwrap_or_else(|e| {
@@ -100,7 +259,7 @@ async fn main() {
                 eprintln!("WARN: FIM session bake failed: {e}");
             }
             build_masks(&backend, &mut cases);
-            run_suite(&args.suite, &backend, cases, args.filter.as_deref(), trace_path.as_deref()).await
+            run_suite(&args.suite, &backend, cases, args.filter.as_deref(), trace_path.as_deref(), args.live).await
         }
         "remote" => {
             // Talk to the singleton inference API server (the same one the
@@ -116,7 +275,7 @@ async fn main() {
             cases.extend(message_eval_cases());
             cases.extend(fim_eval_cases());
             build_masks(&backend, &mut cases);
-            run_suite(&args.suite, &backend, cases, args.filter.as_deref(), trace_path.as_deref()).await
+            run_suite(&args.suite, &backend, cases, args.filter.as_deref(), trace_path.as_deref(), args.live).await
         }
         other => { eprintln!("Unknown backend: {other}"); std::process::exit(1); }
     };
