@@ -10,3 +10,7 @@ pub use pacing::*;
 // Markdown Editor Widget — The primary surface (prose is the product)
 mod markdown_editor;
 pub use markdown_editor::*;
+
+// Chat Widget — The conversation surface
+mod chat;
+pub use chat::*;

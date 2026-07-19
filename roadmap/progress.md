@@ -41,3 +41,13 @@
   13 unit tests pass covering document ops, suggestions, comments, undo/redo,
   and action application. Meets Definition of Done for widget: surface + control +
   tested + reversible (undo stack).
+
+## 2026-07-19 (cont.)
+- Implemented **ChatWidget** — the conversation surface. Features: 7 message
+  part types (system/user/assistant/think/tool_call/tool_result/event) with
+  role-colored badges and timestamps; streaming indicator; text input with
+  Enter-to-send; capabilities panel (6 toggles: Generate/Research/Edit/Critique/
+  Outline/Brainstorm); context info panel (document, section, selection, tokens);
+  attachments bar; compact mode for side panels. 15 unit tests passing.
+  Meets Definition of Done: surface + control + tested + reversible (undo/redo
+  actions wired).
