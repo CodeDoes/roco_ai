@@ -526,3 +526,28 @@ problem: the UI can no longer hide in an untested folder.
 Do **not** resume the old engine todos (per-handler grammar routing,
 grammar-coverage audit, new example binaries) unless a human-facing feature
 requires it. Those were the ✅-checklist drift we removed.
+
+## Token 0 (EOS) in state-tuning
+
+RWKV training uses token **0 (EOS/end-of-document) as document separator**
+(see [RWKV-v5 make_data.py](https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v5/make_data.py):
+'Here "/" means end_of_doc, which is actually token [0]').
+
+State-tuning functions (`bake_into_session`, `bake_no_think_session`,
+`bake_persona`) now feed token 0 between consecutive examples to match
+this training distribution. Before this fix, examples were replayed
+sequentially without EOS padding, leaving the recurrent state in a
+distribution the model was never trained on.
+
+**Mechanism:** `ModelBackend::feed_eos()` sends `ActorMessage::FeedEos`
+to the RWKV actor thread, which feeds raw token 0 via
+`RnnInputBatch(vec![0u32])` and saves the updated state back to the pool.
+Default impl is a no-op (MockBackend).
+
+**Impact:** EOS-padded state-tuning may be sufficient to suppress
+`<think>` without generation-time `NO_THINK_PREFILL`. Phase B of
+`token0_probe.rs` (`crates/cli/examples/`) tests this hypothesis against
+the OLD approach (NO_THINK_PREFILL at generation time). Run:
+```bash
+RWKV_MODEL=... cargo run --release --example token0_probe -p roco-cli
+```
