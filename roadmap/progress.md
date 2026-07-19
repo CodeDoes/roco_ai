@@ -60,3 +60,10 @@
   persistence via JSON files in `.roco/sessions/`. 10 unit tests passing.
   Color-coded output via rich_output.rs. Meets Definition of Done: surface +
   control + tested + reversible (undo, session resume).
+
+## 2026-07-19 (cont.)
+- Implemented **RocoDesktopApp** — full egui/eframe desktop GUI (`roco gui`).
+  Wires ChatWidget (main area), PacingWidget (left panel), MarkdownEditor (right
+  panel) together with model loading (supports fallback if no RWKV_MODEL),
+  session management (New/Save), menu bar (File, View, Help). 39 tests pass.
+  Launches via `roco gui` subcommand.

@@ -22,6 +22,7 @@ roco-gateway = { path = "../gateway" }
 roco-infer-client = { path = "../infer-client" }
 roco-tui = { path = "../tui" }
 roco-session = { path = "../session" }
+roco_ui = { path = "../ui", package = "roco_ui" }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

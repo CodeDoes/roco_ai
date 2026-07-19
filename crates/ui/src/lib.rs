@@ -14,3 +14,7 @@ pub use markdown_editor::*;
 // Chat Widget — The conversation surface
 mod chat;
 pub use chat::*;
+
+// Desktop Application
+mod desktop_app;
+pub use desktop_app::*;

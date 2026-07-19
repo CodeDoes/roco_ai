@@ -98,6 +98,7 @@ fn main() {
         "server" => cmd_server(&extra),
         "gateway" => cmd_gateway(&extra),
         "tui" => cmd_tui(&extra),
+        "gui" => cmd_gui(&extra),
         "story" => cmd_story(&extra),
         "interact" => cmd_interact(&extra),
         _ => help(sub),
@@ -122,6 +123,42 @@ fn cmd_tui(_extra: &[&str]) {
     if let Err(e) = roco_tui::App::new(backend).run() {
         eprintln!("TUI run error: {e}");
     }
+}
+
+fn cmd_gui(_extra: &[&str]) {
+    use eframe::egui;
+    use roco_inference::RwkvBackend;
+    use roco_ui::RocoDesktopApp;
+    use std::sync::Arc;
+
+    println!("Loading model for GUI...");
+    let backend = match RwkvBackend::from_env() {
+        Ok(b) => {
+            println!("Model loaded successfully.");
+            Some(Arc::new(b) as Arc<dyn roco_engine::ModelBackend>)
+        }
+        Err(e) => {
+            eprintln!("Warning: could not load model: {e}");
+            eprintln!("GUI will start without model (use File → Load Model or set RWKV_MODEL)");
+            None
+        }
+    };
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1200.0, 800.0])
+            .with_title("RoCo AI — Collaborative Story Writing"),
+        ..Default::default()
+    };
+
+    println!("Starting GUI...");
+    let app = RocoDesktopApp::new(backend);
+    eframe::run_native(
+        "RoCo AI Desktop",
+        options,
+        Box::new(|_cc| Ok(Box::new(app))),
+    )
+    .expect("GUI failed to start");
 }
 
 fn cmd_gateway(extra: &[&str]) {
@@ -517,6 +554,7 @@ fn help(sub: &str) {
         "                                  [--detach|-d] [--log-file PATH] [--pid-file PATH]"
     );
     eprintln!("  tui                               Start the interactive terminal chat UI");
+    eprintln!("  gui                               Start the desktop GUI application");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");
     eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
     eprintln!(
