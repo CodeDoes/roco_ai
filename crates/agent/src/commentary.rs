@@ -93,7 +93,12 @@ impl Commentary {
     }
 
     /// Add an alternative
-    pub fn with_alternative(mut self, description: &str, reason_rejected: &str, when_preferable: &str) -> Self {
+    pub fn with_alternative(
+        mut self,
+        description: &str,
+        reason_rejected: &str,
+        when_preferable: &str,
+    ) -> Self {
         self.alternatives.push(Alternative {
             description: description.to_string(),
             reason_rejected: reason_rejected.to_string(),
@@ -140,7 +145,10 @@ impl Commentary {
     pub fn to_markdown_comment(&self) -> String {
         let mut comment = String::new();
 
-        comment.push_str(&format!("<!-- COMMENTARY [{}]\n", self.author.to_uppercase()));
+        comment.push_str(&format!(
+            "<!-- COMMENTARY [{}]\n",
+            self.author.to_uppercase()
+        ));
         comment.push_str(&format!("Action: {}\n", self.action));
         comment.push_str(&format!("Reasoning: {}\n", self.reasoning));
 
@@ -205,7 +213,10 @@ impl StoryCommentary {
     pub fn outline(premise: &str, chapter_count: usize) -> Commentary {
         Commentary::new(
             "Generated story outline",
-            &format!("Created {} chapters based on premise: {}", chapter_count, premise),
+            &format!(
+                "Created {} chapters based on premise: {}",
+                chapter_count, premise
+            ),
         )
         .with_alternative(
             "More chapters with shorter arcs",
@@ -305,17 +316,15 @@ mod tests {
 
     #[test]
     fn test_commentary_markdown() {
-        let commentary = Commentary::new(
-            "Generated outline",
-            "Created 3 chapters for a short story",
-        )
-        .with_alternative(
-            "5 chapters",
-            "Too many for a short story",
-            "When writing a novella",
-        )
-        .with_review_point("Check chapter count")
-        .with_confidence(0.8);
+        let commentary =
+            Commentary::new("Generated outline", "Created 3 chapters for a short story")
+                .with_alternative(
+                    "5 chapters",
+                    "Too many for a short story",
+                    "When writing a novella",
+                )
+                .with_review_point("Check chapter count")
+                .with_confidence(0.8);
 
         let md = commentary.to_markdown_comment();
         assert!(md.contains("<!-- COMMENTARY [AGENT]"));

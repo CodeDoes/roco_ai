@@ -185,10 +185,17 @@ impl ChapterSteerer {
         match &self.state {
             GenerationState::NotStarted => "Not started".to_string(),
             GenerationState::Generating => {
-                format!("Generating... ({}/{} words)", self.word_count(), self.target_words)
+                format!(
+                    "Generating... ({}/{} words)",
+                    self.word_count(),
+                    self.target_words
+                )
             }
             GenerationState::Paused => {
-                format!("Paused at {} words. Give direction or [r]esume", self.word_count())
+                format!(
+                    "Paused at {} words. Give direction or [r]esume",
+                    self.word_count()
+                )
             }
             GenerationState::Completed => {
                 format!("Complete ({} words)", self.word_count())

@@ -51,20 +51,22 @@ impl WritingAnalysis {
             .prop("tone", Schema::string())
             .prop("style", Schema::string())
             .prop("key_phrases", Schema::array(Schema::string()))
-            .prop("sentiment", Schema::enum_values(vec![
-                serde_json::json!("positive"),
-                serde_json::json!("negative"),
-                serde_json::json!("neutral"),
-                serde_json::json!("mixed"),
-            ]))
+            .prop(
+                "sentiment",
+                Schema::enum_values(vec![
+                    serde_json::json!("positive"),
+                    serde_json::json!("negative"),
+                    serde_json::json!("neutral"),
+                    serde_json::json!("mixed"),
+                ]),
+            )
             .prop("tags", Schema::array(Schema::string()))
             .prop("plot_hooks", Schema::array(Schema::string()))
             .build()
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("WritingAnalysis schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("WritingAnalysis schema is valid")
     }
 }
 
@@ -86,12 +88,15 @@ pub struct WritingSuggestion {
 impl WritingSuggestion {
     pub fn schema() -> Schema {
         Schema::object()
-            .prop("suggestion_type", Schema::enum_values(vec![
-                serde_json::json!("continuation"),
-                serde_json::json!("fill_middle"),
-                serde_json::json!("alternative"),
-                serde_json::json!("expansion"),
-            ]))
+            .prop(
+                "suggestion_type",
+                Schema::enum_values(vec![
+                    serde_json::json!("continuation"),
+                    serde_json::json!("fill_middle"),
+                    serde_json::json!("alternative"),
+                    serde_json::json!("expansion"),
+                ]),
+            )
             .prop("text", Schema::string())
             .prop("reasoning", Schema::string())
             .prop("confidence", Schema::number())
@@ -100,8 +105,7 @@ impl WritingSuggestion {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("WritingSuggestion schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("WritingSuggestion schema is valid")
     }
 }
 
@@ -132,8 +136,7 @@ impl DiffAnalysis {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("DiffAnalysis schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("DiffAnalysis schema is valid")
     }
 }
 
@@ -369,8 +372,7 @@ impl CrossReference {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("CrossReference schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("CrossReference schema is valid")
     }
 }
 
@@ -400,8 +402,7 @@ where
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    serde_json::from_str::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 #[cfg(test)]

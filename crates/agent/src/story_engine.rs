@@ -23,9 +23,9 @@ use roco_grammar::{schema_to_gbnf, Schema};
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Serialize};
 
+use super::interaction::{HumanAction, InteractionMode, InteractionState};
 use super::mechanistic::{HandlerResult, MechanisticAgent, Plan, Task};
 use super::quality::{QualityAnalyzer, QualityScore, StoryCritique};
-use super::interaction::{InteractionMode, InteractionState, HumanAction};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Revision Record — tracks revisions made to chapters
@@ -81,33 +81,38 @@ impl PlotState {
     pub fn schema() -> Schema {
         Schema::object()
             .prop("chapter_count", Schema::integer())
-            .prop("characters", Schema::array(
-                Schema::object()
-                    .prop("name", Schema::string())
-                    .prop("current_status", Schema::string())
-                    .prop("last_seen", Schema::string())
-                    .prop("knowledge", Schema::array(Schema::string()))
-                    .build()
-            ))
+            .prop(
+                "characters",
+                Schema::array(
+                    Schema::object()
+                        .prop("name", Schema::string())
+                        .prop("current_status", Schema::string())
+                        .prop("last_seen", Schema::string())
+                        .prop("knowledge", Schema::array(Schema::string()))
+                        .build(),
+                ),
+            )
             .prop("active_conflicts", Schema::array(Schema::string()))
             .prop("resolved_conflicts", Schema::array(Schema::string()))
             .prop("foreshadowing", Schema::array(Schema::string()))
             .prop("current_location", Schema::string())
             .prop("recent_events", Schema::array(Schema::string()))
             .prop("themes", Schema::array(Schema::string()))
-            .prop("arc_stage", Schema::enum_values(vec![
-                serde_json::json!("setup"),
-                serde_json::json!("rising_action"),
-                serde_json::json!("climax"),
-                serde_json::json!("falling_action"),
-                serde_json::json!("resolution"),
-            ]))
+            .prop(
+                "arc_stage",
+                Schema::enum_values(vec![
+                    serde_json::json!("setup"),
+                    serde_json::json!("rising_action"),
+                    serde_json::json!("climax"),
+                    serde_json::json!("falling_action"),
+                    serde_json::json!("resolution"),
+                ]),
+            )
             .build()
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("PlotState schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("PlotState schema is valid")
     }
 
     /// Create initial plot state from outline
@@ -191,21 +196,23 @@ pub struct ChapterInfo {
 impl OutlineExpansion {
     pub fn schema() -> Schema {
         Schema::object()
-            .prop("new_chapters", Schema::array(
-                Schema::object()
-                    .prop("number", Schema::integer())
-                    .prop("title", Schema::string())
-                    .prop("summary", Schema::string())
-                    .build()
-            ))
+            .prop(
+                "new_chapters",
+                Schema::array(
+                    Schema::object()
+                        .prop("number", Schema::integer())
+                        .prop("title", Schema::string())
+                        .prop("summary", Schema::string())
+                        .build(),
+                ),
+            )
             .prop("arc_progression", Schema::string())
             .prop("should_continue", Schema::boolean())
             .build()
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("OutlineExpansion schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("OutlineExpansion schema is valid")
     }
 }
 
@@ -242,7 +249,7 @@ impl Default for StoryConfig {
     fn default() -> Self {
         Self {
             min_chapters: 3,
-            max_chapters: 0,  // unlimited
+            max_chapters: 0, // unlimited
             expansion_batch: 3,
             words_per_chapter: 400,
             interactive: false,
@@ -279,10 +286,8 @@ impl StoryEngine {
     /// Create a new story engine with the given configuration.
     pub fn new(config: StoryConfig) -> Result<Self, String> {
         let workspace = create_story_workspace()?;
-        let interaction_state = InteractionState::new(
-            config.interaction_mode.clone(),
-            config.max_chapters,
-        );
+        let interaction_state =
+            InteractionState::new(config.interaction_mode.clone(), config.max_chapters);
         Ok(Self {
             config,
             workspace,
@@ -372,16 +377,15 @@ impl StoryEngine {
     }
 
     /// Expand the outline for more chapters
-    pub fn expand_outline(
-        &mut self,
-        backend: &dyn ModelBackend,
-    ) -> Result<bool, String> {
+    pub fn expand_outline(&mut self, backend: &dyn ModelBackend) -> Result<bool, String> {
         // Check if we've hit max chapters
         if self.config.max_chapters > 0 && self.outline.len() >= self.config.max_chapters {
             return Ok(false);
         }
 
-        let current_outline: String = self.outline.iter()
+        let current_outline: String = self
+            .outline
+            .iter()
             .map(|ch| format!("Chapter {}: {} - {}", ch.number, ch.title, ch.summary))
             .collect::<Vec<_>>()
             .join("\n");
@@ -394,8 +398,7 @@ impl StoryEngine {
                  Current plot state: {:?}\n\n\
                  What happens next? Add {} more chapters to continue the arc. \
                  Output JSON matching the schema.",
-                self.plot_state,
-                self.config.expansion_batch
+                self.plot_state, self.config.expansion_batch
             ),
             &OutlineExpansion::grammar(),
             0.6,
@@ -422,10 +425,7 @@ impl StoryEngine {
     }
 
     /// Generate the next chapter
-    pub fn generate_chapter(
-        &mut self,
-        backend: &dyn ModelBackend,
-    ) -> Result<String, String> {
+    pub fn generate_chapter(&mut self, backend: &dyn ModelBackend) -> Result<String, String> {
         if self.current_chapter >= self.outline.len() {
             return Err("No more chapters in outline".to_string());
         }
@@ -541,8 +541,7 @@ impl StoryEngine {
         self.plot_state.merge(new_state);
 
         // Save plot state to workspace
-        let json = serde_json::to_string_pretty(&self.plot_state)
-            .unwrap_or_default();
+        let json = serde_json::to_string_pretty(&self.plot_state).unwrap_or_default();
         let path = self.workspace.resolve("07-PLOT-STATE.json").unwrap();
         let _ = write_file(&path, &json);
 
@@ -596,7 +595,10 @@ impl StoryEngine {
                 let chapter_num = i + 1;
                 // Just include first 200 chars as recap
                 let recap: String = self.chapters[i].chars().take(200).collect();
-                ctx.push_str(&format!("\n### Chapter {} (recap)\n{}...\n", chapter_num, recap));
+                ctx.push_str(&format!(
+                    "\n### Chapter {} (recap)\n{}...\n",
+                    chapter_num, recap
+                ));
             }
         }
 
@@ -607,7 +609,10 @@ impl StoryEngine {
     fn render_outline(&self) -> String {
         let mut md = String::from("Story Outline\n\n");
         for ch in &self.outline {
-            md.push_str(&format!("## Chapter {}: {}\n{}\n\n", ch.number, ch.title, ch.summary));
+            md.push_str(&format!(
+                "## Chapter {}: {}\n{}\n\n",
+                ch.number, ch.title, ch.summary
+            ));
         }
         md
     }
@@ -648,16 +653,12 @@ impl StoryEngine {
         let context = self.build_context();
 
         let analyzer = QualityAnalyzer::new(self.config.quality_threshold);
-        let critique = analyzer.evaluate_chapter(
-            backend,
-            chapter_text,
-            chapter_num,
-            &context,
-        )?;
+        let critique = analyzer.evaluate_chapter(backend, chapter_text, chapter_num, &context)?;
 
         // Store quality score
         if self.chapter_scores.len() < chapter_num {
-            self.chapter_scores.resize(chapter_num, QualityScore::default());
+            self.chapter_scores
+                .resize(chapter_num, QualityScore::default());
         }
         self.chapter_scores[chapter_num - 1] = critique.scores.clone();
 
@@ -680,21 +681,33 @@ impl StoryEngine {
             critique.scores.character_voice,
             critique.scores.plot_coherence,
             critique.scores.engagement,
-            critique.scores.issues.iter()
+            critique
+                .scores
+                .issues
+                .iter()
                 .map(|i| format!("- [{}] {}: {}", i.severity, i.category, i.description))
                 .collect::<Vec<_>>()
                 .join("\n"),
-            critique.scores.strengths.iter()
+            critique
+                .scores
+                .strengths
+                .iter()
                 .map(|s| format!("- {}", s))
                 .collect::<Vec<_>>()
                 .join("\n"),
-            critique.scores.suggestions.iter()
+            critique
+                .scores
+                .suggestions
+                .iter()
                 .map(|s| format!("- {}", s))
                 .collect::<Vec<_>>()
                 .join("\n"),
         );
 
-        let path = self.workspace.resolve(&format!("08-QUALITY-{}.md", chapter_num)).unwrap();
+        let path = self
+            .workspace
+            .resolve(&format!("08-QUALITY-{}.md", chapter_num))
+            .unwrap();
         let _ = write_file(&path, &report);
 
         Ok(critique)
@@ -754,9 +767,12 @@ impl StoryEngine {
         let _ = write_file(&path, &md);
 
         // Record revision
-        let revision_num = self.revisions.iter()
+        let revision_num = self
+            .revisions
+            .iter()
             .filter(|r| r.chapter_num == chapter_num)
-            .count() + 1;
+            .count()
+            + 1;
 
         self.revisions.push(RevisionRecord {
             chapter_num,
@@ -812,8 +828,7 @@ impl ChapterOutput {
     }
 
     fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("ChapterOutput schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("ChapterOutput schema is valid")
     }
 }
 
@@ -840,14 +855,12 @@ where
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    serde_json::from_str::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 /// Write file helper
 fn write_file(path: &std::path::Path, content: &str) -> Result<(), String> {
-    std::fs::write(path, content)
-        .map_err(|e| format!("failed to write {}: {e}", path.display()))
+    std::fs::write(path, content).map_err(|e| format!("failed to write {}: {e}", path.display()))
 }
 
 /// Create a timestamped workspace for the story
@@ -863,8 +876,7 @@ fn create_story_workspace() -> Result<Workspace, String> {
         .as_secs();
 
     let dir = base.join(format!("story_{ts}"));
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("failed to create workspace: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create workspace: {e}"))?;
 
     Workspace::from_existing(dir, WorkspaceKind::Agent)
         .map_err(|e| format!("failed to init workspace: {e}"))
@@ -892,7 +904,10 @@ mod tests {
                     name: "Alice".into(),
                     current_status: "wounded".into(),
                     last_seen: "chapter 2".into(),
-                    knowledge: vec!["knows about the sword".into(), "knows the dark lord's plan".into()],
+                    knowledge: vec![
+                        "knows about the sword".into(),
+                        "knows the dark lord's plan".into(),
+                    ],
                 },
                 CharacterState {
                     name: "Bob".into(),

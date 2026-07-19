@@ -51,7 +51,12 @@ impl PromptStyle {
 }
 
 /// Build a formatted prompt string from messages.
-pub fn build_prompt(style: PromptStyle, turns: &[ChatMessage], system: &str, current: &str) -> String {
+pub fn build_prompt(
+    style: PromptStyle,
+    turns: &[ChatMessage],
+    system: &str,
+    current: &str,
+) -> String {
     match style {
         PromptStyle::StateOnly => current.to_string(),
         PromptStyle::FullInterleaved => {
@@ -73,7 +78,11 @@ pub fn build_prompt(style: PromptStyle, turns: &[ChatMessage], system: &str, cur
         PromptStyle::RepeatedSystem => {
             let mut s = format!("System: {system}\n\n");
             for msg in turns {
-                s.push_str(&format!("{}: {}\n\nSystem: {system}\n\n", msg.role.as_str(), msg.content));
+                s.push_str(&format!(
+                    "{}: {}\n\nSystem: {system}\n\n",
+                    msg.role.as_str(),
+                    msg.content
+                ));
             }
             s.push_str(&format!("User: {current}"));
             s

@@ -82,8 +82,7 @@ impl StoryPersistence {
             .map_err(|e| format!("failed to serialize state: {e}"))?;
 
         let path = self.workspace_path.join("story-state.json");
-        std::fs::write(&path, json)
-            .map_err(|e| format!("failed to write state: {e}"))?;
+        std::fs::write(&path, json).map_err(|e| format!("failed to write state: {e}"))?;
 
         Ok(())
     }
@@ -95,11 +94,11 @@ impl StoryPersistence {
             return Err("story-state.json not found".to_string());
         }
 
-        let json = std::fs::read_to_string(&path)
-            .map_err(|e| format!("failed to read state: {e}"))?;
+        let json =
+            std::fs::read_to_string(&path).map_err(|e| format!("failed to read state: {e}"))?;
 
-        let state: StoryState = serde_json::from_str(&json)
-            .map_err(|e| format!("failed to parse state: {e}"))?;
+        let state: StoryState =
+            serde_json::from_str(&json).map_err(|e| format!("failed to parse state: {e}"))?;
 
         Ok(state)
     }
@@ -117,8 +116,8 @@ impl StoryPersistence {
             return Ok(stories);
         }
 
-        for entry in std::fs::read_dir(base_dir)
-            .map_err(|e| format!("failed to read directory: {e}"))?
+        for entry in
+            std::fs::read_dir(base_dir).map_err(|e| format!("failed to read directory: {e}"))?
         {
             let entry = entry.map_err(|e| format!("failed to read entry: {e}"))?;
             let path = entry.path();
@@ -169,7 +168,8 @@ pub fn count_words(text: &str) -> usize {
 
 /// Extract title from outline
 pub fn extract_title_from_outline(outline: &[ChapterInfo]) -> String {
-    outline.first()
+    outline
+        .first()
         .map(|ch| ch.title.clone())
         .unwrap_or_else(|| "Untitled".to_string())
 }

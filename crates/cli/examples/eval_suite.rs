@@ -3,13 +3,15 @@
 use std::env;
 use std::path::PathBuf;
 
-use roco_engine::{MockBackend, EvalReport, EvalCase, CheckResult, CompletionRequest,
-    run_suite, cases::default_eval_suite, cases::message_eval_cases, cases::fim_eval_cases, write_report, print_report, write_sidecars,
-};
-use roco_inference::RwkvBackend;
 use roco_bnf_engine::create_bnf_mask;
+use roco_engine::ModelBackend;
+use roco_engine::{
+    cases::default_eval_suite, cases::fim_eval_cases, cases::message_eval_cases, print_report,
+    run_suite, write_report, write_sidecars, CheckResult, CompletionRequest, EvalCase, EvalReport,
+    MockBackend,
+};
 use roco_grammar::gbnf_to_kbnf;
-use roco_engine::{ModelBackend};
+use roco_inference::RwkvBackend;
 
 struct Args {
     backend: String,
@@ -34,12 +36,39 @@ fn parse_args() -> Args {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--backend" => { i += 1; if i < args.len() { backend = args[i].clone(); } }
-            "--filter" => { i += 1; if i < args.len() { filter = Some(args[i].clone()); } }
-            "--one" => { i += 1; if i < args.len() { one = Some(args[i].clone()); } }
-            "--live" | "-l" => { live = true; }
-            "--output" => { i += 1; if i < args.len() { output = PathBuf::from(&args[i]); } }
-            "--suite" => { i += 1; if i < args.len() { suite = args[i].clone(); } }
+            "--backend" => {
+                i += 1;
+                if i < args.len() {
+                    backend = args[i].clone();
+                }
+            }
+            "--filter" => {
+                i += 1;
+                if i < args.len() {
+                    filter = Some(args[i].clone());
+                }
+            }
+            "--one" => {
+                i += 1;
+                if i < args.len() {
+                    one = Some(args[i].clone());
+                }
+            }
+            "--live" | "-l" => {
+                live = true;
+            }
+            "--output" => {
+                i += 1;
+                if i < args.len() {
+                    output = PathBuf::from(&args[i]);
+                }
+            }
+            "--suite" => {
+                i += 1;
+                if i < args.len() {
+                    suite = args[i].clone();
+                }
+            }
             "--help" | "-h" => {
                 println!("Usage: cargo run --example eval_suite [OPTIONS]");
                 println!("  --backend STR    mock, rwkv, or remote [default: mock]");
@@ -50,11 +79,21 @@ fn parse_args() -> Args {
                 println!("  --suite STR      Suite name [default: roco-eval-suite]");
                 std::process::exit(0);
             }
-            _ => { eprintln!("Unknown: {}", args[i]); std::process::exit(1); }
+            _ => {
+                eprintln!("Unknown: {}", args[i]);
+                std::process::exit(1);
+            }
         }
         i += 1;
     }
-    Args { backend, filter, one, live, output, suite }
+    Args {
+        backend,
+        filter,
+        one,
+        live,
+        output,
+        suite,
+    }
 }
 
 /// Build BNF masks for every eval case that carries a `grammar` string, using
@@ -64,7 +103,9 @@ fn parse_args() -> Args {
 /// (`error[E0275]`). Cases without a grammar, or backends without a vocab
 /// (e.g. `MockBackend`), are left unconstrained.
 fn build_masks<B: ModelBackend + ?Sized>(backend: &B, cases: &mut [EvalCase]) {
-    let Some(vocab) = backend.vocab_bytes() else { return };
+    let Some(vocab) = backend.vocab_bytes() else {
+        return;
+    };
     for case in cases.iter_mut() {
         if let Some(g) = &case.grammar {
             let kbnf = gbnf_to_kbnf(g);
@@ -98,7 +139,9 @@ async fn run_one_streaming<B: ModelBackend + Send + Sync>(
         Some(i) => i,
         None => {
             eprintln!("No case matches '{name}'. Available cases:");
-            for c in &cases { eprintln!("  - {}", c.name); }
+            for c in &cases {
+                eprintln!("  - {}", c.name);
+            }
             std::process::exit(1);
         }
     };
@@ -107,7 +150,10 @@ async fn run_one_streaming<B: ModelBackend + Send + Sync>(
     let full_input = if case.system.is_empty() {
         format!("User: {}\n\nAssistant:", case.prompt)
     } else {
-        format!("System: {}\n\nUser: {}\n\nAssistant:", case.system, case.prompt)
+        format!(
+            "System: {}\n\nUser: {}\n\nAssistant:",
+            case.system, case.prompt
+        )
     };
 
     println!("╭───── EVAL (live): {}", case.name);
@@ -148,13 +194,19 @@ async fn run_one_streaming<B: ModelBackend + Send + Sync>(
             let usage = &resp.usage;
             let tps = if usage.completion_tokens > 0 && latency_ms > 0 {
                 (usage.completion_tokens as f64 / latency_ms as f64) * 1000.0
-            } else { 0.0 };
-            println!("  latency: {}ms | {} tok | {:.1} tok/s", latency_ms, usage.completion_tokens, tps);
+            } else {
+                0.0
+            };
+            println!(
+                "  latency: {}ms | {} tok | {:.1} tok/s",
+                latency_ms, usage.completion_tokens, tps
+            );
 
             // Re-run the same static checks the harness uses, live.
             let mut checks: Vec<CheckResult> = Vec::new();
             checks.push(CheckResult {
-                name: "non_empty".into(), passed: !output.trim().is_empty(),
+                name: "non_empty".into(),
+                passed: !output.trim().is_empty(),
                 detail: format!("{} chars", output.len()),
             });
             checks.push(CheckResult {
@@ -165,14 +217,20 @@ async fn run_one_streaming<B: ModelBackend + Send + Sync>(
             for h in &case.expected_hints {
                 let f = output.to_lowercase().contains(&h.to_lowercase());
                 checks.push(CheckResult {
-                    name: format!("hint: {h}"), passed: f,
-                    detail: if f { "found".into() } else { "NOT found".into() },
+                    name: format!("hint: {h}"),
+                    passed: f,
+                    detail: if f {
+                        "found".into()
+                    } else {
+                        "NOT found".into()
+                    },
                 });
             }
             for bad in &case.forbidden_strings {
                 let f = output.contains(bad);
                 checks.push(CheckResult {
-                    name: format!("forbidden: {bad}"), passed: !f,
+                    name: format!("forbidden: {bad}"),
+                    passed: !f,
                     detail: if f { "LEAKED".into() } else { "clean".into() },
                 });
             }
@@ -182,7 +240,10 @@ async fn run_one_streaming<B: ModelBackend + Send + Sync>(
                 let s = if c.passed { "✅" } else { "❌" };
                 println!("    {} {} — {}", s, c.name, c.detail);
             }
-            println!("\n  RESULT: {}\n", if passed { "✅ PASS" } else { "❌ FAIL" });
+            println!(
+                "\n  RESULT: {}\n",
+                if passed { "✅ PASS" } else { "❌ FAIL" }
+            );
         }
         Err(e) => {
             println!("  ERROR: {e}");
@@ -195,11 +256,18 @@ async fn run_one_streaming<B: ModelBackend + Send + Sync>(
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
     let args = parse_args();
     let trace_path = {
-        let stem = args.output.file_stem().map(|s| format!("{}_trace.txt", s.to_string_lossy())).unwrap_or_else(|| "eval_trace.txt".to_string());
+        let stem = args
+            .output
+            .file_stem()
+            .map(|s| format!("{}_trace.txt", s.to_string_lossy()))
+            .unwrap_or_else(|| "eval_trace.txt".to_string());
         Some(args.output.with_file_name(stem))
     };
 
@@ -231,8 +299,9 @@ async fn main() {
                 // substring-break on "INSERT" immediately truncates. So
                 // bake before --one too when the requested case is a FIM
                 // bridge.
-                let is_fim_bridge = cases.iter()
-                    .any(|c| c.name.contains(one) && c.session.as_deref() == Some(roco_engine::FIM_SESSION));
+                let is_fim_bridge = cases.iter().any(|c| {
+                    c.name.contains(one) && c.session.as_deref() == Some(roco_engine::FIM_SESSION)
+                });
                 if is_fim_bridge {
                     if let Err(e) = roco_engine::bake_fim_session(&backend).await {
                         eprintln!("WARN: FIM session bake failed: {e}");
@@ -245,8 +314,9 @@ async fn main() {
                 let mut cases = default_eval_suite();
                 cases.extend(roco_engine::cases::message_eval_cases());
                 cases.extend(roco_engine::cases::fim_eval_cases());
-                let is_fim_bridge = cases.iter()
-                    .any(|c| c.name.contains(one) && c.session.as_deref() == Some(roco_engine::FIM_SESSION));
+                let is_fim_bridge = cases.iter().any(|c| {
+                    c.name.contains(one) && c.session.as_deref() == Some(roco_engine::FIM_SESSION)
+                });
                 if is_fim_bridge {
                     if let Err(e) = roco_engine::bake_fim_session(&backend).await {
                         eprintln!("WARN: FIM session bake failed: {e}");
@@ -254,7 +324,10 @@ async fn main() {
                 }
                 run_one_streaming(&backend, cases, one).await;
             }
-            other => { eprintln!("Unknown backend: {other}"); std::process::exit(1); }
+            other => {
+                eprintln!("Unknown backend: {other}");
+                std::process::exit(1);
+            }
         }
         return;
     }
@@ -262,7 +335,15 @@ async fn main() {
     let report: EvalReport = match args.backend.as_str() {
         "mock" => {
             let backend = MockBackend::new("mock-3b", 0);
-            run_suite(&args.suite, &backend, default_eval_suite(), args.filter.as_deref(), trace_path.as_deref(), args.live).await
+            run_suite(
+                &args.suite,
+                &backend,
+                default_eval_suite(),
+                args.filter.as_deref(),
+                trace_path.as_deref(),
+                args.live,
+            )
+            .await
         }
         "rwkv" => {
             let backend = RwkvBackend::from_env().unwrap_or_else(|e| {
@@ -283,7 +364,15 @@ async fn main() {
                 eprintln!("WARN: FIM session bake failed: {e}");
             }
             build_masks(&backend, &mut cases);
-            run_suite(&args.suite, &backend, cases, args.filter.as_deref(), trace_path.as_deref(), args.live).await
+            run_suite(
+                &args.suite,
+                &backend,
+                cases,
+                args.filter.as_deref(),
+                trace_path.as_deref(),
+                args.live,
+            )
+            .await
         }
         "remote" => {
             // Talk to the singleton inference API server (the same one the
@@ -299,9 +388,20 @@ async fn main() {
             cases.extend(message_eval_cases());
             cases.extend(fim_eval_cases());
             build_masks(&backend, &mut cases);
-            run_suite(&args.suite, &backend, cases, args.filter.as_deref(), trace_path.as_deref(), args.live).await
+            run_suite(
+                &args.suite,
+                &backend,
+                cases,
+                args.filter.as_deref(),
+                trace_path.as_deref(),
+                args.live,
+            )
+            .await
         }
-        other => { eprintln!("Unknown backend: {other}"); std::process::exit(1); }
+        other => {
+            eprintln!("Unknown backend: {other}");
+            std::process::exit(1);
+        }
     };
 
     write_report(&args.output, &report).ok();
@@ -311,5 +411,7 @@ async fn main() {
         println!("Trace written to:  {}", trace_path.display());
         write_sidecars(&report, trace_path);
     }
-    if report.failed > 0 { std::process::exit(1); }
+    if report.failed > 0 {
+        std::process::exit(1);
+    }
 }

@@ -40,7 +40,10 @@ pub struct MessageFormatOptions {
 
 impl Default for MessageFormatOptions {
     fn default() -> Self {
-        Self { think: false, tools: false }
+        Self {
+            think: false,
+            tools: false,
+        }
     }
 }
 
@@ -128,25 +131,30 @@ fn generate_tools_body(schemas: &[Value]) -> String {
     // If multiple items, join with comma+space separators. Each comma is a literal "," string.
     // But for GBNF we don't need comma separators between alternates — bare whitespace works.
     // Actually, for a JSON array, items must be comma-separated. But in GBNF, bare commas
-    // are not valid. We use quoted commas: "," 
+    // are not valid. We use quoted commas: ","
     // For 0 items: empty array
     // For 1+ items: first ( "," item )*
     if items.len() == 1 {
         format!("\"[\" {} \"]\"", items[0])
     } else {
-        let tail = items[1..].iter().map(|item| format!("\",\" {}", item)).collect::<Vec<_>>().join(" ");
+        let tail = items[1..]
+            .iter()
+            .map(|item| format!("\",\" {}", item))
+            .collect::<Vec<_>>()
+            .join(" ");
         format!("\"[\" {} {} \"]\"", items[0], tail)
     }
 }
 
 /// Convert a single tool schema Value into a GBNF object production.
 fn tool_schema_to_gbnf(schema: &Value) -> String {
-    let _name = schema.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
+    let _name = schema
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tool");
     // Produce a simple JSON object with name, description, parameters keys.
     // Each value is a JSON string or object, referencing the JSON library rules.
-    format!(
-        "\"{{\" string \":\" string \",\" string \":\" string \",\" string \":\" object \"}}\""
-    )
+    format!("\"{{\" string \":\" string \",\" string \":\" string \",\" string \":\" object \"}}\"")
 }
 
 /// Build a `MessageFormatOptions` from flags.
@@ -200,12 +208,21 @@ mod tests {
         check_schoolmarm(&gbnf, "simple");
         assert!(gbnf.contains("System:"), "simple: must contain System:");
         assert!(gbnf.contains("User:"), "simple: must contain User:");
-        assert!(gbnf.contains("Assistant:"), "simple: must contain Assistant:");
+        assert!(
+            gbnf.contains("Assistant:"),
+            "simple: must contain Assistant:"
+        );
     }
 
     #[test]
     fn think_parses_schoolmarm() {
-        let gbnf = message_format_gbnf(&MessageFormatOptions { think: true, tools: false }, &[]);
+        let gbnf = message_format_gbnf(
+            &MessageFormatOptions {
+                think: true,
+                tools: false,
+            },
+            &[],
+        );
         check_schoolmarm(&gbnf, "think");
         assert!(gbnf.contains("<think>"), "think: must contain <think>");
         assert!(gbnf.contains("</think>"), "think: must contain </think>");
@@ -213,20 +230,27 @@ mod tests {
 
     #[test]
     fn tools_parses_schoolmarm() {
-        let schemas = vec![
-            serde_json::json!({
-                "name": "get_weather",
-                "description": "Get weather for a location",
-                "parameters": {"type": "object", "properties": {}}
-            }),
-        ];
+        let schemas = vec![serde_json::json!({
+            "name": "get_weather",
+            "description": "Get weather for a location",
+            "parameters": {"type": "object", "properties": {}}
+        })];
         let gbnf = message_format_gbnf(
-            &MessageFormatOptions { think: false, tools: true },
+            &MessageFormatOptions {
+                think: false,
+                tools: true,
+            },
             &schemas,
         );
         check_schoolmarm(&gbnf, "tools");
-        assert!(gbnf.contains("<tool_call>"), "tools: must contain <tool_call>");
-        assert!(gbnf.contains("<tool_result>"), "tools: must contain <tool_result>");
+        assert!(
+            gbnf.contains("<tool_call>"),
+            "tools: must contain <tool_call>"
+        );
+        assert!(
+            gbnf.contains("<tool_result>"),
+            "tools: must contain <tool_result>"
+        );
         assert!(gbnf.contains("<tools>"), "tools: must contain <tools>");
     }
 
@@ -234,7 +258,10 @@ mod tests {
     fn full_without_schemas_parses_schoolmarm() {
         // When tools=true but no schemas provided, grammar should still be valid.
         let gbnf = message_format_gbnf(
-            &MessageFormatOptions { think: true, tools: true },
+            &MessageFormatOptions {
+                think: true,
+                tools: true,
+            },
             &[],
         );
         check_schoolmarm(&gbnf, "full-noschemas");
@@ -247,18 +274,27 @@ mod tests {
     fn full_without_tools_parses_schoolmarm() {
         // think=true, tools=false — only think tags, no tool tags.
         let gbnf = message_format_gbnf(
-            &MessageFormatOptions { think: true, tools: false },
+            &MessageFormatOptions {
+                think: true,
+                tools: false,
+            },
             &[],
         );
         check_schoolmarm(&gbnf, "full-nothink");
         assert!(gbnf.contains("<think>"), "must contain <think>");
-        assert!(!gbnf.contains("<tool_call>"), "must NOT contain <tool_call>");
+        assert!(
+            !gbnf.contains("<tool_call>"),
+            "must NOT contain <tool_call>"
+        );
     }
 
     #[test]
     fn all_defined_rules_used_by_root() {
         let gbnf = message_format_gbnf(
-            &MessageFormatOptions { think: true, tools: true },
+            &MessageFormatOptions {
+                think: true,
+                tools: true,
+            },
             &[],
         );
         let lines: Vec<&str> = gbnf.lines().collect();
@@ -267,7 +303,16 @@ mod tests {
             .filter(|l| l.contains("::="))
             .map(|l| l.split("::=").next().unwrap().trim())
             .collect();
-        for rule in &["sys", "user", "asm", "think", "tool-call", "tool-result", "text", "char"] {
+        for rule in &[
+            "sys",
+            "user",
+            "asm",
+            "think",
+            "tool-call",
+            "tool-result",
+            "text",
+            "char",
+        ] {
             assert!(
                 defined.contains(rule),
                 "rule `{rule}` must be defined, got: {:?}",

@@ -4203,6 +4203,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "clap",
  "futures",
  "roco-agent",
@@ -4215,6 +4216,7 @@ dependencies = [
  "roco-inference",
  "roco-message",
  "roco-server",
+ "roco-session",
  "roco-tools",
  "roco-tui",
  "roco-workspace",

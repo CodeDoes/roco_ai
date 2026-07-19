@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use roco_engine::{CompletionRequest, ModelBackend, bake_into_session};
+use roco_engine::{bake_into_session, CompletionRequest, ModelBackend};
 use roco_inference::RwkvBackend;
 
 fn print_help() {

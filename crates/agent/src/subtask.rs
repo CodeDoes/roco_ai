@@ -29,7 +29,10 @@ impl SubtaskOutput {
         Self {
             subtask_id: id.into(),
             text: String::new(),
-            usage: TokenUsage { prompt_tokens: 0, completion_tokens: 0 },
+            usage: TokenUsage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+            },
             success: false,
             tool_calls: Vec::new(),
         }

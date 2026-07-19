@@ -85,7 +85,10 @@ impl InteractionMode {
                 "Full control: one task at a time, you review each one".to_string()
             }
             InteractionMode::ModerateControl { batch_size } => {
-                format!("Moderate control: {} tasks at a time, you review each batch", batch_size)
+                format!(
+                    "Moderate control: {} tasks at a time, you review each batch",
+                    batch_size
+                )
             }
             InteractionMode::NoControl => {
                 "No control: agent runs to completion, you review at end".to_string()
@@ -170,7 +173,8 @@ impl InteractionState {
 
     /// Check if we should pause for human input
     pub fn should_pause(&self) -> bool {
-        self.mode.should_pause(self.tasks_completed, self.total_tasks)
+        self.mode
+            .should_pause(self.tasks_completed, self.total_tasks)
     }
 
     /// Check if we're done
@@ -265,9 +269,7 @@ impl InteractionState {
                     batch_start, batch_end
                 )
             }
-            InteractionMode::NoControl => {
-                "Agent running... (press Ctrl+C to stop)".to_string()
-            }
+            InteractionMode::NoControl => "Agent running... (press Ctrl+C to stop)".to_string(),
             InteractionMode::GoHam => {
                 "Agent running at full speed... (press Ctrl+C to stop)".to_string()
             }

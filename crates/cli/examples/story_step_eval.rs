@@ -1,8 +1,8 @@
 //! Individual story pipeline step evaluator
 //! Tests each step in isolation to identify bugs
 
-use roco_inference::RwkvBackend;
 use roco_engine::{CompletionRequest, ModelBackend};
+use roco_inference::RwkvBackend;
 
 // Copy grammars from story.rs
 const OUTLINE_GRAMMAR: &str = r#"
@@ -42,8 +42,10 @@ space ::= " "?
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let step = std::env::args().nth(1).unwrap_or_else(|| "all".to_string());
-    let prompt = std::env::args().nth(2).unwrap_or_else(|| "A cat who learns to fly".to_string());
-    
+    let prompt = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "A cat who learns to fly".to_string());
+
     println!("Loading model...");
     let backend = RwkvBackend::from_env()?;
     println!("Model ready.\n");
@@ -52,17 +54,38 @@ async fn main() -> anyhow::Result<()> {
         "outline" => test_step(&backend, "OUTLINE", OUTLINE_GRAMMAR, &prompt, 0.7, 500).await,
         "wiki" => test_step(&backend, "WIKI", WIKI_GRAMMAR, &prompt, 0.7, 500).await,
         "chapter" => test_step(&backend, "CHAPTER", CHAPTER_GRAMMAR, &prompt, 0.8, 1000).await,
-        "validation" => test_step(&backend, "VALIDATION", VALIDATION_GRAMMAR, &prompt, 0.5, 300).await,
+        "validation" => {
+            test_step(
+                &backend,
+                "VALIDATION",
+                VALIDATION_GRAMMAR,
+                &prompt,
+                0.5,
+                300,
+            )
+            .await
+        }
         "synopsis" => test_step(&backend, "SYNOPSIS", SYNOPSIS_GRAMMAR, &prompt, 0.6, 400).await,
         "all" => {
             test_step(&backend, "OUTLINE", OUTLINE_GRAMMAR, &prompt, 0.7, 500).await;
             test_step(&backend, "WIKI", WIKI_GRAMMAR, &prompt, 0.7, 500).await;
             test_step(&backend, "CHAPTER", CHAPTER_GRAMMAR, &prompt, 0.8, 1000).await;
-            test_step(&backend, "VALIDATION", VALIDATION_GRAMMAR, &prompt, 0.5, 300).await;
+            test_step(
+                &backend,
+                "VALIDATION",
+                VALIDATION_GRAMMAR,
+                &prompt,
+                0.5,
+                300,
+            )
+            .await;
             test_step(&backend, "SYNOPSIS", SYNOPSIS_GRAMMAR, &prompt, 0.6, 400).await;
         }
         _ => {
-            eprintln!("Unknown step: {}. Use: outline, wiki, chapter, validation, synopsis, all", step);
+            eprintln!(
+                "Unknown step: {}. Use: outline, wiki, chapter, validation, synopsis, all",
+                step
+            );
             std::process::exit(1);
         }
     }
@@ -95,11 +118,14 @@ async fn test_step(
     match result {
         Ok(resp) => {
             println!("✓ Completion succeeded");
-            println!("Tokens: {} prompt, {} completion", resp.usage.prompt_tokens, resp.usage.completion_tokens);
+            println!(
+                "Tokens: {} prompt, {} completion",
+                resp.usage.prompt_tokens, resp.usage.completion_tokens
+            );
             println!("\nRaw output (first 500 chars):");
             let preview = resp.text.chars().take(500).collect::<String>();
             println!("{}\n", preview);
-            
+
             // Try to parse as JSON
             match serde_json::from_str::<serde_json::Value>(&resp.text) {
                 Ok(json) => {

@@ -72,9 +72,18 @@ mod tests {
     fn discloses_relevant_tools() {
         let reg = registry();
         let picked = select_relevant(&reg, "read configuration yaml", "", 0);
-        assert!(picked.contains(&"read".to_string()), "read should be disclosed");
-        assert!(!picked.contains(&"bash".to_string()), "bash has no lexical overlap");
-        assert!(!picked.contains(&"now".to_string()), "now has no lexical overlap");
+        assert!(
+            picked.contains(&"read".to_string()),
+            "read should be disclosed"
+        );
+        assert!(
+            !picked.contains(&"bash".to_string()),
+            "bash has no lexical overlap"
+        );
+        assert!(
+            !picked.contains(&"now".to_string()),
+            "now has no lexical overlap"
+        );
         assert!(picked.len() < reg.len(), "disclosure should narrow the set");
     }
 
@@ -82,7 +91,11 @@ mod tests {
     fn irrelevant_query_falls_back_to_all() {
         let reg = registry();
         let picked = select_relevant(&reg, "   ", "", 0);
-        assert_eq!(picked.len(), reg.len(), "empty query -> all tools (safety net)");
+        assert_eq!(
+            picked.len(),
+            reg.len(),
+            "empty query -> all tools (safety net)"
+        );
     }
 
     #[test]

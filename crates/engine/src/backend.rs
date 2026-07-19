@@ -72,7 +72,8 @@ impl Clone for MockBackend {
             latency_ms: self.latency_ms,
             fail_count: self.fail_count,
             fail_count_remaining: std::sync::atomic::AtomicU32::new(
-                self.fail_count_remaining.load(std::sync::atomic::Ordering::Relaxed)
+                self.fail_count_remaining
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ),
         }
     }
@@ -105,7 +106,8 @@ impl MockBackend {
     /// Reset the fail counter so the next N calls will fail.
     pub fn set_fail_count(&mut self, count: u32) {
         self.fail_count = count;
-        self.fail_count_remaining.store(count, std::sync::atomic::Ordering::Relaxed);
+        self.fail_count_remaining
+            .store(count, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -122,8 +124,13 @@ impl ModelBackend for MockBackend {
                 tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
             }
             // Simulate failures — check counter before decrementing to avoid wraparound.
-            if self.fail_count_remaining.load(std::sync::atomic::Ordering::Relaxed) > 0 {
-                self.fail_count_remaining.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+            if self
+                .fail_count_remaining
+                .load(std::sync::atomic::Ordering::Relaxed)
+                > 0
+            {
+                self.fail_count_remaining
+                    .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 return Err(EngineError::Backend("simulated failure".into()));
             }
             let snippet: String = req.prompt.chars().take(48).collect();
@@ -205,7 +212,11 @@ pub async fn bake_persona(
 ) -> Result<Vec<u8>, EngineError> {
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
         let req = CompletionRequest {
-            system: if i == 0 { system.to_string() } else { String::new() },
+            system: if i == 0 {
+                system.to_string()
+            } else {
+                String::new()
+            },
             prompt: user_msg.to_string(),
             temperature: 0.0,
             max_tokens: 1024,
@@ -246,10 +257,14 @@ pub async fn bake_into_session(
 ) -> Result<(), EngineError> {
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
         let user_req = CompletionRequest {
-            system: if i == 0 { system.to_string() } else { String::new() },
+            system: if i == 0 {
+                system.to_string()
+            } else {
+                String::new()
+            },
             prompt: user_msg.to_string(),
             temperature: 0.0,
-            max_tokens: 1,  // State-tuning: only need prompt processing, not generation
+            max_tokens: 1, // State-tuning: only need prompt processing, not generation
             preserve_state: true,
             session: Some(session.to_string()),
             ..Default::default()
@@ -259,7 +274,7 @@ pub async fn bake_into_session(
             system: String::new(),
             prompt: assistant_msg.to_string(),
             temperature: 0.0,
-            max_tokens: 1,  // State-tuning: only need prompt processing, not generation
+            max_tokens: 1, // State-tuning: only need prompt processing, not generation
             preserve_state: true,
             session: Some(session.to_string()),
             ..Default::default()
@@ -302,7 +317,11 @@ pub async fn bake_no_think_session(
 ) -> Result<(), EngineError> {
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
         let user_req = CompletionRequest {
-            system: if i == 0 { system.to_string() } else { String::new() },
+            system: if i == 0 {
+                system.to_string()
+            } else {
+                String::new()
+            },
             prompt: user_msg.to_string(),
             temperature: 0.0,
             max_tokens: 1, // State-tuning: only need prompt processing, not generation
@@ -343,13 +362,18 @@ mod tests {
     #[tokio::test]
     async fn mock_backend_thinking_extracts_trace() {
         let b = MockBackend::default();
-        let resp = b.complete(CompletionRequest::new("sys", "hello")).await.unwrap();
+        let resp = b
+            .complete(CompletionRequest::new("sys", "hello"))
+            .await
+            .unwrap();
         assert!(resp.think_trace.is_none(), "no trace when thinking=false");
 
         let mut req = CompletionRequest::new("sys", "do the thing");
         req.thinking = true;
         let resp = b.complete(req).await.unwrap();
-        let trace = resp.think_trace.expect("think_trace should be Some when thinking=true");
+        let trace = resp
+            .think_trace
+            .expect("think_trace should be Some when thinking=true");
         assert!(!trace.is_empty());
         assert!(resp.text.starts_with("<think>"));
         assert!(resp.text.contains("</think>"));
@@ -370,16 +394,28 @@ mod tests {
     async fn default_backend_rejects_state() {
         struct NoStateBackend;
         impl ModelBackend for NoStateBackend {
-            fn name(&self) -> &str { "no-state" }
-            fn complete(&self, _req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+            fn name(&self) -> &str {
+                "no-state"
+            }
+            fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
                 Box::pin(async move { Err(EngineError::Backend("unimplemented".into())) })
             }
         }
         let b = NoStateBackend;
         assert!(format!("{:?}", b.save_state().await.unwrap_err()).contains("state not supported"));
-        assert!(format!("{:?}", b.load_state(Vec::new()).await.unwrap_err()).contains("state not supported"));
-        assert!(format!("{:?}", b.mix_states(Vec::new(), Vec::new(), 0.5).await.unwrap_err()).contains("state mixing not supported"));
-        assert!(format!("{:?}", b.interrupt().await.unwrap_err()).contains("interrupt not supported"));
+        assert!(format!("{:?}", b.load_state(Vec::new()).await.unwrap_err())
+            .contains("state not supported"));
+        assert!(format!(
+            "{:?}",
+            b.mix_states(Vec::new(), Vec::new(), 0.5).await.unwrap_err()
+        )
+        .contains("state mixing not supported"));
+        assert!(
+            format!("{:?}", b.interrupt().await.unwrap_err()).contains("interrupt not supported")
+        );
     }
 
     #[tokio::test]
@@ -401,7 +437,10 @@ mod tests {
     async fn mock_backend_interrupt() {
         let b = MockBackend::default();
         b.interrupt().await.unwrap();
-        let resp = b.complete(CompletionRequest::new("sys", "hello")).await.unwrap();
+        let resp = b
+            .complete(CompletionRequest::new("sys", "hello"))
+            .await
+            .unwrap();
         assert!(resp.text.contains("result"));
     }
 
@@ -412,7 +451,9 @@ mod tests {
             ("What is your name?", "My name is Mock."),
             ("What can you do?", "I can help with many things."),
         ];
-        let state = bake_persona(&b, "You are a helpful assistant.", &examples).await.unwrap();
+        let state = bake_persona(&b, "You are a helpful assistant.", &examples)
+            .await
+            .unwrap();
         assert!(!state.is_empty());
         b.load_state(state).await.unwrap();
     }

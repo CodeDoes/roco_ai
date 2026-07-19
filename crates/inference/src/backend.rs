@@ -31,15 +31,21 @@ impl RwkvBackend {
     /// Spawns a dedicated OS thread owning all non-Send GPU resources.
     /// Blocks until the model is fully loaded.
     pub fn from_env() -> anyhow::Result<Self> {
-        let default_deadline_ms = std::env::var("RWKV_DEADLINE_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+        let default_deadline_ms = std::env::var("RWKV_DEADLINE_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
         let (tx, rx) = mpsc::channel::<ActorMessage>(4);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<std::result::Result<(), String>>();
+        let (ready_tx, ready_rx) =
+            tokio::sync::oneshot::channel::<std::result::Result<(), String>>();
 
         let actor_thread = std::thread::Builder::new()
             .name("rwkv-actor".into())
             .spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all().build().expect("failed to build rwkv runtime");
+                    .enable_all()
+                    .build()
+                    .expect("failed to build rwkv runtime");
                 let local = tokio::task::LocalSet::new();
 
                 let actor_handle = local.spawn_local(async move {
@@ -67,11 +73,19 @@ impl RwkvBackend {
             }
         })?;
 
-        Ok(Self { tx: Some(tx), actor_thread: Some(actor_thread), name: "rwkv".to_string(), default_deadline_ms })
+        Ok(Self {
+            tx: Some(tx),
+            actor_thread: Some(actor_thread),
+            name: "rwkv".to_string(),
+            default_deadline_ms,
+        })
     }
 
     /// Build from explicit model/vocab paths.
-    pub fn from_paths(model_path: impl Into<PathBuf>, vocab_path: impl Into<PathBuf>) -> anyhow::Result<Self> {
+    pub fn from_paths(
+        model_path: impl Into<PathBuf>,
+        vocab_path: impl Into<PathBuf>,
+    ) -> anyhow::Result<Self> {
         let mp = model_path.into();
         let vp = vocab_path.into();
         let prev_m = std::env::var("RWKV_MODEL").ok();
@@ -79,8 +93,14 @@ impl RwkvBackend {
         std::env::set_var("RWKV_MODEL", mp.to_string_lossy().as_ref());
         std::env::set_var("RWKV_VOCAB", vp.to_string_lossy().as_ref());
         let result = Self::from_env();
-        match prev_m { Some(v) => std::env::set_var("RWKV_MODEL", v), None => std::env::remove_var("RWKV_MODEL") }
-        match prev_v { Some(v) => std::env::set_var("RWKV_VOCAB", v), None => std::env::remove_var("RWKV_VOCAB") }
+        match prev_m {
+            Some(v) => std::env::set_var("RWKV_MODEL", v),
+            None => std::env::remove_var("RWKV_MODEL"),
+        }
+        match prev_v {
+            Some(v) => std::env::set_var("RWKV_VOCAB", v),
+            None => std::env::remove_var("RWKV_VOCAB"),
+        }
         result
     }
 }
@@ -91,13 +111,16 @@ impl RwkvBackend {
     #[cfg(feature = "grammar")]
     pub fn vocab_bytes(&self) -> Result<Vec<Vec<u8>>, EngineError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        let tx = self.tx.clone().ok_or_else(||
-            EngineError::Backend("backend shut down".into())
-        )?;
+        let tx = self
+            .tx
+            .clone()
+            .ok_or_else(|| EngineError::Backend("backend shut down".into()))?;
         futures::executor::block_on(async {
-            tx.send(ActorMessage::GetVocabBytes(reply_tx)).await
+            tx.send(ActorMessage::GetVocabBytes(reply_tx))
+                .await
                 .map_err(|e| EngineError::Backend(format!("get_vocab_bytes send: {e}")))?;
-            reply_rx.await
+            reply_rx
+                .await
                 .map_err(|e| EngineError::Backend(format!("get_vocab_bytes recv: {e}")))
         })
     }
@@ -112,9 +135,10 @@ impl RwkvBackend {
         output_session: &str,
     ) -> Result<(), EngineError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        let tx = self.tx.clone().ok_or_else(||
-            EngineError::Backend("backend shut down".into())
-        )?;
+        let tx = self
+            .tx
+            .clone()
+            .ok_or_else(|| EngineError::Backend("backend shut down".into()))?;
         futures::executor::block_on(async {
             tx.send(ActorMessage::BlendStates(BlendReq {
                 session_a: session_a.to_string(),
@@ -122,60 +146,87 @@ impl RwkvBackend {
                 alpha,
                 output_session: output_session.to_string(),
                 reply: reply_tx,
-            })).await
-                .map_err(|e| EngineError::Backend(format!("blend_states send: {e}")))?;
-            reply_rx.await
+            }))
+            .await
+            .map_err(|e| EngineError::Backend(format!("blend_states send: {e}")))?;
+            reply_rx
+                .await
                 .map_err(|e| EngineError::Backend(format!("blend_states recv: {e}")))?
         })
     }
 }
 
 impl ModelBackend for RwkvBackend {
-    fn name(&self) -> &str { &self.name }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
         self.vocab_bytes().ok()
     }
 
-    fn complete(&self, req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
-        let tx = self.tx.clone().expect("rwkv backend already shut down (channel closed)");
+    fn complete(
+        &self,
+        req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
             let started = Instant::now();
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
-            tx.send(CompleteReq {
-                system: req.system, prompt: req.prompt, prefill: req.prefill,
-                max_tokens: req.max_tokens,
-                temperature: req.temperature,
-                top_a: req.top_a,
-                grammar: req.grammar,
-                bnf_mask: req.bnf_mask,
-                reply: reply_tx,
-                preserve_state: req.preserve_state, on_token: req.on_token,
-                session: req.session,
-                deadline_ms: req.deadline_ms,
-            }.into()).await
-                .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
+            tx.send(
+                CompleteReq {
+                    system: req.system,
+                    prompt: req.prompt,
+                    prefill: req.prefill,
+                    max_tokens: req.max_tokens,
+                    temperature: req.temperature,
+                    top_a: req.top_a,
+                    grammar: req.grammar,
+                    bnf_mask: req.bnf_mask,
+                    reply: reply_tx,
+                    preserve_state: req.preserve_state,
+                    on_token: req.on_token,
+                    session: req.session,
+                    deadline_ms: req.deadline_ms,
+                }
+                .into(),
+            )
+            .await
+            .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
 
             // Wall-clock timeout on the entire generation (including prompt
             // processing). If the deadline is exceeded we send a Cancel to the
             // actor (cooperative interrupt, lands within one chunk thanks to
             // the rx.try_recv drain in handle_complete) and return TimedOut.
             // Priority: per-request deadline > default > none (0 = no deadline).
-            let effective_deadline_ms = if req.deadline_ms > 0 { req.deadline_ms } else { self.default_deadline_ms };
+            let effective_deadline_ms = if req.deadline_ms > 0 {
+                req.deadline_ms
+            } else {
+                self.default_deadline_ms
+            };
             let (text, usage) = if effective_deadline_ms > 0 {
                 let timeout = tokio::time::Duration::from_millis(effective_deadline_ms);
                 match tokio::time::timeout(timeout, reply_rx).await {
-                    Ok(Ok(inner)) => inner
-                        .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?,
-                    Ok(Err(e)) => return Err(EngineError::Backend(format!("rwkv channel recv: {e}"))),
+                    Ok(Ok(inner)) => {
+                        inner.map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?
+                    }
+                    Ok(Err(e)) => {
+                        return Err(EngineError::Backend(format!("rwkv channel recv: {e}")))
+                    }
                     Err(_elapsed) => {
                         let _ = tx.send(ActorMessage::Cancel).await;
-                        return Err(EngineError::TimedOut { ms: effective_deadline_ms });
+                        return Err(EngineError::TimedOut {
+                            ms: effective_deadline_ms,
+                        });
                     }
                 }
             } else {
-                reply_rx.await
+                reply_rx
+                    .await
                     .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
                     .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?
             };
@@ -185,24 +236,34 @@ impl ModelBackend for RwkvBackend {
                 snippet = %text.chars().take(200).collect::<String>(), "rwkv complete");
 
             let parsed = serde_json::from_str(&text).ok();
-            Ok(CompletionResponse { text, usage, parsed, think_trace: None })
+            Ok(CompletionResponse {
+                text,
+                usage,
+                parsed,
+                think_trace: None,
+            })
         })
     }
 
     fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
         let tx = self.tx.clone().expect("rwkv backend already shut down");
         Box::pin(async move {
-            tx.send(ActorMessage::Cancel).await
+            tx.send(ActorMessage::Cancel)
+                .await
                 .map_err(|e| EngineError::Backend(format!("rwkv interrupt send: {e}")))?;
             Ok(())
         })
     }
 
     fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
-        let tx = self.tx.clone().expect("rwkv backend already shut down (channel closed)");
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
             let (rtx, rrx) = tokio::sync::oneshot::channel();
-            tx.send(ActorMessage::SaveState(rtx)).await
+            tx.send(ActorMessage::SaveState(rtx))
+                .await
                 .map_err(|e| EngineError::Backend(format!("rwkv save_state send: {e}")))?;
             rrx.await
                 .map_err(|e| EngineError::Backend(format!("rwkv save_state recv: {e}")))?
@@ -210,10 +271,14 @@ impl ModelBackend for RwkvBackend {
     }
 
     fn load_state(&self, state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
-        let tx = self.tx.clone().expect("rwkv backend already shut down (channel closed)");
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
             let (rtx, rrx) = tokio::sync::oneshot::channel();
-            tx.send(ActorMessage::LoadState(state, rtx)).await
+            tx.send(ActorMessage::LoadState(state, rtx))
+                .await
                 .map_err(|e| EngineError::Backend(format!("rwkv load_state send: {e}")))?;
             rrx.await
                 .map_err(|e| EngineError::Backend(format!("rwkv load_state recv: {e}")))?

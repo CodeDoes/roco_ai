@@ -115,7 +115,11 @@ impl MemoryStore {
         let entry = MemoryEntry {
             id: id.clone(),
             text: text.to_string(),
-            kind: if kind.is_empty() { "note".to_string() } else { kind.to_string() },
+            kind: if kind.is_empty() {
+                "note".to_string()
+            } else {
+                kind.to_string()
+            },
             tags,
             created_at: now_secs(),
             accessed_at: now_secs(),
@@ -142,7 +146,12 @@ impl MemoryStore {
         let entries = self.entries.read().expect("mem lock poisoned");
         let mut scored: Vec<(f64, MemoryEntry)> = entries
             .iter()
-            .map(|e| (score_text(&query_tokens, &e.text, &e.tags, e.created_at), e.clone()))
+            .map(|e| {
+                (
+                    score_text(&query_tokens, &e.text, &e.tags, e.created_at),
+                    e.clone(),
+                )
+            })
             .filter(|(s, _)| *s > 0.0)
             .collect();
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -162,7 +171,10 @@ impl MemoryStore {
 
     /// Convenience: just the recalled texts.
     pub fn retrieve_texts(&self, query: &str, limit: usize) -> Vec<String> {
-        self.retrieve(query, limit).into_iter().map(|e| e.text).collect()
+        self.retrieve(query, limit)
+            .into_iter()
+            .map(|e| e.text)
+            .collect()
     }
 
     pub fn len(&self) -> usize {
@@ -205,14 +217,22 @@ impl MemoryStore {
 /// Shared relevance scorer used by both [`MemoryStore`] and
 /// [`crate::sessions::SessionStore`]. Returns 0.0 when there is no overlap
 /// (so the entry is filtered out).
-pub(crate) fn score_text(query_tokens: &[String], text: &str, tags: &[String], created_at: u64) -> f64 {
+pub(crate) fn score_text(
+    query_tokens: &[String],
+    text: &str,
+    tags: &[String],
+    created_at: u64,
+) -> f64 {
     let mut hay: Vec<String> = tokenize(text);
     for t in tags {
         hay.extend(tokenize(t));
     }
     let mut hits = 0u32;
     for qt in query_tokens {
-        if hay.iter().any(|ht| ht == qt || ht.contains(qt) || qt.contains(ht)) {
+        if hay
+            .iter()
+            .any(|ht| ht == qt || ht.contains(qt) || qt.contains(ht))
+        {
             hits += 1;
         }
     }
@@ -259,7 +279,11 @@ impl Tool for RememberTool {
         let tags = args
             .get("tags")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
         let id = self.mem.add(text, kind, tags);
         Ok(serde_json::json!({ "ok": true, "id": id, "remembered": text }))
@@ -319,7 +343,11 @@ mod tests {
     #[test]
     fn add_then_recall_returns_entry() {
         let mem = MemoryStore::new();
-        mem.add("The capital of France is Paris.", "fact", vec!["geography".into()]);
+        mem.add(
+            "The capital of France is Paris.",
+            "fact",
+            vec!["geography".into()],
+        );
         let results = mem.retrieve("capital of France", 5);
         assert_eq!(results.len(), 1);
         assert!(results[0].text.contains("Paris"));
@@ -328,11 +356,22 @@ mod tests {
     #[test]
     fn recall_ranks_by_relevance() {
         let mem = MemoryStore::new();
-        mem.add("Rust uses ownership for memory safety.", "fact", vec!["rust".into()]);
-        mem.add("Paris is the capital of France and lies on the Seine.", "fact", vec!["geography".into()]);
+        mem.add(
+            "Rust uses ownership for memory safety.",
+            "fact",
+            vec!["rust".into()],
+        );
+        mem.add(
+            "Paris is the capital of France and lies on the Seine.",
+            "fact",
+            vec!["geography".into()],
+        );
         let results = mem.retrieve("capital France Paris", 5);
         assert!(!results.is_empty());
-        assert!(results[0].text.contains("Paris"), "most relevant should rank first");
+        assert!(
+            results[0].text.contains("Paris"),
+            "most relevant should rank first"
+        );
     }
 
     #[test]
@@ -347,7 +386,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("roco-mem-test-{}.json", now_secs()));
         {
             let mem = MemoryStore::open(&dir).unwrap();
-            mem.add("persistent fact about the user", "preference", vec!["user".into()]);
+            mem.add(
+                "persistent fact about the user",
+                "preference",
+                vec!["user".into()],
+            );
             mem.save().unwrap();
         }
         {
@@ -379,8 +422,13 @@ mod tests {
         assert_eq!(r["ok"], true);
 
         let recall = tools.iter().find(|t| t.name() == "recall").unwrap();
-        let r = recall.call(serde_json::json!({"query": "user ui preference"})).unwrap();
+        let r = recall
+            .call(serde_json::json!({"query": "user ui preference"}))
+            .unwrap();
         assert_eq!(r["count"], 1);
-        assert!(r["results"][0]["text"].as_str().unwrap().contains("dark mode"));
+        assert!(r["results"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("dark mode"));
     }
 }

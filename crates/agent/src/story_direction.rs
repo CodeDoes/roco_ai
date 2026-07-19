@@ -282,9 +282,7 @@ mod tests {
             .with_tone("dark")
             .with_style("literary");
 
-        let other = StoryDirection::new()
-            .with_tone("light")
-            .with_theme("love");
+        let other = StoryDirection::new().with_tone("light").with_theme("love");
 
         direction.merge(other);
 
@@ -295,7 +293,8 @@ mod tests {
 
     #[test]
     fn test_from_natural_language() {
-        let direction = StoryDirection::from_natural_language("I want a dark, gritty story with fast action");
+        let direction =
+            StoryDirection::from_natural_language("I want a dark, gritty story with fast action");
         assert_eq!(direction.tone, Some("dark".to_string()));
         assert_eq!(direction.pacing, Some("fast".to_string()));
     }

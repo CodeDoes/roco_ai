@@ -25,10 +25,7 @@ async fn main() -> anyhow::Result<()> {
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (folder, task) = match args.split_first() {
-        Some((folder, rest)) => (
-            PathBuf::from(folder),
-            rest.join(" "),
-        ),
+        Some((folder, rest)) => (PathBuf::from(folder), rest.join(" ")),
         None => {
             eprintln!("Usage: agent_chat <folder> [task...]");
             std::process::exit(2);
@@ -67,7 +64,11 @@ async fn main() -> anyhow::Result<()> {
     if trace.completed {
         println!("{}", trace.final_text);
     } else {
-        println!("(incomplete after {} steps)\n{}", trace.steps.len(), trace.final_text);
+        println!(
+            "(incomplete after {} steps)\n{}",
+            trace.steps.len(),
+            trace.final_text
+        );
     }
     println!(
         "\nSession persisted under {}/.roco/agent_chat/ ({} memory entries, {} past sessions).\n",

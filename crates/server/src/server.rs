@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use roco_engine::ModelBackend;
 use crate::config::ServerConfig;
 use crate::routes::create_router;
+use roco_engine::ModelBackend;
+use std::sync::Arc;
 use tracing::info;
 
 /// Install Ctrl+C + SIGTERM (Unix) signal handlers and return a future that
@@ -20,7 +20,9 @@ async fn install_shutdown() {
     let term = async {
         use tokio::signal::unix::{signal, SignalKind};
         match signal(SignalKind::terminate()) {
-            Ok(mut sigterm) => { sigterm.recv().await; }
+            Ok(mut sigterm) => {
+                sigterm.recv().await;
+            }
             Err(_) => {
                 // Could not install SIGTERM handler — fall through to ctrl_c
                 // so the future still resolves eventually. The OS default
@@ -50,7 +52,8 @@ impl Server {
     pub async fn run(&self) -> Result<(), String> {
         let addr = format!("{}:{}", self.config.host, self.config.port);
         info!("Starting HTTP server on {}", addr);
-        let listener = tokio::net::TcpListener::bind(&addr).await
+        let listener = tokio::net::TcpListener::bind(&addr)
+            .await
             .map_err(|e| format!("Failed to bind to {addr}: {e}"))?;
         let app = create_router(self.backend.clone());
 
@@ -91,7 +94,11 @@ mod tests {
         let base_url = format!("http://127.0.0.1:{port}");
 
         // 1. Health check
-        let resp = client.get(format!("{base_url}/health")).send().await.unwrap();
+        let resp = client
+            .get(format!("{base_url}/health"))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), 200);
         let health: serde_json::Value = resp.json().await.unwrap();
         assert_eq!(health["status"], "ok");
@@ -102,7 +109,8 @@ mod tests {
             prompt: "Say yes".to_string(),
             ..Default::default()
         };
-        let resp = client.post(format!("{base_url}/complete"))
+        let resp = client
+            .post(format!("{base_url}/complete"))
             .json(&comp_req)
             .send()
             .await
@@ -116,13 +124,17 @@ mod tests {
             "prompt": "OpenAI style prompt",
             "max_tokens": 10
         });
-        let resp = client.post(format!("{base_url}/v1/completions"))
+        let resp = client
+            .post(format!("{base_url}/v1/completions"))
             .json(&openai_req)
             .send()
             .await
             .unwrap();
         assert_eq!(resp.status(), 200);
         let openai_resp: serde_json::Value = resp.json().await.unwrap();
-        assert!(openai_resp["choices"][0]["text"].as_str().unwrap().contains("OpenAI style prompt"));
+        assert!(openai_resp["choices"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("OpenAI style prompt"));
     }
 }

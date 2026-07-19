@@ -1,8 +1,8 @@
 //! Grammar-constrained inference smoke test.
 
-use std::env;
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_inference::RwkvBackend;
+use std::env;
 
 const DEFAULT_GRAMMAR: &str = r#"root ::= "yes" | "no""#;
 const DEFAULT_PROMPT: &str = "Are you a helpful AI? Answer with one word: yes or no.";
@@ -18,7 +18,8 @@ async fn main() -> anyhow::Result<()> {
     println!("backend: {}", backend.name());
 
     let grammar = match env::var("RWKV_GRAMMAR_FILE") {
-        Ok(p) => std::fs::read_to_string(&p).map_err(|e| anyhow::anyhow!("could not read RWKV_GRAMMAR_FILE={p}: {e}"))?,
+        Ok(p) => std::fs::read_to_string(&p)
+            .map_err(|e| anyhow::anyhow!("could not read RWKV_GRAMMAR_FILE={p}: {e}"))?,
         Err(_) => env::var("RWKV_GRAMMAR").unwrap_or_else(|_| DEFAULT_GRAMMAR.to_string()),
     };
 
@@ -36,12 +37,27 @@ async fn main() -> anyhow::Result<()> {
 
     println!("prompting…");
     let text = match backend.complete(req).await {
-        Ok(resp) => { println!("\n--- response ---\n{}", resp.text); resp.text }
-        Err(e) => { eprintln!("inference failed: {e}"); String::new() }
+        Ok(resp) => {
+            println!("\n--- response ---\n{}", resp.text);
+            resp.text
+        }
+        Err(e) => {
+            eprintln!("inference failed: {e}");
+            String::new()
+        }
     };
 
     let stripped = text.trim();
     let passes = grammar == DEFAULT_GRAMMAR && (stripped == "yes" || stripped == "no");
-    println!("\n--- grammar check: {} ---", if passes { "PASS" } else if !grammar.is_empty() { "(non-default grammar)" } else { "FAIL" });
+    println!(
+        "\n--- grammar check: {} ---",
+        if passes {
+            "PASS"
+        } else if !grammar.is_empty() {
+            "(non-default grammar)"
+        } else {
+            "FAIL"
+        }
+    );
     Ok(())
 }

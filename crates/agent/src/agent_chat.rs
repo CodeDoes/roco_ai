@@ -140,13 +140,19 @@ mod tests {
         assert!(chat.workspace.root() == folder);
 
         // Seed a long-term preference; it must hit disk.
-        chat.memory
-            .add("the user prefers Rust for tooling", "preference", vec!["user".into()]);
+        chat.memory.add(
+            "the user prefers Rust for tooling",
+            "preference",
+            vec!["user".into()],
+        );
 
         // Run a benign task (MockBackend) — records a session transcript.
         let backend = MockBackend::default();
         let trace = chat.run(&backend, "do a benign task").await.unwrap();
-        assert!(trace.steps.len() >= 1, "agent should take at least one step");
+        assert!(
+            trace.steps.len() >= 1,
+            "agent should take at least one step"
+        );
 
         let sessions_path = folder.join(AGENT_CHAT_DIR).join("sessions.json");
         let memory_path = folder.join(AGENT_CHAT_DIR).join("memory.json");
@@ -158,7 +164,10 @@ mod tests {
         let chat2 = AgentChatSession::open(&folder).unwrap();
         let recalled = chat2.memory.retrieve("prefers Rust tooling", 5);
         assert!(!recalled.is_empty(), "memory should survive a reopen");
-        assert!(!chat2.sessions.is_empty(), "session history should survive a reopen");
+        assert!(
+            !chat2.sessions.is_empty(),
+            "session history should survive a reopen"
+        );
 
         let _ = std::fs::remove_dir_all(&folder);
     }
@@ -167,7 +176,11 @@ mod tests {
     fn build_tools_includes_workspace_and_persistent_tools() {
         let folder = tmp_folder();
         let chat = AgentChatSession::open(&folder).unwrap();
-        let names: Vec<String> = chat.build_tools().iter().map(|t| t.name().to_string()).collect();
+        let names: Vec<String> = chat
+            .build_tools()
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect();
         assert!(names.contains(&"remember".to_string()));
         assert!(names.contains(&"search_sessions".to_string()));
         assert!(names.contains(&"read".to_string()));

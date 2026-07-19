@@ -239,7 +239,7 @@ pub fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
         min_output_chars: 10,
         grammar: None,
         prefill: None,
-            bnf_mask: None,
+        bnf_mask: None,
         session: None,
         preserve_state: false,
         oracle: None,
@@ -329,7 +329,8 @@ pub fn message_eval_cases() -> Vec<EvalCase> {
     vec![
         EvalCase {
             name: "instruct_baseline_persona".into(),
-            description: "Baseline: honors a system persona/format constraint without state-tuning".into(),
+            description: "Baseline: honors a system persona/format constraint without state-tuning"
+                .into(),
             system: "You are a terse pirate. Answer in exactly one short pirate sentence.".into(),
             prompt: "How do I open a locked treasure chest?".into(),
             expected_hints: vec!["treasure".into()],
@@ -360,12 +361,17 @@ pub fn message_eval_cases() -> Vec<EvalCase> {
             bnf_mask: None,
             session: None,
             preserve_state: false,
-            oracle: Some("Water keeps you hydrated, aids digestion, and helps regulate body temperature.".into()),
+            oracle: Some(
+                "Water keeps you hydrated, aids digestion, and helps regulate body temperature."
+                    .into(),
+            ),
             category: EvalCategory::Coherence,
         },
         EvalCase {
             name: "state_pirate_persona_baked".into(),
-            description: "State-tuned: pirate persona baked via bake_into_session persists across turns".into(),
+            description:
+                "State-tuned: pirate persona baked via bake_into_session persists across turns"
+                    .into(),
             system: "You are a terse pirate. Answer in exactly one short pirate sentence.".into(),
             prompt: "What's the best way to navigate at night?".into(),
             expected_hints: vec!["star".into()],
@@ -383,7 +389,9 @@ pub fn message_eval_cases() -> Vec<EvalCase> {
         },
         EvalCase {
             name: "state_tune_custom_persona".into(),
-            description: "State-tuned: persona is baked from few-shot examples, not just system prompt".into(),
+            description:
+                "State-tuned: persona is baked from few-shot examples, not just system prompt"
+                    .into(),
             system: "".into(),
             prompt: "What do you think about the weather today?".into(),
             expected_hints: vec!["weather".into()],
@@ -468,9 +476,8 @@ pub fn fim_eval_cases() -> Vec<EvalCase> {
     // there instead of running to `max_tokens`. The closed-think prefill
     // suppresses `<?>` leakage; forbidden-string checks catch any stray
     // scaffolding the model might attempt.
-    let bridge_prompt = |prefix: &str, suffix: &str| {
-        format!("NOW\nBEFORE: {prefix}\nAFTER: {suffix}\nINSERT:")
-    };
+    let bridge_prompt =
+        |prefix: &str, suffix: &str| format!("NOW\nBEFORE: {prefix}\nAFTER: {suffix}\nINSERT:");
 
     let mk = |name: &str,
               description: &str,

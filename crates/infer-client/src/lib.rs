@@ -20,9 +20,7 @@ use std::collections::HashMap;
 
 use base64::Engine;
 use futures::future::BoxFuture;
-use roco_engine::{
-    CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage,
-};
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage};
 
 /// Default base URL for the singleton inference API server.
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8080";
@@ -63,8 +61,7 @@ impl RemoteBackend {
     /// Build a client, resolving the base URL from `ROCO_API_URL` and any
     /// extra headers from `ROCO_API_HEADERS` (a JSON object of string→string).
     pub fn from_env() -> Self {
-        let base = std::env::var("ROCO_API_URL")
-            .unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+        let base = std::env::var("ROCO_API_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
         let mut headers = HashMap::new();
         if let Ok(raw) = std::env::var("ROCO_API_HEADERS") {
             if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&raw) {
@@ -235,7 +232,12 @@ async fn remote_complete(
                     Err(_) => continue,
                 };
                 // OpenAI-style delta: choices[0].text
-                if let Some(delta) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("text")).and_then(|t| t.as_str()) {
+                if let Some(delta) = value
+                    .get("choices")
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.get("text"))
+                    .and_then(|t| t.as_str())
+                {
                     if !delta.is_empty() {
                         full.push_str(delta);
                         completion_tokens += 1;
@@ -287,7 +289,9 @@ async fn remote_complete(
     let (prompt_tokens, completion_tokens) = match value.get("usage") {
         Some(u) => (
             u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
-            u.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+            u.get("completion_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize,
         ),
         None => (req.estimated_prompt_tokens, 0),
     };

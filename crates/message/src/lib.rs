@@ -8,6 +8,6 @@ pub mod format;
 pub mod gbnf;
 pub mod roles;
 
-pub use format::{PromptStyle, build_prompt, ChatMessage};
+pub use format::{build_prompt, ChatMessage, PromptStyle};
 pub use gbnf::{assistant_response_gbnf, message_format_gbnf, MessageFormatOptions};
 pub use roles::*;

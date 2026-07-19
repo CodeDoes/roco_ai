@@ -113,11 +113,7 @@ impl ContextQuery for SessionContextSource {
                 let relevance = compute_relevance(query_text, search_content);
                 ContextSnippet::new(
                     format!("session:{}", t.id),
-                    format!(
-                        "Past session '{}': {}\n",
-                        t.id,
-                        t.task.as_str()
-                    ),
+                    format!("Past session '{}': {}\n", t.id, t.task.as_str()),
                 )
                 .with_relevance(relevance)
             })
@@ -185,10 +181,7 @@ pub struct MemoryContextSource {
 
 impl MemoryContextSource {
     pub fn new(store: std::sync::Arc<crate::MemoryStore>, max_results: usize) -> Self {
-        Self {
-            store,
-            max_results,
-        }
+        Self { store, max_results }
     }
 }
 
@@ -300,8 +293,7 @@ impl ContextManager {
         }
 
         // Sort globally by relevance descending.
-        all_snippets
-            .sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap());
+        all_snippets.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap());
         all_snippets.truncate(self.global_limit);
 
         // Budget-gated selection.
@@ -485,9 +477,9 @@ mod tests {
         impl ContextQuery for AllHighSource {
             fn query(&self, _q: &str, _limit: usize) -> Vec<ContextSnippet> {
                 vec![
-                    ContextSnippet::new("s1", "x".repeat(400)),  // ~100 tokens
-                    ContextSnippet::new("s2", "y".repeat(200)),  // ~50 tokens
-                    ContextSnippet::new("s3", "z".repeat(100)),  // ~25 tokens
+                    ContextSnippet::new("s1", "x".repeat(400)), // ~100 tokens
+                    ContextSnippet::new("s2", "y".repeat(200)), // ~50 tokens
+                    ContextSnippet::new("s3", "z".repeat(100)), // ~25 tokens
                 ]
             }
         }
@@ -523,18 +515,15 @@ mod tests {
 
     #[test]
     fn test_context_snippet_with_relevance() {
-        let snippet = ContextSnippet::new("test", "content")
-            .with_relevance(0.95);
+        let snippet = ContextSnippet::new("test", "content").with_relevance(0.95);
         assert_eq!(snippet.relevance, 0.95);
 
         // Clamping: values > 1.0 capped to 1.0.
-        let too_high = ContextSnippet::new("test", "content")
-            .with_relevance(2.0);
+        let too_high = ContextSnippet::new("test", "content").with_relevance(2.0);
         assert_eq!(too_high.relevance, 1.0);
 
         // Clamping: values < 0.0 capped to 0.0.
-        let too_low = ContextSnippet::new("test", "content")
-            .with_relevance(-0.5);
+        let too_low = ContextSnippet::new("test", "content").with_relevance(-0.5);
         assert_eq!(too_low.relevance, 0.0);
     }
 }

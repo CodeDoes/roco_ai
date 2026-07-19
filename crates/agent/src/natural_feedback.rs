@@ -62,36 +62,44 @@ impl ParsedFeedback {
     pub fn schema() -> Schema {
         Schema::object()
             .prop("original", Schema::string())
-            .prop("intent", Schema::enum_values(vec![
-                serde_json::json!("revise"),
-                serde_json::json!("continue"),
-                serde_json::json!("stop"),
-                serde_json::json!("skip"),
-                serde_json::json!("direction"),
-                serde_json::json!("general"),
-            ]))
-            .prop("directives", Schema::array(
-                Schema::object()
-                    .prop("directive_type", Schema::enum_values(vec![
-                        serde_json::json!("tone"),
-                        serde_json::json!("pacing"),
-                        serde_json::json!("character"),
-                        serde_json::json!("plot"),
-                        serde_json::json!("style"),
-                        serde_json::json!("content"),
-                    ]))
-                    .prop("target", Schema::string())
-                    .prop("action", Schema::string())
-                    .prop("instruction", Schema::string())
-                    .build()
-            ))
+            .prop(
+                "intent",
+                Schema::enum_values(vec![
+                    serde_json::json!("revise"),
+                    serde_json::json!("continue"),
+                    serde_json::json!("stop"),
+                    serde_json::json!("skip"),
+                    serde_json::json!("direction"),
+                    serde_json::json!("general"),
+                ]),
+            )
+            .prop(
+                "directives",
+                Schema::array(
+                    Schema::object()
+                        .prop(
+                            "directive_type",
+                            Schema::enum_values(vec![
+                                serde_json::json!("tone"),
+                                serde_json::json!("pacing"),
+                                serde_json::json!("character"),
+                                serde_json::json!("plot"),
+                                serde_json::json!("style"),
+                                serde_json::json!("content"),
+                            ]),
+                        )
+                        .prop("target", Schema::string())
+                        .prop("action", Schema::string())
+                        .prop("instruction", Schema::string())
+                        .build(),
+                ),
+            )
             .prop("confidence", Schema::number())
             .build()
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("ParsedFeedback schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("ParsedFeedback schema is valid")
     }
 
     /// Check if this feedback requires action
@@ -196,8 +204,7 @@ where
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    serde_json::from_str::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 #[cfg(test)]

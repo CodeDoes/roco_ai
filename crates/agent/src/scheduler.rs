@@ -101,14 +101,17 @@ impl Scheduler {
     /// Schedule a one-off task due at unix time `at`.
     pub fn schedule_one_off(&self, description: &str, at: u64, payload: Option<Value>) -> String {
         let id = new_sched_id();
-        self.tasks.write().expect("sched lock poisoned").push(ScheduledTask {
-            id: id.clone(),
-            description: description.to_string(),
-            payload,
-            kind: "one_off".into(),
-            next_run: at,
-            interval: None,
-        });
+        self.tasks
+            .write()
+            .expect("sched lock poisoned")
+            .push(ScheduledTask {
+                id: id.clone(),
+                description: description.to_string(),
+                payload,
+                kind: "one_off".into(),
+                next_run: at,
+                interval: None,
+            });
         let _ = self.save();
         id
     }
@@ -124,14 +127,17 @@ impl Scheduler {
     ) -> String {
         let next_run = start.unwrap_or_else(|| self.now());
         let id = new_sched_id();
-        self.tasks.write().expect("sched lock poisoned").push(ScheduledTask {
-            id: id.clone(),
-            description: description.to_string(),
-            payload,
-            kind: "periodic".into(),
-            next_run,
-            interval: Some(interval),
-        });
+        self.tasks
+            .write()
+            .expect("sched lock poisoned")
+            .push(ScheduledTask {
+                id: id.clone(),
+                description: description.to_string(),
+                payload,
+                kind: "periodic".into(),
+                next_run,
+                interval: Some(interval),
+            });
         let _ = self.save();
         id
     }
@@ -183,7 +189,10 @@ impl Scheduler {
     /// after running; periodic tasks are rescheduled by their interval (past
     /// due times are skipped forward so a long-paused scheduler doesn't
     /// replay a backlog).
-    pub async fn run_due(&self, backend: &dyn ModelBackend) -> Result<Vec<ScheduledOutcome>, AgentError> {
+    pub async fn run_due(
+        &self,
+        backend: &dyn ModelBackend,
+    ) -> Result<Vec<ScheduledOutcome>, AgentError> {
         let due = self.due();
         let mut outcomes = Vec::with_capacity(due.len());
         for task in due {
@@ -275,7 +284,9 @@ impl Tool for ScheduleTool {
 
         if let Some(iv) = args.get("interval_seconds").and_then(|v| v.as_u64()) {
             let start = args.get("start_at").and_then(|v| v.as_u64()).unwrap_or(now);
-            let id = self.scheduler.schedule_periodic(description, iv, Some(start), None);
+            let id = self
+                .scheduler
+                .schedule_periodic(description, iv, Some(start), None);
             return Ok(serde_json::json!({
                 "ok": true, "id": id, "kind": "periodic", "next_run": start, "interval_seconds": iv
             }));
@@ -284,7 +295,11 @@ impl Tool for ScheduleTool {
         let at = args
             .get("start_at")
             .and_then(|v| v.as_u64())
-            .or_else(|| args.get("delay_seconds").and_then(|v| v.as_u64()).map(|d| now + d))
+            .or_else(|| {
+                args.get("delay_seconds")
+                    .and_then(|v| v.as_u64())
+                    .map(|d| now + d)
+            })
             .unwrap_or(now);
         let id = self.scheduler.schedule_one_off(description, at, None);
         Ok(serde_json::json!({ "ok": true, "id": id, "kind": "one_off", "next_run": at }))
@@ -294,8 +309,8 @@ impl Tool for ScheduleTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicU64;
     use roco_engine::MockBackend;
+    use std::sync::atomic::AtomicU64;
 
     /// A scheduler backed by a mutable fake clock.
     fn fake_scheduler(time: Arc<AtomicU64>) -> Scheduler {
@@ -313,7 +328,10 @@ mod tests {
         assert_eq!(sched.due().len(), 1);
         let outcomes = sched.run_due(&MockBackend::default()).await.unwrap();
         assert_eq!(outcomes.len(), 1);
-        assert!(sched.get(&id).is_none(), "one-off task removed after running");
+        assert!(
+            sched.get(&id).is_none(),
+            "one-off task removed after running"
+        );
     }
 
     #[tokio::test]
@@ -324,7 +342,10 @@ mod tests {
         assert_eq!(sched.due().len(), 1);
         sched.run_due(&MockBackend::default()).await.unwrap();
         let t = sched.get(&id).unwrap();
-        assert!(t.next_run > 1000, "periodic task rescheduled into the future");
+        assert!(
+            t.next_run > 1000,
+            "periodic task rescheduled into the future"
+        );
         assert_eq!(sched.due().len(), 0, "not due immediately after reschedule");
         time.store(2000, Ordering::Relaxed);
         assert_eq!(sched.due().len(), 1, "due again after interval elapses");
@@ -351,7 +372,10 @@ mod tests {
             .unwrap();
         assert_eq!(r["ok"], true);
         assert_eq!(sched.len(), 1);
-        assert_eq!(sched.get(r["id"].as_str().unwrap()).unwrap().kind, "one_off");
+        assert_eq!(
+            sched.get(r["id"].as_str().unwrap()).unwrap().kind,
+            "one_off"
+        );
     }
 
     #[test]
@@ -364,12 +388,18 @@ mod tests {
             .call(serde_json::json!({ "description": "heartbeat", "interval_seconds": 3600 }))
             .unwrap();
         assert_eq!(r["kind"], "periodic");
-        assert_eq!(sched.get(r["id"].as_str().unwrap()).unwrap().interval, Some(3600));
+        assert_eq!(
+            sched.get(r["id"].as_str().unwrap()).unwrap().interval,
+            Some(3600)
+        );
     }
 
     #[test]
     fn persistence_roundtrip() {
-        let dir = std::env::temp_dir().join(format!("roco-sched-test-{}.json", crate::memory::now_secs()));
+        let dir = std::env::temp_dir().join(format!(
+            "roco-sched-test-{}.json",
+            crate::memory::now_secs()
+        ));
         {
             let sched = Scheduler::open(&dir).unwrap();
             sched.schedule_one_off("persisted task", 9999, None);
@@ -378,7 +408,13 @@ mod tests {
         {
             let sched = Scheduler::open(&dir).unwrap();
             assert_eq!(sched.len(), 1);
-            assert_eq!(sched.get(&sched.due().first().unwrap().id).unwrap().description, "persisted task");
+            assert_eq!(
+                sched
+                    .get(&sched.due().first().unwrap().id)
+                    .unwrap()
+                    .description,
+                "persisted task"
+            );
         }
         let _ = std::fs::remove_file(&dir);
     }

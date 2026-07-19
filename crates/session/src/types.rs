@@ -1,5 +1,4 @@
 /// Session metadata persisted to `meta.json`.
-
 use serde::{Deserialize, Serialize};
 
 /// Whether this session is a top-level root or spawned by another session.

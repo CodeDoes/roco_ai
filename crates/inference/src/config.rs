@@ -27,8 +27,8 @@ pub fn get_quant_cache_dir(model_path: &str) -> PathBuf {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
-    let root = env::var("RWKV_QUANT_CACHE_DIR")
-        .unwrap_or_else(|_| "/tmp/roco-quant-cache".to_string());
+    let root =
+        env::var("RWKV_QUANT_CACHE_DIR").unwrap_or_else(|_| "/tmp/roco-quant-cache".to_string());
     PathBuf::from(root).join(format!("{:016x}", hash))
 }
 
@@ -54,7 +54,10 @@ pub fn auto_quant(
     let quantize_threshold_mb = 1536;
 
     if on_disk_mb < quantize_threshold_mb {
-        info!(on_disk_mb, num_layer, num_emb, "small model — no quantization");
+        info!(
+            on_disk_mb,
+            num_layer, num_emb, "small model — no quantization"
+        );
         return HashMap::new();
     }
 
@@ -82,7 +85,10 @@ pub fn auto_quant(
     }
 
     info!(
-        on_disk_mb, gpu_coop, num_layer, edge_layers = edge,
+        on_disk_mb,
+        gpu_coop,
+        num_layer,
+        edge_layers = edge,
         "sandwich quantization: {edge} edge layers FP16, middle {} layers {mid_label}",
         n - 2 * edge
     );
@@ -115,7 +121,9 @@ pub fn proxy_guided_quant(
     let mut plan = HashMap::new();
     let mut layer_scores: Vec<(usize, f64)> = Vec::with_capacity(n);
     for layer in 0..n {
-        let layer_tensors: Vec<_> = analysis.tensors.iter()
+        let layer_tensors: Vec<_> = analysis
+            .tensors
+            .iter()
             .filter(|t| extract_layer_from_name(&t.name) == Some(layer))
             .collect();
         if layer_tensors.is_empty() {
@@ -123,11 +131,16 @@ pub fn proxy_guided_quant(
             continue;
         }
         let total_elements: usize = layer_tensors.iter().map(|t| t.numels).sum();
-        let sq_elements: usize = layer_tensors.iter()
+        let sq_elements: usize = layer_tensors
+            .iter()
             .filter(|t| t.recommendation == QuantRecommendation::ScalarQuant)
             .map(|t| t.numels)
             .sum();
-        let score = if total_elements > 0 { sq_elements as f64 / total_elements as f64 } else { 0.0 };
+        let score = if total_elements > 0 {
+            sq_elements as f64 / total_elements as f64
+        } else {
+            0.0
+        };
         layer_scores.push((layer, score));
     }
 
@@ -138,7 +151,9 @@ pub fn proxy_guided_quant(
         fp16_set.insert(*layer);
     }
     for l in 0..n {
-        if l < 2 || l >= n - 2 { fp16_set.insert(l); }
+        if l < 2 || l >= n - 2 {
+            fp16_set.insert(l);
+        }
     }
 
     let mut sq_layers = 0;
@@ -149,8 +164,13 @@ pub fn proxy_guided_quant(
         }
     }
 
-    info!(sq = sq_layers, fp16 = fp16_set.len(), total = n,
-        "proxy-guided quant: {sq_layers}/{n} layers → {q_label}, {} layers → FP16", fp16_set.len());
+    info!(
+        sq = sq_layers,
+        fp16 = fp16_set.len(),
+        total = n,
+        "proxy-guided quant: {sq_layers}/{n} layers → {q_label}, {} layers → FP16",
+        fp16_set.len()
+    );
     plan
 }
 
@@ -188,13 +208,17 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
     let mut search_dirs: Vec<PathBuf> = Vec::new();
     for candidate in ["models", "../models"] {
         let p = dir.join(candidate);
-        if p.is_dir() { search_dirs.push(p); }
+        if p.is_dir() {
+            search_dirs.push(p);
+        }
     }
 
     // Also scan user cache directories like ~/.cache/roco
     if let Ok(home) = env::var("HOME") {
         let p_home_cache = PathBuf::from(home).join(".cache").join("roco");
-        if p_home_cache.is_dir() { search_dirs.push(p_home_cache); }
+        if p_home_cache.is_dir() {
+            search_dirs.push(p_home_cache);
+        }
     }
 
     if search_dirs.is_empty() {
@@ -212,10 +236,16 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
         };
         for e in entries.flatten() {
             let path = e.path();
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
-            if !name.starts_with("rwkv7") || !name.ends_with(".st") { continue; }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !name.starts_with("rwkv7") || !name.ends_with(".st") {
+                continue;
+            }
             let score = if name.contains("-converted") { 90 } else { 100 };
-            if score == 0 { continue; }
+            if score == 0 {
+                continue;
+            }
             match &best {
                 Some((s, _)) if *s >= score => {}
                 _ => best = Some((score, path)),
@@ -231,9 +261,12 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
                 if let Ok(entries) = std::fs::read_dir(search_dir) {
                     for e in entries.flatten() {
                         if let Some(_name) = e.path().file_name().and_then(|n| n.to_str()) {
-                            listing.push_str(&format!("  {} ({})\n",
+                            listing.push_str(&format!(
+                                "  {} ({})\n",
                                 e.path().display(),
-                                std::fs::metadata(e.path()).map(|m| format!("{}MB", m.len() / (1024 * 1024))).unwrap_or_default()
+                                std::fs::metadata(e.path())
+                                    .map(|m| format!("{}MB", m.len() / (1024 * 1024)))
+                                    .unwrap_or_default()
                             ));
                         }
                     }

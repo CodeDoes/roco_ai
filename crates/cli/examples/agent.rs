@@ -9,11 +9,11 @@
 use std::sync::Arc;
 
 use roco_agent::{
-    Agent, AgentConfig,
     memory::MemoryStore,
     scheduler::Scheduler,
     sessions::SessionStore,
     workspace::{Workspace, WorkspaceKind},
+    Agent, AgentConfig,
 };
 use roco_engine::ModelBackend;
 use roco_inference::RwkvBackend;
@@ -41,7 +41,9 @@ async fn main() -> anyhow::Result<()> {
     // the built-in tools into one agent.
     let workspace = Arc::new(Workspace::temp(WorkspaceKind::Agent)?);
     let memory = Arc::new(MemoryStore::new());
-    let sessions = Arc::new(SessionStore::new(std::env::temp_dir().join("roco-agent-sessions")));
+    let sessions = Arc::new(SessionStore::new(
+        std::env::temp_dir().join("roco-agent-sessions"),
+    ));
     let scheduler = Arc::new(Scheduler::new());
 
     let mut tools = all_tools();

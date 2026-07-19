@@ -15,9 +15,9 @@
 
 use std::io::{self, Write};
 
+use roco_agent::quality::QualityAnalyzer;
 use roco_agent::story_engine::{StoryConfig, StoryEngine};
 use roco_agent::story_persistence::StoryPersistence;
-use roco_agent::quality::QualityAnalyzer;
 use roco_inference::RwkvBackend;
 
 fn main() -> anyhow::Result<()> {
@@ -84,7 +84,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     if premise.is_empty() && resume_path.is_none() {
-        premise = "Write a short story about a lighthouse keeper who discovers a message in a bottle.".to_string();
+        premise =
+            "Write a short story about a lighthouse keeper who discovers a message in a bottle."
+                .to_string();
     }
 
     println!("Loading model...");
@@ -114,7 +116,10 @@ fn main() -> anyhow::Result<()> {
     if engine.outline().is_empty() {
         println!("📝 Generating outline...");
         engine.generate_outline(&backend, &premise)?;
-        println!("✅ Outline generated ({} chapters)\n", engine.outline().len());
+        println!(
+            "✅ Outline generated ({} chapters)\n",
+            engine.outline().len()
+        );
 
         // Print outline
         for ch in engine.outline() {
@@ -129,7 +134,10 @@ fn main() -> anyhow::Result<()> {
         // Check if we need more chapters in the outline
         if chapter_num >= engine.outline().len() {
             if config.max_chapters > 0 && chapter_num >= config.max_chapters {
-                println!("\n🎯 Reached target chapter count ({})", config.max_chapters);
+                println!(
+                    "\n🎯 Reached target chapter count ({})",
+                    config.max_chapters
+                );
                 break;
             }
 
@@ -139,14 +147,21 @@ fn main() -> anyhow::Result<()> {
                 println!("\n🎯 Story arc complete — no more chapters needed");
                 break;
             }
-            println!("✅ Outline expanded ({} chapters total)", engine.outline().len());
+            println!(
+                "✅ Outline expanded ({} chapters total)",
+                engine.outline().len()
+            );
         }
 
         // Generate next chapter
         chapter_num += 1;
         println!("\n✍️  Generating Chapter {}...", chapter_num);
         let chapter = engine.generate_chapter(&backend)?;
-        println!("✅ Chapter {} generated ({} chars)\n", chapter_num, chapter.len());
+        println!(
+            "✅ Chapter {} generated ({} chars)\n",
+            chapter_num,
+            chapter.len()
+        );
 
         // Show preview
         let preview: String = chapter.chars().take(200).collect();
@@ -181,15 +196,22 @@ fn main() -> anyhow::Result<()> {
                         let mut revision_count = 0;
                         while revision_count < config.max_revisions && critique.should_revise {
                             revision_count += 1;
-                            println!("\n🔄 Revising (attempt {}/{})...", revision_count, config.max_revisions);
+                            println!(
+                                "\n🔄 Revising (attempt {}/{})...",
+                                revision_count, config.max_revisions
+                            );
 
-                            let revised = engine.revise_chapter(&backend, chapter_num, &critique)?;
+                            let revised =
+                                engine.revise_chapter(&backend, chapter_num, &critique)?;
                             println!("✅ Chapter revised ({} chars)", revised.len());
 
                             // Re-evaluate
                             match engine.evaluate_chapter_quality(&backend, chapter_num) {
                                 Ok(new_critique) => {
-                                    println!("📊 New quality: {:.1}/10", new_critique.scores.overall);
+                                    println!(
+                                        "📊 New quality: {:.1}/10",
+                                        new_critique.scores.overall
+                                    );
                                     if !new_critique.should_revise {
                                         println!("✅ Quality threshold met!");
                                         break;
@@ -228,7 +250,8 @@ fn main() -> anyhow::Result<()> {
                             println!("📊 Current quality: {:.1}/10", critique.scores.overall);
                             if critique.should_revise {
                                 println!("\n🔄 Revising based on critique...");
-                                let revised = engine.revise_chapter(&backend, chapter_num, &critique)?;
+                                let revised =
+                                    engine.revise_chapter(&backend, chapter_num, &critique)?;
                                 println!("✅ Chapter revised ({} chars)\n", revised.len());
                             } else {
                                 println!("✅ Chapter quality is acceptable\n");
@@ -261,7 +284,10 @@ fn main() -> anyhow::Result<()> {
 
         // Check limits in non-interactive mode
         if !config.interactive && config.max_chapters > 0 && chapter_num >= config.max_chapters {
-            println!("\n🎯 Reached target chapter count ({})", config.max_chapters);
+            println!(
+                "\n🎯 Reached target chapter count ({})",
+                config.max_chapters
+            );
             break;
         }
     }
@@ -296,7 +322,10 @@ fn main() -> anyhow::Result<()> {
     println!("   Workspace: {}", ws_path.display());
     println!("   Full story: {}/06-STORY.md", ws_path.display());
     println!("\nTo resume this story later:");
-    println!("   cargo run --release --example story_full -p roco-cli --resume {}", ws_path.display());
+    println!(
+        "   cargo run --release --example story_full -p roco-cli --resume {}",
+        ws_path.display()
+    );
 
     Ok(())
 }

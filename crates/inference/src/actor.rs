@@ -12,7 +12,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use half::f16;
-use web_rwkv::runtime::model::State as RwkvState;
 use roco_engine::{BnfMask, EngineError, TokenUsage};
 use safetensors::SafeTensors;
 use tokio::sync::{mpsc, oneshot};
@@ -20,6 +19,7 @@ use tracing::{info, warn};
 use web_rwkv::context::{Context, ContextBuilder};
 use web_rwkv::runtime::infer::{Rnn, RnnInput, RnnInputBatch, RnnOption};
 use web_rwkv::runtime::loader::Loader;
+use web_rwkv::runtime::model::State as RwkvState;
 use web_rwkv::runtime::model::{Bundle, ContextAutoLimits, ModelBuilder, ModelVersion, Quant};
 use web_rwkv::runtime::softmax::softmax_one;
 use web_rwkv::runtime::v7;
@@ -32,7 +32,7 @@ use web_rwkv::tokenizer::Tokenizer;
 // appear in the same compilation unit as web-rwkv's TokioRuntime.
 // Grammar constraints are pre-built as Box<dyn BnfMask> outside this crate.
 
-use crate::config::{auto_quant, get_pipeline_cache_path, get_quant_cache_dir, default_model_path};
+use crate::config::{auto_quant, default_model_path, get_pipeline_cache_path, get_quant_cache_dir};
 use crate::sampling;
 
 // ---------------------------------------------------------------------------
@@ -127,11 +127,15 @@ pub enum ActorMessage {
 }
 
 impl From<CompleteReq> for ActorMessage {
-    fn from(req: CompleteReq) -> Self { Self::Complete(req) }
+    fn from(req: CompleteReq) -> Self {
+        Self::Complete(req)
+    }
 }
 
 impl From<BlendReq> for ActorMessage {
-    fn from(req: BlendReq) -> Self { Self::BlendStates(req) }
+    fn from(req: BlendReq) -> Self {
+        Self::BlendStates(req)
+    }
 }
 
 // Session name used for FIM (fill-in-the-middle) state-tuning.
@@ -173,14 +177,22 @@ impl RwkvActor {
         let model_path = model_path.to_string_lossy().to_string();
         let vocab_path = env::var("RWKV_VOCAB").unwrap_or_else(|_| {
             let dir = std::env::current_dir().unwrap_or_default();
-            let candidates = ["assets/vocab/rwkv_vocab_v20230424.json", "models/rwkv_vocab_v20230424.json"];
+            let candidates = [
+                "assets/vocab/rwkv_vocab_v20230424.json",
+                "models/rwkv_vocab_v20230424.json",
+            ];
             for c in &candidates {
                 let p = dir.join(c);
-                if p.exists() { return p.to_string_lossy().to_string(); }
+                if p.exists() {
+                    return p.to_string_lossy().to_string();
+                }
             }
             dir.join(candidates[0]).to_string_lossy().to_string()
         });
-        let token_chunk_size: usize = env::var("RWKV_CHUNK").ok().and_then(|s| s.parse().ok()).unwrap_or(128);
+        let token_chunk_size: usize = env::var("RWKV_CHUNK")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(128);
 
         info!(model_path = %model_path, vocab_path = %vocab_path, "loading RWKV model");
         let vocab_text = tokio::fs::read_to_string(&vocab_path).await?;
@@ -197,10 +209,13 @@ impl RwkvActor {
         // GPU enumeration
         let instance = wgpu::Instance::default();
         let all_adapters = instance.enumerate_adapters(wgpu::Backends::all()).await;
-        let mut scored: Vec<_> = all_adapters.into_iter()
+        let mut scored: Vec<_> = all_adapters
+            .into_iter()
             .map(|a| {
                 let i = a.get_info();
-                let coop = a.features().contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+                let coop = a
+                    .features()
+                    .contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
                 let max_buf_mb = a.limits().max_buffer_size / (1024 * 1024);
                 let type_score = match i.device_type {
                     wgpu::DeviceType::DiscreteGpu => 30,
@@ -210,8 +225,15 @@ impl RwkvActor {
                     wgpu::DeviceType::Cpu => 5,
                 };
                 let coop_bonus = if coop { 100 } else { 0 };
-                info!("  [{}] {} | type={:?} | coop_matrix={} | max_buffer={}MB | backend={:?}",
-                    if coop { "✓" } else { "✗" }, i.name, i.device_type, coop, max_buf_mb, i.backend);
+                info!(
+                    "  [{}] {} | type={:?} | coop_matrix={} | max_buffer={}MB | backend={:?}",
+                    if coop { "✓" } else { "✗" },
+                    i.name,
+                    i.device_type,
+                    coop,
+                    max_buf_mb,
+                    i.backend
+                );
                 (a, coop_bonus + type_score + (max_buf_mb / 512) as u32)
             })
             .collect();
@@ -227,60 +249,102 @@ impl RwkvActor {
 
         for (adapter, _score) in scored {
             let ainfo = adapter.get_info();
-            let coop = adapter.features().contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+            let coop = adapter
+                .features()
+                .contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
             let max_mb = adapter.limits().max_buffer_size / (1024 * 1024);
             if let Some(ref filter) = adapter_name_filter {
-                if !ainfo.name.to_lowercase().contains(&filter.to_lowercase()) { continue; }
+                if !ainfo.name.to_lowercase().contains(&filter.to_lowercase()) {
+                    continue;
+                }
             }
-            info!("trying adapter: '{}' (type={:?}, coop={}, {}MB)", ainfo.name, ainfo.device_type, coop, max_mb);
+            info!(
+                "trying adapter: '{}' (type={:?}, coop={}, {}MB)",
+                ainfo.name, ainfo.device_type, coop, max_mb
+            );
 
             let cache_path = get_pipeline_cache_path(&model_path);
             let cached_pipelines = std::fs::read(&cache_path).ok();
             let mut builder = ContextBuilder::new(adapter).auto_limits(&info);
-            if let Some(ref data) = cached_pipelines { builder = builder.with_pipeline_cache(data.clone()); }
+            if let Some(ref data) = cached_pipelines {
+                builder = builder.with_pipeline_cache(data.clone());
+            }
             match builder.build().await {
                 Ok(ctx) => {
                     info!("context created on: '{}'", ainfo.name);
-                    context = Some(ctx); gpu_coop = coop; gpu_max_mb = max_mb; gpu_info_name = ainfo.name;
+                    context = Some(ctx);
+                    gpu_coop = coop;
+                    gpu_max_mb = max_mb;
+                    gpu_info_name = ainfo.name;
                     break;
                 }
                 Err(e) => warn!("adapter '{}' failed: {}", ainfo.name, e),
             }
         }
 
-        let context = context.ok_or_else(|| anyhow::anyhow!("no adapter could create a WebGPU context (tried {} adapters)", adapter_count))?;
-        info!("selected GPU: '{}' (coop_matrix={}, max_buffer={}MB)", gpu_info_name, gpu_coop, gpu_max_mb);
+        let context = context.ok_or_else(|| {
+            anyhow::anyhow!(
+                "no adapter could create a WebGPU context (tried {} adapters)",
+                adapter_count
+            )
+        })?;
+        info!(
+            "selected GPU: '{}' (coop_matrix={}, max_buffer={}MB)",
+            gpu_info_name, gpu_coop, gpu_max_mb
+        );
 
         // Memory estimate
         let num_emb = info.num_emb as u64;
         let num_layer = info.num_layer as u64;
         let num_vocab = info.num_vocab as u64;
-        let resident_fp16_mb = (2 * num_emb * num_vocab * 2 + num_emb * num_layer * 4 * 4) / (1024 * 1024);
-        let file_mb = std::fs::metadata(&model_path).map(|m| m.len() / (1024 * 1024)).unwrap_or(0);
-        info!("model memory: file={}MB resident(FP16)={}MB layers={} emb={} vocab={}", file_mb, resident_fp16_mb, num_layer, num_emb, num_vocab);
+        let resident_fp16_mb =
+            (2 * num_emb * num_vocab * 2 + num_emb * num_layer * 4 * 4) / (1024 * 1024);
+        let file_mb = std::fs::metadata(&model_path)
+            .map(|m| m.len() / (1024 * 1024))
+            .unwrap_or(0);
+        info!(
+            "model memory: file={}MB resident(FP16)={}MB layers={} emb={} vocab={}",
+            file_mb, resident_fp16_mb, num_layer, num_emb, num_vocab
+        );
 
         // Quantization
         let quant_spec_env = env::var("RWKV_QUANT").ok();
         let quant_layers: HashMap<usize, Quant> = if let Some(ref qs) = quant_spec_env {
-            if qs == "none" { info!("quantization: none (user override)"); HashMap::new() }
-            else if let Some(n) = qs.strip_prefix("nf4=") {
+            if qs == "none" {
+                info!("quantization: none (user override)");
+                HashMap::new()
+            } else if let Some(n) = qs.strip_prefix("nf4=") {
                 let n = n.parse::<usize>().unwrap_or(0).min(info.num_layer);
-                if n > 0 && !gpu_coop { warn!("NF4 requested but GPU lacks cooperative matrix"); }
+                if n > 0 && !gpu_coop {
+                    warn!("NF4 requested but GPU lacks cooperative matrix");
+                }
                 let layers = (0..n).map(|l| (l, Quant::NF4)).collect();
-                info!("quantization: NF4 {n} of {} layers (user override)", info.num_layer);
+                info!(
+                    "quantization: NF4 {n} of {} layers (user override)",
+                    info.num_layer
+                );
                 layers
             } else if let Ok(n) = qs.parse::<usize>() {
                 let n = n.min(info.num_layer);
                 let layers = (0..n).map(|l| (l, Quant::Int8)).collect();
-                info!("quantization: Int8 {n} of {} layers (user override)", info.num_layer);
+                info!(
+                    "quantization: Int8 {n} of {} layers (user override)",
+                    info.num_layer
+                );
                 layers
-            } else { auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb) }
-        } else { auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb) };
+            } else {
+                auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb)
+            }
+        } else {
+            auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb)
+        };
 
         info!("quantization: {} layers", quant_layers.len());
         let quant_cache_dir = get_quant_cache_dir(&model_path);
         std::fs::create_dir_all(&quant_cache_dir).ok();
-        let builder = ModelBuilder::new(&context, model).quant(quant_layers).quant_cache(quant_cache_dir);
+        let builder = ModelBuilder::new(&context, model)
+            .quant(quant_layers)
+            .quant_cache(quant_cache_dir);
 
         #[cfg(debug_assertions)]
         warn!("Debug build detected! build_v7() may hang on some GPUs. Rebuild with `--release`.");
@@ -289,32 +353,42 @@ impl RwkvActor {
             ModelVersion::V4 => {
                 let m = builder.build_v4().await?;
                 let b = web_rwkv::runtime::v4::Bundle::<f16>::new(m, 1);
-                let s = b.state(); let init = s.init(); let r = TokioRuntime::new(b).await;
+                let s = b.state();
+                let init = s.init();
+                let r = TokioRuntime::new(b).await;
                 (r, AnyState::V4(Box::new(s)), init)
             }
             ModelVersion::V5 => {
                 let m = builder.build_v5().await?;
                 let b = web_rwkv::runtime::v5::Bundle::<f16>::new(m, 1);
-                let s = b.state(); let init = s.init(); let r = TokioRuntime::new(b).await;
+                let s = b.state();
+                let init = s.init();
+                let r = TokioRuntime::new(b).await;
                 (r, AnyState::V5(Box::new(s)), init)
             }
             ModelVersion::V6 => {
                 let m = builder.build_v6().await?;
                 let b = web_rwkv::runtime::v6::Bundle::<f16>::new(m, 1);
-                let s = b.state(); let init = s.init(); let r = TokioRuntime::new(b).await;
+                let s = b.state();
+                let init = s.init();
+                let r = TokioRuntime::new(b).await;
                 (r, AnyState::V6(Box::new(s)), init)
             }
             ModelVersion::V7 => {
                 let m = builder.build_v7().await?;
                 let b = v7::Bundle::<f16>::new(m, 1);
-                let s = b.state(); let init = s.init(); let r = TokioRuntime::new(b).await;
+                let s = b.state();
+                let init = s.init();
+                let r = TokioRuntime::new(b).await;
                 (r, AnyState::V7(Box::new(s)), init)
             }
         };
 
         if let Some(data) = context.get_pipeline_cache_data() {
             let cache_path = get_pipeline_cache_path(&model_path);
-            if let Some(parent) = cache_path.parent() { std::fs::create_dir_all(parent).ok(); }
+            if let Some(parent) = cache_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
             match std::fs::write(&cache_path, &data) {
                 Ok(()) => info!(path = ?cache_path, size = data.len(), "saved pipeline cache"),
                 Err(e) => warn!(path = ?cache_path, error = %e, "failed to save pipeline cache"),
@@ -324,10 +398,18 @@ impl RwkvActor {
         info!("RWKV runtime initialized");
 
         Ok(Self {
-            context, runtime, state, initial_state, tokenizer,
-            vocab_bytes, token_chunk_size, _model_data: model_data,
+            context,
+            runtime,
+            state,
+            initial_state,
+            tokenizer,
+            vocab_bytes,
+            token_chunk_size,
+            _model_data: model_data,
             cancel: Arc::new(AtomicBool::new(false)),
-            state_pool: HashMap::new(), session_lru: VecDeque::new(), max_sessions: 8,
+            state_pool: HashMap::new(),
+            session_lru: VecDeque::new(),
+            max_sessions: 8,
         })
     }
 
@@ -339,18 +421,26 @@ impl RwkvActor {
         alpha: f32,
         output_session: String,
     ) -> Result<(), EngineError> {
-        let state_a = self.state_pool.get(&session_a)
+        let state_a = self
+            .state_pool
+            .get(&session_a)
             .and_then(|s| s.as_ref())
             .ok_or_else(|| EngineError::Backend(format!("session '{}' not found", session_a)))?;
-        let state_b = self.state_pool.get(&session_b)
+        let state_b = self
+            .state_pool
+            .get(&session_b)
             .and_then(|s| s.as_ref())
             .ok_or_else(|| EngineError::Backend(format!("session '{}' not found", session_b)))?;
 
         if state_a.data().len() != state_b.data().len() {
-            return Err(EngineError::Backend("state tensors have different sizes".into()));
+            return Err(EngineError::Backend(
+                "state tensors have different sizes".into(),
+            ));
         }
 
-        let blended: Vec<f32> = state_a.data().iter()
+        let blended: Vec<f32> = state_a
+            .data()
+            .iter()
             .zip(state_b.data().iter())
             .map(|(&a, &b)| alpha * a + (1.0 - alpha) * b)
             .collect();
@@ -359,14 +449,15 @@ impl RwkvActor {
             .map_err(|e| EngineError::Backend(format!("tensor creation failed: {e}")))?;
 
         // Store in state pool
-        self.state_pool.insert(output_session.clone(), Some(blended_tensor));
-        
+        self.state_pool
+            .insert(output_session.clone(), Some(blended_tensor));
+
         // Update LRU
         if let Some(pos) = self.session_lru.iter().position(|s| s == &output_session) {
             self.session_lru.remove(pos);
         }
         self.session_lru.push_back(output_session.clone());
-        
+
         // Evict if over capacity
         while self.state_pool.len() > self.max_sessions {
             if let Some(oldest) = self.session_lru.pop_front() {
@@ -398,8 +489,7 @@ impl RwkvActor {
         top_a: Option<f32>,
         preserve_state: bool,
         on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
-        #[cfg_attr(not(feature = "grammar"), allow(unused))]
-        grammar: Option<String>,
+        #[cfg_attr(not(feature = "grammar"), allow(unused))] grammar: Option<String>,
         session: Option<String>,
         mut bnf_mask: Option<Box<dyn BnfMask>>,
         // Receiver half of the actor's mailbox. We carry it into
@@ -421,22 +511,27 @@ impl RwkvActor {
 
         // Load session state or reset
         if let Some(ref sid) = session_id {
-            if let Some(pos) = self.session_lru.iter().position(|s| s == sid) { self.session_lru.remove(pos); }
+            if let Some(pos) = self.session_lru.iter().position(|s| s == sid) {
+                self.session_lru.remove(pos);
+            }
             self.session_lru.push_back(sid.clone());
             match self.state_pool.get(sid) {
                 Some(Some(saved)) => {
-                    self.state.load(saved.clone(), 0)
+                    self.state
+                        .load(saved.clone(), 0)
                         .map_err(|e| EngineError::Backend(format!("session load failed: {e}")))?;
                     info!(session = sid, "loaded session state");
                 }
                 _ => {
-                    self.state.load(self.initial_state.clone(), 0)
+                    self.state
+                        .load(self.initial_state.clone(), 0)
                         .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
                     info!(session = sid, "new session (blank state)");
                 }
             }
         } else if !preserve_state {
-            self.state.load(self.initial_state.clone(), 0)
+            self.state
+                .load(self.initial_state.clone(), 0)
                 .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
         }
 
@@ -463,17 +558,28 @@ impl RwkvActor {
 
         // Pre-fill if provided (for pre-think blocks, etc.)
         let prefill_tokens = if let Some(pf) = prefill {
-            Some(self.tokenizer.encode(pf.as_bytes())
-                .map_err(|e| EngineError::Backend(format!("prefill tokenize: {e}")))?)
+            Some(
+                self.tokenizer
+                    .encode(pf.as_bytes())
+                    .map_err(|e| EngineError::Backend(format!("prefill tokenize: {e}")))?,
+            )
         } else {
             None
         };
 
-        let prompt_tokens = self.tokenizer.encode(full.as_bytes())
+        let prompt_tokens = self
+            .tokenizer
+            .encode(full.as_bytes())
             .map_err(|e| EngineError::Backend(format!("tokenizer encode: {e}")))?;
         let prompt_len = prompt_tokens.len();
 
-        let top_p = if temperature < 0.3 { 0.8 } else if temperature < 0.7 { 0.9 } else { 0.95 };
+        let top_p = if temperature < 0.3 {
+            0.8
+        } else if temperature < 0.7 {
+            0.9
+        } else {
+            0.95
+        };
         let top_a_val = top_a.unwrap_or(0.0);
 
         // Combine prompt tokens with prefill tokens if any
@@ -515,21 +621,38 @@ impl RwkvActor {
                 self.cancel.store(true, Ordering::Relaxed);
             }
             if self.cancel.load(Ordering::Relaxed) {
-                return Ok((text, TokenUsage { prompt_tokens: total_prompt_len, completion_tokens: generated.len() }));
+                return Ok((
+                    text,
+                    TokenUsage {
+                        prompt_tokens: total_prompt_len,
+                        completion_tokens: generated.len(),
+                    },
+                ));
             }
             let input = inference.clone();
-            let (input, output) = self.runtime.infer(input).await
+            let (input, output) = self
+                .runtime
+                .infer(input)
+                .await
                 .map_err(|e| EngineError::Backend(format!("RWKV inference: {e:?}")))?;
             inference = input;
 
-            if inference.batches[0].tokens.len() > 0 { continue; }
+            if inference.batches[0].tokens.len() > 0 {
+                continue;
+            }
 
             let ot = output[0].0.clone();
-            if ot.size() == 0 { break; }
+            if ot.size() == 0 {
+                break;
+            }
 
-            let probs = softmax_one(&self.context, TensorCpu::from_data(ot.shape(), ot.to_vec())
-                .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?)
-                .await.map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
+            let probs = softmax_one(
+                &self.context,
+                TensorCpu::from_data(ot.shape(), ot.to_vec())
+                    .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?,
+            )
+            .await
+            .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
 
             let mut p = probs.data().to_vec();
 
@@ -540,25 +663,39 @@ impl RwkvActor {
                     // Renormalize so grammar-constrained tokens have full probability mass
                     let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
                     if sum > 0.0 {
-                        for v in p.iter_mut() { if v.is_finite() { *v /= sum; } }
+                        for v in p.iter_mut() {
+                            if v.is_finite() {
+                                *v /= sum;
+                            }
+                        }
                     }
                     let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
                     if t > 0 {
                         mask.accept(t);
                         t
-                    } else { break }
-                } else { sampling::sample_token(&p, temperature, top_p, top_a_val) }
+                    } else {
+                        break;
+                    }
+                } else {
+                    sampling::sample_token(&p, temperature, top_p, top_a_val)
+                }
             };
             #[cfg(not(feature = "grammar"))]
             let token = sampling::sample_token(probs.data(), temperature, top_p, top_a_val);
 
-            if token == 0 { break; }
+            if token == 0 {
+                break;
+            }
 
-            let decoded = self.tokenizer.decode(&[token])
+            let decoded = self
+                .tokenizer
+                .decode(&[token])
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
             let word = String::from_utf8_lossy(&decoded).to_string();
 
-            if let Some(ref cb) = on_token { cb(&word); }
+            if let Some(ref cb) = on_token {
+                cb(&word);
+            }
 
             // Stop conditions - catch FIM template pattern variations so the
             // model doesn't echo the BEFORE/AFTER/INSERT scaffolding.
@@ -574,7 +711,9 @@ impl RwkvActor {
                 || potential_text.contains("BEFORE:")
                 || potential_text.contains("AFTER:")
                 || potential_text.contains("INSERT:");
-            if is_stop { break; }
+            if is_stop {
+                break;
+            }
 
             text.push_str(&word);
             generated.push(token);
@@ -583,13 +722,23 @@ impl RwkvActor {
             inference.batches[0].push(token);
 
             // If the generated span picked up template markers, stop now.
-            if text.contains("User: NOW") || text.contains("BEFORE:") || text.contains("AFTER:") || text.contains("INSERT:") {
+            if text.contains("User: NOW")
+                || text.contains("BEFORE:")
+                || text.contains("AFTER:")
+                || text.contains("INSERT:")
+            {
                 break;
             }
         }
 
         if !first_token_sampled {
-            return Ok((text, TokenUsage { prompt_tokens: prompt_len, completion_tokens: 0 }));
+            return Ok((
+                text,
+                TokenUsage {
+                    prompt_tokens: prompt_len,
+                    completion_tokens: 0,
+                },
+            ));
         }
 
         // Generate remaining tokens
@@ -602,18 +751,29 @@ impl RwkvActor {
             while let Ok(ActorMessage::Cancel) = rx.try_recv() {
                 self.cancel.store(true, Ordering::Relaxed);
             }
-            if self.cancel.load(Ordering::Relaxed) { break; }
+            if self.cancel.load(Ordering::Relaxed) {
+                break;
+            }
             let input = inference.clone();
-            let (input, output) = self.runtime.infer(input).await
+            let (input, output) = self
+                .runtime
+                .infer(input)
+                .await
                 .map_err(|e| EngineError::Backend(format!("RWKV inference (gen): {e:?}")))?;
             inference = input;
 
             let ot = output[0].0.clone();
-            if ot.size() == 0 { break; }
+            if ot.size() == 0 {
+                break;
+            }
 
-            let probs = softmax_one(&self.context, TensorCpu::from_data(ot.shape(), ot.to_vec())
-                .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?)
-                .await.map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
+            let probs = softmax_one(
+                &self.context,
+                TensorCpu::from_data(ot.shape(), ot.to_vec())
+                    .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?,
+            )
+            .await
+            .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
 
             #[cfg(feature = "grammar")]
             let token_opt: Option<u32> = {
@@ -623,27 +783,49 @@ impl RwkvActor {
                     // Renormalize so grammar-constrained tokens have full probability mass
                     let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
                     if sum > 0.0 {
-                        for v in p.iter_mut() { if v.is_finite() { *v /= sum; } }
+                        for v in p.iter_mut() {
+                            if v.is_finite() {
+                                *v /= sum;
+                            }
+                        }
                     }
                     let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
                     if t > 0 {
                         mask.accept(t);
                         Some(t)
-                    } else { None }
-                } else { Some(sampling::sample_token(&p, temperature, top_p, top_a_val)) }
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(sampling::sample_token(&p, temperature, top_p, top_a_val))
+                }
             };
             #[cfg(not(feature = "grammar"))]
-            let token_opt: Option<u32> = Some(sampling::sample_token(probs.data(), temperature, top_p, top_a_val));
+            let token_opt: Option<u32> = Some(sampling::sample_token(
+                probs.data(),
+                temperature,
+                top_p,
+                top_a_val,
+            ));
 
-            let token = match token_opt { Some(t) => t, None => break };
+            let token = match token_opt {
+                Some(t) => t,
+                None => break,
+            };
 
-            if token == 0 { break; }
+            if token == 0 {
+                break;
+            }
 
-            let decoded = self.tokenizer.decode(&[token])
+            let decoded = self
+                .tokenizer
+                .decode(&[token])
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
             let word = String::from_utf8_lossy(&decoded).to_string();
 
-            if let Some(ref cb) = on_token { cb(&word); }
+            if let Some(ref cb) = on_token {
+                cb(&word);
+            }
 
             // General stop conditions — must run on EVERY token (not just the
             // first) or the model echoes the FIM template and loops. This is
@@ -690,10 +872,13 @@ impl RwkvActor {
                         || is_template_loop;
                     if should_force_end {
                         // Feed token 0 to the model to update recurrent state with EOS
-                        let _ = self.runtime.infer(RnnInput::new(
-                            vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
-                            self.token_chunk_size,
-                        )).await;
+                        let _ = self
+                            .runtime
+                            .infer(RnnInput::new(
+                                vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
+                                self.token_chunk_size,
+                            ))
+                            .await;
                         break;
                     }
                 }
@@ -703,7 +888,9 @@ impl RwkvActor {
         let result_text = if generated.is_empty() {
             return Err(EngineError::EmptyResponse);
         } else {
-            let decoded = self.tokenizer.decode(&generated)
+            let decoded = self
+                .tokenizer
+                .decode(&generated)
                 .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
             String::from_utf8_lossy(&decoded).to_string()
         };
@@ -713,7 +900,11 @@ impl RwkvActor {
             match self.state.back(0).await {
                 Ok(saved_state) => {
                     self.state_pool.insert(sid.clone(), Some(saved_state));
-                    info!(session = sid, tokens = generated.len(), "saved session state");
+                    info!(
+                        session = sid,
+                        tokens = generated.len(),
+                        "saved session state"
+                    );
                 }
                 Err(e) => warn!(session = sid, error = %e, "failed to save session state"),
             }
@@ -721,11 +912,19 @@ impl RwkvActor {
                 if let Some(oldest) = self.session_lru.pop_front() {
                     self.state_pool.remove(&oldest);
                     info!(session = oldest, "evicted session (LRU)");
-                } else { break; }
+                } else {
+                    break;
+                }
             }
         }
 
-        Ok((result_text, TokenUsage { prompt_tokens: prompt_len, completion_tokens: generated.len() }))
+        Ok((
+            result_text,
+            TokenUsage {
+                prompt_tokens: prompt_len,
+                completion_tokens: generated.len(),
+            },
+        ))
     }
 
     pub async fn run(mut self, mut rx: mpsc::Receiver<ActorMessage>) {
@@ -751,8 +950,16 @@ impl RwkvActor {
                     } = req;
                     let result = self
                         .handle_complete(
-                            system, prompt, prefill, max_tokens, temperature,
-                            top_a, preserve_state, on_token, grammar, session,
+                            system,
+                            prompt,
+                            prefill,
+                            max_tokens,
+                            temperature,
+                            top_a,
+                            preserve_state,
+                            on_token,
+                            grammar,
+                            session,
                             bnf_mask,
                             &mut rx,
                             deadline_ms,
@@ -771,7 +978,9 @@ impl RwkvActor {
                     let result = self.blend_states(session_a, session_b, alpha, output_session);
                     let _ = reply.send(result);
                 }
-                Cancel => { self.cancel.store(true, Ordering::Relaxed); }
+                Cancel => {
+                    self.cancel.store(true, Ordering::Relaxed);
+                }
                 #[cfg(feature = "grammar")]
                 GetVocabBytes(reply) => {
                     let _ = reply.send(self.vocab_bytes.clone());
@@ -820,7 +1029,9 @@ fn deserialize_state(bytes: &[u8]) -> Result<(Vec<u32>, Vec<f32>), EngineError> 
     let n = tail.len() / 4;
     let mut data = Vec::with_capacity(n);
     for i in 0..n {
-        data.push(f32::from_le_bytes(tail[i * 4..i * 4 + 4].try_into().unwrap()));
+        data.push(f32::from_le_bytes(
+            tail[i * 4..i * 4 + 4].try_into().unwrap(),
+        ));
     }
     Ok((dims.to_vec(), data))
 }

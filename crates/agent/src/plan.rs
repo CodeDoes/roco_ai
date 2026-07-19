@@ -200,7 +200,8 @@ impl Plan {
             for &idx in wave {
                 let step = &self.steps[idx];
                 let prompt = self.build_step_prompt(step, &outputs);
-                futures.push(self.run_step_with_verification(step, backend, tools, prompt, verifier));
+                futures
+                    .push(self.run_step_with_verification(step, backend, tools, prompt, verifier));
             }
             let results = join_all(futures).await;
             for (i, res) in results.into_iter().enumerate() {
@@ -217,7 +218,10 @@ impl Plan {
                 outcomes.push(o);
             }
         }
-        Ok(PlanResult { outcomes, success: true })
+        Ok(PlanResult {
+            outcomes,
+            success: true,
+        })
     }
 
     async fn run_step_with_verification(
@@ -231,7 +235,9 @@ impl Plan {
         let mut attempts = 0;
         let mut current_prompt = prompt;
         loop {
-            let outcome = self.run_step(step, backend, tools, current_prompt.clone()).await?;
+            let outcome = self
+                .run_step(step, backend, tools, current_prompt.clone())
+                .await?;
             if let Some(v) = verifier {
                 match v.verify(&step.id, &step.description, &outcome.output).await {
                     Ok(true) => {
@@ -269,10 +275,11 @@ impl Plan {
         while !remaining.is_empty() {
             let mut wave = Vec::new();
             remaining.retain(|&i| {
-                let ready = self.steps[i]
-                    .depends_on
-                    .iter()
-                    .all(|d| id_to_idx.get(d.as_str()).map_or(false, |&j| done.contains(&j)));
+                let ready = self.steps[i].depends_on.iter().all(|d| {
+                    id_to_idx
+                        .get(d.as_str())
+                        .map_or(false, |&j| done.contains(&j))
+                });
                 if ready {
                     wave.push(i);
                     false
@@ -452,8 +459,8 @@ fn extract_first_json(text: &str) -> Option<Value> {
 mod tests {
     use super::*;
     use futures::future::BoxFuture;
-    use roco_engine::{CompletionResponse, TokenUsage};
     use roco_engine::MockBackend;
+    use roco_engine::{CompletionResponse, TokenUsage};
 
     /// A backend that returns a plan-shaped JSON object (for happy-path tests).
     struct PlanBackend;
@@ -461,7 +468,10 @@ mod tests {
         fn name(&self) -> &str {
             "plan-mock"
         }
-        fn complete(&self, _req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, roco_engine::EngineError>> {
+        fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> BoxFuture<'_, Result<CompletionResponse, roco_engine::EngineError>> {
             Box::pin(async move {
                 let json = r#"{"task":"ship a feature","steps":[
                     {"id":"1","description":"write the code","depends_on":[]},
@@ -488,7 +498,9 @@ mod tests {
     #[tokio::test]
     async fn planner_falls_back_on_non_json() {
         // MockBackend returns {"result": ...}, which is not a plan.
-        let plan = Planner::plan(&MockBackend::default(), "do something").await.unwrap();
+        let plan = Planner::plan(&MockBackend::default(), "do something")
+            .await
+            .unwrap();
         assert_eq!(plan.steps.len(), 1);
         assert_eq!(plan.steps[0].description, "do something");
     }
@@ -497,8 +509,13 @@ mod tests {
     async fn planner_falls_back_on_empty_steps() {
         struct EmptyPlanBackend;
         impl ModelBackend for EmptyPlanBackend {
-            fn name(&self) -> &str { "empty-plan" }
-            fn complete(&self, _req: CompletionRequest) -> BoxFuture<'_, Result<CompletionResponse, roco_engine::EngineError>> {
+            fn name(&self) -> &str {
+                "empty-plan"
+            }
+            fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> BoxFuture<'_, Result<CompletionResponse, roco_engine::EngineError>> {
                 Box::pin(async move {
                     Ok(CompletionResponse {
                         text: "{\"task\":\"x\",\"steps\":[]}".to_string(),
@@ -510,7 +527,11 @@ mod tests {
             }
         }
         let plan = Planner::plan(&EmptyPlanBackend, "do x").await.unwrap();
-        assert_eq!(plan.steps.len(), 1, "empty steps must fall back to single step");
+        assert_eq!(
+            plan.steps.len(),
+            1,
+            "empty steps must fall back to single step"
+        );
     }
 
     #[test]
@@ -518,9 +539,24 @@ mod tests {
         let plan = Plan {
             task: "t".into(),
             steps: vec![
-                PlanStep { id: "2".into(), description: "b".into(), tool: None, depends_on: vec!["1".into()] },
-                PlanStep { id: "1".into(), description: "a".into(), tool: None, depends_on: vec![] },
-                PlanStep { id: "3".into(), description: "c".into(), tool: None, depends_on: vec!["2".into()] },
+                PlanStep {
+                    id: "2".into(),
+                    description: "b".into(),
+                    tool: None,
+                    depends_on: vec!["1".into()],
+                },
+                PlanStep {
+                    id: "1".into(),
+                    description: "a".into(),
+                    tool: None,
+                    depends_on: vec![],
+                },
+                PlanStep {
+                    id: "3".into(),
+                    description: "c".into(),
+                    tool: None,
+                    depends_on: vec!["2".into()],
+                },
             ],
         };
         let order = plan.topological_order();
@@ -535,8 +571,18 @@ mod tests {
         let plan = Plan {
             task: "t".into(),
             steps: vec![
-                PlanStep { id: "1".into(), description: "a".into(), tool: None, depends_on: vec!["2".into()] },
-                PlanStep { id: "2".into(), description: "b".into(), tool: None, depends_on: vec!["1".into()] },
+                PlanStep {
+                    id: "1".into(),
+                    description: "a".into(),
+                    tool: None,
+                    depends_on: vec!["2".into()],
+                },
+                PlanStep {
+                    id: "2".into(),
+                    description: "b".into(),
+                    tool: None,
+                    depends_on: vec!["1".into()],
+                },
             ],
         };
         let order = plan.topological_order();
@@ -546,7 +592,10 @@ mod tests {
     #[tokio::test]
     async fn execute_runs_steps_and_collects_outputs() {
         let plan = Plan::single("greet the user");
-        let result = plan.execute(&MockBackend::default(), None, None).await.unwrap();
+        let result = plan
+            .execute(&MockBackend::default(), None, None)
+            .await
+            .unwrap();
         assert!(result.success);
         assert_eq!(result.outcomes.len(), 1);
         assert!(!result.outcomes[0].output.is_empty());
@@ -557,13 +606,32 @@ mod tests {
         let plan = Plan {
             task: "t".into(),
             steps: vec![
-                PlanStep { id: "1".into(), description: "a".into(), tool: None, depends_on: vec![] },
-                PlanStep { id: "2".into(), description: "b".into(), tool: None, depends_on: vec![] },
-                PlanStep { id: "3".into(), description: "c".into(), tool: None, depends_on: vec!["1".into(), "2".into()] },
+                PlanStep {
+                    id: "1".into(),
+                    description: "a".into(),
+                    tool: None,
+                    depends_on: vec![],
+                },
+                PlanStep {
+                    id: "2".into(),
+                    description: "b".into(),
+                    tool: None,
+                    depends_on: vec![],
+                },
+                PlanStep {
+                    id: "3".into(),
+                    description: "c".into(),
+                    tool: None,
+                    depends_on: vec!["1".into(), "2".into()],
+                },
             ],
         };
         let levels = plan.wave_levels();
-        assert_eq!(levels.len(), 2, "independent steps share a wave, dependent waits");
+        assert_eq!(
+            levels.len(),
+            2,
+            "independent steps share a wave, dependent waits"
+        );
         assert_eq!(levels[0].len(), 2, "steps 1 and 2 run concurrently");
         assert_eq!(levels[1].len(), 1, "step 3 waits for both");
     }
@@ -573,12 +641,30 @@ mod tests {
         let plan = Plan {
             task: "t".into(),
             steps: vec![
-                PlanStep { id: "1".into(), description: "a".into(), tool: None, depends_on: vec![] },
-                PlanStep { id: "2".into(), description: "b".into(), tool: None, depends_on: vec![] },
-                PlanStep { id: "3".into(), description: "c".into(), tool: None, depends_on: vec!["1".into(), "2".into()] },
+                PlanStep {
+                    id: "1".into(),
+                    description: "a".into(),
+                    tool: None,
+                    depends_on: vec![],
+                },
+                PlanStep {
+                    id: "2".into(),
+                    description: "b".into(),
+                    tool: None,
+                    depends_on: vec![],
+                },
+                PlanStep {
+                    id: "3".into(),
+                    description: "c".into(),
+                    tool: None,
+                    depends_on: vec!["1".into(), "2".into()],
+                },
             ],
         };
-        let result = plan.execute(&MockBackend::default(), None, None).await.unwrap();
+        let result = plan
+            .execute(&MockBackend::default(), None, None)
+            .await
+            .unwrap();
         assert_eq!(result.outcomes.len(), 3);
         // Outcomes returned in topological (review) order.
         assert_eq!(result.outcomes[0].step_id, "1");
@@ -590,7 +676,10 @@ mod tests {
     async fn execute_with_step_verifier_retries_on_failure() {
         let plan = Plan::single("perform critical test");
         let verifier = MockStepVerifier { should_pass: false };
-        let result = plan.execute(&MockBackend::default(), None, Some(&verifier)).await.unwrap();
+        let result = plan
+            .execute(&MockBackend::default(), None, Some(&verifier))
+            .await
+            .unwrap();
         assert!(result.success);
         assert_eq!(result.outcomes.len(), 1);
     }

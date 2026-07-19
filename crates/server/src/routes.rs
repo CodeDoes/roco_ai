@@ -1,14 +1,17 @@
-use std::sync::Arc;
-use base64::Engine;
 use axum::{
     extract::State,
     http::StatusCode,
-    response::{sse::{Event, KeepAlive, Sse}, IntoResponse},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse,
+    },
     routing::{get, post},
     Json, Router,
 };
+use base64::Engine;
 use roco_engine::{CompletionRequest, CompletionResponse, ModelBackend};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
@@ -98,9 +101,7 @@ async fn handle_health() -> impl IntoResponse {
 /// Return the model vocabulary as base64-encoded per-token byte strings.
 /// Used by remote clients to build BNF grammar masks locally (the mask
 /// builder must run in the client's compilation unit, not the server's).
-async fn handle_vocab(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+async fn handle_vocab(State(state): State<AppState>) -> impl IntoResponse {
     match state.backend.vocab_bytes() {
         Some(vocab) => {
             let b64: Vec<String> = vocab
@@ -118,7 +119,10 @@ async fn handle_complete(
     Json(req): Json<CompletionRequest>,
 ) -> Result<Json<CompletionResponse>, String> {
     info!("Handling direct complete request");
-    let resp = state.backend.complete(req).await
+    let resp = state
+        .backend
+        .complete(req)
+        .await
         .map_err(|e| format!("Backend error: {e}"))?;
     Ok(Json(resp))
 }
@@ -127,7 +131,10 @@ async fn handle_openai_completion(
     State(state): State<AppState>,
     Json(req): Json<OpenAiCompletionRequest>,
 ) -> impl IntoResponse {
-    info!("Handling OpenAI completion request for prompt (len={})", req.prompt.len());
+    info!(
+        "Handling OpenAI completion request for prompt (len={})",
+        req.prompt.len()
+    );
     let sys = req.system.clone().unwrap_or_default();
     let prompt = req.prompt.clone();
     let temp = req.temperature.unwrap_or(0.2);
@@ -143,7 +150,14 @@ async fn handle_openai_completion(
         let backend = state.backend.clone();
         let model_name = backend.name().to_string();
 
-        let req_id = format!("cmpl-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>());
+        let req_id = format!(
+            "cmpl-{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>()
+        );
         let req_id_clone = req_id.clone();
 
         tokio::spawn(async move {
@@ -152,7 +166,10 @@ async fn handle_openai_completion(
                 let stream_resp = OpenAiStreamResponse {
                     id: req_id_clone.clone(),
                     object: "text_completion".to_string(),
-                    created: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                    created: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
                     model: model_name.clone(),
                     choices: vec![OpenAiStreamChoice {
                         text: token.to_string(),
@@ -185,7 +202,10 @@ async fn handle_openai_completion(
             let stream_resp = OpenAiStreamResponse {
                 id: req_id.clone(),
                 object: "text_completion".to_string(),
-                created: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                created: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
                 model: backend.name().to_string(),
                 choices: vec![OpenAiStreamChoice {
                     text: "".to_string(),
@@ -199,7 +219,9 @@ async fn handle_openai_completion(
         });
 
         let stream = ReceiverStream::new(rx);
-        Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+        Sse::new(stream)
+            .keep_alive(KeepAlive::default())
+            .into_response()
     } else {
         let full_req = CompletionRequest {
             system: sys,
@@ -216,8 +238,18 @@ async fn handle_openai_completion(
 
         match state.backend.complete(full_req).await {
             Ok(resp) => {
-                let created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-                let req_id = format!("cmpl-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>());
+                let created = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let req_id = format!(
+                    "cmpl-{}",
+                    uuid::Uuid::new_v4()
+                        .to_string()
+                        .chars()
+                        .take(8)
+                        .collect::<String>()
+                );
                 let out_resp = OpenAiCompletionResponse {
                     id: req_id,
                     object: "text_completion".to_string(),
@@ -246,7 +278,11 @@ async fn handle_openai_completion(
                         "code": null
                     }
                 });
-                (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(err_json)).into_response()
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(err_json),
+                )
+                    .into_response()
             }
         }
     }

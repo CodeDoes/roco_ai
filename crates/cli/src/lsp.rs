@@ -63,7 +63,10 @@ async fn bake_fim_session(
         preserve_state: true,
         ..Default::default()
     };
-    backend.complete(step1).await.map_err(|e| format!("FIM bake (few-shot) failed: {e}"))?;
+    backend
+        .complete(step1)
+        .await
+        .map_err(|e| format!("FIM bake (few-shot) failed: {e}"))?;
 
     // Step 2+: bake each open file as project context (truncated to keep the
     // bake cheap). The session resumes from the few-shot state and absorbs
@@ -77,7 +80,11 @@ async fn bake_fim_session(
         }
         let ctx_prompt = format!(
             "FILE: {name}  PATH: {uri}  USER: {user}  DATE: {date}\n{content}",
-            name = name, uri = uri, user = username, date = today, content = truncated,
+            name = name,
+            uri = uri,
+            user = username,
+            date = today,
+            content = truncated,
         );
         let step = CompletionRequest {
             system: instruction.to_string(),
@@ -146,7 +153,10 @@ pub async fn run_lsp(backend: Arc<RemoteBackend>) -> Result<(), String> {
             Some(msg) => {
                 let method = msg.get("method").and_then(|m| m.as_str());
                 let id = msg.get("id").cloned();
-                let params = msg.get("params").cloned().unwrap_or(serde_json::Value::Null);
+                let params = msg
+                    .get("params")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
 
                 match method {
                     Some("initialize") => {
@@ -277,7 +287,8 @@ async fn completion(
          None)
     } else {
         // Both sides -> baked-session bridge (state-tuned few-shot).
-        let username = std::env::var("USER").or_else(|_| std::env::var("USERNAME"))
+        let username = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
             .unwrap_or_else(|_| "user".to_string());
         ensure_fim_session(backend, docs, &username).await;
         (format!("NOW\nBEFORE: {prefix}\nAFTER: {suffix}\nINSERT:"),
@@ -409,6 +420,9 @@ async fn send_response(
         .write_all(bytes)
         .await
         .map_err(|e| format!("stdout write: {e}"))?;
-    stdout.flush().await.map_err(|e| format!("stdout flush: {e}"))?;
+    stdout
+        .flush()
+        .await
+        .map_err(|e| format!("stdout flush: {e}"))?;
     Ok(())
 }

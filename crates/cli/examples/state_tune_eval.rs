@@ -29,7 +29,11 @@ async fn main() -> anyhow::Result<()> {
     // Load normalized roleplay data
     let data_path = Path::new("datasets/normalized/roleplay_normalized.jsonl");
     let conversations: Vec<Conversation> = load_jsonl(data_path)?;
-    println!("Loaded {} conversations from {:?}\n", conversations.len(), data_path);
+    println!(
+        "Loaded {} conversations from {:?}\n",
+        conversations.len(),
+        data_path
+    );
 
     // Test subset sizes
     let subset_sizes = [5, 10, 20];
@@ -41,13 +45,17 @@ async fn main() -> anyhow::Result<()> {
 
     for &n in &subset_sizes {
         if n > conversations.len() {
-            println!("Skipping subset size {} (only {} conversations available)\n", n, conversations.len());
+            println!(
+                "Skipping subset size {} (only {} conversations available)\n",
+                n,
+                conversations.len()
+            );
             continue;
         }
 
         println!("=== Subset size: {} conversations ===", n);
         let subset = &conversations[..n];
-        
+
         // Convert to (user, assistant) pairs for bake_into_session
         // NO system prompt — the state itself is the persona
         let mut examples = Vec::new();
@@ -57,7 +65,11 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        println!("Baking {} (user, assistant) pairs into session 'tune_{}'...", examples.len(), n);
+        println!(
+            "Baking {} (user, assistant) pairs into session 'tune_{}'...",
+            examples.len(),
+            n
+        );
         let session = format!("tune_{}", n);
         bake_into_session(&backend, &session, "", &examples).await?;
         println!("Baked.\n");

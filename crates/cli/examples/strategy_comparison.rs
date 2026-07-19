@@ -13,8 +13,7 @@ use std::time::Instant;
 use roco_bnf_engine::create_bnf_mask;
 use roco_engine::{BnfMask, CompletionRequest, ModelBackend};
 use roco_grammar::{
-    kbnf_compat::gbnf_to_kbnf,
-    LooseJsonStrategy, OutputParser, OutputStrategy, RawGbnfStrategy,
+    kbnf_compat::gbnf_to_kbnf, LooseJsonStrategy, OutputParser, OutputStrategy, RawGbnfStrategy,
     Schema, SchemaStrategy, StateTunedStrategy, StrategyKind,
 };
 use roco_inference::RwkvBackend;
@@ -78,13 +77,16 @@ fn outline_schema() -> Schema {
         .prop("title", Schema::string())
         .prop("genre", Schema::string())
         .prop("tone", Schema::string())
-        .prop("chapters", Schema::array(
-            Schema::object()
-                .prop("number", Schema::integer())
-                .prop("title", Schema::string())
-                .prop("summary", Schema::string())
-                .build()
-        ))
+        .prop(
+            "chapters",
+            Schema::array(
+                Schema::object()
+                    .prop("number", Schema::integer())
+                    .prop("title", Schema::string())
+                    .prop("summary", Schema::string())
+                    .build(),
+            ),
+        )
         .build()
 }
 
@@ -97,20 +99,21 @@ fn chapter_schema() -> Schema {
 
 fn wiki_schema() -> Schema {
     Schema::object()
-        .prop("characters", Schema::array(
-            Schema::object()
-                .prop("name", Schema::string())
-                .prop("description", Schema::string())
-                .build()
-        ))
+        .prop(
+            "characters",
+            Schema::array(
+                Schema::object()
+                    .prop("name", Schema::string())
+                    .prop("description", Schema::string())
+                    .build(),
+            ),
+        )
         .prop("setting", Schema::string())
         .build()
 }
 
 fn synopsis_schema() -> Schema {
-    Schema::object()
-        .prop("summary", Schema::string())
-        .build()
+    Schema::object().prop("summary", Schema::string()).build()
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -160,8 +163,12 @@ space ::= [" "];
 fn try_parse_unconstrained(text: &str) -> Result<Value, String> {
     let trimmed = text.trim();
     let preview_len = trimmed.len().min(200);
-    serde_json::from_str::<Value>(trimmed)
-        .map_err(|e| format!("unconstrained parse: {e}\nraw preview: {}...", &trimmed[..preview_len]))
+    serde_json::from_str::<Value>(trimmed).map_err(|e| {
+        format!(
+            "unconstrained parse: {e}\nraw preview: {}...",
+            &trimmed[..preview_len]
+        )
+    })
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -214,12 +221,18 @@ fn run_strategy_comparison(
                 let kbnf_g = gbnf_to_kbnf(&grammar);
                 match create_bnf_mask(&kbnf_g, &vocab_bytes) {
                     Ok(mask) => {
-                        eprintln!("  [debug] BnfMask created OK (vocab_size={})", vocab_bytes.len());
+                        eprintln!(
+                            "  [debug] BnfMask created OK (vocab_size={})",
+                            vocab_bytes.len()
+                        );
                         Some(mask)
                     }
                     Err(e) => {
                         eprintln!("  [debug] BnfMask creation FAILED: {e}");
-                        eprintln!("  [debug] grammar preview (first 200 chars): {}", &kbnf_g[..kbnf_g.len().min(200)]);
+                        eprintln!(
+                            "  [debug] grammar preview (first 200 chars): {}",
+                            &kbnf_g[..kbnf_g.len().min(200)]
+                        );
                         None
                     }
                 }
@@ -240,7 +253,8 @@ fn run_strategy_comparison(
 
         match completion {
             Ok(resp) => {
-                let (prompt_tok, completion_tok) = (resp.usage.prompt_tokens, resp.usage.completion_tokens);
+                let (prompt_tok, completion_tok) =
+                    (resp.usage.prompt_tokens, resp.usage.completion_tokens);
                 let text = resp.text;
                 let preview = text.chars().take(300).collect::<String>();
 
@@ -276,9 +290,20 @@ fn run_strategy_comparison(
                     }
                 };
 
-                println!("  Tokens: {} prompt + {} completion ({:.1}s)",
-                    prompt_tok, completion_tok, latency.as_secs_f64());
-                println!("  Parse: {}", if parse_ok { "✅ SUCCESS" } else { "❌ FAILED" });
+                println!(
+                    "  Tokens: {} prompt + {} completion ({:.1}s)",
+                    prompt_tok,
+                    completion_tok,
+                    latency.as_secs_f64()
+                );
+                println!(
+                    "  Parse: {}",
+                    if parse_ok {
+                        "✅ SUCCESS"
+                    } else {
+                        "❌ FAILED"
+                    }
+                );
                 if let Some(ref e) = parse_err {
                     println!("  Error: {e}");
                 }
@@ -329,9 +354,20 @@ fn run_strategy_comparison(
             let text = resp.text;
             let preview = text.chars().take(300).collect::<String>();
             let parse_result = try_parse_unconstrained(&text);
-            println!("  Tokens: {} prompt + {} completion ({:.1}s)",
-                resp.usage.prompt_tokens, resp.usage.completion_tokens, latency.as_secs_f64());
-            println!("  Parse: {}", if parse_result.is_ok() { "✅ SUCCESS" } else { "❌ FAILED" });
+            println!(
+                "  Tokens: {} prompt + {} completion ({:.1}s)",
+                resp.usage.prompt_tokens,
+                resp.usage.completion_tokens,
+                latency.as_secs_f64()
+            );
+            println!(
+                "  Parse: {}",
+                if parse_result.is_ok() {
+                    "✅ SUCCESS"
+                } else {
+                    "❌ FAILED"
+                }
+            );
             if let Err(ref e) = parse_result {
                 println!("  Error: {e}");
             }
@@ -365,11 +401,14 @@ fn print_summary(all_results: &[StageResult]) {
 
     for (stage, results) in &by_stage {
         println!("━━━ {stage} ━━━");
-        println!("  {:<15}  {:<8}  {:<10}  {:<10}  {:<8}",
-            "Strategy", "Success", "Grammar(B)", "Latency(s)", "Tokens");
+        println!(
+            "  {:<15}  {:<8}  {:<10}  {:<10}  {:<8}",
+            "Strategy", "Success", "Grammar(B)", "Latency(s)", "Tokens"
+        );
         println!("  {}", "-".repeat(65));
         for r in results {
-            println!("  {:<15}  {:<8}  {:<10}  {:<10.2}  {:<8}",
+            println!(
+                "  {:<15}  {:<8}  {:<10}  {:<10.2}  {:<8}",
                 r.strategy.to_string(),
                 if r.success { "✅" } else { "❌" },
                 r.grammar_len,
@@ -395,7 +434,10 @@ fn print_summary(all_results: &[StageResult]) {
     let total = all_results.len();
     let successes = all_results.iter().filter(|r| r.success).count();
     println!("━━━ Overall ━━━");
-    println!("  {successes}/{total} successful parses ({:.0}%)", successes as f64 / total as f64 * 100.0);
+    println!(
+        "  {successes}/{total} successful parses ({:.0}%)",
+        successes as f64 / total as f64 * 100.0
+    );
     println!();
 
     // Best strategy
@@ -406,9 +448,16 @@ fn print_summary(all_results: &[StageResult]) {
     for (kind, results) in &by_strategy {
         let s = results.iter().filter(|r| r.success).count();
         let t = results.len();
-        let avg_latency: f64 = results.iter().map(|r| r.model_latency.as_secs_f64()).sum::<f64>() / t as f64;
-        let avg_tokens: f64 = results.iter().map(|r| r.token_counts.1 as f64).sum::<f64>() / t as f64;
-        println!("  {kind:<15}  {s}/{t} success  {avg_latency:.2}s avg  {avg_tokens:.0} avg tokens");
+        let avg_latency: f64 = results
+            .iter()
+            .map(|r| r.model_latency.as_secs_f64())
+            .sum::<f64>()
+            / t as f64;
+        let avg_tokens: f64 =
+            results.iter().map(|r| r.token_counts.1 as f64).sum::<f64>() / t as f64;
+        println!(
+            "  {kind:<15}  {s}/{t} success  {avg_latency:.2}s avg  {avg_tokens:.0} avg tokens"
+        );
     }
 }
 
@@ -419,14 +468,16 @@ fn print_summary(all_results: &[StageResult]) {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+        )
         .init();
 
     let premise = std::env::var("PROMPT")
         .unwrap_or_else(|_| "A lighthouse keeper who discovers a message in a bottle.".to_string());
-    let stages_filter = std::env::var("STAGES")
-        .unwrap_or_else(|_| "outline,wiki,chapter,synopsis".to_string());
+    let stages_filter =
+        std::env::var("STAGES").unwrap_or_else(|_| "outline,wiki,chapter,synopsis".to_string());
 
     println!("╔══════════════════════════════════════════════════════════════════╗");
     println!("║           STRUCTURED OUTPUT STRATEGY COMPARISON                 ║");

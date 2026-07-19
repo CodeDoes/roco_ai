@@ -30,7 +30,9 @@ pub fn all_tools() -> Vec<Arc<dyn Tool>> {
 pub struct ReadTool;
 
 impl Tool for ReadTool {
-    fn name(&self) -> &str { "read" }
+    fn name(&self) -> &str {
+        "read"
+    }
     fn description(&self) -> &str {
         "Read the contents of a file. Pass `path` as the absolute or relative file path."
     }
@@ -44,11 +46,12 @@ impl Tool for ReadTool {
         })
     }
     fn call(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError> {
-        let path = args.get("path")
+        let path = args
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError("missing 'path' argument".into()))?;
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ToolError(format!("read error: {e}")))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| ToolError(format!("read error: {e}")))?;
         Ok(serde_json::json!({"content": content}))
     }
 }
@@ -58,7 +61,9 @@ impl Tool for ReadTool {
 pub struct WriteTool;
 
 impl Tool for WriteTool {
-    fn name(&self) -> &str { "write" }
+    fn name(&self) -> &str {
+        "write"
+    }
     fn description(&self) -> &str {
         "Write content to a file. Creates parent directories if needed."
     }
@@ -73,18 +78,18 @@ impl Tool for WriteTool {
         })
     }
     fn call(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError> {
-        let path = args.get("path")
+        let path = args
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError("missing 'path' argument".into()))?;
-        let content = args.get("content")
+        let content = args
+            .get("content")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError("missing 'content' argument".into()))?;
         if let Some(parent) = std::path::Path::new(path).parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| ToolError(format!("mkdir error: {e}")))?;
+            std::fs::create_dir_all(parent).map_err(|e| ToolError(format!("mkdir error: {e}")))?;
         }
-        std::fs::write(path, content)
-            .map_err(|e| ToolError(format!("write error: {e}")))?;
+        std::fs::write(path, content).map_err(|e| ToolError(format!("write error: {e}")))?;
         Ok(serde_json::json!({"ok": true, "bytes": content.len()}))
     }
 }
@@ -94,7 +99,9 @@ impl Tool for WriteTool {
 pub struct SearchTool;
 
 impl Tool for SearchTool {
-    fn name(&self) -> &str { "search" }
+    fn name(&self) -> &str {
+        "search"
+    }
     fn description(&self) -> &str {
         "Search for a pattern in files within a directory using grep."
     }
@@ -110,20 +117,30 @@ impl Tool for SearchTool {
         })
     }
     fn call(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError> {
-        let pattern = args.get("pattern")
+        let pattern = args
+            .get("pattern")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError("missing 'pattern' argument".into()))?;
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20) as usize;
 
         let mut results = Vec::new();
         let walker = walkdir::WalkDir::new(path);
         for entry in walker.into_iter().filter_map(|e| e.ok()) {
-            if !entry.file_type().is_file() { continue; }
-            if results.len() >= max_results { break; }
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            if results.len() >= max_results {
+                break;
+            }
             if let Ok(contents) = std::fs::read_to_string(entry.path()) {
                 for (lineno, line) in contents.lines().enumerate() {
-                    if results.len() >= max_results { break; }
+                    if results.len() >= max_results {
+                        break;
+                    }
                     if line.contains(pattern) {
                         results.push(serde_json::json!({
                             "file": entry.path().to_string_lossy(),
@@ -144,7 +161,9 @@ impl Tool for SearchTool {
 pub struct ListDirTool;
 
 impl Tool for ListDirTool {
-    fn name(&self) -> &str { "list" }
+    fn name(&self) -> &str {
+        "list"
+    }
     fn description(&self) -> &str {
         "List files and directories at a path."
     }
@@ -158,8 +177,7 @@ impl Tool for ListDirTool {
     }
     fn call(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError> {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-        let dir = std::fs::read_dir(path)
-            .map_err(|e| ToolError(format!("read_dir error: {e}")))?;
+        let dir = std::fs::read_dir(path).map_err(|e| ToolError(format!("read_dir error: {e}")))?;
         let mut entries = Vec::new();
         for entry in dir {
             let entry = entry.map_err(|e| ToolError(format!("entry error: {e}")))?;
@@ -179,7 +197,9 @@ impl Tool for ListDirTool {
 pub struct BashTool;
 
 impl Tool for BashTool {
-    fn name(&self) -> &str { "bash" }
+    fn name(&self) -> &str {
+        "bash"
+    }
     fn description(&self) -> &str {
         "Execute a shell command and return its stdout/stderr."
     }
@@ -194,7 +214,8 @@ impl Tool for BashTool {
         })
     }
     fn call(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError> {
-        let cmd = args.get("command")
+        let cmd = args
+            .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError("missing 'command' argument".into()))?;
         let output = std::process::Command::new("sh")
@@ -215,7 +236,9 @@ impl Tool for BashTool {
 pub struct NowTool;
 
 impl Tool for NowTool {
-    fn name(&self) -> &str { "now" }
+    fn name(&self) -> &str {
+        "now"
+    }
     fn description(&self) -> &str {
         "Get the current date and time."
     }

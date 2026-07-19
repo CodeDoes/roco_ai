@@ -1,5 +1,5 @@
 //! Evaluate task-specific state-tunes by baking datasets and probing
-//! 
+//!
 //! Usage: cargo run --example task_state_tune_eval --release
 
 use std::fs;
@@ -30,19 +30,22 @@ const PRETHINK_BLOCK: &str = "\n<think>Generating content.</think>\n";
 async fn main() -> anyhow::Result<()> {
     println!("Loading RWKV backend...");
     let backend = RwkvBackend::from_env()?;
-    
+
     let datasets_dir = Path::new("datasets/tasks");
     let dataset_files = fs::read_dir(datasets_dir)?
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |ext| ext == "jsonl"))
         .collect::<Vec<_>>();
-    
+
     println!("Found {} dataset files\n", dataset_files.len());
-    
+
     for dataset_file in dataset_files {
-        let dataset_name = dataset_file.file_name().to_string_lossy().replace(".jsonl", "");
+        let dataset_name = dataset_file
+            .file_name()
+            .to_string_lossy()
+            .replace(".jsonl", "");
         println!("=== {} ===", dataset_name);
-        
+
         // Load dataset
         let content = fs::read_to_string(dataset_file.path())?;
         let entries: Vec<DatasetEntry> = content
@@ -50,12 +53,12 @@ async fn main() -> anyhow::Result<()> {
             .filter(|l| !l.trim().is_empty())
             .map(|l| serde_json::from_str(l))
             .collect::<Result<_, _>>()?;
-        
+
         if entries.is_empty() {
             println!("  No entries found\n");
             continue;
         }
-        
+
         // Extract system prompt and turns
         let system = &entries[0].system;
         let mut examples = Vec::new();
@@ -64,12 +67,12 @@ async fn main() -> anyhow::Result<()> {
                 examples.push((turn.user.as_str(), turn.assistant.as_str()));
             }
         }
-        
+
         println!("  Baking {} examples...", examples.len());
         let session_name = format!("task_{}", dataset_name);
         bake_into_session(&backend, &session_name, system, &examples).await?;
         println!("  Baked into session '{}'\n", session_name);
-        
+
         // Probe with test input, using pre-think block
         let probe = match dataset_name.as_str() {
             "story_writing" => "Write a chapter where Mara discovers the shadow box is alive.",
@@ -80,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
             "dataset_generation" => "Generate 3 new training examples for the story_writing task. The model should learn to write story chapters from a plan and wiki.",
             _ => "Test input.",
         };
-        
+
         println!("  Probe: {}", probe);
         let response = backend
             .complete(CompletionRequest {
@@ -93,9 +96,9 @@ async fn main() -> anyhow::Result<()> {
                 ..Default::default()
             })
             .await?;
-        
+
         println!("  Response: {}\n", response.text.trim());
     }
-    
+
     Ok(())
 }

@@ -81,7 +81,8 @@ impl VersionControl {
             let path = entry.path();
 
             if path.is_file() {
-                let relative = path.strip_prefix(&self.workspace_root)
+                let relative = path
+                    .strip_prefix(&self.workspace_root)
                     .map_err(|e| format!("failed to get relative path: {e}"))?;
                 let content = std::fs::read_to_string(&path)
                     .map_err(|e| format!("failed to read file: {e}"))?;
@@ -101,8 +102,7 @@ impl VersionControl {
         let path = self.snapshot_dir.join(format!("{}.json", snapshot_id));
         let json = serde_json::to_string_pretty(&snapshot)
             .map_err(|e| format!("failed to serialize snapshot: {e}"))?;
-        std::fs::write(&path, json)
-            .map_err(|e| format!("failed to write snapshot: {e}"))?;
+        std::fs::write(&path, json).map_err(|e| format!("failed to write snapshot: {e}"))?;
 
         // Add to history
         self.snapshots.lock().unwrap().push(snapshot);
@@ -183,7 +183,8 @@ impl VersionControl {
     /// Rollback to a specific snapshot
     pub fn rollback(&self, snapshot_id: &str) -> Result<(), String> {
         let snapshots = self.snapshots.lock().unwrap();
-        let snapshot = snapshots.iter()
+        let snapshot = snapshots
+            .iter()
             .find(|s| s.snapshot_id == snapshot_id)
             .ok_or_else(|| format!("snapshot {} not found", snapshot_id))?;
 
@@ -194,8 +195,7 @@ impl VersionControl {
             let entry = entry.map_err(|e| format!("failed to read entry: {e}"))?;
             let path = entry.path();
             if path.is_file() {
-                std::fs::remove_file(&path)
-                    .map_err(|e| format!("failed to remove file: {e}"))?;
+                std::fs::remove_file(&path).map_err(|e| format!("failed to remove file: {e}"))?;
             }
         }
 
@@ -206,8 +206,7 @@ impl VersionControl {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("failed to create directory: {e}"))?;
             }
-            std::fs::write(&path, content)
-                .map_err(|e| format!("failed to write file: {e}"))?;
+            std::fs::write(&path, content).map_err(|e| format!("failed to write file: {e}"))?;
         }
 
         Ok(())
@@ -215,12 +214,17 @@ impl VersionControl {
 
     /// Get list of all snapshots
     pub fn list_snapshots(&self) -> Vec<SnapshotSummary> {
-        self.snapshots.lock().unwrap().iter().map(|s| SnapshotSummary {
-            snapshot_id: s.snapshot_id.clone(),
-            timestamp: s.timestamp,
-            description: s.description.clone(),
-            file_count: s.files.len(),
-        }).collect()
+        self.snapshots
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|s| SnapshotSummary {
+                snapshot_id: s.snapshot_id.clone(),
+                timestamp: s.timestamp,
+                description: s.description.clone(),
+                file_count: s.files.len(),
+            })
+            .collect()
     }
 
     /// Get action history
@@ -237,8 +241,8 @@ impl VersionControl {
     fn apply_payload(&self, payload: &str) -> Result<(), String> {
         // Payload format: JSON with file operations
         // { "operations": [{ "type": "write", "path": "...", "content": "..." }, ...] }
-        let ops: PayloadOps = serde_json::from_str(payload)
-            .map_err(|e| format!("failed to parse payload: {e}"))?;
+        let ops: PayloadOps =
+            serde_json::from_str(payload).map_err(|e| format!("failed to parse payload: {e}"))?;
 
         for op in ops.operations {
             match op.op_type.as_str() {
@@ -353,7 +357,8 @@ mod tests {
             "write test.txt",
             &write_payload("test.txt", "hello"),
             &delete_payload("test.txt"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Take another snapshot
         let snap2 = vc.snapshot("after write").unwrap();
@@ -367,7 +372,8 @@ mod tests {
             "write test2.txt",
             &write_payload("test2.txt", "world"),
             &delete_payload("test2.txt"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Check snapshots
         let snapshots = vc.list_snapshots();

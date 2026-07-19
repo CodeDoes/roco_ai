@@ -48,7 +48,10 @@ impl Tool for WorkspaceReadTool {
     }
     fn call(&self, args: Value) -> Result<Value, ToolError> {
         let path = arg_str(&args, "path")?;
-        let resolved = self.ws.resolve(&path).map_err(|e| ToolError(e.to_string()))?;
+        let resolved = self
+            .ws
+            .resolve(&path)
+            .map_err(|e| ToolError(e.to_string()))?;
         let content = std::fs::read_to_string(&resolved)
             .map_err(|e| ToolError(format!("read {}: {}", resolved.display(), e)))?;
         Ok(serde_json::json!({ "path": resolved.display().to_string(), "content": content }))
@@ -81,7 +84,10 @@ impl Tool for WorkspaceWriteTool {
     fn call(&self, args: Value) -> Result<Value, ToolError> {
         let path = arg_str(&args, "path")?;
         let content = arg_str(&args, "content")?;
-        let resolved = self.ws.resolve(&path).map_err(|e| ToolError(e.to_string()))?;
+        let resolved = self
+            .ws
+            .resolve(&path)
+            .map_err(|e| ToolError(e.to_string()))?;
         if let Some(parent) = resolved.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| ToolError(format!("mkdir {}: {}", parent.display(), e)))?;
@@ -126,7 +132,10 @@ impl Tool for WorkspaceEditTool {
         let old = arg_str(&args, "old")?;
         let new = arg_opt_str(&args, "new").unwrap_or("").to_string();
         let all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(true);
-        let resolved = self.ws.resolve(&path).map_err(|e| ToolError(e.to_string()))?;
+        let resolved = self
+            .ws
+            .resolve(&path)
+            .map_err(|e| ToolError(e.to_string()))?;
 
         let content = std::fs::read_to_string(&resolved)
             .map_err(|e| ToolError(format!("read {}: {}", resolved.display(), e)))?;
@@ -184,14 +193,20 @@ impl Tool for WorkspaceSearchTool {
     }
     fn call(&self, args: Value) -> Result<Value, ToolError> {
         let pattern = arg_str(&args, "pattern")?;
-        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20) as usize;
         let base = match arg_opt_str(&args, "path") {
             Some(p) if !p.is_empty() => self.ws.resolve(p).map_err(|e| ToolError(e.to_string()))?,
             _ => self.ws.root().to_path_buf(),
         };
 
         let mut results = Vec::new();
-        for entry in walkdir::WalkDir::new(&base).into_iter().filter_map(|e| e.ok()) {
+        for entry in walkdir::WalkDir::new(&base)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -244,7 +259,10 @@ impl Tool for WorkspaceGrepTool {
     }
     fn call(&self, args: Value) -> Result<Value, ToolError> {
         let pattern_str = arg_str(&args, "pattern")?;
-        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20) as usize;
         let base = match arg_opt_str(&args, "path") {
             Some(p) if !p.is_empty() => self.ws.resolve(p).map_err(|e| ToolError(e.to_string()))?,
             _ => self.ws.root().to_path_buf(),
@@ -254,7 +272,10 @@ impl Tool for WorkspaceGrepTool {
             .map_err(|e| ToolError(format!("Invalid regex pattern '{}': {}", pattern_str, e)))?;
 
         let mut results = Vec::new();
-        for entry in walkdir::WalkDir::new(&base).into_iter().filter_map(|e| e.ok()) {
+        for entry in walkdir::WalkDir::new(&base)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -428,9 +449,13 @@ mod tests {
         let ws = make_ws();
         let tools = Workspace::scoped_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
-        write.call(serde_json::json!({"path": "x.txt", "content": "needle here\nsomething else"})).unwrap();
+        write
+            .call(serde_json::json!({"path": "x.txt", "content": "needle here\nsomething else"}))
+            .unwrap();
         let search = tools.iter().find(|t| t.name() == "search").unwrap();
-        let r = search.call(serde_json::json!({"pattern": "needle"})).unwrap();
+        let r = search
+            .call(serde_json::json!({"pattern": "needle"}))
+            .unwrap();
         assert_eq!(r["count"], 1);
         assert_eq!(r["matches"][0]["line"], 1);
     }
@@ -440,7 +465,11 @@ mod tests {
         let ws = make_ws();
         let tools = Workspace::scoped_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
-        write.call(serde_json::json!({"path": "y.txt", "content": "hello 123 world\nno digits here"})).unwrap();
+        write
+            .call(
+                serde_json::json!({"path": "y.txt", "content": "hello 123 world\nno digits here"}),
+            )
+            .unwrap();
         let grep = tools.iter().find(|t| t.name() == "grep").unwrap();
         let r = grep.call(serde_json::json!({"pattern": r"\d+"})).unwrap();
         assert_eq!(r["count"], 1);
@@ -453,10 +482,16 @@ mod tests {
         let ws = make_ws();
         let tools = Workspace::scoped_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
-        write.call(serde_json::json!({"path": "one.txt", "content": "x"})).unwrap();
+        write
+            .call(serde_json::json!({"path": "one.txt", "content": "x"}))
+            .unwrap();
         let list = tools.iter().find(|t| t.name() == "list").unwrap();
         let r = list.call(serde_json::json!({})).unwrap();
-        assert!(r["entries"].as_array().unwrap().iter().any(|e| e["name"] == "one.txt"));
+        assert!(r["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["name"] == "one.txt"));
     }
 
     #[test]

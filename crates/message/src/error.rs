@@ -44,7 +44,10 @@ pub enum InferenceError {
     /// The model returned a timeout.
     Timeout,
     /// The output was truncated unexpectedly.
-    Truncated { actual_tokens: usize, max_tokens: usize },
+    Truncated {
+        actual_tokens: usize,
+        max_tokens: usize,
+    },
     /// A tool call failed to parse.
     ToolCallParseError(String),
     /// A tool execution failed.
@@ -58,7 +61,10 @@ impl std::fmt::Display for InferenceError {
         match self {
             InferenceError::GrammarError(msg) => write!(f, "grammar error: {msg}"),
             InferenceError::Timeout => write!(f, "inference timeout"),
-            InferenceError::Truncated { actual_tokens, max_tokens } => {
+            InferenceError::Truncated {
+                actual_tokens,
+                max_tokens,
+            } => {
                 write!(f, "truncated at {actual_tokens}/{max_tokens} tokens")
             }
             InferenceError::ToolCallParseError(msg) => write!(f, "tool call parse error: {msg}"),
@@ -167,7 +173,10 @@ pub fn describe_error(err: &InferenceError) -> String {
         InferenceError::Timeout => {
             "Inference timed out. Try reducing max_tokens or using a simpler query.".into()
         }
-        InferenceError::Truncated { actual_tokens, max_tokens } => {
+        InferenceError::Truncated {
+            actual_tokens,
+            max_tokens,
+        } => {
             format!("Response truncated at {actual_tokens}/{max_tokens} tokens.")
         }
         InferenceError::ToolCallParseError(msg) => {
@@ -216,7 +225,10 @@ mod tests {
         let err = InferenceError::Timeout;
         let msg = describe_error(&err);
         let lower = msg.to_lowercase();
-        assert!(lower.contains("timed") || lower.contains("timeout"), "message should mention timeout: {msg}");
+        assert!(
+            lower.contains("timed") || lower.contains("timeout"),
+            "message should mention timeout: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -225,7 +237,11 @@ mod tests {
         let req = CompletionRequest::new("", "hello");
         let config = RetryConfig::default();
         let result = complete_with_retry(&backend, req, &config).await;
-        assert!(result.is_ok(), "should succeed on first try: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "should succeed on first try: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -237,7 +253,11 @@ mod tests {
             ..Default::default()
         };
         let result = complete_with_retry(&backend, req, &config).await;
-        assert!(result.is_ok(), "should succeed after retries: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "should succeed after retries: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]

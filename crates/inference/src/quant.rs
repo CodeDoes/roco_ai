@@ -27,12 +27,22 @@ fn parse_st_header(file: &mut File) -> anyhow::Result<Vec<StTensor>> {
     let mut tensors = Vec::new();
     if let serde_json::Value::Object(map) = header {
         for (name, info) in map {
-            let dtype = info.get("dtype").and_then(|v| v.as_str()).unwrap_or("F32").to_string();
-            let shape = info.get("shape")
+            let dtype = info
+                .get("dtype")
+                .and_then(|v| v.as_str())
+                .unwrap_or("F32")
+                .to_string();
+            let shape = info
+                .get("shape")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_u64().map(|u| u as usize)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_u64().map(|u| u as usize))
+                        .collect()
+                })
                 .unwrap_or_default();
-            let offsets = info.get("data_offsets")
+            let offsets = info
+                .get("data_offsets")
                 .and_then(|v| v.as_array())
                 .map(|arr| {
                     let start = arr[0].as_u64().unwrap_or(0) as usize;
@@ -40,7 +50,12 @@ fn parse_st_header(file: &mut File) -> anyhow::Result<Vec<StTensor>> {
                     (start, end)
                 })
                 .unwrap_or((0, 0));
-            tensors.push(StTensor { name, dtype, shape, data_offsets: offsets });
+            tensors.push(StTensor {
+                name,
+                dtype,
+                shape,
+                data_offsets: offsets,
+            });
         }
     }
     tensors.sort_by_key(|t| t.data_offsets.0);
@@ -49,7 +64,9 @@ fn parse_st_header(file: &mut File) -> anyhow::Result<Vec<StTensor>> {
 
 fn read_tensor_bytes(file: &mut File, offsets: (usize, usize)) -> io::Result<Vec<u8>> {
     let len = offsets.1 - offsets.0;
-    if len == 0 { return Ok(Vec::new()); }
+    if len == 0 {
+        return Ok(Vec::new());
+    }
     file.seek(SeekFrom::Start(offsets.0 as u64))?;
     let mut buf = vec![0u8; len];
     file.read_exact(&mut buf)?;
@@ -59,15 +76,20 @@ fn read_tensor_bytes(file: &mut File, offsets: (usize, usize)) -> io::Result<Vec
 fn decode_tensor_bytes(dtype: &str, data: &[u8]) -> Vec<f32> {
     match dtype {
         "F32" => {
-            let words = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, data.len() / 4) };
+            let words =
+                unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, data.len() / 4) };
             words.to_vec()
         }
         "F16" => {
-            let halves = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const half::f16, data.len() / 2) };
+            let halves = unsafe {
+                std::slice::from_raw_parts(data.as_ptr() as *const half::f16, data.len() / 2)
+            };
             halves.iter().map(|&h| h.to_f32()).collect()
         }
         "BF16" => {
-            let halves = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const half::bf16, data.len() / 2) };
+            let halves = unsafe {
+                std::slice::from_raw_parts(data.as_ptr() as *const half::bf16, data.len() / 2)
+            };
             halves.iter().map(|&h| h.to_f32()).collect()
         }
         _ => Vec::new(),
@@ -75,7 +97,9 @@ fn decode_tensor_bytes(dtype: &str, data: &[u8]) -> Vec<f32> {
 }
 
 fn sample_weights(weights: &[f32], max_samples: usize) -> Vec<f32> {
-    if weights.len() <= max_samples { return weights.to_vec(); }
+    if weights.len() <= max_samples {
+        return weights.to_vec();
+    }
     let step = weights.len() / max_samples;
     (0..max_samples).map(|i| weights[i * step]).collect()
 }
@@ -85,27 +109,39 @@ fn sample_weights(weights: &[f32], max_samples: usize) -> Vec<f32> {
 // ---------------------------------------------------------------------------
 
 pub fn coarse_proxy(weights: &[f32]) -> f64 {
-    if weights.len() < 2 { return 0.0; }
+    if weights.len() < 2 {
+        return 0.0;
+    }
     let mut sorted: Vec<f64> = weights.iter().map(|&w| w as f64).collect();
     sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let n = sorted.len() - 1;
     let intervals: Vec<f64> = sorted.windows(2).map(|w| w[1] - w[0]).collect();
     let sum: f64 = intervals.iter().sum();
-    if sum == 0.0 { return 0.0; }
+    if sum == 0.0 {
+        return 0.0;
+    }
     let g_prime: Vec<f64> = intervals.iter().map(|&g| g / sum).collect();
-    let h: f64 = g_prime.iter().filter(|&&g| g > 0.0).map(|&g| -g * g.ln()).sum();
+    let h: f64 = g_prime
+        .iter()
+        .filter(|&&g| g > 0.0)
+        .map(|&g| -g * g.ln())
+        .sum();
     let h_uniform = (n as f64).ln();
     h_uniform - h
 }
 
 pub fn fine_proxy(weights: &[f32]) -> f64 {
-    if weights.len() < 2 { return 0.0; }
+    if weights.len() < 2 {
+        return 0.0;
+    }
     let mut sorted: Vec<f64> = weights.iter().map(|&w| w as f64).collect();
     sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let n = sorted.len() - 1;
     let intervals: Vec<f64> = sorted.windows(2).map(|w| w[1] - w[0]).collect();
     let sum: f64 = intervals.iter().sum();
-    if sum == 0.0 { return 0.0; }
+    if sum == 0.0 {
+        return 0.0;
+    }
     let g_prime: Vec<f64> = intervals.iter().map(|&g| g / sum).collect();
     let inv_n = 1.0 / n as f64;
     let delta: Vec<f64> = g_prime.iter().map(|&g| g - inv_n).collect();
@@ -134,7 +170,11 @@ pub enum QuantRecommendation {
 }
 
 pub fn recommend(p_c: f64, p_f: f64, tau_c: f64, tau_f: f64) -> QuantRecommendation {
-    if p_c < tau_c && p_f < tau_f { QuantRecommendation::ScalarQuant } else { QuantRecommendation::KeepFp16 }
+    if p_c < tau_c && p_f < tau_f {
+        QuantRecommendation::ScalarQuant
+    } else {
+        QuantRecommendation::KeepFp16
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -166,18 +206,28 @@ impl ModelAnalysis {
         println!("  RWKVQuant Proxy Analysis");
         println!("  τ_c = {:<10}  τ_f = {}", DEFAULT_TAU_C, DEFAULT_TAU_F);
         println!("{:─<80}", "");
-        println!("{:<45} {:>8} {:>10} {:>10}  {:>6}", "tensor", "numels", "P_c", "P_f", "rec");
+        println!(
+            "{:<45} {:>8} {:>10} {:>10}  {:>6}",
+            "tensor", "numels", "P_c", "P_f", "rec"
+        );
         println!("{:-<80}", "");
         for t in &self.tensors {
             let rec_str = match t.recommendation {
                 QuantRecommendation::ScalarQuant => "SQ  ",
                 QuantRecommendation::KeepFp16 => "FP16",
             };
-            println!("{:<45} {:>8} {:>10.4} {:>10.4}  {:>6}", t.name, t.numels, t.p_c, t.p_f, rec_str);
+            println!(
+                "{:<45} {:>8} {:>10.4} {:>10.4}  {:>6}",
+                t.name, t.numels, t.p_c, t.p_f, rec_str
+            );
         }
         println!("{:-<80}", "");
-        println!("  Tensors:  SQ={}  FP16={}  total={}", self.sq_count, self.fp16_count, self.total_tensors);
-        println!("  Elements: SQ={}M ({:.1}%)  FP16={}M ({:.1}%)",
+        println!(
+            "  Tensors:  SQ={}  FP16={}  total={}",
+            self.sq_count, self.fp16_count, self.total_tensors
+        );
+        println!(
+            "  Elements: SQ={}M ({:.1}%)  FP16={}M ({:.1}%)",
             self.sq_numels / 1_000_000,
             100.0 * self.sq_numels as f64 / (self.sq_numels + self.fp16_numels) as f64,
             self.fp16_numels / 1_000_000,
@@ -195,12 +245,18 @@ pub fn analyze_model_streaming(path: &str) -> anyhow::Result<ModelAnalysis> {
 
     for (i, t) in tensors_meta.iter().enumerate() {
         let numel: usize = t.shape.iter().product();
-        if numel < 2 || !matches!(t.dtype.as_str(), "F32" | "F16" | "BF16") { continue; }
+        if numel < 2 || !matches!(t.dtype.as_str(), "F32" | "F16" | "BF16") {
+            continue;
+        }
 
         let raw = read_tensor_bytes(&mut file, t.data_offsets)?;
-        if raw.is_empty() { continue; }
+        if raw.is_empty() {
+            continue;
+        }
         let weights = decode_tensor_bytes(&t.dtype, &raw);
-        if weights.len() < 2 { continue; }
+        if weights.len() < 2 {
+            continue;
+        }
 
         let sample = sample_weights(&weights, 65_536);
         let p_c = coarse_proxy(&sample);
@@ -208,10 +264,23 @@ pub fn analyze_model_streaming(path: &str) -> anyhow::Result<ModelAnalysis> {
         let rec = recommend(p_c, p_f, DEFAULT_TAU_C, DEFAULT_TAU_F);
 
         if (i + 1) % 50 == 0 || i + 1 == total {
-            eprintln!("  [{:>4}/{:>4}] {}  P_c={:.4}  P_f={:.4}", i + 1, total, t.name, p_c, p_f);
+            eprintln!(
+                "  [{:>4}/{:>4}] {}  P_c={:.4}  P_f={:.4}",
+                i + 1,
+                total,
+                t.name,
+                p_c,
+                p_f
+            );
         }
 
-        tensors.push(TensorAnalysis { name: t.name.clone(), numels: numel, p_c, p_f, recommendation: rec });
+        tensors.push(TensorAnalysis {
+            name: t.name.clone(),
+            numels: numel,
+            p_c,
+            p_f,
+            recommendation: rec,
+        });
     }
 
     tensors.sort_by(|a, b| a.name.cmp(&b.name));
@@ -226,9 +295,16 @@ pub fn analyze_model_streaming(path: &str) -> anyhow::Result<ModelAnalysis> {
         });
         let idx = (DEFAULT_TAU_F_PERCENTILE * pfs.len() as f64) as usize;
         let adaptive = pfs[idx.min(pfs.len() - 1)];
-        eprintln!("  Adaptive τ_f = {:.4} ({}th pctile of {} tensors)", adaptive, DEFAULT_TAU_F_PERCENTILE * 100.0, pfs.len());
+        eprintln!(
+            "  Adaptive τ_f = {:.4} ({}th pctile of {} tensors)",
+            adaptive,
+            DEFAULT_TAU_F_PERCENTILE * 100.0,
+            pfs.len()
+        );
         adaptive
-    } else { DEFAULT_TAU_F };
+    } else {
+        DEFAULT_TAU_F
+    };
 
     let mut sq_count = 0;
     let mut fp16_count = 0;
@@ -237,12 +313,25 @@ pub fn analyze_model_streaming(path: &str) -> anyhow::Result<ModelAnalysis> {
     for t in &mut tensors {
         t.recommendation = recommend(t.p_c, t.p_f, DEFAULT_TAU_C, tau_f);
         match t.recommendation {
-            QuantRecommendation::ScalarQuant => { sq_count += 1; sq_numels += t.numels; }
-            QuantRecommendation::KeepFp16 => { fp16_count += 1; fp16_numels += t.numels; }
+            QuantRecommendation::ScalarQuant => {
+                sq_count += 1;
+                sq_numels += t.numels;
+            }
+            QuantRecommendation::KeepFp16 => {
+                fp16_count += 1;
+                fp16_numels += t.numels;
+            }
         }
     }
 
-    Ok(ModelAnalysis { tensors, total_tensors: sq_count + fp16_count, sq_count, fp16_count, sq_numels, fp16_numels })
+    Ok(ModelAnalysis {
+        tensors,
+        total_tensors: sq_count + fp16_count,
+        sq_count,
+        fp16_count,
+        sq_numels,
+        fp16_numels,
+    })
 }
 
 pub fn analyze_model(st_data: &[u8]) -> anyhow::Result<ModelAnalysis> {
@@ -255,38 +344,89 @@ pub fn analyze_model(st_data: &[u8]) -> anyhow::Result<ModelAnalysis> {
 
     for (name, view) in st.tensors() {
         let numel = view.shape().iter().product::<usize>();
-        if numel < 2 { continue; }
+        if numel < 2 {
+            continue;
+        }
         let weights: Vec<f32> = match view.dtype() {
-            safetensors::Dtype::F32 => unsafe { std::slice::from_raw_parts(view.data().as_ptr() as *const f32, view.data().len() / 4) }.to_vec(),
-            safetensors::Dtype::F16 => unsafe { std::slice::from_raw_parts(view.data().as_ptr() as *const half::f16, view.data().len() / 2) }.iter().map(|&h| h.to_f32()).collect(),
-            safetensors::Dtype::BF16 => unsafe { std::slice::from_raw_parts(view.data().as_ptr() as *const half::bf16, view.data().len() / 2) }.iter().map(|&h| h.to_f32()).collect(),
+            safetensors::Dtype::F32 => unsafe {
+                std::slice::from_raw_parts(
+                    view.data().as_ptr() as *const f32,
+                    view.data().len() / 4,
+                )
+            }
+            .to_vec(),
+            safetensors::Dtype::F16 => unsafe {
+                std::slice::from_raw_parts(
+                    view.data().as_ptr() as *const half::f16,
+                    view.data().len() / 2,
+                )
+            }
+            .iter()
+            .map(|&h| h.to_f32())
+            .collect(),
+            safetensors::Dtype::BF16 => unsafe {
+                std::slice::from_raw_parts(
+                    view.data().as_ptr() as *const half::bf16,
+                    view.data().len() / 2,
+                )
+            }
+            .iter()
+            .map(|&h| h.to_f32())
+            .collect(),
             _ => continue,
         };
         let p_c = coarse_proxy(&weights);
         let p_f = fine_proxy(&weights);
         let rec = recommend(p_c, p_f, DEFAULT_TAU_C, DEFAULT_TAU_F);
         match rec {
-            QuantRecommendation::ScalarQuant => { sq_count += 1; sq_numels += numel; }
-            QuantRecommendation::KeepFp16 => { fp16_count += 1; fp16_numels += numel; }
+            QuantRecommendation::ScalarQuant => {
+                sq_count += 1;
+                sq_numels += numel;
+            }
+            QuantRecommendation::KeepFp16 => {
+                fp16_count += 1;
+                fp16_numels += numel;
+            }
         }
-        tensors.push(TensorAnalysis { name: name.to_string(), numels: numel, p_c, p_f, recommendation: rec });
+        tensors.push(TensorAnalysis {
+            name: name.to_string(),
+            numels: numel,
+            p_c,
+            p_f,
+            recommendation: rec,
+        });
     }
     tensors.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(ModelAnalysis { tensors, total_tensors: sq_count + fp16_count, sq_count, fp16_count, sq_numels, fp16_numels })
+    Ok(ModelAnalysis {
+        tensors,
+        total_tensors: sq_count + fp16_count,
+        sq_count,
+        fp16_count,
+        sq_numels,
+        fp16_numels,
+    })
 }
 
-pub fn build_quant_plan(analysis: &ModelAnalysis, gpu_coop: bool, num_layers: usize) -> HashMap<usize, web_rwkv::runtime::model::Quant> {
+pub fn build_quant_plan(
+    analysis: &ModelAnalysis,
+    gpu_coop: bool,
+    num_layers: usize,
+) -> HashMap<usize, web_rwkv::runtime::model::Quant> {
     use web_rwkv::runtime::model::Quant;
     let mut layer_has_fp16: Vec<bool> = vec![false; num_layers];
     for t in &analysis.tensors {
         if let Some(layer) = extract_layer(&t.name) {
-            if t.recommendation == QuantRecommendation::KeepFp16 { layer_has_fp16[layer] = true; }
+            if t.recommendation == QuantRecommendation::KeepFp16 {
+                layer_has_fp16[layer] = true;
+            }
         }
     }
     let mut plan = HashMap::new();
     let q = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
     for layer in 0..num_layers {
-        if !layer_has_fp16[layer] { plan.insert(layer, q); }
+        if !layer_has_fp16[layer] {
+            plan.insert(layer, q);
+        }
     }
     plan
 }
@@ -338,17 +478,26 @@ mod tests {
 
     #[test]
     fn recommend_uniform_gets_sq() {
-        assert_eq!(recommend(0.01, 0.001, DEFAULT_TAU_C, DEFAULT_TAU_F), QuantRecommendation::ScalarQuant);
+        assert_eq!(
+            recommend(0.01, 0.001, DEFAULT_TAU_C, DEFAULT_TAU_F),
+            QuantRecommendation::ScalarQuant
+        );
     }
 
     #[test]
     fn recommend_non_uniform_gets_fp16() {
-        assert_eq!(recommend(0.1, 0.001, 0.05, 0.01), QuantRecommendation::KeepFp16);
+        assert_eq!(
+            recommend(0.1, 0.001, 0.05, 0.01),
+            QuantRecommendation::KeepFp16
+        );
     }
 
     #[test]
     fn recommend_outliers_gets_fp16() {
-        assert_eq!(recommend(0.01, 0.1, 0.05, 0.01), QuantRecommendation::KeepFp16);
+        assert_eq!(
+            recommend(0.01, 0.1, 0.05, 0.01),
+            QuantRecommendation::KeepFp16
+        );
     }
 
     #[test]

@@ -66,16 +66,27 @@ impl Workspace {
     /// Create a workspace rooted at `root`, creating the directory if missing.
     pub fn new(root: impl Into<PathBuf>, kind: WorkspaceKind) -> Result<Self, WorkspaceError> {
         let root = root.into();
-        std::fs::create_dir_all(&root)
-            .map_err(|e| WorkspaceError(format!("failed to create workspace root {}: {}", root.display(), e)))?;
+        std::fs::create_dir_all(&root).map_err(|e| {
+            WorkspaceError(format!(
+                "failed to create workspace root {}: {}",
+                root.display(),
+                e
+            ))
+        })?;
         Self::from_existing(root, kind)
     }
 
     /// Open a workspace over an existing directory.
-    pub fn from_existing(root: impl Into<PathBuf>, kind: WorkspaceKind) -> Result<Self, WorkspaceError> {
+    pub fn from_existing(
+        root: impl Into<PathBuf>,
+        kind: WorkspaceKind,
+    ) -> Result<Self, WorkspaceError> {
         let root = root.into();
         if !root.exists() {
-            return Err(WorkspaceError(format!("workspace root does not exist: {}", root.display())));
+            return Err(WorkspaceError(format!(
+                "workspace root does not exist: {}",
+                root.display()
+            )));
         }
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -120,7 +131,9 @@ impl Workspace {
     pub fn preset_in(kind: WorkspaceKind, base: &Path) -> Result<Self, WorkspaceError> {
         match kind {
             WorkspaceKind::Eval | WorkspaceKind::Temp | WorkspaceKind::Generic => Self::temp(kind),
-            WorkspaceKind::Agent => Self::new(base.join(".roco").join("workspace").join("agent"), kind),
+            WorkspaceKind::Agent => {
+                Self::new(base.join(".roco").join("workspace").join("agent"), kind)
+            }
             WorkspaceKind::User => Self::new(base.to_path_buf(), kind),
         }
     }
@@ -177,15 +190,21 @@ impl Workspace {
 
         let norm = Self::lexical_normalize(&base);
 
-        let root_canon = self
-            .root
-            .canonicalize()
-            .map_err(|e| WorkspaceError(format!("workspace root '{}' is not accessible: {}", self.root.display(), e)))?;
+        let root_canon = self.root.canonicalize().map_err(|e| {
+            WorkspaceError(format!(
+                "workspace root '{}' is not accessible: {}",
+                self.root.display(),
+                e
+            ))
+        })?;
 
         // Canonical containment — catches symlink escapes for existing files.
         if let Ok(canon) = norm.canonicalize() {
             if !canon.starts_with(&root_canon) {
-                return Err(WorkspaceError(format!("path '{}' escapes workspace boundary", path)));
+                return Err(WorkspaceError(format!(
+                    "path '{}' escapes workspace boundary",
+                    path
+                )));
             }
         }
 
@@ -193,11 +212,17 @@ impl Workspace {
         let norm_comps: Vec<_> = norm.components().collect();
         let root_comps: Vec<_> = root_canon.components().collect();
         if norm_comps.len() < root_comps.len() {
-            return Err(WorkspaceError(format!("path '{}' escapes workspace boundary", path)));
+            return Err(WorkspaceError(format!(
+                "path '{}' escapes workspace boundary",
+                path
+            )));
         }
         for (rc, nc) in root_comps.iter().zip(norm_comps.iter()) {
             if rc.as_os_str() != nc.as_os_str() {
-                return Err(WorkspaceError(format!("path '{}' escapes workspace boundary", path)));
+                return Err(WorkspaceError(format!(
+                    "path '{}' escapes workspace boundary",
+                    path
+                )));
             }
         }
 
@@ -219,7 +244,10 @@ impl Workspace {
     }
 
     /// Garbage collect temporary workspace files/folders older than `max_age`.
-    pub fn vacuum_temp_files(dir: &Path, max_age: std::time::Duration) -> Result<usize, std::io::Error> {
+    pub fn vacuum_temp_files(
+        dir: &Path,
+        max_age: std::time::Duration,
+    ) -> Result<usize, std::io::Error> {
         let mut count = 0;
         let now = SystemTime::now();
         if !dir.exists() {
@@ -255,27 +283,36 @@ impl Workspace {
             std::fs::create_dir_all(destination_dir)
                 .map_err(|e| WorkspaceError(format!("Failed to create backup dir: {e}")))?;
         }
-        let backup_folder = destination_dir.join(format!("{}_backup_{}", self.name(), self.created_at));
+        let backup_folder =
+            destination_dir.join(format!("{}_backup_{}", self.name(), self.created_at));
         std::fs::create_dir_all(&backup_folder)
             .map_err(|e| WorkspaceError(format!("Failed to create sub backup folder: {e}")))?;
 
         for entry in walkdir::WalkDir::new(&self.root) {
             let entry = entry.map_err(|e| WorkspaceError(format!("WalkDir error: {e}")))?;
             let path = entry.path();
-            let relative = path.strip_prefix(&self.root)
+            let relative = path
+                .strip_prefix(&self.root)
                 .map_err(|e| WorkspaceError(format!("Failed to strip prefix: {e}")))?;
             let dest = backup_folder.join(relative);
 
             if entry.file_type().is_dir() {
-                std::fs::create_dir_all(&dest)
-                    .map_err(|e| WorkspaceError(format!("Failed to create dir {}: {}", dest.display(), e)))?;
+                std::fs::create_dir_all(&dest).map_err(|e| {
+                    WorkspaceError(format!("Failed to create dir {}: {}", dest.display(), e))
+                })?;
             } else {
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)
                         .map_err(|e| WorkspaceError(format!("Failed to create parent dir: {e}")))?;
                 }
-                std::fs::copy(path, &dest)
-                    .map_err(|e| WorkspaceError(format!("Failed to copy file from {} to {}: {}", path.display(), dest.display(), e)))?;
+                std::fs::copy(path, &dest).map_err(|e| {
+                    WorkspaceError(format!(
+                        "Failed to copy file from {} to {}: {}",
+                        path.display(),
+                        dest.display(),
+                        e
+                    ))
+                })?;
             }
         }
         Ok(backup_folder)
@@ -284,27 +321,35 @@ impl Workspace {
     /// Restore the workspace root from a previously taken backup.
     pub fn restore(&self, backup_dir: &Path) -> Result<(), WorkspaceError> {
         if !backup_dir.exists() {
-            return Err(WorkspaceError(format!("Backup folder does not exist: {}", backup_dir.display())));
+            return Err(WorkspaceError(format!(
+                "Backup folder does not exist: {}",
+                backup_dir.display()
+            )));
         }
         // Clear current root files safely
         for entry in std::fs::read_dir(&self.root)
-            .map_err(|e| WorkspaceError(format!("Failed to read root for clearing: {e}")))? {
+            .map_err(|e| WorkspaceError(format!("Failed to read root for clearing: {e}")))?
+        {
             let entry = entry.map_err(|e| WorkspaceError(format!("Failed to read entry: {e}")))?;
             let path = entry.path();
             if path.is_dir() {
-                std::fs::remove_dir_all(&path)
-                    .map_err(|e| WorkspaceError(format!("Failed to delete dir {}: {}", path.display(), e)))?;
+                std::fs::remove_dir_all(&path).map_err(|e| {
+                    WorkspaceError(format!("Failed to delete dir {}: {}", path.display(), e))
+                })?;
             } else {
-                std::fs::remove_file(&path)
-                    .map_err(|e| WorkspaceError(format!("Failed to delete file {}: {}", path.display(), e)))?;
+                std::fs::remove_file(&path).map_err(|e| {
+                    WorkspaceError(format!("Failed to delete file {}: {}", path.display(), e))
+                })?;
             }
         }
 
         // Copy files back
         for entry in walkdir::WalkDir::new(backup_dir) {
-            let entry = entry.map_err(|e| WorkspaceError(format!("WalkDir error during restore: {e}")))?;
+            let entry =
+                entry.map_err(|e| WorkspaceError(format!("WalkDir error during restore: {e}")))?;
             let path = entry.path();
-            let relative = path.strip_prefix(backup_dir)
+            let relative = path
+                .strip_prefix(backup_dir)
                 .map_err(|e| WorkspaceError(format!("Failed to strip prefix: {e}")))?;
             let dest = self.root.join(relative);
 
@@ -316,8 +361,9 @@ impl Workspace {
                     std::fs::create_dir_all(parent)
                         .map_err(|e| WorkspaceError(format!("Failed to create parent: {e}")))?;
                 }
-                std::fs::copy(path, &dest)
-                    .map_err(|e| WorkspaceError(format!("Failed to restore file {}: {}", dest.display(), e)))?;
+                std::fs::copy(path, &dest).map_err(|e| {
+                    WorkspaceError(format!("Failed to restore file {}: {}", dest.display(), e))
+                })?;
             }
         }
         Ok(())
@@ -499,8 +545,14 @@ mod tests {
 
         // Resolve the secret through `..` traversal — must be rejected.
         assert!(ws.resolve("../../").is_err() || ws.resolve("..").is_err());
-        assert!(ws.resolve(&format!("../{}", secret.file_name().unwrap().to_string_lossy())).is_err(),
-            "resolving a sibling-of-root file via '..' must be rejected");
+        assert!(
+            ws.resolve(&format!(
+                "../{}",
+                secret.file_name().unwrap().to_string_lossy()
+            ))
+            .is_err(),
+            "resolving a sibling-of-root file via '..' must be rejected"
+        );
     }
 
     #[test]
@@ -511,7 +563,10 @@ mod tests {
 
         // Absolute path to the secret must be rejected (it is outside root).
         let abs = secret.to_string_lossy().to_string();
-        assert!(ws.resolve(&abs).is_err(), "absolute path outside root must be rejected");
+        assert!(
+            ws.resolve(&abs).is_err(),
+            "absolute path outside root must be rejected"
+        );
     }
 
     #[test]
@@ -543,7 +598,10 @@ mod tests {
 
         let tools = Workspace::scoped_tools(std::sync::Arc::new(ws));
         let read = tools.iter().find(|t| t.name() == "read").unwrap();
-        let target = format!("escape_link/{}", secret.file_name().unwrap().to_string_lossy());
+        let target = format!(
+            "escape_link/{}",
+            secret.file_name().unwrap().to_string_lossy()
+        );
         let res = read.call(serde_json::json!({ "path": target }));
         assert!(res.is_err(), "read tool must reject symlink escape");
     }
@@ -589,12 +647,13 @@ mod tests {
 
         // Modify time of old_file to 10 minutes ago
         let filetime = filetime::FileTime::from_system_time(
-            SystemTime::now() - std::time::Duration::from_secs(600)
+            SystemTime::now() - std::time::Duration::from_secs(600),
         );
         filetime::set_file_times(&old_file, filetime, filetime).unwrap();
 
         // Vacuum files older than 5 minutes (300 secs)
-        let deleted = Workspace::vacuum_temp_files(&temp_dir, std::time::Duration::from_secs(300)).unwrap();
+        let deleted =
+            Workspace::vacuum_temp_files(&temp_dir, std::time::Duration::from_secs(300)).unwrap();
         assert_eq!(deleted, 1);
         assert!(!old_file.exists());
 

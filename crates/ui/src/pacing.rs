@@ -118,7 +118,9 @@ impl PacingWidgetState {
 
     /// Check if the current mode should pause for human input
     pub fn should_pause(&self, tasks_completed: usize) -> bool {
-        self.mode.to_interaction_mode().should_pause(tasks_completed, self.total_tasks)
+        self.mode
+            .to_interaction_mode()
+            .should_pause(tasks_completed, self.total_tasks)
     }
 
     /// Get the current progress string
@@ -131,7 +133,11 @@ impl PacingWidgetState {
         if self.total_tasks == 0 {
             "No tasks".to_string()
         } else {
-            format!("Task {} / {}", self.current_task.min(self.total_tasks), self.total_tasks)
+            format!(
+                "Task {} / {}",
+                self.current_task.min(self.total_tasks),
+                self.total_tasks
+            )
         }
     }
 }
@@ -406,10 +412,7 @@ mod tests {
     #[test]
     fn test_pacing_widget_state_to_interaction_mode() {
         let state = PacingWidgetState::new(PacingMode::AutoAccept, 5);
-        assert_eq!(
-            state.to_interaction_mode(),
-            InteractionMode::GoHam
-        );
+        assert_eq!(state.to_interaction_mode(), InteractionMode::GoHam);
     }
 
     #[test]

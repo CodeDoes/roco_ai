@@ -6,5 +6,5 @@
 pub mod conversation;
 pub mod display;
 
-pub use conversation::{Conversation, ConversationTurn, ConversationId};
+pub use conversation::{Conversation, ConversationId, ConversationTurn};
 pub use display::{DisplaySettings, OutputFormat};

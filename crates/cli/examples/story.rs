@@ -19,14 +19,12 @@
 
 use std::collections::HashMap;
 
-use roco_agent::mechanistic::{
-    HandlerResult, MechanisticAgent, Plan, RepairConfig, Task,
-};
+use roco_agent::mechanistic::{HandlerResult, MechanisticAgent, Plan, RepairConfig, Task};
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_grammar::{schema_to_gbnf, Schema};
 use roco_inference::RwkvBackend;
-use roco_tools::{ReadTool, WriteTool};
 use roco_tools::Tool;
+use roco_tools::{ReadTool, WriteTool};
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::Deserialize;
 use serde_json::json;
@@ -57,13 +55,16 @@ impl Outline {
             .prop("title", Schema::string())
             .prop("genre", Schema::string())
             .prop("tone", Schema::string())
-            .prop("chapters", Schema::array(
-                Schema::object()
-                    .prop("number", Schema::integer())
-                    .prop("title", Schema::string())
-                    .prop("summary", Schema::string())
-                    .build()
-            ))
+            .prop(
+                "chapters",
+                Schema::array(
+                    Schema::object()
+                        .prop("number", Schema::integer())
+                        .prop("title", Schema::string())
+                        .prop("summary", Schema::string())
+                        .build(),
+                ),
+            )
             .build()
     }
 
@@ -88,12 +89,15 @@ struct Character {
 impl Wiki {
     fn schema() -> Schema {
         Schema::object()
-            .prop("characters", Schema::array(
-                Schema::object()
-                    .prop("name", Schema::string())
-                    .prop("description", Schema::string())
-                    .build()
-            ))
+            .prop(
+                "characters",
+                Schema::array(
+                    Schema::object()
+                        .prop("name", Schema::string())
+                        .prop("description", Schema::string())
+                        .build(),
+                ),
+            )
             .prop("setting", Schema::string())
             .build()
     }
@@ -126,7 +130,7 @@ impl Chapter {
 /// Model output for validation.
 #[derive(Debug, Deserialize)]
 struct Validation {
-    quality: String,   // "pass" | "fail" | "needs-work"
+    quality: String, // "pass" | "fail" | "needs-work"
     issues: String,
     suggestion: String,
 }
@@ -134,11 +138,14 @@ struct Validation {
 impl Validation {
     fn schema() -> Schema {
         Schema::object()
-            .prop("quality", Schema::enum_values(vec![
-                serde_json::json!("pass"),
-                serde_json::json!("fail"),
-                serde_json::json!("needs-work"),
-            ]))
+            .prop(
+                "quality",
+                Schema::enum_values(vec![
+                    serde_json::json!("pass"),
+                    serde_json::json!("fail"),
+                    serde_json::json!("needs-work"),
+                ]),
+            )
             .prop("issues", Schema::string())
             .prop("suggestion", Schema::string())
             .build()
@@ -157,9 +164,7 @@ struct Synopsis {
 
 impl Synopsis {
     fn schema() -> Schema {
-        Schema::object()
-            .prop("summary", Schema::string())
-            .build()
+        Schema::object().prop("summary", Schema::string()).build()
     }
 
     fn grammar() -> String {
@@ -205,12 +210,15 @@ where
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 
     let prompt = std::env::args().nth(1).unwrap_or_else(|| {
-        "Write a short story about a lighthouse keeper who discovers a message in a bottle.".to_string()
+        "Write a short story about a lighthouse keeper who discovers a message in a bottle."
+            .to_string()
     });
 
     println!("Loading model...");
@@ -229,59 +237,77 @@ fn main() -> anyhow::Result<()> {
         })
         .with_fallback_threshold(0.3);
 
-    agent.add_route("storyTeller", vec![
-        ("compose", "outline"),
-        ("compose", "wiki"),
-        ("write", "chapter"),
-        ("write", "synopsis"),
-        ("validate", "chapter"),
-        ("publish", "chapter"),
-    ]);
+    agent.add_route(
+        "storyTeller",
+        vec![
+            ("compose", "outline"),
+            ("compose", "wiki"),
+            ("write", "chapter"),
+            ("write", "synopsis"),
+            ("validate", "chapter"),
+            ("publish", "chapter"),
+        ],
+    );
 
     // ── compose/outline ──────────────────────────────────────────────
-    agent.register("compose", "outline", Box::new(|task, backend, ws| {
-        let premise = task.spec.get("premise")
-            .and_then(|v| v.as_str())
-            .unwrap_or("a short story");
+    agent.register(
+        "compose",
+        "outline",
+        Box::new(|task, backend, ws| {
+            let premise = task
+                .spec
+                .get("premise")
+                .and_then(|v| v.as_str())
+                .unwrap_or("a short story");
 
-        let outline: Outline = structured_complete(
-            backend,
-            "You are a story outliner. Output valid JSON only.",
-            &format!(
-                "Outline a short story with 3 chapters based on this premise:\n{premise}\n\n\
+            let outline: Outline = structured_complete(
+                backend,
+                "You are a story outliner. Output valid JSON only.",
+                &format!(
+                    "Outline a short story with 3 chapters based on this premise:\n{premise}\n\n\
                  Output JSON matching the schema: title, genre, tone, chapters \
                  (array of 3 objects with number, title, summary)",
-            ),
-            &Outline::grammar(),
-            0.6,
-            300,
-        ).unwrap_or_else(|e| Outline {
-            title: "Untitled".into(),
-            genre: "Unknown".into(),
-            tone: "Unknown".into(),
-            chapters: (1..=3).map(|i| ChapterInfo {
-                number: i,
-                title: format!("Chapter {i}"),
-                summary: format!("Error generating outline: {e}"),
-            }).collect(),
-        });
+                ),
+                &Outline::grammar(),
+                0.6,
+                300,
+            )
+            .unwrap_or_else(|e| Outline {
+                title: "Untitled".into(),
+                genre: "Unknown".into(),
+                tone: "Unknown".into(),
+                chapters: (1..=3)
+                    .map(|i| ChapterInfo {
+                        number: i,
+                        title: format!("Chapter {i}"),
+                        summary: format!("Error generating outline: {e}"),
+                    })
+                    .collect(),
+            });
 
-        // Render to markdown
-        let mut md = format!("Title: {}\nGenre: {}\nTone: {}\n\n", outline.title, outline.genre, outline.tone);
-        for ch in &outline.chapters {
-            md.push_str(&format!("Chapter {}: {}\n{}\n\n", ch.number, ch.title, ch.summary));
-        }
+            // Render to markdown
+            let mut md = format!(
+                "Title: {}\nGenre: {}\nTone: {}\n\n",
+                outline.title, outline.genre, outline.tone
+            );
+            for ch in &outline.chapters {
+                md.push_str(&format!(
+                    "Chapter {}: {}\n{}\n\n",
+                    ch.number, ch.title, ch.summary
+                ));
+            }
 
-        let path = ws.resolve("01-OUTLINE.md").unwrap();
-        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
+            let path = ws.resolve("01-OUTLINE.md").unwrap();
+            let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
 
-        HandlerResult {
-            task: task.clone(),
-            output: md,
-            files: HashMap::new(),
-            pass: true,
-        }
-    }));
+            HandlerResult {
+                task: task.clone(),
+                output: md,
+                files: HashMap::new(),
+                pass: true,
+            }
+        }),
+    );
 
     // ── compose/wiki ────────────────────────────────────────────────
     agent.register("compose", "wiki", Box::new(|task, backend, ws| {
@@ -332,61 +358,74 @@ fn main() -> anyhow::Result<()> {
     }));
 
     // ── write/chapter ────────────────────────────────────────────────
-    agent.register("write", "chapter", Box::new(|task, backend, ws| {
-        let chapter_num: usize = task.spec.get("number")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1) as usize;
-        let chapter_label = task.spec.get("label")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Chapter 1");
-        let outline = task.spec.get("outline")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let previous = task.spec.get("previous")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+    agent.register(
+        "write",
+        "chapter",
+        Box::new(|task, backend, ws| {
+            let chapter_num: usize = task
+                .spec
+                .get("number")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1) as usize;
+            let chapter_label = task
+                .spec
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Chapter 1");
+            let outline = task
+                .spec
+                .get("outline")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let previous = task
+                .spec
+                .get("previous")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
 
-        let directive = if chapter_num == 1 {
-            format!(
+            let directive = if chapter_num == 1 {
+                format!(
                 "Write {chapter_label}. Introduce the main character and setting. ~400 words.\n\n\
                  Outline context:\n{outline}\n\n\
                  Output JSON with: title (string), content (string with the chapter prose)",
             )
-        } else {
-            format!(
-                "Write {chapter_label}. Continue from where the previous chapter left off. \
+            } else {
+                format!(
+                    "Write {chapter_label}. Continue from where the previous chapter left off. \
                  Advance the plot. ~400 words.\n\n\
                  Previous chapter recap:\n{previous}\n\n\
                  Outline context:\n{outline}\n\n\
                  Output JSON with: title (string), content (string with the chapter prose)",
+                )
+            };
+
+            let chapter: Chapter = structured_complete(
+                backend,
+                "You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.",
+                &directive,
+                &Chapter::grammar(),
+                0.8,
+                600,
             )
-        };
+            .unwrap_or_else(|e| Chapter {
+                title: chapter_label.into(),
+                content: format!("Error writing chapter: {e}"),
+            });
 
-        let chapter: Chapter = structured_complete(
-            backend,
-            "You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.",
-            &directive,
-            &Chapter::grammar(),
-            0.8,
-            600,
-        ).unwrap_or_else(|e| Chapter {
-            title: chapter_label.into(),
-            content: format!("Error writing chapter: {e}"),
-        });
+            let md = format!("# {}\n\n{}", chapter.title, chapter.content);
 
-        let md = format!("# {}\n\n{}", chapter.title, chapter.content);
+            let filename = format!("03-CHAPTER_{}.md", chapter_num);
+            let path = ws.resolve(&filename).unwrap();
+            let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
 
-        let filename = format!("03-CHAPTER_{}.md", chapter_num);
-        let path = ws.resolve(&filename).unwrap();
-        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
-
-        HandlerResult {
-            task: task.clone(),
-            output: md,
-            files: HashMap::new(),
-            pass: true,
-        }
-    }));
+            HandlerResult {
+                task: task.clone(),
+                output: md,
+                files: HashMap::new(),
+                pass: true,
+            }
+        }),
+    );
 
     // ── validate/chapter ────────────────────────────────────────────
     agent.register("validate", "chapter", Box::new(|task, backend, ws| {
@@ -440,38 +479,45 @@ fn main() -> anyhow::Result<()> {
     }));
 
     // ── write/synopsis ──────────────────────────────────────────────
-    agent.register("write", "synopsis", Box::new(|task, backend, ws| {
-        let chapters = task.spec.get("chapters")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+    agent.register(
+        "write",
+        "synopsis",
+        Box::new(|task, backend, ws| {
+            let chapters = task
+                .spec
+                .get("chapters")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
 
-        let synopsis: Synopsis = structured_complete(
-            backend,
-            "You are a literary summarizer. Output valid JSON only.",
-            &format!(
+            let synopsis: Synopsis = structured_complete(
+                backend,
+                "You are a literary summarizer. Output valid JSON only.",
+                &format!(
                 "Write a one-paragraph synopsis of the complete story based on these chapters:\n\n\
                  {chapters}\n\n\
                  Output JSON matching the schema: summary (string, one paragraph, ~100 words)",
             ),
-            &Synopsis::grammar(),
-            0.5,
-            200,
-        ).unwrap_or_else(|e| Synopsis {
-            summary: format!("Error writing synopsis: {e}"),
-        });
+                &Synopsis::grammar(),
+                0.5,
+                200,
+            )
+            .unwrap_or_else(|e| Synopsis {
+                summary: format!("Error writing synopsis: {e}"),
+            });
 
-        let md = format!("Synopsis:\n\n{}", synopsis.summary);
+            let md = format!("Synopsis:\n\n{}", synopsis.summary);
 
-        let path = ws.resolve("05-SYNOPSIS.md").unwrap();
-        let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
+            let path = ws.resolve("05-SYNOPSIS.md").unwrap();
+            let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
 
-        HandlerResult {
-            task: task.clone(),
-            output: md,
-            files: HashMap::new(),
-            pass: true,
-        }
-    }));
+            HandlerResult {
+                task: task.clone(),
+                output: md,
+                files: HashMap::new(),
+                pass: true,
+            }
+        }),
+    );
 
     // ── publish/chapter ────────────────────────────────────────────
     agent.register("publish", "chapter", Box::new(|_task, _backend, ws| {
@@ -528,13 +574,11 @@ fn main() -> anyhow::Result<()> {
 
     // Build execution plan
     let plan = Plan {
-        tasks: vec![
-            Task {
-                r#type: "compose".into(),
-                domain: "outline".into(),
-                spec: serde_json::json!({"premise": prompt}),
-            },
-        ],
+        tasks: vec![Task {
+            r#type: "compose".into(),
+            domain: "outline".into(),
+            spec: serde_json::json!({"premise": prompt}),
+        }],
     };
 
     let ws = create_workspace(&prompt)?;
@@ -545,7 +589,8 @@ fn main() -> anyhow::Result<()> {
 
     // Phase 1: outline
     println!("📝 Outline...");
-    let outline_result = agent.dispatch_single(&backend, &plan.tasks[0], &ws)
+    let outline_result = agent
+        .dispatch_single(&backend, &plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("outline failed: {e}"))?;
     let outline_text = &outline_result.output;
 
@@ -558,7 +603,8 @@ fn main() -> anyhow::Result<()> {
             spec: serde_json::json!({"premise": prompt, "outline": outline_text}),
         }],
     };
-    let wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
+    let wiki_result = agent
+        .dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("wiki failed: {e}"))?;
 
     // Phase 3: chapters ×3
@@ -578,7 +624,8 @@ fn main() -> anyhow::Result<()> {
                 "previous": previous,
             }),
         };
-        let ch_result = agent.dispatch_single(&backend, &ch_task, &ws)
+        let ch_result = agent
+            .dispatch_single(&backend, &ch_task, &ws)
             .map_err(|e| anyhow::anyhow!("chapter {i} failed: {e}"))?;
         chapter_texts.push(ch_result.output.clone());
 
@@ -591,7 +638,8 @@ fn main() -> anyhow::Result<()> {
                 "text": ch_result.output,
             }),
         };
-        let _val_result = agent.dispatch_single(&backend, &val_task, &ws)
+        let _val_result = agent
+            .dispatch_single(&backend, &val_task, &ws)
             .map_err(|e| anyhow::anyhow!("validation {i} failed: {e}"))?;
 
         // Self-correction loop
@@ -610,7 +658,9 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     segment
                 };
-                segment.contains("Quality: fail") || segment.contains("Quality: needs-work") || segment.contains("needs-work")
+                segment.contains("Quality: fail")
+                    || segment.contains("Quality: needs-work")
+                    || segment.contains("needs-work")
             } else {
                 false
             };
@@ -630,12 +680,14 @@ fn main() -> anyhow::Result<()> {
                         "retry": true,
                     }),
                 };
-                let retry_result = agent.dispatch_single(&backend, &retry_task, &ws)
+                let retry_result = agent
+                    .dispatch_single(&backend, &retry_task, &ws)
                     .unwrap_or(ch_result);
 
                 let filename = format!("03-CHAPTER_{}.md", i);
                 let path = ws.resolve(&filename).unwrap();
-                let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &retry_result.output}));
+                let _ = WriteTool
+                    .call(json!({"path": path.to_string_lossy(), "content": &retry_result.output}));
                 chapter_texts[i - 1] = retry_result.output;
             }
         }
@@ -643,7 +695,8 @@ fn main() -> anyhow::Result<()> {
 
     // Phase 4: synopsis
     println!("📋 Synopsis...");
-    let all_chapters = chapter_texts.iter()
+    let all_chapters = chapter_texts
+        .iter()
         .enumerate()
         .map(|(i, t)| format!("## Chapter {}\n{}", i + 1, t))
         .collect::<Vec<_>>()
@@ -653,7 +706,8 @@ fn main() -> anyhow::Result<()> {
         domain: "synopsis".into(),
         spec: serde_json::json!({"chapters": all_chapters}),
     };
-    let _synopsis_result = agent.dispatch_single(&backend, &synopsis_task, &ws)
+    let _synopsis_result = agent
+        .dispatch_single(&backend, &synopsis_task, &ws)
         .map_err(|e| anyhow::anyhow!("synopsis failed: {e}"))?;
 
     // Phase 5: publish
@@ -663,14 +717,20 @@ fn main() -> anyhow::Result<()> {
         domain: "chapter".into(),
         spec: serde_json::json!({}),
     };
-    let publish_result = agent.dispatch_single(&backend, &publish_task, &ws)
+    let publish_result = agent
+        .dispatch_single(&backend, &publish_task, &ws)
         .map_err(|e| anyhow::anyhow!("publish failed: {e}"))?;
 
-    let outcome = agent.commit(plan.clone(), vec![
-        outline_result, wiki_result, publish_result,
-    ], &ws)?;
+    let outcome = agent.commit(
+        plan.clone(),
+        vec![outline_result, wiki_result, publish_result],
+        &ws,
+    )?;
 
-    println!("✅ Done! {} files in workspace:\n", outcome.workspace_files.len());
+    println!(
+        "✅ Done! {} files in workspace:\n",
+        outcome.workspace_files.len()
+    );
     let mut filenames: Vec<_> = outcome.workspace_files.keys().collect();
     filenames.sort();
     for fname in &filenames {
@@ -694,7 +754,13 @@ fn main() -> anyhow::Result<()> {
 
 fn sanitize_dirname(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }

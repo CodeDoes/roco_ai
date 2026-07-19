@@ -42,8 +42,7 @@ impl eframe::App for DemoApp {
             // Show the pacing widget
             if let Some(action) = roco_ui::PacingWidget::show(ui, &mut self.state) {
                 self.last_action = Some(action);
-                self.log
-                    .push(format!("Action: {:?}", action));
+                self.log.push(format!("Action: {:?}", action));
             }
 
             ui.separator();
@@ -52,8 +51,7 @@ impl eframe::App for DemoApp {
             ui.label("Compact version (toolbar style):");
             if let Some(action) = roco_ui::PacingWidget::show_compact(ui, &mut self.state) {
                 self.last_action = Some(action);
-                self.log
-                    .push(format!("Compact Action: {:?}", action));
+                self.log.push(format!("Compact Action: {:?}", action));
             }
 
             ui.separator();
@@ -65,9 +63,15 @@ impl eframe::App for DemoApp {
                 ui.label(format!("Progress: {:.1}%", self.state.progress * 100.0));
                 ui.label(format!("Current Task: {}", self.state.current_task));
                 ui.label(format!("Total Tasks: {}", self.state.total_tasks));
-                ui.label(format!("Waiting for Human: {}", self.state.waiting_for_human));
+                ui.label(format!(
+                    "Waiting for Human: {}",
+                    self.state.waiting_for_human
+                ));
                 ui.label(format!("Last Action: {:?}", self.last_action));
-                ui.label(format!("Revision Feedback: {:?}", self.state.revision_feedback));
+                ui.label(format!(
+                    "Revision Feedback: {:?}",
+                    self.state.revision_feedback
+                ));
 
                 ui.separator();
                 ui.label("Interaction Mode Mapping:");
@@ -88,8 +92,12 @@ impl eframe::App for DemoApp {
             ui.horizontal(|ui| {
                 if ui.button("Simulate Progress (+10%)").clicked() {
                     self.state.progress = (self.state.progress + 0.1).min(1.0);
-                    self.state.current_task = ((self.state.progress * self.state.total_tasks as f32) as usize).min(self.state.total_tasks).max(1);
-                    self.log.push(format!("Progress: {:.0}%", self.state.progress * 100.0));
+                    self.state.current_task =
+                        ((self.state.progress * self.state.total_tasks as f32) as usize)
+                            .min(self.state.total_tasks)
+                            .max(1);
+                    self.log
+                        .push(format!("Progress: {:.0}%", self.state.progress * 100.0));
                 }
 
                 if ui.button("Simulate Waiting for Human").clicked() {
@@ -98,10 +106,15 @@ impl eframe::App for DemoApp {
                 }
 
                 if ui.button("Simulate Task Complete").clicked() {
-                    self.state.current_task = (self.state.current_task + 1).min(self.state.total_tasks);
-                    self.state.progress = self.state.current_task as f32 / self.state.total_tasks as f32;
+                    self.state.current_task =
+                        (self.state.current_task + 1).min(self.state.total_tasks);
+                    self.state.progress =
+                        self.state.current_task as f32 / self.state.total_tasks as f32;
                     self.state.waiting_for_human = self.state.should_pause(self.state.current_task);
-                    self.log.push(format!("Task {} complete, waiting: {}", self.state.current_task, self.state.waiting_for_human));
+                    self.log.push(format!(
+                        "Task {} complete, waiting: {}",
+                        self.state.current_task, self.state.waiting_for_human
+                    ));
                 }
             });
         });

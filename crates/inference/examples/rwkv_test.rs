@@ -31,6 +31,9 @@ async fn main() -> anyhow::Result<()> {
     println!("prompting…");
     let resp = backend.complete(req).await?;
     println!("\n--- response ---\n{}", resp.text);
-    println!("\n--- usage: {} prompt, {} completion ---", resp.usage.prompt_tokens, resp.usage.completion_tokens);
+    println!(
+        "\n--- usage: {} prompt, {} completion ---",
+        resp.usage.prompt_tokens, resp.usage.completion_tokens
+    );
     Ok(())
 }

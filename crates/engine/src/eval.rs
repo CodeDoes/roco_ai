@@ -65,16 +65,20 @@ pub enum EvalCategory {
 
 impl std::fmt::Display for EvalCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Self::Smoke => "smoke",
-            Self::Instruction => "instruction",
-            Self::Coherence => "coherence",
-            Self::Repetition => "repetition",
-            Self::Throughput => "throughput",
-            Self::Format => "format",
-            Self::Context => "context",
-            Self::Fim => "fim",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Smoke => "smoke",
+                Self::Instruction => "instruction",
+                Self::Coherence => "coherence",
+                Self::Repetition => "repetition",
+                Self::Throughput => "throughput",
+                Self::Format => "format",
+                Self::Context => "context",
+                Self::Fim => "fim",
+            }
+        )
     }
 }
 
@@ -131,7 +135,11 @@ pub struct CategoryBreakdown {
 
 impl EvalReport {
     pub fn summary(&self) -> String {
-        let pct = if self.total > 0 { (self.passed as f64 / self.total as f64) * 100.0 } else { 0.0 };
+        let pct = if self.total > 0 {
+            (self.passed as f64 / self.total as f64) * 100.0
+        } else {
+            0.0
+        };
         format!(
             "Eval suite '{suite}': {passed}/{total} passed ({pct:.0}%) on backend '{backend}' in {ms}ms",
             suite = self.suite_name, passed = self.passed, total = self.total,
@@ -159,7 +167,10 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let full_input = if case.system.is_empty() {
         format!("User: {}\n\nAssistant:", case.prompt)
     } else {
-        format!("System: {}\n\nUser: {}\n\nAssistant:", case.system, case.prompt)
+        format!(
+            "System: {}\n\nUser: {}\n\nAssistant:",
+            case.system, case.prompt
+        )
     };
 
     let on_token: Option<Box<dyn Fn(&str) + Send + Sync>> = match trace_path {
@@ -170,14 +181,18 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
             let header = format!("--- {} ---\n{}", case.name, full_input);
             use std::io::Write;
             let _ = std::fs::OpenOptions::new()
-                .create(true).append(true).open(path)
+                .create(true)
+                .append(true)
+                .open(path)
                 .and_then(|mut f| f.write_all(header.as_bytes()));
 
             let dest = path.to_path_buf();
             Some(Box::new(move |word: &str| {
                 use std::io::Write;
                 if let Ok(mut f) = std::fs::OpenOptions::new()
-                    .create(true).append(true).open(&dest)
+                    .create(true)
+                    .append(true)
+                    .open(&dest)
                 {
                     let _ = f.write_all(word.as_bytes());
                     let _ = f.flush();
@@ -246,12 +261,22 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                     } else {
                         let trunc = |s: &str| {
                             let s = s.trim();
-                            if s.chars().count() > 120 { format!("{}…", s.chars().take(120).collect::<String>()) } else { s.to_string() }
+                            if s.chars().count() > 120 {
+                                format!("{}…", s.chars().take(120).collect::<String>())
+                            } else {
+                                s.to_string()
+                            }
                         };
-                        format!("\n✗ MISMATCH\n  actual: {}\n  oracle: {}\n", trunc(&output), trunc(oracle))
+                        format!(
+                            "\n✗ MISMATCH\n  actual: {}\n  oracle: {}\n",
+                            trunc(&output),
+                            trunc(oracle)
+                        )
                     };
                     let _ = std::fs::OpenOptions::new()
-                        .create(true).append(true).open(trace_path)
+                        .create(true)
+                        .append(true)
+                        .open(trace_path)
                         .and_then(|mut f| f.write_all(note.as_bytes()));
                 }
             }
@@ -259,69 +284,130 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
             // Checks
             let non_empty = !output.trim().is_empty();
             checks.push(CheckResult {
-                name: "non_empty".into(), passed: non_empty,
-                detail: if non_empty { format!("output length: {} chars", output.len()) } else { "output was empty".into() },
+                name: "non_empty".into(),
+                passed: non_empty,
+                detail: if non_empty {
+                    format!("output length: {} chars", output.len())
+                } else {
+                    "output was empty".into()
+                },
             });
 
             let min_len_ok = output.len() >= case.min_output_chars;
             checks.push(CheckResult {
-                name: "min_output_length".into(), passed: min_len_ok,
-                detail: if min_len_ok { format!("{} >= {} chars", output.len(), case.min_output_chars) } else { format!("{} < {} chars", output.len(), case.min_output_chars) },
+                name: "min_output_length".into(),
+                passed: min_len_ok,
+                detail: if min_len_ok {
+                    format!("{} >= {} chars", output.len(), case.min_output_chars)
+                } else {
+                    format!("{} < {} chars", output.len(), case.min_output_chars)
+                },
             });
 
             for hint in &case.expected_hints {
                 let found = output.to_lowercase().contains(&hint.to_lowercase());
                 checks.push(CheckResult {
-                    name: format!("hint: {hint}"), passed: found,
-                    detail: if found { format!("found '{hint}' in output") } else { format!("expected '{hint}' not found in output") },
+                    name: format!("hint: {hint}"),
+                    passed: found,
+                    detail: if found {
+                        format!("found '{hint}' in output")
+                    } else {
+                        format!("expected '{hint}' not found in output")
+                    },
                 });
             }
 
             for bad in &case.forbidden_strings {
                 let found = output.contains(bad);
                 checks.push(CheckResult {
-                    name: format!("forbidden: {bad}"), passed: !found,
-                    detail: if found { format!("found forbidden string '{bad}' in output") } else { format!("'{bad}' not found (good)") },
+                    name: format!("forbidden: {bad}"),
+                    passed: !found,
+                    detail: if found {
+                        format!("found forbidden string '{bad}' in output")
+                    } else {
+                        format!("'{bad}' not found (good)")
+                    },
                 });
             }
 
-            let sentences: Vec<&str> = output.split(|c: char| c == '.' || c == '!' || c == '?')
-                .map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            let sentences: Vec<&str> = output
+                .split(|c: char| c == '.' || c == '!' || c == '?')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
             let repeats = if sentences.len() >= 4 {
                 let unique: HashSet<&str> = sentences.iter().copied().collect();
                 sentences.len() - unique.len()
-            } else { 0 };
+            } else {
+                0
+            };
             checks.push(CheckResult {
-                name: "repetition_check".into(), passed: repeats <= 1,
-                detail: if repeats <= 1 { format!("{} repeated sentences out of {}", repeats, sentences.len()) } else { format!("{} repeated sentences out of {} — may be looping", repeats, sentences.len()) },
+                name: "repetition_check".into(),
+                passed: repeats <= 1,
+                detail: if repeats <= 1 {
+                    format!("{} repeated sentences out of {}", repeats, sentences.len())
+                } else {
+                    format!(
+                        "{} repeated sentences out of {} — may be looping",
+                        repeats,
+                        sentences.len()
+                    )
+                },
             });
 
             if usage.completion_tokens >= 10 {
-                let tp_ok = if latency_ms == 0 { true } else { tokens_per_sec >= 1.0 };
+                let tp_ok = if latency_ms == 0 {
+                    true
+                } else {
+                    tokens_per_sec >= 1.0
+                };
                 checks.push(CheckResult {
-                    name: "throughput".into(), passed: tp_ok,
+                    name: "throughput".into(),
+                    passed: tp_ok,
                     detail: if tp_ok { "ok" } else { "too slow" }.into(),
                 });
             }
 
             let passed = checks.iter().all(|c| c.passed);
-            info!(eval = case.name, passed, latency_ms, tokens = usage.completion_tokens, "eval result");
+            info!(
+                eval = case.name,
+                passed,
+                latency_ms,
+                tokens = usage.completion_tokens,
+                "eval result"
+            );
 
             EvalResult {
-                name: case.name.clone(), description: case.description.clone(),
-                category: case.category, passed, input: full_input,
-                output, latency_ms, token_usage: usage, tokens_per_sec,
-                checks, errors, oracle: case.oracle.clone(),
+                name: case.name.clone(),
+                description: case.description.clone(),
+                category: case.category,
+                passed,
+                input: full_input,
+                output,
+                latency_ms,
+                token_usage: usage,
+                tokens_per_sec,
+                checks,
+                errors,
+                oracle: case.oracle.clone(),
             }
         }
         Err(e) => {
             errors.push(format!("{e}"));
             info!(eval = case.name, error = %e, "eval failed with error");
             EvalResult {
-                name: case.name.clone(), description: case.description.clone(),
-                category: case.category, passed: false, input: full_input,
-                output: String::new(), latency_ms, token_usage: TokenUsage::default(),
-                tokens_per_sec: 0.0, checks, errors, oracle: case.oracle.clone(),
+                name: case.name.clone(),
+                description: case.description.clone(),
+                category: case.category,
+                passed: false,
+                input: full_input,
+                output: String::new(),
+                latency_ms,
+                token_usage: TokenUsage::default(),
+                tokens_per_sec: 0.0,
+                checks,
+                errors,
+                oracle: case.oracle.clone(),
             }
         }
     }
@@ -340,7 +426,10 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
 
     for case in cases {
         if let Some(filter) = filter {
-            if !case.name.contains(filter) && !case.description.contains(filter) && case.category.to_string() != filter {
+            if !case.name.contains(filter)
+                && !case.description.contains(filter)
+                && case.category.to_string() != filter
+            {
                 continue;
             }
         }
@@ -358,16 +447,28 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
         let cat = r.category.to_string();
         let entry = cat_map.entry(cat).or_insert((0, 0));
         entry.0 += 1;
-        if r.passed { entry.1 += 1; }
+        if r.passed {
+            entry.1 += 1;
+        }
     }
     let category_breakdown: Vec<CategoryBreakdown> = cat_map
         .into_iter()
-        .map(|(category, (total, passed))| CategoryBreakdown { category, total, passed })
+        .map(|(category, (total, passed))| CategoryBreakdown {
+            category,
+            total,
+            passed,
+        })
         .collect();
 
     EvalReport {
-        suite_name: suite_name.to_string(), backend_name: backend.name().to_string(),
-        total, passed, failed, total_latency_ms, results, category_breakdown,
+        suite_name: suite_name.to_string(),
+        backend_name: backend.name().to_string(),
+        total,
+        passed,
+        failed,
+        total_latency_ms,
+        results,
+        category_breakdown,
     }
 }
 
@@ -418,9 +519,7 @@ pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
 /// The system instruction is included only on the first user turn (the actor
 /// drops the `system` field for session/preserve_state calls), so the task
 /// persona and the few-shot both live in the recurrent state.
-pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(
-    backend: &B,
-) -> Result<(), String> {
+pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(backend: &B) -> Result<(), String> {
     // Build full multi-shot prompt in one pass. We assemble the few-shot
     // as a single user/assistant transcript so the recurrent state carries
     // the persona + format in one shot, instead of a 6-call replay that
@@ -452,16 +551,29 @@ pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(
 }
 
 pub fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) {
-    let parent = trace_path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let stem = trace_path.file_stem()
-        .and_then(|s| s.to_str()).unwrap_or("latest")
-        .strip_suffix("_trace").unwrap_or("latest");
+    let parent = trace_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let stem = trace_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("latest")
+        .strip_suffix("_trace")
+        .unwrap_or("latest");
 
     let mismatches_path = parent.join(format!("{stem}.mismatches.txt"));
     let oracle_path = parent.join(format!("{stem}.oracle.json"));
 
-    let mismatches: Vec<&EvalResult> = report.results.iter()
-        .filter(|r| if let Some(ref oracle) = r.oracle { !r.output.contains(oracle.as_str()) } else { false })
+    let mismatches: Vec<&EvalResult> = report
+        .results
+        .iter()
+        .filter(|r| {
+            if let Some(ref oracle) = r.oracle {
+                !r.output.contains(oracle.as_str())
+            } else {
+                false
+            }
+        })
         .collect();
 
     let mut body = String::new();
@@ -487,11 +599,17 @@ pub fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) {
             oracle_map.insert(r.name.clone(), serde_json::Value::String(oracle.clone()));
         }
     }
-    let _ = std::fs::write(&oracle_path, serde_json::to_string_pretty(&oracle_map).unwrap_or_default());
+    let _ = std::fs::write(
+        &oracle_path,
+        serde_json::to_string_pretty(&oracle_map).unwrap_or_default(),
+    );
     println!("Oracles:          {}", oracle_path.display());
 }
 
-pub fn write_report(path: impl AsRef<std::path::Path>, report: &EvalReport) -> Result<(), std::io::Error> {
+pub fn write_report(
+    path: impl AsRef<std::path::Path>,
+    report: &EvalReport,
+) -> Result<(), std::io::Error> {
     let json = serde_json::to_string_pretty(report)?;
     if let Some(parent) = path.as_ref().parent() {
         std::fs::create_dir_all(parent)?;
@@ -499,9 +617,14 @@ pub fn write_report(path: impl AsRef<std::path::Path>, report: &EvalReport) -> R
     std::fs::write(path, json)
 }
 
-pub fn write_mismatches(report: &EvalReport, path: impl AsRef<std::path::Path>) -> Result<(), std::io::Error> {
+pub fn write_mismatches(
+    report: &EvalReport,
+    path: impl AsRef<std::path::Path>,
+) -> Result<(), std::io::Error> {
     let path = path.as_ref();
-    let mismatches: Vec<&EvalResult> = report.results.iter()
+    let mismatches: Vec<&EvalResult> = report
+        .results
+        .iter()
         .filter(|r| !r.passed || r.errors.iter().any(|e| e.contains("oracle")))
         .collect();
 
@@ -531,9 +654,16 @@ pub fn print_report(report: &EvalReport) {
     println!("═══════════════════════════════════════════════════");
     println!("  Eval Report: {}", report.suite_name);
     println!("  Backend:      {}", report.backend_name);
-    println!("  Results:      {}/{} passed ({:.0}%)",
-        report.passed, report.total,
-        if report.total > 0 { report.passed as f64 / report.total as f64 * 100.0 } else { 0.0 });
+    println!(
+        "  Results:      {}/{} passed ({:.0}%)",
+        report.passed,
+        report.total,
+        if report.total > 0 {
+            report.passed as f64 / report.total as f64 * 100.0
+        } else {
+            0.0
+        }
+    );
     println!("  Total time:   {}ms", report.total_latency_ms);
     println!("═══════════════════════════════════════════════════");
     if !report.category_breakdown.is_empty() {
@@ -548,17 +678,23 @@ pub fn print_report(report: &EvalReport) {
         println!("  {} {} ({})", symbol, result.name, result.category);
         if !result.passed {
             for check in &result.checks {
-                if !check.passed { println!("         ↳ {}: {}", check.name, check.detail); }
+                if !check.passed {
+                    println!("         ↳ {}: {}", check.name, check.detail);
+                }
             }
-            for err in &result.errors { println!("         ↳ error: {}", err); }
+            for err in &result.errors {
+                println!("         ↳ error: {}", err);
+            }
         }
         if result.latency_ms > 0 {
             print!("         latency: {}ms", result.latency_ms);
             if result.token_usage.completion_tokens > 0 {
-                print!(", {} tok/s ({}+{} tokens)",
+                print!(
+                    ", {} tok/s ({}+{} tokens)",
                     result.tokens_per_sec.round(),
                     result.token_usage.prompt_tokens,
-                    result.token_usage.completion_tokens);
+                    result.token_usage.completion_tokens
+                );
             }
             println!();
         }

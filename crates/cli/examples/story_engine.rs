@@ -25,8 +25,8 @@
 
 use std::io::{self, Write};
 
+use roco_agent::interaction::{HumanAction, InteractionMode};
 use roco_agent::story_engine::{StoryConfig, StoryEngine};
-use roco_agent::interaction::{InteractionMode, HumanAction};
 use roco_inference::RwkvBackend;
 
 fn main() -> anyhow::Result<()> {
@@ -94,7 +94,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     if premise.is_empty() {
-        premise = "Write a short story about a lighthouse keeper who discovers a message in a bottle.".to_string();
+        premise =
+            "Write a short story about a lighthouse keeper who discovers a message in a bottle."
+                .to_string();
     }
 
     println!("Loading model...");
@@ -108,7 +110,10 @@ fn main() -> anyhow::Result<()> {
     // Phase 1: Generate outline
     println!("📝 Generating outline...");
     engine.generate_outline(&backend, &premise)?;
-    println!("✅ Outline generated ({} chapters)\n", engine.outline().len());
+    println!(
+        "✅ Outline generated ({} chapters)\n",
+        engine.outline().len()
+    );
 
     // Print outline
     for ch in engine.outline() {
@@ -122,7 +127,10 @@ fn main() -> anyhow::Result<()> {
         // Check if we need more chapters in the outline
         if chapter_num >= engine.outline().len() {
             if config.max_chapters > 0 && chapter_num >= config.max_chapters {
-                println!("\n🎯 Reached target chapter count ({})", config.max_chapters);
+                println!(
+                    "\n🎯 Reached target chapter count ({})",
+                    config.max_chapters
+                );
                 break;
             }
 
@@ -132,14 +140,21 @@ fn main() -> anyhow::Result<()> {
                 println!("\n🎯 Story arc complete — no more chapters needed");
                 break;
             }
-            println!("✅ Outline expanded ({} chapters total)", engine.outline().len());
+            println!(
+                "✅ Outline expanded ({} chapters total)",
+                engine.outline().len()
+            );
         }
 
         // Generate next chapter
         chapter_num += 1;
         println!("\n✍️  Generating Chapter {}...", chapter_num);
         let chapter = engine.generate_chapter(&backend)?;
-        println!("✅ Chapter {} generated ({} chars)\n", chapter_num, chapter.len());
+        println!(
+            "✅ Chapter {} generated ({} chars)\n",
+            chapter_num,
+            chapter.len()
+        );
 
         // Show preview
         let preview: String = chapter.chars().take(200).collect();
@@ -173,7 +188,8 @@ fn main() -> anyhow::Result<()> {
                         // Auto-revise if not interactive
                         if !config.interactive {
                             println!("\n🔄 Auto-revising...");
-                            let revised = engine.revise_chapter(&backend, chapter_num, &critique)?;
+                            let revised =
+                                engine.revise_chapter(&backend, chapter_num, &critique)?;
                             println!("✅ Chapter revised ({} chars)\n", revised.len());
                         }
                     }
@@ -205,7 +221,8 @@ fn main() -> anyhow::Result<()> {
                             println!("📊 Current quality: {:.1}/10", critique.scores.overall);
                             if critique.should_revise {
                                 println!("\n🔄 Revising based on critique...");
-                                let revised = engine.revise_chapter(&backend, chapter_num, &critique)?;
+                                let revised =
+                                    engine.revise_chapter(&backend, chapter_num, &critique)?;
                                 println!("✅ Chapter revised ({} chars)\n", revised.len());
                             } else {
                                 println!("✅ Chapter quality is acceptable\n");
@@ -254,7 +271,10 @@ fn main() -> anyhow::Result<()> {
         if !config.interactive {
             // Check if we should continue
             if config.max_chapters > 0 && chapter_num >= config.max_chapters {
-                println!("\n🎯 Reached target chapter count ({})", config.max_chapters);
+                println!(
+                    "\n🎯 Reached target chapter count ({})",
+                    config.max_chapters
+                );
                 break;
             }
         }

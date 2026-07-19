@@ -11,8 +11,8 @@
 
 use std::io::{self, Write};
 
-use roco_agent::story_engine::{StoryConfig, StoryEngine};
 use roco_agent::quality::QualityAnalyzer;
+use roco_agent::story_engine::{StoryConfig, StoryEngine};
 use roco_inference::RwkvBackend;
 
 fn main() -> anyhow::Result<()> {
@@ -145,7 +145,10 @@ fn main() -> anyhow::Result<()> {
         chapter_num += 1;
         let chapter_info = &engine.outline()[chapter_num - 1];
 
-        println!("✍️  Writing Chapter {}: {}", chapter_num, chapter_info.title);
+        println!(
+            "✍️  Writing Chapter {}: {}",
+            chapter_num, chapter_info.title
+        );
         println!("   Summary: {}", chapter_info.summary);
         println!();
 
@@ -186,7 +189,8 @@ fn main() -> anyhow::Result<()> {
                                 println!("  {}. {}", i + 1, rev);
                             }
                             println!("\n🔄 Revising...");
-                            let revised = engine.revise_chapter(&backend, chapter_num, &critique)?;
+                            let revised =
+                                engine.revise_chapter(&backend, chapter_num, &critique)?;
                             println!("✅ Chapter revised ({} chars)\n", revised.len());
                         } else {
                             println!("✅ The chapter looks good!\n");
@@ -257,7 +261,10 @@ fn main() -> anyhow::Result<()> {
     println!("\n✨ Thank you for writing with me!");
     println!("   Your story: {}/06-STORY.md", ws_path.display());
     println!("\n   To continue later:");
-    println!("   cargo run --release --example story_full -p roco-cli --resume {}", ws_path.display());
+    println!(
+        "   cargo run --release --example story_full -p roco-cli --resume {}",
+        ws_path.display()
+    );
 
     Ok(())
 }

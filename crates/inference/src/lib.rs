@@ -5,11 +5,11 @@
 //! implementing [`roco_engine::ModelBackend`] and proxy-guided quantization
 //! analysis.
 
-pub mod backend;
 pub mod actor;
+pub mod backend;
 pub mod config;
-pub mod sampling;
 pub mod quant;
+pub mod sampling;
 
 pub use backend::RwkvBackend;
 pub use config::default_model_path;

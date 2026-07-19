@@ -1,6 +1,3 @@
-use std::sync::Arc;
-use std::time::Duration;
-use roco_engine::{CompletionRequest, ModelBackend};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -14,6 +11,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Terminal,
 };
+use roco_engine::{CompletionRequest, ModelBackend};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::error;
 
@@ -38,7 +38,8 @@ impl TuiApp {
         execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
             .map_err(|e| format!("failed to setup terminal: {e}"))?;
         let backend_rt = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend_rt).map_err(|e| format!("failed to create terminal: {e}"))?;
+        let mut terminal =
+            Terminal::new(backend_rt).map_err(|e| format!("failed to create terminal: {e}"))?;
 
         // Run application
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -61,7 +62,10 @@ impl TuiApp {
         run_result.map_err(|e| format!("TUI run error: {e}"))
     }
 
-    async fn run_loop<B: ratatui::backend::Backend>(&self, terminal: &mut Terminal<B>) -> Result<(), String> {
+    async fn run_loop<B: ratatui::backend::Backend>(
+        &self,
+        terminal: &mut Terminal<B>,
+    ) -> Result<(), String> {
         let mut messages: Vec<(String, String)> = Vec::new();
         let mut input = String::new();
         let mut generating = false;
@@ -69,59 +73,70 @@ impl TuiApp {
         // Channel to receive tokens in the main loop
         let (token_tx, mut token_rx) = mpsc::channel::<TuiEvent>(100);
 
-        messages.push(("system".to_string(), "Welcome to RoCo TUI Chat!".to_string()));
+        messages.push((
+            "system".to_string(),
+            "Welcome to RoCo TUI Chat!".to_string(),
+        ));
 
         loop {
             // 1. Draw UI
-            terminal.draw(|f| {
-                let chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(1)
-                    .constraints(
-                        [
-                            Constraint::Min(5),    // Messages box
-                            Constraint::Length(3), // Input box
-                            Constraint::Length(1), // Help status bar
-                        ]
-                        .as_ref(),
-                    )
-                    .split(f.size());
+            terminal
+                .draw(|f| {
+                    let chunks = Layout::default()
+                        .direction(Direction::Vertical)
+                        .margin(1)
+                        .constraints(
+                            [
+                                Constraint::Min(5),    // Messages box
+                                Constraint::Length(3), // Input box
+                                Constraint::Length(1), // Help status bar
+                            ]
+                            .as_ref(),
+                        )
+                        .split(f.size());
 
-                // Create Messages Paragraph
-                let mut text = Vec::new();
-                for (role, content) in &messages {
-                    let color = match role.as_str() {
-                        "user" => Color::Blue,
-                        "assistant" => Color::Magenta,
-                        "system" => Color::Yellow,
-                        _ => Color::White,
+                    // Create Messages Paragraph
+                    let mut text = Vec::new();
+                    for (role, content) in &messages {
+                        let color = match role.as_str() {
+                            "user" => Color::Blue,
+                            "assistant" => Color::Magenta,
+                            "system" => Color::Yellow,
+                            _ => Color::White,
+                        };
+                        text.push(Line::from(vec![
+                            Span::styled(
+                                format!("{}: ", role.to_uppercase()),
+                                Style::default().fg(color).add_modifier(Modifier::BOLD),
+                            ),
+                            Span::raw(content),
+                        ]));
+                    }
+
+                    let messages_paragraph = Paragraph::new(text)
+                        .block(Block::default().borders(Borders::ALL).title("Conversation"))
+                        .wrap(Wrap { trim: true });
+                    f.render_widget(messages_paragraph, chunks[0]);
+
+                    // Create Input Box
+                    let input_paragraph = Paragraph::new(input.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Input Message"),
+                    );
+                    f.render_widget(input_paragraph, chunks[1]);
+
+                    // Help status
+                    let status_text = if generating {
+                        "Generating response..."
+                    } else {
+                        "ESC: Quit | Enter: Send message"
                     };
-                    text.push(Line::from(vec![
-                        Span::styled(format!("{}: ", role.to_uppercase()), Style::default().fg(color).add_modifier(Modifier::BOLD)),
-                        Span::raw(content),
-                    ]));
-                }
-
-                let messages_paragraph = Paragraph::new(text)
-                    .block(Block::default().borders(Borders::ALL).title("Conversation"))
-                    .wrap(Wrap { trim: true });
-                f.render_widget(messages_paragraph, chunks[0]);
-
-                // Create Input Box
-                let input_paragraph = Paragraph::new(input.as_str())
-                    .block(Block::default().borders(Borders::ALL).title("Input Message"));
-                f.render_widget(input_paragraph, chunks[1]);
-
-                // Help status
-                let status_text = if generating {
-                    "Generating response..."
-                } else {
-                    "ESC: Quit | Enter: Send message"
-                };
-                let status_paragraph = Paragraph::new(status_text)
-                    .style(Style::default().fg(Color::DarkGray));
-                f.render_widget(status_paragraph, chunks[2]);
-            }).map_err(|e| format!("failed to draw TUI: {e}"))?;
+                    let status_paragraph =
+                        Paragraph::new(status_text).style(Style::default().fg(Color::DarkGray));
+                    f.render_widget(status_paragraph, chunks[2]);
+                })
+                .map_err(|e| format!("failed to draw TUI: {e}"))?;
 
             // 2. Poll Event/Tokens
             tokio::select! {

@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn schemas_are_valid_json_schema() {
         use jsonschema::JSONSchema;
-        
+
         // Test primitive schemas with valid data
         let string_schema = Schema::string();
         let compiled = JSONSchema::compile(string_schema.to_json()).unwrap();
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn nested_schemas_are_valid_json_schema() {
         use jsonschema::JSONSchema;
-        
+
         let schema = Schema::object()
             .prop("tags", Schema::array(Schema::string()))
             .prop("count", Schema::integer())
@@ -302,14 +302,14 @@ mod tests {
 
         let json = schema.to_json();
         let compiled = JSONSchema::compile(json).expect("Schema should be valid");
-        
+
         // Test that valid data validates
         assert!(compiled.is_valid(&json!({
             "tags": ["a", "b"],
             "count": 42,
             "active": true
         })));
-        
+
         // Test that invalid data fails validation
         assert!(!compiled.is_valid(&json!({
             "tags": "not an array",

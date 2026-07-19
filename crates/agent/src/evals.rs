@@ -70,28 +70,40 @@ impl StoryEval {
             .prop("prose_quality", Schema::number())
             .prop("character_consistency", Schema::number())
             .prop("pacing", Schema::number())
-            .prop("findings", Schema::array(
-                Schema::object()
-                    .prop("category", Schema::enum_values(vec![
-                        serde_json::json!("arc"),
-                        serde_json::json!("continuity"),
-                        serde_json::json!("prose"),
-                        serde_json::json!("character"),
-                        serde_json::json!("pacing"),
-                    ]))
-                    .prop("finding_type", Schema::enum_values(vec![
-                        serde_json::json!("strength"),
-                        serde_json::json!("weakness"),
-                        serde_json::json!("issue"),
-                    ]))
-                    .prop("description", Schema::string())
-                    .prop("severity", Schema::enum_values(vec![
-                        serde_json::json!("low"),
-                        serde_json::json!("medium"),
-                        serde_json::json!("high"),
-                    ]))
-                    .build()
-            ))
+            .prop(
+                "findings",
+                Schema::array(
+                    Schema::object()
+                        .prop(
+                            "category",
+                            Schema::enum_values(vec![
+                                serde_json::json!("arc"),
+                                serde_json::json!("continuity"),
+                                serde_json::json!("prose"),
+                                serde_json::json!("character"),
+                                serde_json::json!("pacing"),
+                            ]),
+                        )
+                        .prop(
+                            "finding_type",
+                            Schema::enum_values(vec![
+                                serde_json::json!("strength"),
+                                serde_json::json!("weakness"),
+                                serde_json::json!("issue"),
+                            ]),
+                        )
+                        .prop("description", Schema::string())
+                        .prop(
+                            "severity",
+                            Schema::enum_values(vec![
+                                serde_json::json!("low"),
+                                serde_json::json!("medium"),
+                                serde_json::json!("high"),
+                            ]),
+                        )
+                        .build(),
+                ),
+            )
             .prop("summary", Schema::string())
             .prop("recommend_revision", Schema::boolean())
             .prop("revision_priorities", Schema::array(Schema::string()))
@@ -99,20 +111,21 @@ impl StoryEval {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("StoryEval schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("StoryEval schema is valid")
     }
 
     /// Get high-severity issues
     pub fn critical_issues(&self) -> Vec<&EvalFinding> {
-        self.findings.iter()
+        self.findings
+            .iter()
             .filter(|f| f.finding_type == "issue" && f.severity.as_deref() == Some("high"))
             .collect()
     }
 
     /// Get strengths
     pub fn strengths(&self) -> Vec<&EvalFinding> {
-        self.findings.iter()
+        self.findings
+            .iter()
             .filter(|f| f.finding_type == "strength")
             .collect()
     }
@@ -152,7 +165,8 @@ impl StoryEvaluator {
         outline: &str,
         plot_context: &str,
     ) -> Result<StoryEval, String> {
-        let story_text: String = chapters.iter()
+        let story_text: String = chapters
+            .iter()
             .enumerate()
             .map(|(i, ch)| format!("## Chapter {}\n{}", i + 1, ch))
             .collect::<Vec<_>>()
@@ -186,7 +200,8 @@ impl StoryEvaluator {
         previous_chapters: &[String],
         plot_context: &str,
     ) -> Result<StoryEval, String> {
-        let previous_text: String = previous_chapters.iter()
+        let previous_text: String = previous_chapters
+            .iter()
             .enumerate()
             .map(|(i, ch)| format!("## Chapter {} (previous)\n{}", i + 1, ch))
             .collect::<Vec<_>>()
@@ -232,7 +247,8 @@ impl StoryEvaluator {
          - 'The story is good' (too vague)\n\
          - 'I liked it' (not actionable)\n\
          - 'Needs work' (not specific)\n\n\
-         Be specific, actionable, and thorough. Output valid JSON only.".to_string()
+         Be specific, actionable, and thorough. Output valid JSON only."
+            .to_string()
     }
 }
 
@@ -325,8 +341,7 @@ where
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    serde_json::from_str::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 #[cfg(test)]

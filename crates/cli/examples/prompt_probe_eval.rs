@@ -75,7 +75,10 @@ async fn main() -> anyhow::Result<()> {
         let (o, c, unc) = think_stats(&text);
         println!("--- {} ---", p.label);
         println!("  opens=<think>={o} closes=</think>={c} unclosed={unc}");
-        println!("  continuation: {}\n", text.trim().chars().take(220).collect::<String>());
+        println!(
+            "  continuation: {}\n",
+            text.trim().chars().take(220).collect::<String>()
+        );
     }
 
     // Phase B — bake a NO-THINK state-tune (correct roles), then re-probe.
@@ -105,7 +108,10 @@ async fn main() -> anyhow::Result<()> {
         let (o, c, unc) = think_stats(&text);
         println!("--- {} [notune] ---", p.label);
         println!("  opens=<think>={o} closes=</think>={c} unclosed={unc}");
-        println!("  continuation: {}\n", text.trim().chars().take(220).collect::<String>());
+        println!(
+            "  continuation: {}\n",
+            text.trim().chars().take(220).collect::<String>()
+        );
     }
 
     // Phase C — NO_THINK_PREFILL on a real story prompt (grammar off). The
@@ -121,7 +127,10 @@ async fn main() -> anyhow::Result<()> {
     let (o, c, unc) = think_stats(&text);
     println!("--- {} ---", story_prefill_probe.label);
     println!("  opens=<think>={o} closes=</think>={c} unclosed={unc}");
-    println!("  continuation: {}\n", text.trim().chars().take(220).collect::<String>());
+    println!(
+        "  continuation: {}\n",
+        text.trim().chars().take(220).collect::<String>()
+    );
 
     println!("=== Summary ===");
     println!("* Bare Assistant: start defaults to <think> (contamination source).");

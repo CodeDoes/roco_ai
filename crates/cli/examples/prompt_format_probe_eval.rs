@@ -41,9 +41,8 @@ fn min_decay_stats(bytes: &[u8]) -> Option<(f32, f32)> {
     if bytes.len() < 16 || (bytes.len() - 16) % 4 != 0 {
         return None;
     }
-    let dims: [u32; 4] = std::array::from_fn(|i| {
-        u32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap())
-    });
+    let dims: [u32; 4] =
+        std::array::from_fn(|i| u32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap()));
     let tail = &bytes[16..];
     let n = tail.len() / 4;
     let data: Vec<f32> = (0..n)
@@ -155,11 +154,17 @@ async fn main() -> anyhow::Result<()> {
         println!("  think: opens={o} closes={c} unclosed={unc}");
         if let Some(s) = &state {
             if let Some((norm, ent)) = min_decay_stats(s) {
-                println!("  min-decay state: norm={norm:.1} entropy={ent:.2} bits ({} bytes)", s.len());
+                println!(
+                    "  min-decay state: norm={norm:.1} entropy={ent:.2} bits ({} bytes)",
+                    s.len()
+                );
             }
         }
         // Newline-mask probes: count how many lines carry the prefix.
-        if p.prefill.map(|p| p.starts_with('▸') || p.starts_with("> ")).unwrap_or(false) {
+        if p.prefill
+            .map(|p| p.starts_with('▸') || p.starts_with("> "))
+            .unwrap_or(false)
+        {
             let prefix = p.prefill.unwrap();
             let lines = text.lines().count();
             let with_prefix = text.lines().filter(|l| l.starts_with(prefix)).count();
@@ -170,7 +175,9 @@ async fn main() -> anyhow::Result<()> {
 
     println!("=== Takeaways ===");
     println!("* Native format is the only one the model follows cleanly; alt formats degrade.");
-    println!("* NO_THINK_PREFILL suppresses <think> regardless of format (token-level state effect).");
+    println!(
+        "* NO_THINK_PREFILL suppresses <think> regardless of format (token-level state effect)."
+    );
     println!("* A 'no think' System instruction backfires; 'think step by step' encourages it.");
     println!("* A line-prefix prefill can coax line-structured output (see line-prefix counts).");
     println!("* min-decay state norm/entropy varies with format & system — monitorable.");

@@ -42,7 +42,14 @@ impl StoryGrammar {
     /// All known story grammars.
     pub fn all() -> &'static [StoryGrammar] {
         use StoryGrammar::*;
-        &[ChapterProse, Outline, Wiki, ValidationReport, Synopsis, FillInMiddle]
+        &[
+            ChapterProse,
+            Outline,
+            Wiki,
+            ValidationReport,
+            Synopsis,
+            FillInMiddle,
+        ]
     }
 
     /// Stable name used for the on-disk `.bnf` file and registry lookup.
@@ -76,7 +83,10 @@ impl StoryGrammar {
 
     /// Look up a grammar by its stable name.
     pub fn from_name(name: &str) -> Option<Self> {
-        StoryGrammar::all().iter().copied().find(|g| g.name() == name)
+        StoryGrammar::all()
+            .iter()
+            .copied()
+            .find(|g| g.name() == name)
     }
 }
 
@@ -221,27 +231,26 @@ mod tests {
 
     mod random_walk_fim {
         use super::*;
+        use crate::kbnf_compat;
+        use ahash::AHashMap;
+        use kbnf::engine_like::EngineLike;
+        use kbnf::{Config, Engine, Token, Vocabulary};
         use rand::seq::SliceRandom;
         use rand::thread_rng;
-        use kbnf::{Vocabulary, Token, Config, Engine};
-        use kbnf::engine_like::EngineLike;
-        use ahash::AHashMap;
-        use crate::kbnf_compat;
 
         /// Multichar English-ish vocabulary (simulates a real tokenizer).
         /// Must include single-letter tokens so the `letter` char-class
         /// rule can match, plus the space and sentence terminators.
         fn fim_vocab() -> Vec<&'static str> {
             vec![
-                "", // 0: empty sentinel (kbnf skips empty tokens)
+                "",  // 0: empty sentinel (kbnf skips empty tokens)
                 " ", // space between words
                 // single lowercase letters (cover the words below)
-                "a", "b", "c", "d", "e", "f", "g", "h", "i", "k",
-                "l", "m", "n", "o", "p", "r", "s", "t", "u", "w", "y",
+                "a", "b", "c", "d", "e", "f", "g", "h", "i", "k", "l", "m", "n", "o", "p", "r", "s",
+                "t", "u", "w", "y",
                 // a few whole words (also matchable letter-by-letter)
-                "the", "blade", "sword", "raised", "light",
-                "ward", "dragon", "air", "kingdom", "knight",
-                "peak", "storm", "wind", "spell", "breath",
+                "the", "blade", "sword", "raised", "light", "ward", "dragon", "air", "kingdom",
+                "knight", "peak", "storm", "wind", "spell", "breath",
                 // stop tokens / terminators
                 "..", ".", "?", "!", "\n",
             ]
@@ -254,16 +263,24 @@ mod tests {
             let mut id_to_token: AHashMap<u32, Token> = AHashMap::new();
             let mut id_to_token_string: AHashMap<u32, String> = AHashMap::new();
             for (id, &token_str) in vocab.iter().enumerate() {
-                if token_str.is_empty() { continue; }
+                if token_str.is_empty() {
+                    continue;
+                }
                 let token_id = id as u32;
-                id_to_token.insert(token_id, Token(token_str.as_bytes().to_vec().into_boxed_slice()));
+                id_to_token.insert(
+                    token_id,
+                    Token(token_str.as_bytes().to_vec().into_boxed_slice()),
+                );
                 id_to_token_string.insert(token_id, token_str.to_string());
             }
-            let vocab_obj = Vocabulary::new(id_to_token, id_to_token_string)
-                .expect("vocab build");
-            let config = Config { start_nonterminal: "root".to_string(), ..Config::default() };
-            let mut engine = Engine::with_config(&kbnf_compat::gbnf_to_kbnf(gbnf), vocab_obj, config)
-                .expect("engine build");
+            let vocab_obj = Vocabulary::new(id_to_token, id_to_token_string).expect("vocab build");
+            let config = Config {
+                start_nonterminal: "root".to_string(),
+                ..Config::default()
+            };
+            let mut engine =
+                Engine::with_config(&kbnf_compat::gbnf_to_kbnf(gbnf), vocab_obj, config)
+                    .expect("engine build");
             engine.compute_allowed_token_ids();
 
             let mut rng = thread_rng();
@@ -280,7 +297,8 @@ mod tests {
                     return (out, engine.is_finished());
                 }
                 // Prefer longer tokens (closer to a real tokenizer's greedy match).
-                let &idx = valid.choose_weighted(&mut rng, |&i| vocab[i].len())
+                let &idx = valid
+                    .choose_weighted(&mut rng, |&i| vocab[i].len())
                     .expect("non-empty");
                 let token = vocab[idx];
                 if engine.try_accept_new_token(idx as u32).is_err() {
@@ -306,14 +324,19 @@ mod tests {
                 );
                 // The grammar must terminate at a stop token: a sentence
                 // terminator (`.`/`?`/`!`) or the optional trailing newline.
-                let ends_with_stop = out.ends_with('.') || out.ends_with('?')
-                    || out.ends_with('!') || out.ends_with("\n");
+                let ends_with_stop = out.ends_with('.')
+                    || out.ends_with('?')
+                    || out.ends_with('!')
+                    || out.ends_with("\n");
                 assert!(
                     ends_with_stop,
                     "trial {trial}: FIM output did not end at a stop token: {out:?}"
                 );
                 // No scaffolding / think leakage possible (grammar forbids `<`).
-                assert!(!out.contains('<'), "trial {trial}: FIM output leaked '<': {out:?}");
+                assert!(
+                    !out.contains('<'),
+                    "trial {trial}: FIM output leaked '<': {out:?}"
+                );
             }
         }
 
@@ -329,7 +352,10 @@ mod tests {
                 .collect();
             let gbnf = StoryGrammar::FillInMiddle.kbnf();
             let (out, _finished) = random_walk(&gbnf, &vocab, 128);
-            assert!(out.len() <= 128 * 32, "FIM walk produced unbounded output: {out:?}");
+            assert!(
+                out.len() <= 128 * 32,
+                "FIM walk produced unbounded output: {out:?}"
+            );
         }
     }
 }

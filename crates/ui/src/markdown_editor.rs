@@ -175,7 +175,8 @@ impl MarkdownDocument {
             // Replace the text
             let start = suggestion.range.start.min(self.text.len());
             let end = suggestion.range.end.min(self.text.len());
-            self.text.replace_range(start..end, &suggestion.suggested_text);
+            self.text
+                .replace_range(start..end, &suggestion.suggested_text);
             // Mark the new range as accepted
             let new_range = TextRange::new(start, start + suggestion.suggested_text.len());
             self.accepted_ranges.push(new_range);
@@ -388,7 +389,10 @@ impl MarkdownEditor {
                 })
                 .show_ui(ui, |ui| {
                     for mode in [EditorMode::Edit, EditorMode::Preview, EditorMode::Split] {
-                        if ui.selectable_label(state.mode == mode, format!("{:?}", mode)).clicked() {
+                        if ui
+                            .selectable_label(state.mode == mode, format!("{:?}", mode))
+                            .clicked()
+                        {
                             state.mode = mode;
                             *action = Some(MarkdownEditorAction::ModeChanged(mode));
                         }
@@ -437,7 +441,11 @@ impl MarkdownEditor {
 
             // Comment button
             if state.selection.has_selection() {
-                if ui.button("💬 Comment").on_hover_text("Add comment to selection").clicked() {
+                if ui
+                    .button("💬 Comment")
+                    .on_hover_text("Add comment to selection")
+                    .clicked()
+                {
                     if let Some(range) = state.selection.range() {
                         state.composing_comment = Some(ComposingComment {
                             range,
@@ -450,18 +458,10 @@ impl MarkdownEditor {
             ui.separator();
 
             // Undo/Redo
-            if ui
-                .button("↶ Undo")
-                .on_hover_text("Undo (Ctrl+Z)")
-                .clicked()
-            {
+            if ui.button("↶ Undo").on_hover_text("Undo (Ctrl+Z)").clicked() {
                 *action = Some(MarkdownEditorAction::Undo);
             }
-            if ui
-                .button("↷ Redo")
-                .on_hover_text("Redo (Ctrl+Y)")
-                .clicked()
-            {
+            if ui.button("↷ Redo").on_hover_text("Redo (Ctrl+Y)").clicked() {
                 *action = Some(MarkdownEditorAction::Redo);
             }
 
@@ -496,7 +496,9 @@ impl MarkdownEditor {
 
         // Handle text changes
         if response.changed() {
-            *action = Some(MarkdownEditorAction::TextChanged(state.document.text.clone()));
+            *action = Some(MarkdownEditorAction::TextChanged(
+                state.document.text.clone(),
+            ));
             state.document.version += 1;
         }
 
@@ -581,7 +583,10 @@ impl MarkdownEditor {
 
         // Paint suggestions
         // Collect suggestions first to avoid borrow conflicts
-        let suggestions: Vec<_> = state.document.suggestions.iter()
+        let suggestions: Vec<_> = state
+            .document
+            .suggestions
+            .iter()
             .filter(|s| !s.accepted && !s.rejected)
             .cloned()
             .collect();
@@ -594,7 +599,8 @@ impl MarkdownEditor {
                 };
 
                 // Highlight the range
-                ui.painter().rect_filled(range_rect.expand(2.0), 2.0, color.gamma_multiply(0.2));
+                ui.painter()
+                    .rect_filled(range_rect.expand(2.0), 2.0, color.gamma_multiply(0.2));
                 ui.painter().rect_stroke(
                     range_rect.expand(2.0),
                     2.0,
@@ -622,7 +628,8 @@ impl MarkdownEditor {
                     text_rect.left_top() - Vec2::new(40.0, 0.0),
                     text_rect.left_top() + Vec2::new(30.0, range_rect.height()),
                 );
-                ui.painter().rect_filled(margin_rect, 2.0, Color32::from_rgb(255, 200, 0));
+                ui.painter()
+                    .rect_filled(margin_rect, 2.0, Color32::from_rgb(255, 200, 0));
                 ui.painter().text(
                     margin_rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -640,7 +647,12 @@ impl MarkdownEditor {
     }
 
     /// Convert a text range to a screen rectangle (approximate)
-    fn range_to_rect(&self, ui: &mut Ui, state: &MarkdownEditorState, range: TextRange) -> Option<Rect> {
+    fn range_to_rect(
+        &self,
+        ui: &mut Ui,
+        state: &MarkdownEditorState,
+        range: TextRange,
+    ) -> Option<Rect> {
         // This is a simplified approximation. In a real implementation,
         // we'd need to measure text layout to get precise positions.
         // For now, we use a rough character-to-pixel mapping.
@@ -671,9 +683,15 @@ impl MarkdownEditor {
 
         Some(Rect::from_min_max(
             text_rect.left_top()
-                + Vec2::new(start_col as f32 * char_width, start_line as f32 * line_height),
+                + Vec2::new(
+                    start_col as f32 * char_width,
+                    start_line as f32 * line_height,
+                ),
             text_rect.left_top()
-                + Vec2::new(end_col as f32 * char_width, (end_line + 1) as f32 * line_height),
+                + Vec2::new(
+                    end_col as f32 * char_width,
+                    (end_line + 1) as f32 * line_height,
+                ),
         ))
     }
 
@@ -698,7 +716,8 @@ impl MarkdownEditor {
         if ui.put(accept_rect, egui::Button::new("Accept")).clicked() {
             // Action will be handled by the main loop
         }
-        ui.painter().rect_filled(accept_rect, 4.0, Color32::from_rgb(0, 180, 0));
+        ui.painter()
+            .rect_filled(accept_rect, 4.0, Color32::from_rgb(0, 180, 0));
         ui.painter().text(
             accept_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -712,7 +731,8 @@ impl MarkdownEditor {
             egui::pos2(start_x, y + button_height + spacing),
             Vec2::new(button_width, button_height),
         );
-        ui.painter().rect_filled(reject_rect, 4.0, Color32::from_rgb(180, 0, 0));
+        ui.painter()
+            .rect_filled(reject_rect, 4.0, Color32::from_rgb(180, 0, 0));
         ui.painter().text(
             reject_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -723,12 +743,7 @@ impl MarkdownEditor {
     }
 
     /// Paint diff view for a suggestion
-    fn paint_diff(
-        &mut self,
-        ui: &mut Ui,
-        range_rect: Rect,
-        suggestion: &Suggestion,
-    ) {
+    fn paint_diff(&mut self, ui: &mut Ui, range_rect: Rect, suggestion: &Suggestion) {
         // Show original vs suggested side by side below the range
         let diff_y = range_rect.bottom() + 4.0;
         let diff_width = range_rect.width().max(300.0);
@@ -738,11 +753,22 @@ impl MarkdownEditor {
             egui::pos2(range_rect.left(), diff_y),
             Vec2::new(diff_width, 40.0),
         );
-        ui.painter().rect_filled(old_rect, 4.0, Color32::from_rgba_premultiplied(255, 0, 0, 50));
+        ui.painter().rect_filled(
+            old_rect,
+            4.0,
+            Color32::from_rgba_premultiplied(255, 0, 0, 50),
+        );
         ui.painter().text(
             old_rect.left_top() + Vec2::new(8.0, 8.0),
             egui::Align2::LEFT_TOP,
-            format!("− {}", suggestion.original_text.chars().take(80).collect::<String>()),
+            format!(
+                "− {}",
+                suggestion
+                    .original_text
+                    .chars()
+                    .take(80)
+                    .collect::<String>()
+            ),
             egui::FontId::monospace(11.0),
             Color32::from_rgb(200, 0, 0),
         );
@@ -752,23 +778,29 @@ impl MarkdownEditor {
             egui::pos2(range_rect.left(), diff_y + 44.0),
             Vec2::new(diff_width, 40.0),
         );
-        ui.painter().rect_filled(new_rect, 4.0, Color32::from_rgba_premultiplied(0, 255, 0, 50));
+        ui.painter().rect_filled(
+            new_rect,
+            4.0,
+            Color32::from_rgba_premultiplied(0, 255, 0, 50),
+        );
         ui.painter().text(
             new_rect.left_top() + Vec2::new(8.0, 8.0),
             egui::Align2::LEFT_TOP,
-            format!("+ {}", suggestion.suggested_text.chars().take(80).collect::<String>()),
+            format!(
+                "+ {}",
+                suggestion
+                    .suggested_text
+                    .chars()
+                    .take(80)
+                    .collect::<String>()
+            ),
             egui::FontId::monospace(11.0),
             Color32::from_rgb(0, 180, 0),
         );
     }
 
     /// Paint comment bubble
-    fn paint_comment_bubble(
-        &mut self,
-        ui: &mut Ui,
-        anchor_rect: Rect,
-        comment: &RangeComment,
-    ) {
+    fn paint_comment_bubble(&mut self, ui: &mut Ui, anchor_rect: Rect, comment: &RangeComment) {
         let bubble_width = 250.0;
         let bubble_rect = Rect::from_min_size(
             anchor_rect.right_top() + Vec2::new(8.0, -20.0),
@@ -776,7 +808,8 @@ impl MarkdownEditor {
         );
 
         // Bubble background
-        ui.painter().rect_filled(bubble_rect, 8.0, Color32::from_rgb(255, 250, 220));
+        ui.painter()
+            .rect_filled(bubble_rect, 8.0, Color32::from_rgb(255, 250, 220));
         ui.painter().rect_stroke(
             bubble_rect,
             8.0,
@@ -923,11 +956,19 @@ pub fn apply_editor_action(state: &mut MarkdownEditorState, action: MarkdownEdit
             state.document.reject_suggestion(&id);
         }
         MarkdownEditorAction::RequestAiGenerate(range, prompt) => {
-            state.pending_ai_action = Some(PendingAiAction { range, kind: SuggestionKind::Generate, prompt });
+            state.pending_ai_action = Some(PendingAiAction {
+                range,
+                kind: SuggestionKind::Generate,
+                prompt,
+            });
             state.ai_generating = true;
         }
         MarkdownEditorAction::RequestAiReplace(range, prompt) => {
-            state.pending_ai_action = Some(PendingAiAction { range, kind: SuggestionKind::Replace, prompt });
+            state.pending_ai_action = Some(PendingAiAction {
+                range,
+                kind: SuggestionKind::Replace,
+                prompt,
+            });
             state.ai_generating = true;
         }
         MarkdownEditorAction::AddComment(range, text) => {
@@ -1115,7 +1156,10 @@ mod tests {
             ..Default::default()
         };
 
-        apply_editor_action(&mut state, MarkdownEditorAction::TextChanged("Modified".to_string()));
+        apply_editor_action(
+            &mut state,
+            MarkdownEditorAction::TextChanged("Modified".to_string()),
+        );
         assert_eq!(state.document.text, "Modified");
         assert_eq!(state.undo_stack.len(), 1);
         assert_eq!(state.undo_stack[0].text, "Original");
@@ -1129,8 +1173,14 @@ mod tests {
             ..Default::default()
         };
 
-        apply_editor_action(&mut state, MarkdownEditorAction::TextChanged("First".to_string()));
-        apply_editor_action(&mut state, MarkdownEditorAction::TextChanged("Second".to_string()));
+        apply_editor_action(
+            &mut state,
+            MarkdownEditorAction::TextChanged("First".to_string()),
+        );
+        apply_editor_action(
+            &mut state,
+            MarkdownEditorAction::TextChanged("Second".to_string()),
+        );
         assert_eq!(state.document.text, "Second");
         assert_eq!(state.undo_stack.len(), 2);
 
@@ -1163,7 +1213,10 @@ mod tests {
             rejected: false,
         });
 
-        apply_editor_action(&mut state, MarkdownEditorAction::AcceptSuggestion("s1".to_string()));
+        apply_editor_action(
+            &mut state,
+            MarkdownEditorAction::AcceptSuggestion("s1".to_string()),
+        );
         assert_eq!(state.document.text, "Hello there");
     }
 

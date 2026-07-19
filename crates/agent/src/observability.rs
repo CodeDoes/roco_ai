@@ -364,7 +364,9 @@ impl ObservabilitySystem {
 
         // Save trace
         if let Some(trace) = self.current_trace.lock().unwrap().clone() {
-            let path = self.output_dir.join(format!("trace_{}.json", trace.trace_id.0));
+            let path = self
+                .output_dir
+                .join(format!("trace_{}.json", trace.trace_id.0));
             if let Ok(json) = serde_json::to_string_pretty(&trace) {
                 std::fs::write(path, json).ok();
             }
@@ -374,7 +376,9 @@ impl ObservabilitySystem {
         {
             let calls = self.model_calls.lock().unwrap();
             if !calls.is_empty() {
-                let path = self.output_dir.join(format!("model_calls_{}.json", timestamp));
+                let path = self
+                    .output_dir
+                    .join(format!("model_calls_{}.json", timestamp));
                 if let Ok(json) = serde_json::to_string_pretty(&*calls) {
                     std::fs::write(path, json).ok();
                 }
@@ -385,7 +389,9 @@ impl ObservabilitySystem {
         {
             let decisions = self.decisions.lock().unwrap();
             if !decisions.is_empty() {
-                let path = self.output_dir.join(format!("decisions_{}.json", timestamp));
+                let path = self
+                    .output_dir
+                    .join(format!("decisions_{}.json", timestamp));
                 if let Ok(json) = serde_json::to_string_pretty(&*decisions) {
                     std::fs::write(path, json).ok();
                 }
@@ -436,8 +442,7 @@ impl ObservabilitySystem {
             success_rate: if model_calls.is_empty() {
                 1.0
             } else {
-                model_calls.iter().filter(|c| c.success).count() as f64
-                    / model_calls.len() as f64
+                model_calls.iter().filter(|c| c.success).count() as f64 / model_calls.len() as f64
             },
             reversible_actions: actions.iter().filter(|a| a.reversible).count(),
         }

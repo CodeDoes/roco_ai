@@ -1,16 +1,16 @@
-use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     response::IntoResponse,
     routing::{get, post, put},
     Json, Router,
 };
-use roco_engine::{CompletionRequest, ModelBackend};
-use roco_agent::story_engine::{StoryEngine, StoryConfig, PlotState};
-use roco_agent::outline_editing::OutlineEditor;
 use roco_agent::natural_feedback::FeedbackParser;
+use roco_agent::outline_editing::OutlineEditor;
 use roco_agent::quality::QualityAnalyzer;
+use roco_agent::story_engine::{PlotState, StoryConfig, StoryEngine};
+use roco_engine::{CompletionRequest, ModelBackend};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tracing::info;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -162,11 +162,15 @@ pub fn create_story_router(backend: Arc<dyn ModelBackend>, engine: StoryEngine) 
 
 async fn get_outline(State(state): State<StoryState>) -> impl IntoResponse {
     let engine = state.engine.lock().await;
-    let outline: Vec<ChapterInfo> = engine.outline().iter().map(|ch| ChapterInfo {
-        number: ch.number,
-        title: ch.title.clone(),
-        summary: ch.summary.clone(),
-    }).collect();
+    let outline: Vec<ChapterInfo> = engine
+        .outline()
+        .iter()
+        .map(|ch| ChapterInfo {
+            number: ch.number,
+            title: ch.title.clone(),
+            summary: ch.summary.clone(),
+        })
+        .collect();
 
     Json(Outline { chapters: outline })
 }
@@ -180,10 +184,7 @@ async fn update_outline(
     Json(serde_json::json!({ "status": "ok" }))
 }
 
-async fn get_chapter(
-    State(state): State<StoryState>,
-    Path(num): Path<usize>,
-) -> impl IntoResponse {
+async fn get_chapter(State(state): State<StoryState>, Path(num): Path<usize>) -> impl IntoResponse {
     let engine = state.engine.lock().await;
     let chapters = engine.chapters();
 
@@ -225,9 +226,7 @@ async fn generate_chapter(
                 "content": content,
             }))
         }
-        Err(e) => {
-            Json(serde_json::json!({ "error": e }))
-        }
+        Err(e) => Json(serde_json::json!({ "error": e })),
     }
 }
 
@@ -251,19 +250,15 @@ async fn evaluate_quality(
     let mut engine = state.engine.lock().await;
 
     match engine.evaluate_chapter_quality(&*backend, num) {
-        Ok(critique) => {
-            Json(serde_json::json!({
-                "overall": critique.scores.overall,
-                "pacing": critique.scores.pacing,
-                "engagement": critique.scores.engagement,
-                "plot_coherence": critique.scores.plot_coherence,
-                "issues": critique.scores.issues.iter().map(|i| i.description.clone()).collect::<Vec<_>>(),
-                "suggestions": critique.scores.suggestions,
-            }))
-        }
-        Err(e) => {
-            Json(serde_json::json!({ "error": e }))
-        }
+        Ok(critique) => Json(serde_json::json!({
+            "overall": critique.scores.overall,
+            "pacing": critique.scores.pacing,
+            "engagement": critique.scores.engagement,
+            "plot_coherence": critique.scores.plot_coherence,
+            "issues": critique.scores.issues.iter().map(|i| i.description.clone()).collect::<Vec<_>>(),
+            "suggestions": critique.scores.suggestions,
+        })),
+        Err(e) => Json(serde_json::json!({ "error": e })),
     }
 }
 
@@ -354,9 +349,7 @@ async fn publish_story(State(state): State<StoryState>) -> impl IntoResponse {
                 "words": story.split_whitespace().count(),
             }))
         }
-        Err(e) => {
-            Json(serde_json::json!({ "error": e }))
-        }
+        Err(e) => Json(serde_json::json!({ "error": e })),
     }
 }
 

@@ -51,3 +51,12 @@
   attachments bar; compact mode for side panels. 15 unit tests passing.
   Meets Definition of Done: surface + control + tested + reversible (undo/redo
   actions wired).
+
+## 2026-07-19 (cont.)
+- Implemented **`roco interact` CLI** — terminal equivalent of the GUI experience.
+  Three modes: `--interactive` (REPL with pacing controls: /accept, /skip, /stop,
+  /undo, /pace), `--trigger "prompt"` (one-shot generation for scripts/pipes),
+  `--resume <session-id>` (load and continue from saved session). Session
+  persistence via JSON files in `.roco/sessions/`. 10 unit tests passing.
+  Color-coded output via rich_output.rs. Meets Definition of Done: surface +
+  control + tested + reversible (undo, session resume).

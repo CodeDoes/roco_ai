@@ -29,7 +29,8 @@ impl SessionStore {
     pub fn new<P: AsRef<Path>>(base: P) -> Result<Self, SessionError> {
         let roco = base.as_ref().join(".roco");
         let sessions = roco.join("sessions");
-        fs::create_dir_all(&sessions).map_err(|e| SessionError(format!("creating sessions dir: {e}")))?;
+        fs::create_dir_all(&sessions)
+            .map_err(|e| SessionError(format!("creating sessions dir: {e}")))?;
         Ok(Self {
             base_path: roco,
             session_dir: sessions,
@@ -108,7 +109,11 @@ impl SessionStore {
 
     /// Append a conversation turn to a session's `session.log`.
     /// Updated after every message generation or ingestion.
-    pub fn log_conversation<S: AsRef<str>>(&self, session_id: S, text: &str) -> Result<(), SessionError> {
+    pub fn log_conversation<S: AsRef<str>>(
+        &self,
+        session_id: S,
+        text: &str,
+    ) -> Result<(), SessionError> {
         let sess = self.ensure_dir(session_id.as_ref())?;
         let path = sess.join("session.log");
         let mut f = fs::OpenOptions::new()
@@ -116,8 +121,7 @@ impl SessionStore {
             .append(true)
             .open(&path)
             .map_err(|e| SessionError(format!("writing session.log: {e}")))?;
-        writeln!(f, "{text}")
-            .map_err(|e| SessionError(format!("flushing session.log: {e}")))?;
+        writeln!(f, "{text}").map_err(|e| SessionError(format!("flushing session.log: {e}")))?;
         Ok(())
     }
 
@@ -131,8 +135,7 @@ impl SessionStore {
             .append(true)
             .open(&path)
             .map_err(|e| SessionError(format!("writing trace.txt: {e}")))?;
-        writeln!(f, "{text}")
-            .map_err(|e| SessionError(format!("flushing trace.txt: {e}")))?;
+        writeln!(f, "{text}").map_err(|e| SessionError(format!("flushing trace.txt: {e}")))?;
         Ok(())
     }
 
@@ -146,8 +149,7 @@ impl SessionStore {
             .append(true)
             .open(&path)
             .map_err(|e| SessionError(format!("writing global trace.log: {e}")))?;
-        writeln!(f, "{line}")
-            .map_err(|e| SessionError(format!("flushing trace.log: {e}")))?;
+        writeln!(f, "{line}").map_err(|e| SessionError(format!("flushing trace.log: {e}")))?;
         Ok(())
     }
 
@@ -253,19 +255,23 @@ impl SessionStore {
 
     fn read_meta(&self, id: &str) -> Result<SessionMeta, SessionError> {
         let path = self.session_dir.join(id).join("meta.json");
-        let content = std::fs::read_to_string(&path).map_err(|e| SessionError(format!("reading meta.json: {e}")))?;
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| SessionError(format!("reading meta.json: {e}")))?;
         serde_json::from_str(&content).map_err(|e| SessionError(format!("parsing meta.json: {e}")))
     }
 
     fn write_meta(&self, meta: &SessionMeta) -> Result<(), SessionError> {
         let path = self.session_dir.join(&meta.session_id).join("meta.json");
         let content = serde_json::to_string_pretty(meta).unwrap_or_default();
-        fs::write(&path, content)
-            .map_err(|e| SessionError(format!("writing meta.json: {e}")))?;
+        fs::write(&path, content).map_err(|e| SessionError(format!("writing meta.json: {e}")))?;
         Ok(())
     }
 
-    fn update_meta<S: AsRef<str>, F: FnOnce(&mut SessionMeta)>(&self, id: S, f: F) -> Result<(), SessionError> {
+    fn update_meta<S: AsRef<str>, F: FnOnce(&mut SessionMeta)>(
+        &self,
+        id: S,
+        f: F,
+    ) -> Result<(), SessionError> {
         let mut meta = self.read_meta(id.as_ref())?;
         f(&mut meta);
         self.write_meta(&meta)
@@ -283,14 +289,22 @@ impl SessionStore {
         Ok(())
     }
 
-    fn record_spawn(&self, parent_id: &str, child_id: &str, merge: Option<&str>) -> Result<(), SessionError> {
+    fn record_spawn(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        merge: Option<&str>,
+    ) -> Result<(), SessionError> {
         let entry = HistoryEntry {
             ts: current_ts(),
             kind: HistoryKind::Spawned,
             child_session: Some(child_id.to_string()),
             merge_info: merge.map(String::from),
         };
-        let path = self.session_dir.join(parent_id).join(format!("history-{}.jsonl", child_id));
+        let path = self
+            .session_dir
+            .join(parent_id)
+            .join(format!("history-{}.jsonl", child_id));
         let mut f = fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -308,7 +322,10 @@ impl SessionStore {
             child_session: Some(child_id.to_string()),
             merge_info: Some(info.to_string()),
         };
-        let path = self.session_dir.join(parent_id).join(format!("history-{}.jsonl", child_id));
+        let path = self
+            .session_dir
+            .join(parent_id)
+            .join(format!("history-{}.jsonl", child_id));
         let mut f = fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -347,13 +364,19 @@ impl SessionHandle {
     /// Convenience: record a conversation turn.
     pub fn log_conversation(&self, text: &str) -> Result<(), SessionError> {
         let guard = SessionStore::global();
-        guard.as_ref().unwrap().log_conversation(&self.meta.session_id, text)
+        guard
+            .as_ref()
+            .unwrap()
+            .log_conversation(&self.meta.session_id, text)
     }
 
     /// Convenience: stream a trace line.
     pub fn log_trace(&self, text: &str) -> Result<(), SessionError> {
         let guard = SessionStore::global();
-        guard.as_ref().unwrap().log_trace(&self.meta.session_id, text)
+        guard
+            .as_ref()
+            .unwrap()
+            .log_trace(&self.meta.session_id, text)
     }
 }
 

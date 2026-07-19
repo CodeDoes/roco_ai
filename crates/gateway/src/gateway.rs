@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use parking_lot::Mutex;
 use axum::{
-    extract::{State, Request},
+    extract::{Request, State},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router as AxumRouter,
 };
+use parking_lot::Mutex;
 use reqwest::Client;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
 #[derive(Clone)]
@@ -28,7 +28,12 @@ pub struct Gateway {
 
 impl Default for Gateway {
     fn default() -> Self {
-        Self::new("127.0.0.1".to_string(), 8000, "http://127.0.0.1:8080".to_string(), 60)
+        Self::new(
+            "127.0.0.1".to_string(),
+            8000,
+            "http://127.0.0.1:8080".to_string(),
+            60,
+        )
     }
 }
 
@@ -58,18 +63,17 @@ impl Gateway {
 
         let addr = format!("{}:{}", self.host, self.port);
         info!("Starting API Gateway on {}", addr);
-        let listener = tokio::net::TcpListener::bind(&addr).await
+        let listener = tokio::net::TcpListener::bind(&addr)
+            .await
             .map_err(|e| format!("Failed to bind gateway to {addr}: {e}"))?;
-        axum::serve(listener, app).await
+        axum::serve(listener, app)
+            .await
             .map_err(|e| format!("Gateway run error: {e}"))?;
         Ok(())
     }
 }
 
-async fn handle_proxy(
-    State(state): State<GatewayState>,
-    req: Request,
-) -> Response {
+async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Response {
     let client_ip = "global".to_string();
 
     // Check rate limit
@@ -87,8 +91,9 @@ async fn handle_proxy(
                 axum::http::StatusCode::TOO_MANY_REQUESTS,
                 Json(serde_json::json!({
                     "error": "Too Many Requests - Rate limit exceeded"
-                }))
-            ).into_response();
+                })),
+            )
+                .into_response();
         }
 
         timestamps.push(now);
@@ -104,13 +109,16 @@ async fn handle_proxy(
         Err(e) => {
             return (
                 axum::http::StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": format!("Failed to read request body: {e}") }))
-            ).into_response();
+                Json(serde_json::json!({ "error": format!("Failed to read request body: {e}") })),
+            )
+                .into_response();
         }
     };
 
     // Forward using reqwest
-    let upstream_res = match state.req_client.post(&forward_url)
+    let upstream_res = match state
+        .req_client
+        .post(&forward_url)
         .header("Content-Type", "application/json")
         .body(body_bytes)
         .send()
@@ -131,8 +139,11 @@ async fn handle_proxy(
         Err(e) => {
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Failed to read backend response: {e}") }))
-            ).into_response();
+                Json(
+                    serde_json::json!({ "error": format!("Failed to read backend response: {e}") }),
+                ),
+            )
+                .into_response();
         }
     };
 
@@ -171,8 +182,14 @@ mod tests {
     async fn test_gateway_proxy_and_rate_limiting() {
         // 1. Start a mock upstream server
         let mock_app = AxumRouter::new()
-            .route("/health", get(|| async { Json(serde_json::json!({ "status": "ok" })) }))
-            .route("/complete", post(|| async { Json(serde_json::json!({ "text": "mocked response" })) }));
+            .route(
+                "/health",
+                get(|| async { Json(serde_json::json!({ "status": "ok" })) }),
+            )
+            .route(
+                "/complete",
+                post(|| async { Json(serde_json::json!({ "text": "mocked response" })) }),
+            );
 
         let mock_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let mock_port = mock_listener.local_addr().unwrap().port();
@@ -217,7 +234,8 @@ mod tests {
         assert_eq!(health_data["backend_status"], "online");
 
         // 4. Request 1: should pass
-        let res1 = client.post(format!("{gw_url}/complete"))
+        let res1 = client
+            .post(format!("{gw_url}/complete"))
             .json(&serde_json::json!({ "prompt": "hello" }))
             .send()
             .await
@@ -227,7 +245,8 @@ mod tests {
         assert_eq!(data1["text"], "mocked response");
 
         // 5. Request 2: should pass
-        let res2 = client.post(format!("{gw_url}/complete"))
+        let res2 = client
+            .post(format!("{gw_url}/complete"))
             .json(&serde_json::json!({ "prompt": "world" }))
             .send()
             .await
@@ -235,13 +254,17 @@ mod tests {
         assert_eq!(res2.status(), 200);
 
         // 6. Request 3: should be rate-limited (HTTP 429)
-        let res3 = client.post(format!("{gw_url}/complete"))
+        let res3 = client
+            .post(format!("{gw_url}/complete"))
             .json(&serde_json::json!({ "prompt": "too many requests" }))
             .send()
             .await
             .unwrap();
         assert_eq!(res3.status(), 429);
         let err_data: serde_json::Value = res3.json().await.unwrap();
-        assert!(err_data["error"].as_str().unwrap().contains("Rate limit exceeded"));
+        assert!(err_data["error"]
+            .as_str()
+            .unwrap()
+            .contains("Rate limit exceeded"));
     }
 }

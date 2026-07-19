@@ -71,26 +71,31 @@ impl QualityScore {
             .prop("plot_coherence", Schema::number())
             .prop("engagement", Schema::number())
             .prop("prose_quality", Schema::number())
-            .prop("issues", Schema::array(
-                Schema::object()
-                    .prop("category", Schema::string())
-                    .prop("severity", Schema::enum_values(vec![
-                        serde_json::json!("low"),
-                        serde_json::json!("medium"),
-                        serde_json::json!("high"),
-                    ]))
-                    .prop("description", Schema::string())
-                    .prop("location", Schema::string())
-                    .build()
-            ))
+            .prop(
+                "issues",
+                Schema::array(
+                    Schema::object()
+                        .prop("category", Schema::string())
+                        .prop(
+                            "severity",
+                            Schema::enum_values(vec![
+                                serde_json::json!("low"),
+                                serde_json::json!("medium"),
+                                serde_json::json!("high"),
+                            ]),
+                        )
+                        .prop("description", Schema::string())
+                        .prop("location", Schema::string())
+                        .build(),
+                ),
+            )
             .prop("strengths", Schema::array(Schema::string()))
             .prop("suggestions", Schema::array(Schema::string()))
             .build()
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("QualityScore schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("QualityScore schema is valid")
     }
 
     /// Check if the chapter passes quality thresholds
@@ -103,7 +108,8 @@ impl QualityScore {
 
     /// Get high-severity issues
     pub fn critical_issues(&self) -> Vec<&QualityIssue> {
-        self.issues.iter()
+        self.issues
+            .iter()
             .filter(|i| i.severity == "high")
             .collect()
     }
@@ -130,8 +136,12 @@ impl QualityScore {
         };
 
         // Deduplicate
-        merged.issues.sort_by(|a, b| a.description.cmp(&b.description));
-        merged.issues.dedup_by(|a, b| a.description == b.description);
+        merged
+            .issues
+            .sort_by(|a, b| a.description.cmp(&b.description));
+        merged
+            .issues
+            .dedup_by(|a, b| a.description == b.description);
         merged.strengths.sort();
         merged.strengths.dedup();
         merged.suggestions.sort();
@@ -169,8 +179,7 @@ impl StoryCritique {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json())
-            .expect("StoryCritique schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).expect("StoryCritique schema is valid")
     }
 }
 
@@ -247,7 +256,8 @@ impl QualityAnalyzer {
         chapters: &[String],
         plot_context: &str,
     ) -> Result<StoryCritique, String> {
-        let story_text: String = chapters.iter()
+        let story_text: String = chapters
+            .iter()
             .enumerate()
             .map(|(i, ch)| format!("## Chapter {}\n{}", i + 1, ch))
             .collect::<Vec<_>>()
@@ -273,10 +283,7 @@ impl QualityAnalyzer {
     }
 
     /// Generate revision instructions based on critique
-    pub fn generate_revision_instructions(
-        &self,
-        critique: &StoryCritique,
-    ) -> String {
+    pub fn generate_revision_instructions(&self, critique: &StoryCritique) -> String {
         let mut instructions = String::new();
 
         if critique.should_revise {
@@ -347,8 +354,7 @@ where
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    serde_json::from_str::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 #[cfg(test)]

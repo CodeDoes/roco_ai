@@ -28,17 +28,27 @@ async fn main() -> anyhow::Result<()> {
     // Load normalized roleplay data
     let data_path = Path::new("datasets/normalized/roleplay_normalized.jsonl");
     let conversations: Vec<Conversation> = load_jsonl(data_path)?;
-    println!("Loaded {} conversations from {:?}\n", conversations.len(), data_path);
+    println!(
+        "Loaded {} conversations from {:?}\n",
+        conversations.len(),
+        data_path
+    );
 
     // Pick two personas: Tony Stark (index 4) and Sherlock Holmes (index 0)
     let persona_a = &conversations[0]; // Sherlock
     let persona_b = &conversations[4]; // Tony Stark
 
     println!("=== Persona A: Sherlock Holmes ===");
-    println!("System: {}\n", persona_a.system.chars().take(100).collect::<String>());
+    println!(
+        "System: {}\n",
+        persona_a.system.chars().take(100).collect::<String>()
+    );
 
     println!("=== Persona B: Tony Stark ===");
-    println!("System: {}\n", persona_b.system.chars().take(100).collect::<String>());
+    println!(
+        "System: {}\n",
+        persona_b.system.chars().take(100).collect::<String>()
+    );
 
     // Bake each persona separately
     println!("Baking Sherlock Holmes...");
@@ -61,27 +71,31 @@ async fn main() -> anyhow::Result<()> {
 
     // Probe each individually
     let probe = "Tell me about a challenge you overcame.";
-    
+
     println!("=== Probe: Sherlock (unmixed) ===");
-    let resp = backend.complete(CompletionRequest {
-        prompt: probe.to_string(),
-        temperature: 0.7,
-        max_tokens: 150,
-        preserve_state: true,
-        session: Some("sherlock".to_string()),
-        ..Default::default()
-    }).await?;
+    let resp = backend
+        .complete(CompletionRequest {
+            prompt: probe.to_string(),
+            temperature: 0.7,
+            max_tokens: 150,
+            preserve_state: true,
+            session: Some("sherlock".to_string()),
+            ..Default::default()
+        })
+        .await?;
     println!("Response: {}\n", resp.text.trim());
 
     println!("=== Probe: Tony (unmixed) ===");
-    let resp = backend.complete(CompletionRequest {
-        prompt: probe.to_string(),
-        temperature: 0.7,
-        max_tokens: 150,
-        preserve_state: true,
-        session: Some("tony".to_string()),
-        ..Default::default()
-    }).await?;
+    let resp = backend
+        .complete(CompletionRequest {
+            prompt: probe.to_string(),
+            temperature: 0.7,
+            max_tokens: 150,
+            preserve_state: true,
+            session: Some("tony".to_string()),
+            ..Default::default()
+        })
+        .await?;
     println!("Response: {}\n", resp.text.trim());
 
     // Blend the two states
@@ -91,14 +105,16 @@ async fn main() -> anyhow::Result<()> {
 
     // Probe the blended state
     println!("=== Probe: Mixed (blended) ===");
-    let resp = backend.complete(CompletionRequest {
-        prompt: probe.to_string(),
-        temperature: 0.7,
-        max_tokens: 150,
-        preserve_state: true,
-        session: Some("mixed".to_string()),
-        ..Default::default()
-    }).await?;
+    let resp = backend
+        .complete(CompletionRequest {
+            prompt: probe.to_string(),
+            temperature: 0.7,
+            max_tokens: 150,
+            preserve_state: true,
+            session: Some("mixed".to_string()),
+            ..Default::default()
+        })
+        .await?;
     println!("Response: {}\n", resp.text.trim());
 
     Ok(())

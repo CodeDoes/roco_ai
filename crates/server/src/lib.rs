@@ -4,9 +4,9 @@
 //! over HTTP, enabling remote clients and web UIs to interact with the
 //! model.
 
-pub mod server;
-pub mod routes;
 pub mod config;
+pub mod routes;
+pub mod server;
 
-pub use server::Server;
 pub use config::ServerConfig;
+pub use server::Server;

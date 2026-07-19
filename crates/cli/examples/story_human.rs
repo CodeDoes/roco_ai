@@ -16,11 +16,11 @@
 
 use std::io::{self, Write};
 
-use roco_agent::story_engine::{StoryConfig, StoryEngine};
-use roco_agent::story_direction::StoryDirection;
-use roco_agent::outline_editing::OutlineEditor;
+use roco_agent::interaction::{HumanAction, InteractionMode};
 use roco_agent::natural_feedback::FeedbackParser;
-use roco_agent::interaction::{InteractionMode, HumanAction};
+use roco_agent::outline_editing::OutlineEditor;
+use roco_agent::story_direction::StoryDirection;
+use roco_agent::story_engine::{StoryConfig, StoryEngine};
 use roco_inference::RwkvBackend;
 
 fn main() -> anyhow::Result<()> {
@@ -150,7 +150,10 @@ fn main() -> anyhow::Result<()> {
         chapter_num += 1;
         let chapter_info = &engine.outline()[chapter_num - 1];
 
-        println!("✍️  Writing Chapter {}: {}", chapter_num, chapter_info.title);
+        println!(
+            "✍️  Writing Chapter {}: {}",
+            chapter_num, chapter_info.title
+        );
         println!("   {}\n", chapter_info.summary);
 
         let chapter = engine.generate_chapter(&backend)?;
@@ -244,7 +247,10 @@ fn main() -> anyhow::Result<()> {
 
     // Offer to resume later
     println!("\n💡 To resume later:");
-    println!("   cargo run --release --example story_human -p roco-cli --resume {}", workspace.display());
+    println!(
+        "   cargo run --release --example story_human -p roco-cli --resume {}",
+        workspace.display()
+    );
 
     Ok(())
 }

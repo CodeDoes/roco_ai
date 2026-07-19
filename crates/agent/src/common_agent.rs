@@ -87,7 +87,10 @@ impl AgentStep {
             assistant_text: String::new(),
             tool_calls: Vec::new(),
             tool_results: Vec::new(),
-            usage: TokenUsage { prompt_tokens: 0, completion_tokens: 0 },
+            usage: TokenUsage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+            },
         }
     }
 }
@@ -109,7 +112,10 @@ impl AgentTrace {
         Self {
             steps: Vec::new(),
             final_text: String::new(),
-            total_usage: TokenUsage { prompt_tokens: 0, completion_tokens: 0 },
+            total_usage: TokenUsage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+            },
             completed: false,
             stop_reason: None,
         }
@@ -139,7 +145,10 @@ impl Agent {
 
     /// Create an agent whose tool set is the default built-ins plus the
     /// long-term memory tools (`remember` / `recall`) bound to `mem`.
-    pub fn with_memory(config: AgentConfig, mem: std::sync::Arc<crate::memory::MemoryStore>) -> Self {
+    pub fn with_memory(
+        config: AgentConfig,
+        mem: std::sync::Arc<crate::memory::MemoryStore>,
+    ) -> Self {
         let mut tools = all_tools();
         tools.extend(crate::memory::MemoryStore::scoped_tools(mem));
         Self::with_tools(config, tools)
@@ -171,7 +180,11 @@ impl Agent {
     ///
     /// Returns a reviewable/resumable [`Plan`](crate::plan::Plan) (falls back to
     /// a single-step plan if the model does not emit valid plan JSON).
-    pub async fn plan(&self, backend: &dyn ModelBackend, task: &str) -> Result<crate::plan::Plan, AgentError> {
+    pub async fn plan(
+        &self,
+        backend: &dyn ModelBackend,
+        task: &str,
+    ) -> Result<crate::plan::Plan, AgentError> {
         crate::plan::Planner::plan(backend, task).await
     }
 
@@ -181,7 +194,10 @@ impl Agent {
         for tool in tools {
             registry.register(tool);
         }
-        Self { config, tools: registry }
+        Self {
+            config,
+            tools: registry,
+        }
     }
 
     pub fn config(&self) -> &AgentConfig {
@@ -263,8 +279,10 @@ impl Agent {
             trace.total_usage.completion_tokens += resp.usage.completion_tokens;
 
             if total_tokens > self.config.budget_tokens {
-                trace.stop_reason =
-                    Some(format!("token budget ({}) exceeded", self.config.budget_tokens));
+                trace.stop_reason = Some(format!(
+                    "token budget ({}) exceeded",
+                    self.config.budget_tokens
+                ));
                 return Ok(trace);
             }
 
@@ -331,7 +349,10 @@ impl Agent {
             thinking: self.config.enable_think,
             ..Default::default()
         };
-        let resp = backend.complete(req).await.map_err(|e| AgentError::BackendError(e.to_string()))?;
+        let resp = backend
+            .complete(req)
+            .await
+            .map_err(|e| AgentError::BackendError(e.to_string()))?;
         let text = resp.text.clone();
         let calls = roco_tools::extract_tool_calls(&text);
         let success = !calls.is_empty() || !text.trim().is_empty();
@@ -424,7 +445,10 @@ mod tests {
             ..Default::default()
         };
         let agent = Agent::new(config);
-        let trace = agent.run(&backend, "Read the file notes.txt").await.unwrap();
+        let trace = agent
+            .run(&backend, "Read the file notes.txt")
+            .await
+            .unwrap();
         // Either completed or stopped by step limit — both are valid.
         assert!(trace.steps.len() >= 1);
     }
@@ -457,11 +481,11 @@ mod tests {
 
     #[tokio::test]
     async fn agent_runs_with_combined_workspace_memory_session_scheduler_tools() {
-        use std::sync::Arc;
         use crate::memory::MemoryStore;
-        use crate::sessions::SessionStore;
         use crate::scheduler::Scheduler;
+        use crate::sessions::SessionStore;
         use crate::workspace::{Workspace, WorkspaceKind};
+        use std::sync::Arc;
 
         let ws = Arc::new(Workspace::temp(WorkspaceKind::Agent).unwrap());
         let mem = Arc::new(MemoryStore::new());
@@ -477,18 +501,27 @@ mod tests {
         let agent = Agent::with_tools(AgentConfig::default(), tools);
         let backend = MockBackend::default();
         let trace = agent.run(&backend, "do something benign").await.unwrap();
-        assert!(trace.steps.len() >= 1, "agent should run with the combined registry");
+        assert!(
+            trace.steps.len() >= 1,
+            "agent should run with the combined registry"
+        );
 
         // The expanded registry carries the workspace + memory + session + scheduler tools.
         assert!(agent.tools().get("remember").is_some());
         assert!(agent.tools().get("search_sessions").is_some());
         assert!(agent.tools().get("schedule").is_some());
-        assert!(agent.tools().get("read").is_some(), "workspace read tool present");
+        assert!(
+            agent.tools().get("read").is_some(),
+            "workspace read tool present"
+        );
 
         // The scheduler integrates with the backend (host-driven run_due).
         let id = sched.schedule_one_off("deferred task", 0, None);
         let outcomes = sched.run_due(&backend).await.unwrap();
         assert_eq!(outcomes.len(), 1);
-        assert!(sched.get(&id).is_none(), "one-off task removed after running");
+        assert!(
+            sched.get(&id).is_none(),
+            "one-off task removed after running"
+        );
     }
 }

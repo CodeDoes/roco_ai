@@ -86,10 +86,18 @@ impl ChatMessage {
         }
     }
 
-    pub fn system(content: String) -> Self { Self::new(MessageRole::System, content) }
-    pub fn user(content: String) -> Self { Self::new(MessageRole::User, content) }
-    pub fn assistant(content: String) -> Self { Self::new(MessageRole::Assistant, content) }
-    pub fn think(content: String) -> Self { Self::new(MessageRole::Think, content) }
+    pub fn system(content: String) -> Self {
+        Self::new(MessageRole::System, content)
+    }
+    pub fn user(content: String) -> Self {
+        Self::new(MessageRole::User, content)
+    }
+    pub fn assistant(content: String) -> Self {
+        Self::new(MessageRole::Assistant, content)
+    }
+    pub fn think(content: String) -> Self {
+        Self::new(MessageRole::Think, content)
+    }
 
     pub fn tool_call(name: &str, args: String) -> Self {
         Self {
@@ -101,10 +109,15 @@ impl ChatMessage {
     }
 
     pub fn tool_result(content: String, is_error: bool) -> Self {
-        Self { is_error, ..Self::new(MessageRole::ToolResult, content) }
+        Self {
+            is_error,
+            ..Self::new(MessageRole::ToolResult, content)
+        }
     }
 
-    pub fn event(content: String) -> Self { Self::new(MessageRole::Event, content) }
+    pub fn event(content: String) -> Self {
+        Self::new(MessageRole::Event, content)
+    }
 }
 
 /// Capability toggle for the input area
@@ -120,8 +133,12 @@ pub enum Capability {
 
 impl Capability {
     pub const ALL: [Capability; 6] = [
-        Capability::Generate, Capability::Research, Capability::Edit,
-        Capability::Critique, Capability::Outline, Capability::Brainstorm,
+        Capability::Generate,
+        Capability::Research,
+        Capability::Edit,
+        Capability::Critique,
+        Capability::Outline,
+        Capability::Brainstorm,
     ];
 
     pub fn label(self) -> &'static str {
@@ -156,7 +173,10 @@ pub struct Attachment {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentKind {
-    File, Image, Snippet, Reference,
+    File,
+    Image,
+    Snippet,
+    Reference,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -224,10 +244,13 @@ impl Default for ChatWidgetState {
 }
 
 impl ChatWidgetState {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn with_greeting(mut self, greeting: &str) -> Self {
-        self.messages.push(ChatMessage::system(greeting.to_string()));
+        self.messages
+            .push(ChatMessage::system(greeting.to_string()));
         self
     }
 
@@ -245,7 +268,10 @@ impl ChatWidgetState {
     }
 
     pub fn last_assistant_message(&self) -> Option<&ChatMessage> {
-        self.messages.iter().rev().find(|m| m.role == MessageRole::Assistant)
+        self.messages
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::Assistant)
     }
 }
 
@@ -265,7 +291,11 @@ impl ChatWidget {
             egui::vec2(ui.available_width(), messages_height),
         );
         #[allow(deprecated)]
-        let mut messages_ui = ui.child_ui(messages_rect, egui::Layout::top_down(egui::Align::LEFT), None);
+        let mut messages_ui = ui.child_ui(
+            messages_rect,
+            egui::Layout::top_down(egui::Align::LEFT),
+            None,
+        );
         messages_ui.set_min_height(messages_height);
         let act = &mut action;
         Self::show_messages(&mut messages_ui, state, act);
@@ -314,11 +344,17 @@ impl ChatWidget {
             // Header: role badge + timestamp + actions
             ui.horizontal(|ui| {
                 let role_label = RichText::new(message.role.label())
-                    .color(message.role.color()).size(11.0).strong();
+                    .color(message.role.color())
+                    .size(11.0)
+                    .strong();
                 ui.label(role_label);
 
                 if message.streaming {
-                    ui.label(RichText::new(" ● streaming").size(10.0).color(Color32::GRAY));
+                    ui.label(
+                        RichText::new(" ● streaming")
+                            .size(10.0)
+                            .color(Color32::GRAY),
+                    );
                 }
 
                 ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
@@ -337,8 +373,12 @@ impl ChatWidget {
                     });
 
                     if message.role == MessageRole::Assistant && message.streaming {
-                        if ui.button("✓ Accept").clicked() { action = Some(ChatAction::Accept); }
-                        if ui.button("✗ Skip").clicked() { action = Some(ChatAction::Skip); }
+                        if ui.button("✓ Accept").clicked() {
+                            action = Some(ChatAction::Accept);
+                        }
+                        if ui.button("✗ Skip").clicked() {
+                            action = Some(ChatAction::Skip);
+                        }
                     }
                 });
             });
@@ -348,7 +388,11 @@ impl ChatWidget {
             match message.role {
                 MessageRole::Think => {
                     ui.collapsing("Thinking trace", |ui| {
-                        ui.label(RichText::new(&message.content).size(13.0).color(Color32::from_rgb(180, 160, 40)));
+                        ui.label(
+                            RichText::new(&message.content)
+                                .size(13.0)
+                                .color(Color32::from_rgb(180, 160, 40)),
+                        );
                     });
                 }
                 MessageRole::ToolCall => {
@@ -365,12 +409,20 @@ impl ChatWidget {
                     ui.code(&message.content);
                 }
                 MessageRole::Event => {
-                    ui.label(RichText::new(&message.content).size(12.0).color(Color32::GRAY).italics());
+                    ui.label(
+                        RichText::new(&message.content)
+                            .size(12.0)
+                            .color(Color32::GRAY)
+                            .italics(),
+                    );
                 }
                 _ => {
                     ui.label(RichText::new(&message.content).size(14.0).color(
-                        if message.role == MessageRole::User { Color32::from_rgb(220, 220, 255) }
-                        else { ui.visuals().text_color() },
+                        if message.role == MessageRole::User {
+                            Color32::from_rgb(220, 220, 255)
+                        } else {
+                            ui.visuals().text_color()
+                        },
                     ));
                 }
             }
@@ -382,20 +434,36 @@ impl ChatWidget {
     fn show_input_area(ui: &mut Ui, state: &mut ChatWidgetState, action: &mut Option<ChatAction>) {
         ui.group(|ui| {
             ui.horizontal(|ui| {
-                if ui.selectable_label(state.show_capabilities, "✨ Capabilities").clicked() {
+                if ui
+                    .selectable_label(state.show_capabilities, "✨ Capabilities")
+                    .clicked()
+                {
                     state.show_capabilities = !state.show_capabilities;
                 }
-                if ui.selectable_label(state.show_context, "ℹ Context").clicked() {
+                if ui
+                    .selectable_label(state.show_context, "ℹ Context")
+                    .clicked()
+                {
                     state.show_context = !state.show_context;
                 }
-                if ui.selectable_label(state.show_attachments, "📎 Attach").clicked() {
+                if ui
+                    .selectable_label(state.show_attachments, "📎 Attach")
+                    .clicked()
+                {
                     state.show_attachments = !state.show_attachments;
                 }
 
                 ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                     let send_enabled = !state.input_text.is_empty() && !state.agent_generating;
-                    let send_label = if state.agent_generating { "⏳ Generating..." } else { "Send" };
-                    if ui.add_enabled(send_enabled, egui::Button::new(send_label)).clicked() {
+                    let send_label = if state.agent_generating {
+                        "⏳ Generating..."
+                    } else {
+                        "Send"
+                    };
+                    if ui
+                        .add_enabled(send_enabled, egui::Button::new(send_label))
+                        .clicked()
+                    {
                         let text = state.input_text.trim().to_string();
                         if !text.is_empty() {
                             *action = Some(ChatAction::SendMessage(text.clone()));
@@ -428,7 +496,11 @@ impl ChatWidget {
             if !state.attachments.is_empty() {
                 ui.horizontal_wrapped(|ui| {
                     for (i, att) in state.attachments.iter().enumerate() {
-                        ui.label(RichText::new(format!("📎 {}", att.name)).size(11.0).color(Color32::from_rgb(150, 200, 255)));
+                        ui.label(
+                            RichText::new(format!("📎 {}", att.name))
+                                .size(11.0)
+                                .color(Color32::from_rgb(150, 200, 255)),
+                        );
                         if ui.button("✕").clicked() {
                             *action = Some(ChatAction::RemoveAttachment(i));
                         }
@@ -438,7 +510,11 @@ impl ChatWidget {
 
             // Text input
             ui.add_space(4.0);
-            let hint = if state.agent_generating { "Waiting for response..." } else { "Type a message... (Enter to send, Shift+Enter for newline)" };
+            let hint = if state.agent_generating {
+                "Waiting for response..."
+            } else {
+                "Type a message... (Enter to send, Shift+Enter for newline)"
+            };
             let input = egui::TextEdit::multiline(&mut state.input_text)
                 .font(FontId::proportional(14.0))
                 .desired_rows(3)
@@ -447,8 +523,11 @@ impl ChatWidget {
                 .interactive(!state.agent_generating);
 
             let response = ui.add(input);
-            if response.has_focus() && !state.agent_generating
-                && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift && !i.modifiers.ctrl)
+            if response.has_focus()
+                && !state.agent_generating
+                && ui.input(|i| {
+                    i.key_pressed(egui::Key::Enter) && !i.modifiers.shift && !i.modifiers.ctrl
+                })
             {
                 let text = state.input_text.trim().to_string();
                 if !text.is_empty() {
@@ -460,12 +539,20 @@ impl ChatWidget {
         });
     }
 
-    fn show_capabilities_panel(ui: &mut Ui, state: &mut ChatWidgetState, action: &mut Option<ChatAction>) {
+    fn show_capabilities_panel(
+        ui: &mut Ui,
+        state: &mut ChatWidgetState,
+        action: &mut Option<ChatAction>,
+    ) {
         ui.label(RichText::new("Active Capabilities").strong().size(12.0));
         ui.horizontal_wrapped(|ui| {
             for cap in Capability::ALL {
                 let is_active = state.active_capabilities.contains(&cap);
-                if ui.selectable_label(is_active, cap.label()).on_hover_text(cap.description()).clicked() {
+                if ui
+                    .selectable_label(is_active, cap.label())
+                    .on_hover_text(cap.description())
+                    .clicked()
+                {
                     if is_active {
                         state.active_capabilities.retain(|c| *c != cap);
                     } else {
@@ -476,7 +563,11 @@ impl ChatWidget {
             }
         });
         if state.active_capabilities.is_empty() {
-            ui.label(RichText::new("No capabilities selected — general chat mode").size(11.0).color(Color32::GRAY));
+            ui.label(
+                RichText::new("No capabilities selected — general chat mode")
+                    .size(11.0)
+                    .color(Color32::GRAY),
+            );
         }
     }
 
@@ -491,10 +582,21 @@ impl ChatWidget {
         if let Some(ref sel) = state.context.selection_summary {
             ui.label(RichText::new(format!("🔍 Selection: {}", sel)).size(11.0));
         }
-        ui.label(RichText::new(format!("⚡ ~{} tokens in context", state.context.estimated_tokens)).size(11.0).color(Color32::GRAY));
+        ui.label(
+            RichText::new(format!(
+                "⚡ ~{} tokens in context",
+                state.context.estimated_tokens
+            ))
+            .size(11.0)
+            .color(Color32::GRAY),
+        );
     }
 
-    fn show_attachments_bar(ui: &mut Ui, _state: &mut ChatWidgetState, action: &mut Option<ChatAction>) {
+    fn show_attachments_bar(
+        ui: &mut Ui,
+        _state: &mut ChatWidgetState,
+        action: &mut Option<ChatAction>,
+    ) {
         ui.label(RichText::new("Add Attachment").strong().size(12.0));
         ui.horizontal(|ui| {
             if ui.button("📄 File").clicked() {
@@ -524,8 +626,16 @@ impl ChatWidget {
                 for message in &state.messages {
                     let role_color = message.role.color();
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("[{}]", message.role.label())).size(10.0).color(role_color));
-                        ui.label(RichText::new(&message.content).size(12.0).color(ui.visuals().text_color()));
+                        ui.label(
+                            RichText::new(format!("[{}]", message.role.label()))
+                                .size(10.0)
+                                .color(role_color),
+                        );
+                        ui.label(
+                            RichText::new(&message.content)
+                                .size(12.0)
+                                .color(ui.visuals().text_color()),
+                        );
                     });
                     ui.add_space(2.0);
                 }
@@ -538,8 +648,12 @@ impl ChatWidget {
                 .desired_width(ui.available_width() - 50.0);
             let response = ui.add(input);
             let send_enabled = !state.input_text.is_empty() && !state.agent_generating;
-            if ui.add_enabled(send_enabled, egui::Button::new("Send")).clicked()
-                || (response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && send_enabled)
+            if ui
+                .add_enabled(send_enabled, egui::Button::new("Send"))
+                .clicked()
+                || (response.has_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && send_enabled)
             {
                 let text = state.input_text.trim().to_string();
                 if !text.is_empty() {
@@ -608,8 +722,13 @@ mod tests {
     #[test]
     fn test_message_role_color() {
         for &role in &[
-            MessageRole::System, MessageRole::User, MessageRole::Assistant,
-            MessageRole::Think, MessageRole::ToolCall, MessageRole::ToolResult, MessageRole::Event,
+            MessageRole::System,
+            MessageRole::User,
+            MessageRole::Assistant,
+            MessageRole::Think,
+            MessageRole::ToolCall,
+            MessageRole::ToolResult,
+            MessageRole::Event,
         ] {
             let c = role.color();
             assert!(c.r() > 0 || c.g() > 0 || c.b() > 0);
@@ -643,7 +762,9 @@ mod tests {
 
     #[test]
     fn test_chat_widget_state_clear() {
-        let mut state = ChatWidgetState::new().with_greeting("Hi").with_greeting("Hello");
+        let mut state = ChatWidgetState::new()
+            .with_greeting("Hi")
+            .with_greeting("Hello");
         state.input_text = "some text".to_string();
         state.clear();
         assert!(state.messages.is_empty());
@@ -690,7 +811,11 @@ mod tests {
             ChatAction::Skip,
             ChatAction::Stop,
             ChatAction::ToggleCapability(Capability::Generate),
-            ChatAction::AddAttachment(Attachment { name: "file.md".to_string(), kind: AttachmentKind::File, content: String::new() }),
+            ChatAction::AddAttachment(Attachment {
+                name: "file.md".to_string(),
+                kind: AttachmentKind::File,
+                content: String::new(),
+            }),
             ChatAction::RemoveAttachment(0),
             ChatAction::SetPacingMode(InteractionMode::FullControl),
             ChatAction::Undo,

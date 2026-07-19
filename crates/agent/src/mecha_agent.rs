@@ -253,23 +253,24 @@ impl MechanisticAgent {
         _query: &str,
         workspace_root: Option<&std::path::Path>,
     ) -> super::context::ContextManager {
-        let mut manager = super::context::ContextManager::new(self.context_budget_tokens)
-            .with_global_limit(20);
+        let mut manager =
+            super::context::ContextManager::new(self.context_budget_tokens).with_global_limit(20);
 
         if let Some(ref store) = self.session_store {
-            manager = manager.add_source(Box::new(
-                super::context::SessionContextSource::new(store.clone(), 3),
-            ));
+            manager = manager.add_source(Box::new(super::context::SessionContextSource::new(
+                store.clone(),
+                3,
+            )));
         }
         if let Some(ref store) = self.memory_store {
-            manager = manager.add_source(Box::new(
-                super::context::MemoryContextSource::new(store.clone(), 3),
-            ));
+            manager = manager.add_source(Box::new(super::context::MemoryContextSource::new(
+                store.clone(),
+                3,
+            )));
         }
         if let Some(root) = workspace_root {
-            manager = manager.add_source(Box::new(
-                super::context::WorkspaceContextSource::new(root),
-            ));
+            manager =
+                manager.add_source(Box::new(super::context::WorkspaceContextSource::new(root)));
         }
 
         manager
@@ -279,7 +280,8 @@ impl MechanisticAgent {
     ///
     /// Unknown pairs will fail loud during dispatch.
     pub fn register(&mut self, r#type: &str, domain: &str, handler: HandlerFn) {
-        self.handlers.insert((r#type.to_string(), domain.to_string()), handler);
+        self.handlers
+            .insert((r#type.to_string(), domain.to_string()), handler);
     }
 
     /// Declare a route with its supported task types.
@@ -319,7 +321,10 @@ impl MechanisticAgent {
 
         let intent = self.classify(backend, msg).await?;
         if self.verbose {
-            eprintln!("[mecha:identify] route={} confidence={:.2}", intent.route, intent.confidence);
+            eprintln!(
+                "[mecha:identify] route={} confidence={:.2}",
+                intent.route, intent.confidence
+            );
             eprintln!("[mecha:goal] {}", intent.goal);
         }
         // Derive plan directly from Intent — no free-form thinking step.
@@ -339,11 +344,7 @@ impl MechanisticAgent {
     ///
     /// Prepend-pull protocol: queries session store and memory store for
     /// previously classified requests that match, avoiding redundant classification.
-    async fn classify(
-        &self,
-        backend: &dyn ModelBackend,
-        msg: &str,
-    ) -> Result<Intent, AgentError> {
+    async fn classify(&self, backend: &dyn ModelBackend, msg: &str) -> Result<Intent, AgentError> {
         // Pull relevant context from available sources.
         let mut ctx_mgr = self.build_context_manager(msg, None);
         let snippets = ctx_mgr.collect(msg);
@@ -478,9 +479,8 @@ impl MechanisticAgent {
                 .max(self.repair.min_tokens);
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            AgentError::Internal("derive failed after all retries".to_string())
-        }))
+        Err(last_err
+            .unwrap_or_else(|| AgentError::Internal("derive failed after all retries".to_string())))
     }
 
     /// Validate that all plan tasks are within the selected route's declared
@@ -570,7 +570,6 @@ impl MechanisticAgent {
             workspace_path: ws.root().to_string_lossy().to_string(),
         })
     }
-
 }
 
 /// Alias for clarity when used alongside [`CommonAgent`](crate::CommonAgent).
@@ -582,7 +581,9 @@ impl BaseAgent for MechanisticAgent {
     /// Run the mechanistic pipeline and return only the final human-readable text.
     async fn run(&self, backend: &dyn ModelBackend, msg: &str) -> Result<String, AgentError> {
         let outcome = self.run(backend, msg).await?;
-        Ok(outcome.handler_results.iter()
+        Ok(outcome
+            .handler_results
+            .iter()
             .map(|r| r.output.as_str())
             .collect::<Vec<_>>()
             .join("\n\n"))
@@ -651,16 +652,20 @@ mod tests {
         let backend = MockBackend::default();
         let mut agent = MechanisticAgent::new();
 
-        agent.register("write", "chapter", Box::new(|task, _backend, ws| {
-            let path = ws.resolve("CHAPTER.md").unwrap();
-            std::fs::write(&path, "# Title\n\nContent.").ok();
-            HandlerResult {
-                task: task.clone(),
-                output: "written".to_string(),
-                files: HashMap::new(),
-                pass: true,
-            }
-        }));
+        agent.register(
+            "write",
+            "chapter",
+            Box::new(|task, _backend, ws| {
+                let path = ws.resolve("CHAPTER.md").unwrap();
+                std::fs::write(&path, "# Title\n\nContent.").ok();
+                HandlerResult {
+                    task: task.clone(),
+                    output: "written".to_string(),
+                    files: HashMap::new(),
+                    pass: true,
+                }
+            }),
+        );
 
         let plan = Plan {
             tasks: vec![Task {
@@ -721,17 +726,25 @@ mod tests {
         let backend = MockBackend::default();
         let mut agent = MechanisticAgent::new();
 
-        agent.register("write", "chapter", Box::new(|task, _backend, ws| {
-            let title = task.spec.get("title").and_then(|v| v.as_str()).unwrap_or("Ch");
-            let path = ws.resolve("CHAPTER.md").unwrap();
-            std::fs::write(&path, format!("# {title}\n\nContent.")).ok();
-            HandlerResult {
-                task: task.clone(),
-                output: format!("written: {title}"),
-                files: HashMap::new(),
-                pass: true,
-            }
-        }));
+        agent.register(
+            "write",
+            "chapter",
+            Box::new(|task, _backend, ws| {
+                let title = task
+                    .spec
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Ch");
+                let path = ws.resolve("CHAPTER.md").unwrap();
+                std::fs::write(&path, format!("# {title}\n\nContent.")).ok();
+                HandlerResult {
+                    task: task.clone(),
+                    output: format!("written: {title}"),
+                    files: HashMap::new(),
+                    pass: true,
+                }
+            }),
+        );
 
         // MockBackend doesn't return valid JSON, so run() will fail at
         // the repair_derive step. Test that the error path is clean.
@@ -748,8 +761,10 @@ mod tests {
         let result = agent.run(&backend, "test").await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("failed to parse") || msg.contains("attempt") || msg.contains("retries"),
-            "run should fail with parse error, got: {msg}");
+        assert!(
+            msg.contains("failed to parse") || msg.contains("attempt") || msg.contains("retries"),
+            "run should fail with parse error, got: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -757,21 +772,34 @@ mod tests {
         let backend = MockBackend::default();
         let mut agent = MechanisticAgent::new();
 
-        agent.register("write", "prose", Box::new(|task, backend, ws| {
-            let prompt = task.spec.get("prompt").and_then(|v| v.as_str()).unwrap_or("write");
-            let req = CompletionRequest {
-                prompt: format!("Generate: {prompt}"),
-                temperature: 0.0,
-                max_tokens: 100,
-                ..Default::default()
-            };
-            let resp = futures::executor::block_on(backend.complete(req))
-                .map(|r| r.text)
-                .unwrap_or_else(|_| "[generated]".to_string());
-            let path = ws.resolve("OUTPUT.md").unwrap();
-            std::fs::write(&path, &resp).ok();
-            HandlerResult { task: task.clone(), output: resp, files: HashMap::new(), pass: true }
-        }));
+        agent.register(
+            "write",
+            "prose",
+            Box::new(|task, backend, ws| {
+                let prompt = task
+                    .spec
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("write");
+                let req = CompletionRequest {
+                    prompt: format!("Generate: {prompt}"),
+                    temperature: 0.0,
+                    max_tokens: 100,
+                    ..Default::default()
+                };
+                let resp = futures::executor::block_on(backend.complete(req))
+                    .map(|r| r.text)
+                    .unwrap_or_else(|_| "[generated]".to_string());
+                let path = ws.resolve("OUTPUT.md").unwrap();
+                std::fs::write(&path, &resp).ok();
+                HandlerResult {
+                    task: task.clone(),
+                    output: resp,
+                    files: HashMap::new(),
+                    pass: true,
+                }
+            }),
+        );
 
         let plan = Plan {
             tasks: vec![Task {
@@ -830,8 +858,13 @@ mod tests {
             goal: "Write a story.".into(),
             params: serde_json::json!({}),
         };
-        let result = agent.repair_derive(&backend, &intent, "Write a story.").await;
-        assert!(result.is_err(), "repair loop should fail after exhausting retries");
+        let result = agent
+            .repair_derive(&backend, &intent, "Write a story.")
+            .await;
+        assert!(
+            result.is_err(),
+            "repair loop should fail after exhausting retries"
+        );
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("attempt") || msg.contains("retries") || msg.contains("failed to parse"),
@@ -853,7 +886,9 @@ mod tests {
             goal: "Write a story.".into(),
             params: serde_json::json!({}),
         };
-        let result = agent.repair_derive(&backend, &intent, "Write a story.").await;
+        let result = agent
+            .repair_derive(&backend, &intent, "Write a story.")
+            .await;
         assert!(result.is_err(), "zero retries should fail immediately");
     }
 
@@ -908,7 +943,10 @@ mod tests {
 
         let result = agent.validate_route_tasks("storyTeller", &plan);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not allowed in route"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not allowed in route"));
     }
 
     #[test]
@@ -930,14 +968,15 @@ mod tests {
     #[tokio::test]
     async fn test_classify_with_route_table() {
         let backend = MockBackend::default();
-        let mut agent = MechanisticAgent::new()
-            .with_fallback_threshold(0.2);
+        let mut agent = MechanisticAgent::new().with_fallback_threshold(0.2);
         agent.add_route("storyTeller", vec![("write", "chapter"), ("write", "wiki")]);
         agent.add_route("justChatting", vec![]);
 
         // MockBackend echoes the prompt, so parsing will fail.
         // This tests that classify() doesn't panic with routes registered.
-        let result = agent.classify(&backend, "write me a story about a dragon").await;
+        let result = agent
+            .classify(&backend, "write me a story about a dragon")
+            .await;
         match result {
             Ok(intent) => {
                 // If parsed, route should be one of the registered routes or default.

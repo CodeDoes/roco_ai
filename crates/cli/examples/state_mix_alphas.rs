@@ -55,15 +55,17 @@ async fn main() -> anyhow::Result<()> {
         let session = format!("mix_{:.2}", alpha);
         println!("=== alpha = {} ===", alpha);
         backend.blend_states("sherlock", "tony", alpha, &session)?;
-        
-        let resp = backend.complete(CompletionRequest {
-            prompt: probe.to_string(),
-            temperature: 0.7,
-            max_tokens: 150,
-            preserve_state: true,
-            session: Some(session),
-            ..Default::default()
-        }).await?;
+
+        let resp = backend
+            .complete(CompletionRequest {
+                prompt: probe.to_string(),
+                temperature: 0.7,
+                max_tokens: 150,
+                preserve_state: true,
+                session: Some(session),
+                ..Default::default()
+            })
+            .await?;
         println!("Response: {}\n", resp.text.trim());
     }
 

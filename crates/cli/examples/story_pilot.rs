@@ -17,9 +17,7 @@
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-use roco_agent::mechanistic::{
-    HandlerResult, MechanisticAgent, Plan, RepairConfig, Task,
-};
+use roco_agent::mechanistic::{HandlerResult, MechanisticAgent, Plan, RepairConfig, Task};
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_inference::RwkvBackend;
 use roco_workspace::{Workspace, WorkspaceKind};
@@ -99,11 +97,25 @@ fn parse_json_string(json: &str, key: &str) -> String {
                     if c == '\\' {
                         if let Some(&next) = chars.peek() {
                             match next {
-                                'n' => { result.push('\n'); chars.next(); }
-                                't' => { result.push('\t'); chars.next(); }
-                                '"' => { result.push('"'); chars.next(); }
-                                '\\' => { result.push('\\'); chars.next(); }
-                                _ => { result.push(c); }
+                                'n' => {
+                                    result.push('\n');
+                                    chars.next();
+                                }
+                                't' => {
+                                    result.push('\t');
+                                    chars.next();
+                                }
+                                '"' => {
+                                    result.push('"');
+                                    chars.next();
+                                }
+                                '\\' => {
+                                    result.push('\\');
+                                    chars.next();
+                                }
+                                _ => {
+                                    result.push(c);
+                                }
                             }
                         }
                     } else if c == '"' {
@@ -122,7 +134,11 @@ fn parse_json_string(json: &str, key: &str) -> String {
 // ── Handlers ────────────────────────────────────────────────────────
 
 fn handle_outline(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> HandlerResult {
-    let premise = task.spec.get("premise").and_then(|v| v.as_str()).unwrap_or("");
+    let premise = task
+        .spec
+        .get("premise")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     info!(premise = %premise, "generate outline");
 
     let json = match constrained_complete(
@@ -144,9 +160,9 @@ fn handle_outline(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Ha
     let title = parse_json_string(&json, "title");
     let genre = parse_json_string(&json, "genre");
     let tone = parse_json_string(&json, "tone");
-    
+
     let mut md = format!("Title: {title}\nGenre: {genre}\nTone: {tone}\n\n");
-    
+
     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
         if let Some(chapters) = parsed.get("chapters").and_then(|c| c.as_array()) {
             for ch in chapters {
@@ -172,8 +188,16 @@ fn handle_outline(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Ha
 }
 
 fn handle_wiki(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> HandlerResult {
-    let premise = task.spec.get("premise").and_then(|v| v.as_str()).unwrap_or("");
-    let outline = task.spec.get("outline").and_then(|v| v.as_str()).unwrap_or("");
+    let premise = task
+        .spec
+        .get("premise")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let outline = task
+        .spec
+        .get("outline")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     info!("generate wiki");
 
     let json = match constrained_complete(
@@ -203,7 +227,10 @@ fn handle_wiki(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Handl
             }
         }
         md.push('\n');
-        let setting = parsed.get("setting").and_then(|s| s.as_str()).unwrap_or("Unknown");
+        let setting = parsed
+            .get("setting")
+            .and_then(|s| s.as_str())
+            .unwrap_or("Unknown");
         md.push_str(&format!("Setting:\n  - {setting}\n"));
     }
 
@@ -221,9 +248,21 @@ fn handle_wiki(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Handl
 }
 
 fn handle_chapter(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> HandlerResult {
-    let num = task.spec.get("number").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
-    let outline = task.spec.get("outline").and_then(|v| v.as_str()).unwrap_or("");
-    let prev = task.spec.get("previous").and_then(|v| v.as_str()).unwrap_or("");
+    let num = task
+        .spec
+        .get("number")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1) as usize;
+    let outline = task
+        .spec
+        .get("outline")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let prev = task
+        .spec
+        .get("previous")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     let directive = if num == 1 {
         format!(
@@ -249,7 +288,10 @@ fn handle_chapter(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> Ha
         650,
     ) {
         Ok(j) => j,
-        Err(e) => { error!(%e); return error_result(task, &format!("chapter {num}")); }
+        Err(e) => {
+            error!(%e);
+            return error_result(task, &format!("chapter {num}"));
+        }
     };
 
     // Convert JSON to markdown
@@ -279,7 +321,12 @@ string ::= "\"" ( [ -~] )* "\""
 space ::= " "?
 "#;
 
-fn validate_wiki_quality(backend: &dyn ModelBackend, ws: &Workspace, wiki_text: &str, outline_text: &str) -> HandlerResult {
+fn validate_wiki_quality(
+    backend: &dyn ModelBackend,
+    ws: &Workspace,
+    wiki_text: &str,
+    outline_text: &str,
+) -> HandlerResult {
     let reason: String = serde_json::from_str::<serde_json::Value>(
         &match constrained_complete(
             backend,
@@ -308,7 +355,10 @@ fn validate_wiki_quality(backend: &dyn ModelBackend, ws: &Workspace, wiki_text: 
         .unwrap_or(ch_len > 50);
 
     let note = if !pass {
-        format!("Wiki: FAIL — {} ({ch_len} chars)", reason.trim_matches('\"'))
+        format!(
+            "Wiki: FAIL — {} ({ch_len} chars)",
+            reason.trim_matches('\"')
+        )
     } else {
         format!("Wiki: OK ({ch_len} chars)")
     };
@@ -319,13 +369,30 @@ fn validate_wiki_quality(backend: &dyn ModelBackend, ws: &Workspace, wiki_text: 
         std::fs::write(&p, format!("{existing}\n## Wiki\n{note}\n")).ok();
     }
 
-    HandlerResult { task: Task { r#type: "validate".into(), domain: "wiki".into(), spec: Default::default() }, output: note, files: HashMap::new(), pass }
+    HandlerResult {
+        task: Task {
+            r#type: "validate".into(),
+            domain: "wiki".into(),
+            spec: Default::default(),
+        },
+        output: note,
+        files: HashMap::new(),
+        pass,
+    }
 }
 
 fn handle_validate(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> HandlerResult {
-    let num = task.spec.get("number").and_then(|v| v.as_u64()).unwrap_or(0);
+    let num = task
+        .spec
+        .get("number")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     let text = task.spec.get("text").and_then(|v| v.as_str()).unwrap_or("");
-    let outline = task.spec.get("outline").and_then(|v| v.as_str()).unwrap_or("");
+    let outline = task
+        .spec
+        .get("outline")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     info!(chapter = num, "validate chapter");
     // Truncate long chapters for prompt size budget
     let prompt_text = if text.len() > 800 { &text[..800] } else { text };
@@ -339,14 +406,19 @@ fn handle_validate(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> H
             "Evaluate Chapter {} of {}.\n\nContent:\n{}\n\n\
              Check: length >{} chars? Concrete nouns present? Plot advancement? Repetition?\n\
              Return only: {{\"pass\": true/false, \"reason\": \"short reason\"}}",
-            num, outline.trim_end().chars().take(80).collect::<String>(), prompt_text, 400,
+            num,
+            outline.trim_end().chars().take(80).collect::<String>(),
+            prompt_text,
+            400,
         ),
         VALIDATE_GRAMMAR,
         0.5,
         80,
     ) {
         Ok(j) => j,
-        Err(_) => serde_json::json!({"pass": text.len() > 400, "reason": "parse fallback"}).to_string(),
+        Err(_) => {
+            serde_json::json!({"pass": text.len() > 400, "reason": "parse fallback"}).to_string()
+        }
     };
 
     let pass = serde_json::from_str::<serde_json::Value>(&json)
@@ -381,7 +453,11 @@ fn handle_validate(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> H
 }
 
 fn handle_synopsis(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> HandlerResult {
-    let chapters = task.spec.get("chapters").and_then(|v| v.as_str()).unwrap_or("");
+    let chapters = task
+        .spec
+        .get("chapters")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     info!("generate synopsis");
 
     let json = match constrained_complete(
@@ -397,7 +473,10 @@ fn handle_synopsis(task: &Task, backend: &dyn ModelBackend, ws: &Workspace) -> H
         250,
     ) {
         Ok(j) => j,
-        Err(e) => { error!(%e); return error_result(task, "synopsis"); }
+        Err(e) => {
+            error!(%e);
+            return error_result(task, "synopsis");
+        }
     };
 
     let summary = parse_json_string(&json, "summary");
@@ -423,7 +502,8 @@ fn handle_publish(_task: &Task, _backend: &dyn ModelBackend, ws: &Workspace) -> 
     let wiki = std::fs::read_to_string(ws.root().join("02-WIKI.md")).unwrap_or_default();
     let synopsis = std::fs::read_to_string(ws.root().join("05-SYNOPSIS.md")).unwrap_or_default();
 
-    let title = outline.lines()
+    let title = outline
+        .lines()
         .find(|l| l.starts_with("Title:") || l.starts_with("# "))
         .map(|l| l.replace("Title:", "").replace("# ", "").trim().to_string())
         .unwrap_or_else(|| "Untitled Story".into());
@@ -477,14 +557,23 @@ fn error_result(task: &Task, label: &str) -> HandlerResult {
 // ── Utilities ───────────────────────────────────────────────────────
 
 fn sanitize(s: &str) -> String {
-    s.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+    s.chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }
 
 fn create_workspace(prompt: &str) -> anyhow::Result<Workspace> {
-    let ts = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default().as_secs();
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let words: Vec<&str> = prompt.split_whitespace().take(4).collect();
     let name = if words.is_empty() {
         format!("story_ts_{ts}")
@@ -504,8 +593,10 @@ fn create_workspace(prompt: &str) -> anyhow::Result<Workspace> {
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 
     let premise = std::env::args().nth(1).unwrap_or_else(|| {
@@ -529,14 +620,17 @@ fn main() -> anyhow::Result<()> {
         })
         .with_fallback_threshold(0.3);
 
-    agent.add_route("storyTeller", vec![
-        ("compose", "outline"),
-        ("compose", "wiki"),
-        ("write", "chapter"),
-        ("validate", "chapter"),
-        ("write", "synopsis"),
-        ("publish", "chapter"),
-    ]);
+    agent.add_route(
+        "storyTeller",
+        vec![
+            ("compose", "outline"),
+            ("compose", "wiki"),
+            ("write", "chapter"),
+            ("validate", "chapter"),
+            ("write", "synopsis"),
+            ("publish", "chapter"),
+        ],
+    );
 
     agent.register("compose", "outline", Box::new(handle_outline));
     agent.register("compose", "wiki", Box::new(handle_wiki));
@@ -559,7 +653,8 @@ fn main() -> anyhow::Result<()> {
             spec: serde_json::json!({"premise": premise}),
         }],
     };
-    let outline_result = agent.dispatch_single(&backend, &outline_plan.tasks[0], &ws)
+    let outline_result = agent
+        .dispatch_single(&backend, &outline_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("outline failed: {e}"))?;
     let outline_text = outline_result.output.clone();
 
@@ -572,21 +667,27 @@ fn main() -> anyhow::Result<()> {
             spec: serde_json::json!({"premise": &premise, "outline": &outline_text}),
         }],
     };
-    let mut wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
+    let mut wiki_result = agent
+        .dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("wiki failed: {e}"))?;
 
     // Validate wiki quality before proceeding
     println!("   🔍 Validating wiki...");
     let wiki_val = validate_wiki_quality(&backend, &ws, &wiki_result.output, &outline_text);
     if !wiki_val.pass {
-        println!("   ⚠️  Wiki needs improvement ({}) — regenerating...", wiki_val.output.trim());
+        println!(
+            "   ⚠️  Wiki needs improvement ({}) — regenerating...",
+            wiki_val.output.trim()
+        );
         // Regenerate wiki with quality feedback
         let retry_task = Task {
             r#type: "compose".into(),
             domain: "wiki".into(),
             spec: serde_json::json!({"premise": &premise, "outline": &outline_text, "quality_note": &wiki_val.output}),
         };
-        let retry_wiki = agent.dispatch_single(&backend, &retry_task, &ws).unwrap_or(wiki_result.clone());
+        let retry_wiki = agent
+            .dispatch_single(&backend, &retry_task, &ws)
+            .unwrap_or(wiki_result.clone());
         let wiki_path = ws.resolve("02-WIKI.md").ok();
         if let Some(path) = wiki_path {
             std::fs::write(&path, &retry_wiki.output).ok();
@@ -610,7 +711,8 @@ fn main() -> anyhow::Result<()> {
                 "previous": prev,
             }),
         };
-        let ch_result = agent.dispatch_single(&backend, &ch_task, &ws)
+        let ch_result = agent
+            .dispatch_single(&backend, &ch_task, &ws)
             .map_err(|e| anyhow::anyhow!("chapter {i} failed: {e}"))?;
         chapter_texts.push(ch_result.output.clone());
 
@@ -621,7 +723,8 @@ fn main() -> anyhow::Result<()> {
             domain: "chapter".into(),
             spec: serde_json::json!({"number": i, "text": ch_result.output, "outline": &outline_text}),
         };
-        let val_result = agent.dispatch_single(&backend, &val_task, &ws)
+        let val_result = agent
+            .dispatch_single(&backend, &val_task, &ws)
             .map_err(|e| anyhow::anyhow!("validation {i} failed: {e}"))?;
 
         // Self-correction: low-quality or too-short chapter → rewrite
@@ -638,7 +741,8 @@ fn main() -> anyhow::Result<()> {
                     "retry": true,
                 }),
             };
-            let retry_result = agent.dispatch_single(&backend, &retry_task, &ws)
+            let retry_result = agent
+                .dispatch_single(&backend, &retry_task, &ws)
                 .unwrap_or(ch_result);
             chapter_texts[i - 1] = retry_result.output.clone();
 
@@ -652,7 +756,8 @@ fn main() -> anyhow::Result<()> {
 
     // Phase 4: Synopsis
     println!("📋 Synopsis...");
-    let all_chapters = chapter_texts.iter()
+    let all_chapters = chapter_texts
+        .iter()
         .enumerate()
         .map(|(i, t)| format!("## Chapter {}\n{}", i + 1, t))
         .collect::<Vec<_>>()
@@ -664,7 +769,8 @@ fn main() -> anyhow::Result<()> {
             spec: serde_json::json!({"chapters": all_chapters}),
         }],
     };
-    let _syn_result = agent.dispatch_single(&backend, &syn_plan.tasks[0], &ws)
+    let _syn_result = agent
+        .dispatch_single(&backend, &syn_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("synopsis failed: {e}"))?;
 
     // Phase 5: Publish
@@ -676,20 +782,25 @@ fn main() -> anyhow::Result<()> {
             spec: serde_json::json!({}),
         }],
     };
-    let pub_result = agent.dispatch_single(&backend, &pub_plan.tasks[0], &ws)
+    let pub_result = agent
+        .dispatch_single(&backend, &pub_plan.tasks[0], &ws)
         .map_err(|e| anyhow::anyhow!("publish failed: {e}"))?;
 
     // Commit
-    let outcome = agent.commit(pub_plan.clone(), vec![
-        outline_result, wiki_result, pub_result,
-    ], &ws)?;
+    let outcome = agent.commit(
+        pub_plan.clone(),
+        vec![outline_result, wiki_result, pub_result],
+        &ws,
+    )?;
 
     println!("\n✅ Done!\n");
     let mut files: Vec<_> = outcome.workspace_files.iter().collect();
     files.sort_by_key(|(k, _)| (*k).clone());
     for (fname, content) in files {
-        println!("  📄 {} ({} bytes)\n     {}",
-            fname, content.len(),
+        println!(
+            "  📄 {} ({} bytes)\n     {}",
+            fname,
+            content.len(),
             content.lines().take(3).collect::<Vec<_>>().join("\n     "),
         );
     }

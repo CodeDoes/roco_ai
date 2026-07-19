@@ -141,13 +141,8 @@ impl OutputStrategy for LooseJsonStrategy {
             // Find the end of the line
             if let Some(eol) = permissive[pos..].find('\n') {
                 let rule_line = permissive[pos..pos + eol].to_string();
-                let body = rule_line
-                    .strip_prefix("root ::= ")
-                    .unwrap_or(&rule_line);
-                let wrapped = format!(
-                    "root ::= space {} space\n",
-                    body
-                );
+                let body = rule_line.strip_prefix("root ::= ").unwrap_or(&rule_line);
+                let wrapped = format!("root ::= space {} space\n", body);
                 permissive.replace_range(pos..pos + eol, &wrapped);
             }
         }
@@ -197,7 +192,10 @@ impl<T: DeserializeOwned + Send + Sync + 'static> RawGbnfStrategy<T> {
     }
 
     /// Create with a custom parser (e.g., for non-JSON output formats).
-    pub fn with_parser(grammar: &str, parser: Box<dyn Fn(&str) -> Result<T, String> + Send + Sync>) -> Self {
+    pub fn with_parser(
+        grammar: &str,
+        parser: Box<dyn Fn(&str) -> Result<T, String> + Send + Sync>,
+    ) -> Self {
         Self {
             grammar: grammar.to_string(),
             parser,
@@ -312,10 +310,9 @@ impl<T: DeserializeOwned> OutputParser<T> for StateTunedStrategy {
     /// - Leading/trailing whitespace
     fn parse(&self, text: &str) -> Result<T, String> {
         let cleaned = clean_json_output(text);
-        serde_json::from_str::<T>(&cleaned)
-            .map_err(|e| {
-                format!("StateTunedStrategy parse error: {e}\noriginal: {text}\ncleaned: {cleaned}")
-            })
+        serde_json::from_str::<T>(&cleaned).map_err(|e| {
+            format!("StateTunedStrategy parse error: {e}\noriginal: {text}\ncleaned: {cleaned}")
+        })
     }
 }
 
@@ -328,7 +325,8 @@ fn clean_json_output(text: &str) -> String {
     if let Some(start) = trimmed.find("```") {
         let after_fence = &trimmed[start + 3..];
         // Skip optional language tag (e.g., "json\n")
-        let content_start = after_fence.find('\n')
+        let content_start = after_fence
+            .find('\n')
             .map(|pos| after_fence[pos + 1..].trim_start())
             .unwrap_or(after_fence.trim_start());
 
@@ -347,7 +345,11 @@ fn clean_json_output(text: &str) -> String {
     // No fences found — try to find JSON object/array directly
     // Look for first '{' or '[' and last '}' or ']'
     if let Some(start) = trimmed.find(|c| c == '{' || c == '[') {
-        let end_char = if trimmed.as_bytes()[start] == b'{' { '}' } else { ']' };
+        let end_char = if trimmed.as_bytes()[start] == b'{' {
+            '}'
+        } else {
+            ']'
+        };
         if let Some(end) = trimmed[start..].rfind(end_char) {
             return trimmed[start..=start + end].to_string();
         }
@@ -484,7 +486,13 @@ space ::= " "?
     fn schema_strategy_parses_strict_json() {
         let strategy = SchemaStrategy::new(simple_schema());
         let result: Simple = strategy.parse(r#"{"name":"Alice","age":30}"#).unwrap();
-        assert_eq!(result, Simple { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 
     #[test]
@@ -494,21 +502,39 @@ space ::= " "?
         // but the parse() method trims whitespace before parsing, so
         // trailing whitespace should work.
         let result: Simple = strategy.parse(r#"  {"name":"Alice","age":30}  "#).unwrap();
-        assert_eq!(result, Simple { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 
     #[test]
     fn loose_json_strategy_accepts_whitespace() {
         let strategy = LooseJsonStrategy::new(simple_schema());
         let result: Simple = strategy.parse(r#"{"name":"Alice","age":30}"#).unwrap();
-        assert_eq!(result, Simple { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 
     #[test]
     fn raw_gbnf_strategy_parses_valid_json() {
         let strategy = RawGbnfStrategy::<Simple>::new(SIMPLE_RAW_GBNF);
         let result: Simple = strategy.parse(r#"{"name":"Bob","age":25}"#).unwrap();
-        assert_eq!(result, Simple { name: "Bob".into(), age: 25 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Bob".into(),
+                age: 25
+            }
+        );
     }
 
     #[test]
@@ -539,18 +565,12 @@ space ::= " "?
         let schema = simple_schema();
         let raw = SIMPLE_RAW_GBNF;
 
-        let schema_gbnf = StrategySelector::new(
-            StrategyKind::Schema, schema.clone(), raw,
-        ).grammar();
-        let loose_gbnf = StrategySelector::new(
-            StrategyKind::LooseJson, schema.clone(), raw,
-        ).grammar();
-        let raw_gbnf = StrategySelector::new(
-            StrategyKind::RawGbnf, schema.clone(), raw,
-        ).grammar();
-        let state_gbnf = StrategySelector::new(
-            StrategyKind::StateTuned, schema, raw,
-        ).grammar();
+        let schema_gbnf =
+            StrategySelector::new(StrategyKind::Schema, schema.clone(), raw).grammar();
+        let loose_gbnf =
+            StrategySelector::new(StrategyKind::LooseJson, schema.clone(), raw).grammar();
+        let raw_gbnf = StrategySelector::new(StrategyKind::RawGbnf, schema.clone(), raw).grammar();
+        let state_gbnf = StrategySelector::new(StrategyKind::StateTuned, schema, raw).grammar();
 
         // Schema, loose, and raw should produce different grammars
         assert_ne!(schema_gbnf, loose_gbnf, "schema and loose should differ");
@@ -564,15 +584,24 @@ space ::= " "?
     fn schema_grammar_is_strict_json() {
         let gbnf = SchemaStrategy::new(simple_schema()).grammar();
         // Should NOT have a space rule
-        assert!(!gbnf.contains("space::"), "schema grammar should not have space rule:\n{gbnf}");
+        assert!(
+            !gbnf.contains("space::"),
+            "schema grammar should not have space rule:\n{gbnf}"
+        );
         // Should reference simple-obj
-        assert!(gbnf.contains("root ::= root_obj"), "schema grammar should reference root_obj:\n{gbnf}");
+        assert!(
+            gbnf.contains("root ::= root_obj"),
+            "schema grammar should reference root_obj:\n{gbnf}"
+        );
     }
 
     #[test]
     fn loose_grammar_has_space_rule() {
         let gbnf = LooseJsonStrategy::new(simple_schema()).grammar();
-        assert!(gbnf.contains("space ::="), "loose grammar should have space rule:\n{gbnf}");
+        assert!(
+            gbnf.contains("space ::="),
+            "loose grammar should have space rule:\n{gbnf}"
+        );
     }
 
     // ── StateTunedStrategy tests ─────────────────────────────────────
@@ -581,7 +610,13 @@ space ::= " "?
     fn state_tuned_parses_plain_json() {
         let strategy = StateTunedStrategy;
         let result: Simple = strategy.parse(r#"{"name":"Alice","age":30}"#).unwrap();
-        assert_eq!(result, Simple { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 
     #[test]
@@ -589,7 +624,13 @@ space ::= " "?
         let strategy = StateTunedStrategy;
         let text = "```json\n{\"name\":\"Bob\",\"age\":25}\n```";
         let result: Simple = strategy.parse(text).unwrap();
-        assert_eq!(result, Simple { name: "Bob".into(), age: 25 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Bob".into(),
+                age: 25
+            }
+        );
     }
 
     #[test]
@@ -597,7 +638,13 @@ space ::= " "?
         let strategy = StateTunedStrategy;
         let text = "```\n{\"name\":\"Charlie\",\"age\":35}\n```";
         let result: Simple = strategy.parse(text).unwrap();
-        assert_eq!(result, Simple { name: "Charlie".into(), age: 35 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Charlie".into(),
+                age: 35
+            }
+        );
     }
 
     #[test]
@@ -605,7 +652,13 @@ space ::= " "?
         let strategy = StateTunedStrategy;
         let text = "Here is the result:\n```json\n{\"name\":\"Diana\",\"age\":28}\n```\nEnd";
         let result: Simple = strategy.parse(text).unwrap();
-        assert_eq!(result, Simple { name: "Diana".into(), age: 28 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Diana".into(),
+                age: 28
+            }
+        );
     }
 
     #[test]
@@ -613,7 +666,13 @@ space ::= " "?
         let strategy = StateTunedStrategy;
         let text = "  {\"name\":\"Eve\",\"age\":22}  ";
         let result: Simple = strategy.parse(text).unwrap();
-        assert_eq!(result, Simple { name: "Eve".into(), age: 22 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Eve".into(),
+                age: 22
+            }
+        );
     }
 
     #[test]
@@ -628,6 +687,12 @@ space ::= " "?
         assert_eq!(selector.kind(), StrategyKind::StateTuned);
         assert_eq!(selector.grammar(), "");
         let result: Simple = selector.parse(r#"{"name":"Frank","age":40}"#).unwrap();
-        assert_eq!(result, Simple { name: "Frank".into(), age: 40 });
+        assert_eq!(
+            result,
+            Simple {
+                name: "Frank".into(),
+                age: 40
+            }
+        );
     }
 }

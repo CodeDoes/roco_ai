@@ -17,8 +17,7 @@
 
 use ahash::AHashMap;
 use kbnf::{
-    engine_like::AcceptTokenError, AcceptTokenResult, Config, Engine, EngineLike, Token,
-    Vocabulary,
+    engine_like::AcceptTokenError, AcceptTokenResult, Config, Engine, EngineLike, Token, Vocabulary,
 };
 use roco_engine::BnfMask;
 
@@ -31,7 +30,10 @@ use roco_engine::BnfMask;
 /// # Errors
 /// Returns `BnfError` if the grammar string is malformed or the vocabulary is
 /// incompatible.
-pub fn create_bnf_mask(grammar: &str, vocab_bytes: &[Vec<u8>]) -> Result<Box<dyn BnfMask>, BnfError> {
+pub fn create_bnf_mask(
+    grammar: &str,
+    vocab_bytes: &[Vec<u8>],
+) -> Result<Box<dyn BnfMask>, BnfError> {
     BnfEngine::new(grammar, vocab_bytes).map(|e| Box::new(e) as Box<dyn BnfMask>)
 }
 
@@ -74,11 +76,7 @@ impl BnfEngine {
     ///
     /// Allows setting `start_nonterminal` (default `"start"`) and other
     /// kbnf-level options.
-    pub fn with_config(
-        grammar: &str,
-        vocab: &[Vec<u8>],
-        config: Config,
-    ) -> Result<Self, BnfError> {
+    pub fn with_config(grammar: &str, vocab: &[Vec<u8>], config: Config) -> Result<Self, BnfError> {
         let id_to_token: AHashMap<u32, Token> = vocab
             .iter()
             .enumerate()
@@ -102,12 +100,21 @@ impl BnfEngine {
         // `allowed_token_ids` — we must do that before the first mask_logits.
         engine.compute_allowed_token_ids();
 
-        let allowed = engine.allowed_token_ids_from_last_computation().count_ones(..);
+        let allowed = engine
+            .allowed_token_ids_from_last_computation()
+            .count_ones(..);
         if allowed == 0 {
             eprintln!("[bnf-engine WARN] compute_allowed_token_ids returned 0 allowed tokens");
         } else if allowed < 10 {
-            let first_ones: Vec<usize> = engine.allowed_token_ids_from_last_computation().ones().take(5).collect();
-            eprintln!("[bnf-engine] allowed={}: first few token_ids={:?}", allowed, first_ones);
+            let first_ones: Vec<usize> = engine
+                .allowed_token_ids_from_last_computation()
+                .ones()
+                .take(5)
+                .collect();
+            eprintln!(
+                "[bnf-engine] allowed={}: first few token_ids={:?}",
+                allowed, first_ones
+            );
         } else {
             eprintln!("[bnf-engine] allowed={} tokens", allowed);
         }
@@ -169,7 +176,9 @@ impl BnfEngine {
     /// Number of tokens allowed by the grammar in its current state.
     /// Returns 0 if no tokens are allowed (grammar is blocked or finished).
     pub fn allowed_count(&self) -> usize {
-        self.engine.allowed_token_ids_from_last_computation().count_ones(..)
+        self.engine
+            .allowed_token_ids_from_last_computation()
+            .count_ones(..)
     }
 }
 
@@ -196,27 +205,24 @@ mod tests {
 
     fn test_vocab() -> Vec<Vec<u8>> {
         vec![
-            b"".to_vec(),      // 0: empty sentinel
-            b" ".to_vec(),     // 1: space
-            b"yes".to_vec(),   // 2: yes
-            b"no".to_vec(),    // 3: no
-            b"{".to_vec(),     // 4: {
-            b"}".to_vec(),     // 5: }
-            b":".to_vec(),     // 6: :
-            b"\"".to_vec(),    // 7: "
-            b",".to_vec(),     // 8: ,
-            b"a".to_vec(),     // 9: a
-            b"key".to_vec(),   // 10: key
+            b"".to_vec(),    // 0: empty sentinel
+            b" ".to_vec(),   // 1: space
+            b"yes".to_vec(), // 2: yes
+            b"no".to_vec(),  // 3: no
+            b"{".to_vec(),   // 4: {
+            b"}".to_vec(),   // 5: }
+            b":".to_vec(),   // 6: :
+            b"\"".to_vec(),  // 7: "
+            b",".to_vec(),   // 8: ,
+            b"a".to_vec(),   // 9: a
+            b"key".to_vec(), // 10: key
         ]
     }
 
     #[test]
     fn test_yes_no() {
         let vocab = test_vocab();
-        let mut engine = BnfEngine::new(
-            "root ::= \"yes\" | \"no\";",
-            &vocab,
-        ).unwrap();
+        let mut engine = BnfEngine::new("root ::= \"yes\" | \"no\";", &vocab).unwrap();
 
         let mut logits = vec![0.0f32; vocab.len()];
         engine.mask_logits(&mut logits).unwrap();
@@ -280,10 +286,7 @@ mod tests {
     #[test]
     fn test_vocab_size() {
         let vocab = test_vocab();
-        let engine = BnfEngine::new(
-            "root ::= \"yes\";",
-            &vocab,
-        ).unwrap();
+        let engine = BnfEngine::new("root ::= \"yes\";", &vocab).unwrap();
         // vocab_size = max token id (10) + 1 = 11, even though
         // token 0 (empty) is filtered out from the internal vocabulary.
         assert_eq!(engine.vocab_size(), 11);
@@ -292,10 +295,7 @@ mod tests {
     #[test]
     fn test_reset() {
         let vocab = test_vocab();
-        let mut engine = BnfEngine::new(
-            "root ::= \"yes\";",
-            &vocab,
-        ).unwrap();
+        let mut engine = BnfEngine::new("root ::= \"yes\";", &vocab).unwrap();
 
         engine.accept_token(2).unwrap();
         assert!(engine.is_finished());
@@ -340,7 +340,10 @@ mod tests {
             engine.allowed_count(),
             engine.vocab_size()
         );
-        assert!(engine.allowed_count() > 0, "grammar should allow at least one token at start");
+        assert!(
+            engine.allowed_count() > 0,
+            "grammar should allow at least one token at start"
+        );
 
         // Check that '{' (byte 0x7b) is allowed
         let mut logits = vec![0.0f32; vocab.len()];
@@ -356,10 +359,7 @@ mod tests {
     #[test]
     fn test_rejects_nonmatching() {
         let vocab = test_vocab();
-        let mut engine = BnfEngine::new(
-            "root ::= \"yes\";",
-            &vocab,
-        ).unwrap();
+        let mut engine = BnfEngine::new("root ::= \"yes\";", &vocab).unwrap();
 
         // Trying to accept "no" (3) should error since grammar only allows "yes" (2)
         match engine.accept_token(3) {

@@ -4,15 +4,15 @@
 //! execution to a project directory, plus workspace-scoped tools that
 //! enforce the boundary.
 
-pub mod workspace;
 pub mod error;
 pub mod tools;
+pub mod workspace;
 
-pub use workspace::Workspace;
-pub use workspace::WorkspaceKind;
-pub use workspace::blocked_command_reason;
 pub use error::WorkspaceError;
 pub use tools::{
-    WorkspaceReadTool, WorkspaceWriteTool, WorkspaceEditTool, WorkspaceSearchTool,
-    WorkspaceListTool, WorkspaceBashTool,
+    WorkspaceBashTool, WorkspaceEditTool, WorkspaceListTool, WorkspaceReadTool,
+    WorkspaceSearchTool, WorkspaceWriteTool,
 };
+pub use workspace::blocked_command_reason;
+pub use workspace::Workspace;
+pub use workspace::WorkspaceKind;

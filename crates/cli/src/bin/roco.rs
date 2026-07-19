@@ -7,15 +7,18 @@
 //!   roco grammar                           grammar-constrained decode
 //!   roco gpu-check                         show Vulkan + model info
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::fs;
 
 #[path = "../story_routes.rs"]
 mod story_routes;
 
 #[path = "../lsp.rs"]
 mod lsp_handler;
+
+#[path = "../interact.rs"]
+mod interact_cli;
 
 /// Spawn a detached child process for `roco server` or `roco gateway`.
 /// The parent redirects stdio to a log file, writes a PID file, and exits.
@@ -45,7 +48,8 @@ fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path
 
     let log_file = fs::File::create(log_path)
         .unwrap_or_else(|e| panic!("failed to create log file {}: {e}", log_path.display()));
-    let log_clone = log_file.try_clone()
+    let log_clone = log_file
+        .try_clone()
         .expect("failed to clone log file handle");
 
     let child = Command::new(&exe)
@@ -80,13 +84,22 @@ fn main() {
     match sub {
         "eval" => cmd_eval(&extra),
         "bless" => cmd_bless(&extra),
-        "rwkv" => run_cargo("run", &["-p", "roco-cli", "--example", "rwkv_test", "--release"], &extra),
-        "grammar" => run_cargo("run", &["-p", "roco-cli", "--example", "grammar_smoke", "--release"], &extra),
+        "rwkv" => run_cargo(
+            "run",
+            &["-p", "roco-cli", "--example", "rwkv_test", "--release"],
+            &extra,
+        ),
+        "grammar" => run_cargo(
+            "run",
+            &["-p", "roco-cli", "--example", "grammar_smoke", "--release"],
+            &extra,
+        ),
         "gpu-check" => cmd_gpu_check(&extra),
         "server" => cmd_server(&extra),
         "gateway" => cmd_gateway(&extra),
         "tui" => cmd_tui(&extra),
         "story" => cmd_story(&extra),
+        "interact" => cmd_interact(&extra),
         _ => help(sub),
     }
 }
@@ -142,17 +155,16 @@ fn cmd_gateway(extra: &[&str]) {
 
     rt.block_on(async move {
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
             .init();
 
-        let gateway = Gateway::new(
-            host.to_string(),
-            port,
-            target.to_string(),
-            limit,
+        let gateway = Gateway::new(host.to_string(), port, target.to_string(), limit);
+        println!(
+            "Starting API Gateway on {host}:{port} targeting {target} (limit: {limit}/min)..."
         );
-        println!("Starting API Gateway on {host}:{port} targeting {target} (limit: {limit}/min)...");
         if let Err(e) = gateway.run().await {
             eprintln!("Gateway error: {e}");
         }
@@ -160,11 +172,11 @@ fn cmd_gateway(extra: &[&str]) {
 }
 
 fn cmd_server(extra: &[&str]) {
-    use roco_server::{Server, ServerConfig};
-    use roco_inference::RwkvBackend;
-    use roco_infer_client::RemoteBackend;
     use crate::story_routes::create_story_router;
-    use roco_agent::story_engine::{StoryEngine, StoryConfig};
+    use roco_agent::story_engine::{StoryConfig, StoryEngine};
+    use roco_infer_client::RemoteBackend;
+    use roco_inference::RwkvBackend;
+    use roco_server::{Server, ServerConfig};
     use std::sync::Arc;
 
     let host = parse_opt("--host", extra).unwrap_or("127.0.0.1");
@@ -174,7 +186,9 @@ fn cmd_server(extra: &[&str]) {
     let stdio_lsp = extra.iter().any(|&a| a == "--stdio-lsp");
     let inference_url = parse_opt("--inference-url", extra)
         .map(|s| s.to_string())
-        .unwrap_or_else(|| std::env::var("ROCO_API_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string()));
+        .unwrap_or_else(|| {
+            std::env::var("ROCO_API_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
+        });
 
     // Detach mode
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
@@ -206,8 +220,10 @@ fn cmd_server(extra: &[&str]) {
             .expect("Failed to build Tokio runtime");
         rt.block_on(async move {
             tracing_subscriber::fmt()
-                .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                )
                 .init();
             let client = Arc::new(RemoteBackend::new(inference_url));
             match crate::lsp_handler::run_lsp(client).await {
@@ -228,8 +244,10 @@ fn cmd_server(extra: &[&str]) {
 
     rt.block_on(async move {
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
             .init();
 
         println!("Loading model...");
@@ -262,7 +280,8 @@ fn cmd_server(extra: &[&str]) {
 
             let addr = format!("{host}:{port}");
             println!("Starting story server on {addr}...");
-            let listener = tokio::net::TcpListener::bind(&addr).await
+            let listener = tokio::net::TcpListener::bind(&addr)
+                .await
                 .expect("Failed to bind TCP listener");
             if let Err(e) = axum::serve(listener, app).await {
                 eprintln!("Server error: {e}");
@@ -283,10 +302,20 @@ fn cmd_server(extra: &[&str]) {
 
 fn cmd_eval(extra: &[&str]) {
     let output = parse_opt("--output", extra).unwrap_or("evals/results/latest.json");
-    let exit_code = run_cargo_get_code("run", &[
-        "-p", "roco-cli", "--example", "eval_suite", "--release", "--",
-        "--backend", "rwkv",
-    ], extra);
+    let exit_code = run_cargo_get_code(
+        "run",
+        &[
+            "-p",
+            "roco-cli",
+            "--example",
+            "eval_suite",
+            "--release",
+            "--",
+            "--backend",
+            "rwkv",
+        ],
+        extra,
+    );
 
     let snapshot_path = snapshot_path(output);
     if let Ok(report) = std::fs::read_to_string(output) {
@@ -317,8 +346,10 @@ fn cmd_bless(extra: &[&str]) {
         .unwrap_or_else(|| snapshot_path("evals/results/latest.json"));
 
     let snap: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&snapshot).expect("snapshot file not found — run `roco eval` first"))
-        .expect("invalid snapshot JSON");
+        &std::fs::read_to_string(&snapshot)
+            .expect("snapshot file not found — run `roco eval` first"),
+    )
+    .expect("invalid snapshot JSON");
     let obj = snap.as_object().expect("snapshot must be a JSON object");
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
@@ -328,7 +359,11 @@ fn cmd_bless(extra: &[&str]) {
         PathBuf::from(&manifest_dir).join("src/engine/cases.rs"),
         PathBuf::from(&manifest_dir).join("crates/engine/src/cases.rs"),
     ];
-    let source_paths: Vec<PathBuf> = source_candidates.iter().filter(|p| p.exists()).cloned().collect();
+    let source_paths: Vec<PathBuf> = source_candidates
+        .iter()
+        .filter(|p| p.exists())
+        .cloned()
+        .collect();
 
     if source_paths.is_empty() {
         eprintln!("eval source files not found");
@@ -343,33 +378,54 @@ fn cmd_bless(extra: &[&str]) {
 
         for (name, out_val) in obj {
             let out_str = out_val.as_str().unwrap_or("");
-            if let Some(name_line) = lines.iter().position(|l| l.trim() == &format!("name: \"{}\".into(),", name)) {
+            if let Some(name_line) = lines
+                .iter()
+                .position(|l| l.trim() == &format!("name: \"{}\".into(),", name))
+            {
                 let mut oracle_line = None;
                 for i in name_line..lines.len() {
                     let trimmed = lines[i].trim();
-                    if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,") {
-                        oracle_line = Some(i); break;
+                    if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,")
+                    {
+                        oracle_line = Some(i);
+                        break;
                     }
-                    if (trimmed.starts_with("category:") || trimmed.starts_with("name:")) && i != name_line { break; }
+                    if (trimmed.starts_with("category:") || trimmed.starts_with("name:"))
+                        && i != name_line
+                    {
+                        break;
+                    }
                 }
                 if let Some(oi) = oracle_line {
-                    let escaped = out_str.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+                    let escaped = out_str
+                        .replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                        .replace('\n', "\\n");
                     let indent = &lines[oi][..lines[oi].len() - lines[oi].trim_start().len()];
                     lines[oi] = format!("{indent}oracle: Some(\"{escaped}\".into()),");
                     changed += 1;
                     eprintln!("  blessed {name}: \"{escaped}\"");
-                } else { eprintln!("  skipping {name}: no oracle field found"); }
-            } else { eprintln!("  skipping {name}: eval case not found"); }
+                } else {
+                    eprintln!("  skipping {name}: no oracle field found");
+                }
+            } else {
+                eprintln!("  skipping {name}: eval case not found");
+            }
         }
 
         if changed > 0 {
-            std::fs::write(source_path, lines.join("\n") + "\n").expect("failed to write source file");
+            std::fs::write(source_path, lines.join("\n") + "\n")
+                .expect("failed to write source file");
             eprintln!("\nBlessed {changed} oracle(s). Rebuild to pick up changes.");
-        } else { eprintln!("No oracles blessed."); }
+        } else {
+            eprintln!("No oracles blessed.");
+        }
         total_changed += changed;
     }
 
-    if total_changed > 0 { eprintln!("\nTotal blessed: {total_changed}"); }
+    if total_changed > 0 {
+        eprintln!("\nTotal blessed: {total_changed}");
+    }
 }
 
 fn run_cargo(cmd: &str, args: &[&str], extra: &[&str]) {
@@ -379,7 +435,9 @@ fn run_cargo(cmd: &str, args: &[&str], extra: &[&str]) {
 
 fn run_cargo_get_code(cmd: &str, args: &[&str], extra: &[&str]) -> i32 {
     let mut c = Command::new("cargo");
-    c.arg(cmd); c.args(args); c.args(extra);
+    c.arg(cmd);
+    c.args(args);
+    c.args(extra);
     c.status().map(|s| s.code().unwrap_or(1)).unwrap_or(1)
 }
 
@@ -445,18 +503,32 @@ fn help(sub: &str) {
     eprintln!("  grammar                           Grammar-constrained decode");
     eprintln!("  gpu-check [--json|-j]              Show Vulkan + model info (--json for machine-readable)");
     eprintln!("  server [--host ADDR] [--port PORT] [--story] [--detach|-d] Run the local HTTP server; --story adds story API");
-    eprintln!("                                  [--log-file PATH] [--pid-file PATH]  detach options");
+    eprintln!(
+        "                                  [--log-file PATH] [--pid-file PATH]  detach options"
+    );
     eprintln!("  server --stdio-lsp [--inference-url URL]        Run the editor LSP client (no model load; talks to the");
-    eprintln!("                                  inference API server at ROCO_API_URL / --inference-url)");
-    eprintln!("  gateway [--host ADDR] [--port PORT] [--target URL] [--rate-limit L] Run the API gateway");
-    eprintln!("                                  [--detach|-d] [--log-file PATH] [--pid-file PATH]");
+    eprintln!(
+        "                                  inference API server at ROCO_API_URL / --inference-url)"
+    );
+    eprintln!(
+        "  gateway [--host ADDR] [--port PORT] [--target URL] [--rate-limit L] Run the API gateway"
+    );
+    eprintln!(
+        "                                  [--detach|-d] [--log-file PATH] [--pid-file PATH]"
+    );
     eprintln!("  tui                               Start the interactive terminal chat UI");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");
+    eprintln!("  interact [--interactive] [--trigger PROMPT] [--resume SESSION] [--pace MODE]");
+    eprintln!(
+        "                                  Interactive CLI with pacing control, session resume"
+    );
+    eprintln!("  interact --list-sessions         List saved sessions");
     std::process::exit(if sub == "help" { 0 } else { 1 });
 }
 
 fn parse_opt<'a>(name: &str, args: &'a [&str]) -> Option<&'a str> {
-    args.windows(2).find_map(|w| if w[0] == name { Some(w[1]) } else { None })
+    args.windows(2)
+        .find_map(|w| if w[0] == name { Some(w[1]) } else { None })
 }
 
 fn snapshot_path(output: &str) -> PathBuf {
@@ -470,13 +542,15 @@ fn snapshot_path(output: &str) -> PathBuf {
 // Story Subcommand & Pipeline
 // ═════════════════════════════════════════════════════════════════════════════
 
+use roco_agent::mechanistic::{
+    HandlerResult, MechanisticAgent, Plan as MechPlan, RepairConfig, Task,
+};
+use roco_engine::{CompletionRequest, ModelBackend};
+use roco_grammar::{Schema, StrategyKind, StrategySelector};
+use roco_tools::{ReadTool, Tool, WriteTool};
+use roco_workspace::{Workspace, WorkspaceKind};
 use serde::Deserialize;
 use serde_json::json;
-use roco_grammar::{Schema, StrategyKind, StrategySelector};
-use roco_agent::mechanistic::{HandlerResult, MechanisticAgent, RepairConfig, Task, Plan as MechPlan};
-use roco_engine::{CompletionRequest, ModelBackend};
-use roco_tools::{ReadTool, WriteTool, Tool};
-use roco_workspace::{Workspace, WorkspaceKind};
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
@@ -500,13 +574,16 @@ impl StoryOutline {
             .prop("title", Schema::string())
             .prop("genre", Schema::string())
             .prop("tone", Schema::string())
-            .prop("chapters", Schema::array(
-                Schema::object()
-                    .prop("number", Schema::integer())
-                    .prop("title", Schema::string())
-                    .prop("summary", Schema::string())
-                    .build()
-            ))
+            .prop(
+                "chapters",
+                Schema::array(
+                    Schema::object()
+                        .prop("number", Schema::integer())
+                        .prop("title", Schema::string())
+                        .prop("summary", Schema::string())
+                        .build(),
+                ),
+            )
             .build()
     }
 }
@@ -526,12 +603,15 @@ struct StoryCharacter {
 impl StoryWiki {
     fn schema() -> Schema {
         Schema::object()
-            .prop("characters", Schema::array(
-                Schema::object()
-                    .prop("name", Schema::string())
-                    .prop("description", Schema::string())
-                    .build()
-            ))
+            .prop(
+                "characters",
+                Schema::array(
+                    Schema::object()
+                        .prop("name", Schema::string())
+                        .prop("description", Schema::string())
+                        .build(),
+                ),
+            )
             .prop("setting", Schema::string())
             .build()
     }
@@ -562,11 +642,14 @@ struct StoryValidation {
 impl StoryValidation {
     fn schema() -> Schema {
         Schema::object()
-            .prop("quality", Schema::enum_values(vec![
-                serde_json::json!("pass"),
-                serde_json::json!("fail"),
-                serde_json::json!("needs-work"),
-            ]))
+            .prop(
+                "quality",
+                Schema::enum_values(vec![
+                    serde_json::json!("pass"),
+                    serde_json::json!("fail"),
+                    serde_json::json!("needs-work"),
+                ]),
+            )
             .prop("issues", Schema::string())
             .prop("suggestion", Schema::string())
             .build()
@@ -580,9 +663,7 @@ struct StorySynopsis {
 
 impl StorySynopsis {
     fn schema() -> Schema {
-        Schema::object()
-            .prop("summary", Schema::string())
-            .build()
+        Schema::object().prop("summary", Schema::string()).build()
     }
 }
 
@@ -600,7 +681,11 @@ where
     let text = futures::executor::block_on(backend.complete(CompletionRequest {
         system: system.to_string(),
         prompt: prompt.to_string(),
-        grammar: if strategy.grammar().is_empty() { None } else { Some(strategy.grammar()) },
+        grammar: if strategy.grammar().is_empty() {
+            None
+        } else {
+            Some(strategy.grammar())
+        },
         temperature,
         max_tokens,
         ..Default::default()
@@ -611,11 +696,91 @@ where
     strategy.parse(&text)
 }
 
+fn cmd_interact(extra: &[&str]) {
+    use crate::interact_cli::{self, InteractMode, PacingChoice};
+    use roco_inference::RwkvBackend;
+
+    // Check for --list-sessions
+    if extra.iter().any(|&a| a == "--list-sessions" || a == "-l") {
+        interact_cli::list_sessions();
+        return;
+    }
+
+    // Determine mode
+    let trigger = crate::story_routes::parse_opt("--trigger", extra);
+    let resume = crate::story_routes::parse_opt("--resume", extra);
+    let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
+    let pace_str = crate::story_routes::parse_opt("--pace", extra).unwrap_or("careful");
+    let prompt = extra.first().map(|s| *s).unwrap_or("");
+
+    let pacing = match pace_str {
+        "planning" | "plan" => PacingChoice::Planning,
+        "careful" | "full" => PacingChoice::Careful,
+        "rolling" | "batch" => PacingChoice::Rolling,
+        "auto" | "auto-accept" => PacingChoice::AutoAccept,
+        _ => PacingChoice::Careful,
+    };
+
+    let mode = if let Some(p) = trigger {
+        if p.is_empty() {
+            eprintln!("Error: --trigger requires a non-empty prompt");
+            std::process::exit(1);
+        }
+        InteractMode::Trigger {
+            prompt: p.to_string(),
+        }
+    } else if let Some(session_id) = resume {
+        InteractMode::Resume {
+            session_id: session_id.to_string(),
+        }
+    } else if interactive || extra.is_empty() {
+        // Default to interactive
+        let p = if prompt.is_empty() { "" } else { prompt };
+        InteractMode::Interactive { pacing }
+    } else {
+        // If a prompt was given without flags, treat as trigger
+        InteractMode::Trigger {
+            prompt: prompt.to_string(),
+        }
+    };
+
+    // Load the model
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build Tokio runtime");
+
+    rt.block_on(async move {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
+            .init();
+
+        // Only load model for non-list-sessions commands
+        println!("Loading model...");
+        let backend = match RwkvBackend::from_env() {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("Error loading backend: {e}");
+                std::process::exit(1);
+            }
+        };
+        println!("Model loaded successfully.\n");
+
+        if let Err(e) = interact_cli::run(mode, &backend) {
+            eprintln!("Interactive session error: {e}");
+            std::process::exit(1);
+        }
+    });
+}
+
 fn cmd_story(extra: &[&str]) {
     use roco_inference::RwkvBackend;
 
     let prompt = extra.first().cloned().unwrap_or(
-        "Write a short story about a lighthouse keeper who discovers a message in a bottle."
+        "Write a short story about a lighthouse keeper who discovers a message in a bottle.",
     );
 
     let strategy_str = parse_opt("--strategy", extra).unwrap_or("loose");
@@ -1132,7 +1297,13 @@ fn extract_title(outline: &str) -> String {
 
 fn sanitize_story_dirname(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }

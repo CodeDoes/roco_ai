@@ -46,13 +46,12 @@ pub fn extract_tool_calls(text: &str) -> Vec<ToolCall> {
             let abs_end = after_start + end;
             let json_str = &text[after_start..abs_end];
             if let Ok(json) = serde_json::from_str::<Value>(json_str) {
-                let name = json.get("name")
+                let name = json
+                    .get("name")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_string();
-                let arguments = json.get("arguments")
-                    .cloned()
-                    .unwrap_or(Value::Null);
+                let arguments = json.get("arguments").cloned().unwrap_or(Value::Null);
                 calls.push(ToolCall {
                     name,
                     arguments,
@@ -72,7 +71,14 @@ pub fn extract_tool_calls(text: &str) -> Vec<ToolCall> {
 pub fn parse_assistant_response(text: &str) -> Vec<AssistantSegment> {
     let mut segments = Vec::new();
     let mut pos = 0;
-    let tags = ["<think>", "</think>", "<tool_call>", "</tool_call>", "<tool_result>", "</tool_result>"];
+    let tags = [
+        "<think>",
+        "</think>",
+        "<tool_call>",
+        "</tool_call>",
+        "<tool_result>",
+        "</tool_result>",
+    ];
 
     while pos < text.len() {
         // Find the next tag occurrence
@@ -118,7 +124,8 @@ pub fn parse_assistant_response(text: &str) -> Vec<AssistantSegment> {
                     let abs_close = pos + 11 + close;
                     let json_str = &text[pos + 11..abs_close];
                     if let Ok(json) = serde_json::from_str::<Value>(json_str) {
-                        let name = json.get("name")
+                        let name = json
+                            .get("name")
                             .and_then(|v| v.as_str())
                             .unwrap_or("unknown")
                             .to_string();
@@ -129,7 +136,9 @@ pub fn parse_assistant_response(text: &str) -> Vec<AssistantSegment> {
                             raw: json_str.to_string(),
                         }));
                     } else {
-                        segments.push(AssistantSegment::Text(text[pos..abs_close + end.len()].to_string()));
+                        segments.push(AssistantSegment::Text(
+                            text[pos..abs_close + end.len()].to_string(),
+                        ));
                     }
                     pos = abs_close + end.len();
                 } else {
@@ -152,7 +161,10 @@ pub fn parse_assistant_response(text: &str) -> Vec<AssistantSegment> {
             _ => {
                 // Unknown tag, skip it
                 // Actually this covers closing tags too
-                let tag_end = text[pos..].find('>').map(|i| pos + i + 1).unwrap_or(text.len());
+                let tag_end = text[pos..]
+                    .find('>')
+                    .map(|i| pos + i + 1)
+                    .unwrap_or(text.len());
                 segments.push(AssistantSegment::Text(text[pos..tag_end].to_string()));
                 pos = tag_end;
             }
@@ -197,8 +209,12 @@ mod tests {
         let segments = parse_assistant_response(text);
         assert!(segments.len() >= 1);
         // The first segment should be text or think
-        let has_think = segments.iter().any(|s| matches!(s, AssistantSegment::Think(_)));
-        let has_tool = segments.iter().any(|s| matches!(s, AssistantSegment::ToolCall(_)));
+        let has_think = segments
+            .iter()
+            .any(|s| matches!(s, AssistantSegment::Think(_)));
+        let has_tool = segments
+            .iter()
+            .any(|s| matches!(s, AssistantSegment::ToolCall(_)));
         assert!(has_think, "should have a think segment");
         assert!(has_tool, "should have a tool_call segment");
     }

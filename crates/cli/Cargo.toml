@@ -21,6 +21,7 @@ roco-server = { path = "../server" }
 roco-gateway = { path = "../gateway" }
 roco-infer-client = { path = "../infer-client" }
 roco-tui = { path = "../tui" }
+roco-session = { path = "../session" }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -30,3 +31,4 @@ anyhow.workspace = true
 clap.workspace = true
 futures.workspace = true
 axum = { version = "0.7", features = ["macros"] }
+chrono = { version = "0.4", features = ["serde"] }

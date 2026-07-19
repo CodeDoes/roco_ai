@@ -42,11 +42,11 @@
 //! store.join_back("def456", "abc123", "Found 2 anomalies, written to findings.md").unwrap();
 //! ```
 
-pub mod pool;
 pub mod error;
-pub mod types;
+pub mod pool;
 pub mod store;
+pub mod types;
 
-pub use pool::{SessionPool, LruSessionPool};
+pub use pool::{LruSessionPool, SessionPool};
+pub use store::{SessionError, SessionHandle, SessionStore};
 pub use types::*;
-pub use store::{SessionStore, SessionHandle, SessionError};

@@ -26,14 +26,9 @@ pub enum OutlineCommand {
         summary: String,
     },
     /// Remove a chapter
-    Remove {
-        position: usize,
-    },
+    Remove { position: usize },
     /// Move a chapter from one position to another
-    Move {
-        from: usize,
-        to: usize,
-    },
+    Move { from: usize, to: usize },
     /// Modify a chapter's title or summary
     Modify {
         position: usize,
@@ -41,9 +36,7 @@ pub enum OutlineCommand {
         summary: Option<String>,
     },
     /// Regenerate a chapter's summary
-    Regenerate {
-        position: usize,
-    },
+    Regenerate { position: usize },
     /// Add a chapter before another
     AddBefore {
         reference: usize,
@@ -105,27 +98,29 @@ impl OutlineEditor {
     /// Execute an outline command
     pub fn execute(&mut self, command: OutlineCommand) -> OutlineEditResult {
         let result = match command {
-            OutlineCommand::Add { position, title, summary } => {
-                self.add_chapter(position, title, summary)
-            }
-            OutlineCommand::Remove { position } => {
-                self.remove_chapter(position)
-            }
-            OutlineCommand::Move { from, to } => {
-                self.move_chapter(from, to)
-            }
-            OutlineCommand::Modify { position, title, summary } => {
-                self.modify_chapter(position, title, summary)
-            }
-            OutlineCommand::Regenerate { position } => {
-                self.regenerate_chapter(position)
-            }
-            OutlineCommand::AddBefore { reference, title, summary } => {
-                self.add_before(reference, title, summary)
-            }
-            OutlineCommand::AddAfter { reference, title, summary } => {
-                self.add_after(reference, title, summary)
-            }
+            OutlineCommand::Add {
+                position,
+                title,
+                summary,
+            } => self.add_chapter(position, title, summary),
+            OutlineCommand::Remove { position } => self.remove_chapter(position),
+            OutlineCommand::Move { from, to } => self.move_chapter(from, to),
+            OutlineCommand::Modify {
+                position,
+                title,
+                summary,
+            } => self.modify_chapter(position, title, summary),
+            OutlineCommand::Regenerate { position } => self.regenerate_chapter(position),
+            OutlineCommand::AddBefore {
+                reference,
+                title,
+                summary,
+            } => self.add_before(reference, title, summary),
+            OutlineCommand::AddAfter {
+                reference,
+                title,
+                summary,
+            } => self.add_after(reference, title, summary),
         };
 
         self.history.push(result.clone());
@@ -133,12 +128,21 @@ impl OutlineEditor {
     }
 
     /// Add a chapter at position
-    fn add_chapter(&mut self, position: usize, title: String, summary: String) -> OutlineEditResult {
+    fn add_chapter(
+        &mut self,
+        position: usize,
+        title: String,
+        summary: String,
+    ) -> OutlineEditResult {
         if position > self.outline.len() {
             return OutlineEditResult {
                 success: false,
                 outline: self.outline.clone(),
-                message: format!("Position {} is out of bounds (max: {})", position, self.outline.len()),
+                message: format!(
+                    "Position {} is out of bounds (max: {})",
+                    position,
+                    self.outline.len()
+                ),
                 suggestions: vec![format!("Use position 0-{}", self.outline.len())],
             };
         }
@@ -166,7 +170,11 @@ impl OutlineEditor {
             return OutlineEditResult {
                 success: false,
                 outline: self.outline.clone(),
-                message: format!("Position {} is out of bounds (max: {})", position, self.outline.len() - 1),
+                message: format!(
+                    "Position {} is out of bounds (max: {})",
+                    position,
+                    self.outline.len() - 1
+                ),
                 suggestions: Vec::new(),
             };
         }
@@ -188,7 +196,12 @@ impl OutlineEditor {
             return OutlineEditResult {
                 success: false,
                 outline: self.outline.clone(),
-                message: format!("Invalid positions: {} -> {} (max: {})", from, to, self.outline.len() - 1),
+                message: format!(
+                    "Invalid positions: {} -> {} (max: {})",
+                    from,
+                    to,
+                    self.outline.len() - 1
+                ),
                 suggestions: Vec::new(),
             };
         }
@@ -206,12 +219,21 @@ impl OutlineEditor {
     }
 
     /// Modify a chapter
-    fn modify_chapter(&mut self, position: usize, title: Option<String>, summary: Option<String>) -> OutlineEditResult {
+    fn modify_chapter(
+        &mut self,
+        position: usize,
+        title: Option<String>,
+        summary: Option<String>,
+    ) -> OutlineEditResult {
         if position >= self.outline.len() {
             return OutlineEditResult {
                 success: false,
                 outline: self.outline.clone(),
-                message: format!("Position {} is out of bounds (max: {})", position, self.outline.len() - 1),
+                message: format!(
+                    "Position {} is out of bounds (max: {})",
+                    position,
+                    self.outline.len() - 1
+                ),
                 suggestions: Vec::new(),
             };
         }
@@ -252,7 +274,12 @@ impl OutlineEditor {
     }
 
     /// Add a chapter before another
-    fn add_before(&mut self, reference: usize, title: String, summary: String) -> OutlineEditResult {
+    fn add_before(
+        &mut self,
+        reference: usize,
+        title: String,
+        summary: String,
+    ) -> OutlineEditResult {
         self.add_chapter(reference, title, summary)
     }
 
@@ -303,9 +330,7 @@ impl OutlineEditor {
             };
 
             if let Ok(pos) = rest.trim().parse::<usize>() {
-                return Some(OutlineCommand::Remove {
-                    position: pos - 1,
-                });
+                return Some(OutlineCommand::Remove { position: pos - 1 });
             }
         }
 
@@ -313,7 +338,10 @@ impl OutlineEditor {
         if lower.starts_with("move ") {
             let rest = &input[5..];
             if let Some((from_str, to_str)) = rest.split_once(" to ") {
-                if let (Ok(from), Ok(to)) = (from_str.trim().parse::<usize>(), to_str.trim().parse::<usize>()) {
+                if let (Ok(from), Ok(to)) = (
+                    from_str.trim().parse::<usize>(),
+                    to_str.trim().parse::<usize>(),
+                ) {
                     return Some(OutlineCommand::Move {
                         from: from - 1,
                         to: to - 1,
@@ -331,7 +359,10 @@ impl OutlineEditor {
         summary.push_str(&format!("Outline ({} chapters):\n\n", self.outline.len()));
 
         for chapter in &self.outline {
-            summary.push_str(&format!("{}. {}\n   {}\n\n", chapter.number, chapter.title, chapter.summary));
+            summary.push_str(&format!(
+                "{}. {}\n   {}\n\n",
+                chapter.number, chapter.title, chapter.summary
+            ));
         }
 
         summary
@@ -380,9 +411,7 @@ mod tests {
     #[test]
     fn test_remove_chapter() {
         let mut editor = OutlineEditor::new(sample_outline());
-        let result = editor.execute(OutlineCommand::Remove {
-            position: 1,
-        });
+        let result = editor.execute(OutlineCommand::Remove { position: 1 });
 
         assert!(result.success);
         assert_eq!(result.outline.len(), 2);
@@ -393,10 +422,7 @@ mod tests {
     #[test]
     fn test_move_chapter() {
         let mut editor = OutlineEditor::new(sample_outline());
-        let result = editor.execute(OutlineCommand::Move {
-            from: 0,
-            to: 2,
-        });
+        let result = editor.execute(OutlineCommand::Move { from: 0, to: 2 });
 
         assert!(result.success);
         assert_eq!(result.outline[0].title, "The Journey");

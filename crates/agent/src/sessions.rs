@@ -149,7 +149,9 @@ impl SessionStore {
         // Otherwise treat the whole path as a plain directory.
         let (base, idx) = match path.extension().and_then(|e| e.to_str()) {
             Some("json") => (
-                path.parent().map(PathBuf::from).unwrap_or_else(|| path.to_path_buf()),
+                path.parent()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| path.to_path_buf()),
                 Some(path.to_path_buf()),
             ),
             _ => (path.to_path_buf(), None),
@@ -164,7 +166,9 @@ impl SessionStore {
     /// Create a top-level root session in the file-backed store.
     pub fn create_root(&self, id: &str) -> anyhow::Result<()> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         store.create_root(id)?;
         Ok(())
     }
@@ -172,7 +176,9 @@ impl SessionStore {
     /// Open an existing session by ID, returning a handle scoped to it.
     pub fn open_session(&self, id: &str) -> anyhow::Result<roco_session::SessionHandle> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         Ok(store.open(id)?)
     }
 
@@ -183,7 +189,9 @@ impl SessionStore {
         child_id: SId,
     ) -> anyhow::Result<roco_session::SessionHandle> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         Ok(store.spawn_sub(parent_id.as_ref(), child_id.as_ref())?)
     }
 
@@ -195,7 +203,9 @@ impl SessionStore {
         summary: &str,
     ) -> anyhow::Result<()> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         store.join_back(child_id.as_ref(), parent_id.as_ref(), summary)?;
         Ok(())
     }
@@ -207,7 +217,9 @@ impl SessionStore {
         dest: SDest,
     ) -> anyhow::Result<()> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         store.switch_agent(from.as_ref(), dest.as_ref())?;
         Ok(())
     }
@@ -215,7 +227,9 @@ impl SessionStore {
     /// Log a conversation turn to a session's `session.log`.
     pub fn log_conversation<S: AsRef<str>>(&self, session_id: S, text: &str) -> anyhow::Result<()> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         store.log_conversation(session_id.as_ref(), text)?;
         Ok(())
     }
@@ -223,7 +237,9 @@ impl SessionStore {
     /// Stream a line into a session's `trace.txt` (raw prompt/response).
     pub fn log_trace<S: AsRef<str>>(&self, session_id: S, text: &str) -> anyhow::Result<()> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         store.log_trace(session_id.as_ref(), text)?;
         Ok(())
     }
@@ -231,7 +247,9 @@ impl SessionStore {
     /// Write an event to the global trace log (`.roco/trace.log`).
     pub fn log_global<E: serde::Serialize>(&self, event: &E) -> anyhow::Result<()> {
         let guard = self.inner.read().unwrap();
-        let store = guard.as_ref().ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
+        let store = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
         store.log_global(event)?;
         Ok(())
     }
@@ -259,7 +277,10 @@ impl SessionStore {
         if query_tokens.is_empty() {
             return Vec::new();
         }
-        let idx = self.search_index.read().expect("search index lock poisoned");
+        let idx = self
+            .search_index
+            .read()
+            .expect("search index lock poisoned");
         let mut scored: Vec<(f64, SessionTranscript)> = idx
             .iter()
             .map(|s| {
@@ -281,12 +302,18 @@ impl SessionStore {
     }
 
     pub fn get(&self, id: &str) -> Option<SessionTranscript> {
-        let idx = self.search_index.read().expect("search index lock poisoned");
+        let idx = self
+            .search_index
+            .read()
+            .expect("search index lock poisoned");
         idx.iter().find(|s| s.id == id).cloned()
     }
 
     pub fn len(&self) -> usize {
-        let idx = self.search_index.read().expect("search index lock poisoned");
+        let idx = self
+            .search_index
+            .read()
+            .expect("search index lock poisoned");
         idx.len()
     }
 
@@ -296,8 +323,16 @@ impl SessionStore {
 
     /// Persist the search index to disk (if a path was set or via `open()`).
     pub fn save(&self) -> anyhow::Result<()> {
-        let idx = self.search_index.read().expect("search index lock poisoned");
-        let path = match self.index_path.read().expect("index path lock poisoned").as_ref() {
+        let idx = self
+            .search_index
+            .read()
+            .expect("search index lock poisoned");
+        let path = match self
+            .index_path
+            .read()
+            .expect("index path lock poisoned")
+            .as_ref()
+        {
             Some(p) => p.clone(),
             None => return Ok(()),
         };
@@ -311,14 +346,22 @@ impl SessionStore {
 
     /// Load previously persisted search index from disk.
     fn load_search_index(&self) -> anyhow::Result<()> {
-        let path = match self.index_path.read().expect("index path lock poisoned").as_ref() {
+        let path = match self
+            .index_path
+            .read()
+            .expect("index path lock poisoned")
+            .as_ref()
+        {
             Some(p) if p.exists() => p.clone(),
             _ => return Ok(()),
         };
         let text = std::fs::read_to_string(&path)?;
         if !text.trim().is_empty() {
             let loaded: Vec<SessionTranscript> = serde_json::from_str(&text)?;
-            *self.search_index.write().expect("search index lock poisoned") = loaded;
+            *self
+                .search_index
+                .write()
+                .expect("search index lock poisoned") = loaded;
         }
         Ok(())
     }
@@ -407,8 +450,16 @@ mod tests {
     #[test]
     fn search_ranks_by_relevance() {
         let store = SessionStore::new(test_tmp_dir());
-        store.record(transcript("s1", "rust project", "We built a Rust CLI with clap."));
-        store.record(transcript("s2", "france trip", "We planned a trip to Paris, the capital of France."));
+        store.record(transcript(
+            "s1",
+            "rust project",
+            "We built a Rust CLI with clap.",
+        ));
+        store.record(transcript(
+            "s2",
+            "france trip",
+            "We planned a trip to Paris, the capital of France.",
+        ));
         let results = store.search("capital France Paris", 5);
         assert!(!results.is_empty());
         assert_eq!(results[0].id, "s2");
@@ -424,10 +475,19 @@ mod tests {
     #[test]
     fn search_sessions_tool_works() {
         let store = Arc::new(SessionStore::new(test_tmp_dir()));
-        store.record(transcript("s1", "rust work", "we implemented a rust workspace crate"));
+        store.record(transcript(
+            "s1",
+            "rust work",
+            "we implemented a rust workspace crate",
+        ));
         let tools = SessionStore::scoped_tools(store.clone());
-        let tool = tools.iter().find(|t| t.name() == "search_sessions").unwrap();
-        let r = tool.call(serde_json::json!({"query": "rust workspace", "limit": 3})).unwrap();
+        let tool = tools
+            .iter()
+            .find(|t| t.name() == "search_sessions")
+            .unwrap();
+        let r = tool
+            .call(serde_json::json!({"query": "rust workspace", "limit": 3}))
+            .unwrap();
         assert_eq!(r["count"], 1);
         assert_eq!(r["results"][0]["id"], "s1");
     }
