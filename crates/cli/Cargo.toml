@@ -34,3 +34,4 @@ futures.workspace = true
 axum = { version = "0.7", features = ["macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 reqwest.workspace = true
+eframe = { version = "0.31" }

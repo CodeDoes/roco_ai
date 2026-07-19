@@ -150,8 +150,7 @@ impl RocoDesktopApp {
                 }
             }
             ChatAction::CopyMessage(content) => {
-                // Copy to clipboard using egui's internal mechanism
-                ctx.output_mut(|o| o.copied_text = content);
+                ctx.copy_text(content);
                 self.status_message = "Copied to clipboard.".to_string();
             }
             _ => {}

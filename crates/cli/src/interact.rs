@@ -285,7 +285,8 @@ fn run_interactive(
                 &mut current_pacing,
                 &mut interaction,
                 &session_path,
-            )? {
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))? {
                 // Command signaled quit
                 break;
             }
@@ -433,7 +434,8 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
                 &mut current_pacing,
                 &mut interaction,
                 &session_path,
-            )? {
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))? {
                 break;
             }
             continue;

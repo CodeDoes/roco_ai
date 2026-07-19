@@ -178,7 +178,7 @@ pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate
     cmd.stderr(log_clone);
 
     // Write PID
-    if let Ok(child) = cmd.spawn() {
+    if let Ok(mut child) = cmd.spawn() {
         let pid = child.id();
         std::fs::write(&pid_path, pid.to_string()).ok();
         eprintln!("Gateway started (PID {pid})");

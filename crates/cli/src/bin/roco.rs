@@ -20,6 +20,9 @@ mod lsp_handler;
 #[path = "../interact.rs"]
 mod interact_cli;
 
+#[path = "../rich_output.rs"]
+mod rich_output;
+
 #[path = "../daemon.rs"]
 mod daemon;
 
@@ -779,10 +782,10 @@ fn cmd_interact(extra: &[&str]) {
     }
 
     // Determine mode
-    let prompt_arg = crate::story_routes::parse_opt("--prompt", extra);
-    let resume = crate::story_routes::parse_opt("--resume", extra);
+    let prompt_arg = parse_opt("--prompt", extra);
+    let resume = parse_opt("--resume", extra);
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
-    let pace_str = crate::story_routes::parse_opt("--pace", extra).unwrap_or("careful");
+    let pace_str = parse_opt("--pace", extra).unwrap_or("careful");
     let first_arg = extra.first().map(|s| *s).unwrap_or("");
 
     let pacing = match pace_str {
