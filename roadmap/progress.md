@@ -67,3 +67,10 @@
   panel) together with model loading (supports fallback if no RWKV_MODEL),
   session management (New/Save), menu bar (File, View, Help). 39 tests pass.
   Launches via `roco gui` subcommand.
+
+## 2026-07-19 (cont.)
+- Added **daemon lifecycle** — `roco gui` auto-starts gateway daemon on :8000
+  if not running; gateway daemon auto-starts inference server on :8080 if not
+  running. Uses PID files + health endpoint checks. `crates/cli/src/daemon.rs`
+  with `ensure_daemon()` and `wait_for_healthy()`. GUI talks to gateway via
+  `RemoteBackend` (HTTP) instead of loading model directly.

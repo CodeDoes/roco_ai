@@ -4206,6 +4206,7 @@ dependencies = [
  "chrono",
  "clap",
  "futures",
+ "reqwest",
  "roco-agent",
  "roco-bnf-engine",
  "roco-chat-common",

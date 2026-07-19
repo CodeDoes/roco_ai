@@ -20,6 +20,9 @@ mod lsp_handler;
 #[path = "../interact.rs"]
 mod interact_cli;
 
+#[path = "../daemon.rs"]
+mod daemon;
+
 /// Spawn a detached child process for `roco server` or `roco gateway`.
 /// The parent redirects stdio to a log file, writes a PID file, and exits.
 fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path) {
@@ -126,24 +129,51 @@ fn cmd_tui(_extra: &[&str]) {
 }
 
 fn cmd_gui(_extra: &[&str]) {
+    use crate::daemon::{self, GATEWAY_PORT};
     use eframe::egui;
-    use roco_inference::RwkvBackend;
+    use roco_infer_client::RemoteBackend;
     use roco_ui::RocoDesktopApp;
     use std::sync::Arc;
 
-    println!("Loading model for GUI...");
-    let backend = match RwkvBackend::from_env() {
-        Ok(b) => {
-            println!("Model loaded successfully.");
-            Some(Arc::new(b) as Arc<dyn roco_engine::ModelBackend>)
-        }
-        Err(e) => {
-            eprintln!("Warning: could not load model: {e}");
-            eprintln!("GUI will start without model (use File → Load Model or set RWKV_MODEL)");
-            None
-        }
-    };
+    let exe = std::env::current_exe().expect("failed to get current exe path");
 
+    // 1. Start gateway daemon if not running
+    println!("Checking gateway daemon on port {}...", GATEWAY_PORT);
+    let already_running = daemon::ensure_daemon(&exe, "gateway", GATEWAY_PORT, &["--detach"]);
+
+    if !already_running {
+        println!("Gateway starting...");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to build Tokio runtime");
+        rt.block_on(async {
+            match daemon::wait_for_healthy(
+                GATEWAY_PORT,
+                std::time::Duration::from_secs(15),
+                "Gateway",
+            )
+            .await
+            {
+                Ok(()) => println!("Gateway is ready."),
+                Err(e) => {
+                    eprintln!("Warning: {e}");
+                    eprintln!("GUI will start without backend connection.");
+                }
+            }
+        });
+    } else {
+        println!("Gateway already running.");
+    }
+
+    // 2. Remote backend pointing at gateway
+    let gateway_url = format!("http://127.0.0.1:{}", GATEWAY_PORT);
+    let backend: Option<Arc<dyn roco_engine::ModelBackend>> = Some(Arc::new(RemoteBackend::new(
+        gateway_url.clone(),
+    ))
+        as Arc<dyn roco_engine::ModelBackend>);
+
+    println!("Starting GUI (backend: {})...", gateway_url);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
@@ -151,7 +181,6 @@ fn cmd_gui(_extra: &[&str]) {
         ..Default::default()
     };
 
-    println!("Starting GUI...");
     let app = RocoDesktopApp::new(backend);
     eframe::run_native(
         "RoCo AI Desktop",
@@ -197,6 +226,10 @@ fn cmd_gateway(extra: &[&str]) {
                     .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
             )
             .init();
+
+        // Auto-start inference server if not running
+        let exe = std::env::current_exe().expect("failed to get current exe path");
+        crate::daemon::ensure_daemon(&exe, "server", crate::daemon::INFERENCE_PORT, &["--detach"]);
 
         let gateway = Gateway::new(host.to_string(), port, target.to_string(), limit);
         println!(
@@ -555,6 +588,7 @@ fn help(sub: &str) {
     );
     eprintln!("  tui                               Start the interactive terminal chat UI");
     eprintln!("  gui                               Start the desktop GUI application");
+    eprintln!("                                  (auto-starts gateway on :8000, which auto-starts inference on :8080)");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");
     eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
     eprintln!(
