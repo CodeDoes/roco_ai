@@ -18,3 +18,19 @@ pub use chat::*;
 // Desktop Application
 mod desktop_app;
 pub use desktop_app::*;
+
+// Panel / Browser widgets
+mod session_browser;
+pub use session_browser::*;
+
+mod file_tree;
+pub use file_tree::*;
+
+mod wiki_browser;
+pub use wiki_browser::*;
+
+mod change_timeline;
+pub use change_timeline::*;
+
+mod link_graph;
+pub use link_graph::*;
