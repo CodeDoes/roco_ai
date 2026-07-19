@@ -53,6 +53,10 @@ These rules override any impulse to "just implement the next engine thing."
 8. **Don't gold-plate the core.** Grammar-coverage tidy-ups, extra
    example binaries, and new crate scaffolding are not progress unless they
    change what the human experiences. Resist them.
+9. **Commit atomically.** After each meaningful, complete change (tests
+   pass, builds green), create a git commit with a descriptive message.
+   Do not batch unrelated changes. This keeps history bisectable and
+   progress visible.
 
 ## Core Philosophy: Human Controls Pace, Not Reviews Output
 
