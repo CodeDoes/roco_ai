@@ -518,7 +518,7 @@ fn help(sub: &str) {
     );
     eprintln!("  tui                               Start the interactive terminal chat UI");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");
-    eprintln!("  interact [--interactive] [--trigger PROMPT] [--resume SESSION] [--pace MODE]");
+    eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
     eprintln!(
         "                                  Interactive CLI with pacing control, session resume"
     );
@@ -707,11 +707,11 @@ fn cmd_interact(extra: &[&str]) {
     }
 
     // Determine mode
-    let trigger = crate::story_routes::parse_opt("--trigger", extra);
+    let prompt_arg = crate::story_routes::parse_opt("--prompt", extra);
     let resume = crate::story_routes::parse_opt("--resume", extra);
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
     let pace_str = crate::story_routes::parse_opt("--pace", extra).unwrap_or("careful");
-    let prompt = extra.first().map(|s| *s).unwrap_or("");
+    let first_arg = extra.first().map(|s| *s).unwrap_or("");
 
     let pacing = match pace_str {
         "planning" | "plan" => PacingChoice::Planning,
@@ -721,12 +721,13 @@ fn cmd_interact(extra: &[&str]) {
         _ => PacingChoice::Careful,
     };
 
-    let mode = if let Some(p) = trigger {
+    let mode = if let Some(p) = prompt_arg {
+        // --prompt "text": one-shot, saves session, exits
         if p.is_empty() {
-            eprintln!("Error: --trigger requires a non-empty prompt");
+            eprintln!("Error: --prompt requires a non-empty prompt");
             std::process::exit(1);
         }
-        InteractMode::Trigger {
+        InteractMode::Prompt {
             prompt: p.to_string(),
         }
     } else if let Some(session_id) = resume {
@@ -734,13 +735,21 @@ fn cmd_interact(extra: &[&str]) {
             session_id: session_id.to_string(),
         }
     } else if interactive || extra.is_empty() {
-        // Default to interactive
-        let p = if prompt.is_empty() { "" } else { prompt };
-        InteractMode::Interactive { pacing }
+        // --interactive or no args: REPL
+        let initial = if first_arg.is_empty() {
+            None
+        } else {
+            Some(first_arg.to_string())
+        };
+        InteractMode::Interactive {
+            pacing,
+            prompt: initial,
+        }
     } else {
-        // If a prompt was given without flags, treat as trigger
-        InteractMode::Trigger {
-            prompt: prompt.to_string(),
+        // Plain arg without any flag: still interactive, with that arg as first message
+        InteractMode::Interactive {
+            pacing,
+            prompt: Some(first_arg.to_string()),
         }
     };
 

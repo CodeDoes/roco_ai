@@ -5,7 +5,8 @@
 //!
 //! - **Interactive mode** (`--interactive`): REPL-like conversation with pacing
 //!   controls, accept/skip/stop, streaming output, session persistence.
-//! - **Trigger mode** (`--trigger "prompt"`): One-shot generation, prints result.
+//! - **Prompt mode** (`--prompt "text"`): One-shot generation, saves session,
+//!   prints result, then exits.
 //! - **Resume mode** (`--resume <session-id>`): Load a previous session and
 //!   continue from where you left off.
 
@@ -24,10 +25,13 @@ use crate::rich_output as r;
 /// How to run the interactive session
 #[derive(Debug, Clone)]
 pub enum InteractMode {
-    /// One-shot trigger: takes a prompt, generates, prints result
-    Trigger { prompt: String },
+    /// One-shot prompt: takes a prompt, generates, saves session, prints, exits
+    Prompt { prompt: String },
     /// Full interactive REPL with pacing control
-    Interactive { pacing: PacingChoice },
+    Interactive {
+        pacing: PacingChoice,
+        prompt: Option<String>,
+    },
     /// Resume a previous session by ID
     Resume { session_id: String },
 }
@@ -132,19 +136,29 @@ impl ConversationState {
 /// Run the interactive CLI. This is the entry point called from `roco interact`.
 pub fn run(mode: InteractMode, backend: &dyn roco_engine::ModelBackend) -> anyhow::Result<()> {
     match mode {
-        InteractMode::Trigger { prompt } => run_trigger(backend, &prompt),
-        InteractMode::Interactive { pacing } => run_interactive(backend, pacing),
+        InteractMode::Prompt { prompt } => run_prompt(backend, &prompt),
+        InteractMode::Interactive { pacing, prompt } => run_interactive(backend, pacing, prompt),
         InteractMode::Resume { session_id } => run_resume(backend, &session_id),
     }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Trigger Mode (One-shot)
+// Prompt Mode (One-shot, saves session, exits)
 // ═════════════════════════════════════════════════════════════════════════════
 
-fn run_trigger(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow::Result<()> {
-    r::header("RoCo AI — Trigger Mode");
+fn run_prompt(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow::Result<()> {
+    let session_id = format!("prompt_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let session_dir = get_sessions_dir();
+    std::fs::create_dir_all(&session_dir)?;
+    let session_path = session_dir.join(format!("{}.json", session_id));
+
+    let mut state = ConversationState::new(session_id.clone(), "auto-accept");
+
+    r::header("RoCo AI — Prompt");
     r::info(&format!("Prompt: {}", prompt));
+    r::dim(&format!("Session: {}", session_id));
+
+    state.add_message("user", prompt);
 
     let request = roco_engine::CompletionRequest {
         system: "You are a creative writing assistant. Respond with vivid, engaging prose.".into(),
@@ -157,7 +171,17 @@ fn run_trigger(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow:
     let response = futures::executor::block_on(backend.complete(request))
         .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?;
 
-    println!("\n{}", response.text);
+    let text = response.text.trim().to_string();
+    println!("\n{}", text);
+    state.add_message("assistant", &text);
+
+    // Save session and exit
+    if let Err(e) = state.save(&session_path) {
+        r::warning(&format!("Session save failed: {e}"));
+    } else {
+        r::success(&format!("Session saved: {}", session_path.display()));
+    }
+
     Ok(())
 }
 
@@ -168,6 +192,7 @@ fn run_trigger(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow:
 fn run_interactive(
     backend: &dyn roco_engine::ModelBackend,
     pacing: PacingChoice,
+    initial_prompt: Option<String>,
 ) -> anyhow::Result<()> {
     let session_id = format!("interact_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     let session_dir = get_sessions_dir();
@@ -190,6 +215,36 @@ fn run_interactive(
 
     let mut current_pacing = pacing.to_interaction_mode();
     let mut interaction = InteractionState::new(current_pacing.clone(), 0);
+
+    // If an initial prompt was provided, send it immediately
+    if let Some(ref initial) = initial_prompt {
+        state.add_message("user", initial);
+        r::header("User");
+        r::header("AI");
+        let request = roco_engine::CompletionRequest {
+            system: "You are a creative writing assistant.".into(),
+            prompt: initial.clone(),
+            temperature: 0.8,
+            max_tokens: 1024,
+            ..Default::default()
+        };
+        match futures::executor::block_on(backend.complete(request)) {
+            Ok(response) => {
+                let text = response.text.trim().to_string();
+                r::dim(&format!("─ {} characters ─", text.len()));
+                println!("{}", text);
+                state.add_message("assistant", &text);
+                interaction.tasks_completed += 1;
+            }
+            Err(e) => {
+                r::error(&format!("Generation failed: {e}"));
+                state.add_message("assistant", &format!("[Error: {e}]"));
+            }
+        }
+        if let Err(e) = state.save(&session_path) {
+            r::warning(&format!("Auto-save failed: {e}"));
+        }
+    }
 
     loop {
         // Show prompt
