@@ -1,19 +1,17 @@
 # AGENTS.md — RoCo AI
 
 > Operational manual for working in this repo.
+> **Read `roadmap/README.md` first** — it is the living plan and the
+> definition of done. This file tells you *how to work*; `roadmap/` tells
+> you *what to build* and *whether it's finished*.
 
 ## What this is
 
 A Rust workspace whose only inference path is `crates/inference/src/backend.rs`
 (RWKV-7 via `web-rwkv` + WGPU). The repo has been pared down to the
-local-RWKV critical path and restructured into focused crates — the
-`crates/inference` library plus `crates/grammar`, `crates/bnf-engine`,
-`crates/engine`, and the supporting crates (`message`, `tools`,
-`session`, `workspace`, `agent`, `chat-common`, `cli`, `tui`,
-`server`, `gateway`), the `vendor/web-rwkv` patch, the `scripts/`
-model converters, and the `assets/vocab` tokenizer. Everything non-RWKV
-(orchestrator crates, gateway/web frontends, Docker, agent/eval
-scaffolding) has been removed; git history preserves it.
+local-RWKV critical path and restructured into focused crates. The engine
+layer is **done and frozen** — see Status below. Active work is the
+**human-facing experience** (frontend), not the engine.
 
 ## Primary Goal
 
@@ -21,7 +19,40 @@ scaffolding) has been removed; git history preserves it.
 
 The human is the author. The AI is the tool. Every feature should amplify human creativity, not replace it.
 
-See `goals/story-engine/index.md` for the detailed roadmap.
+The current plan lives in `roadmap/`. The old `goals/` scratchpad and
+`PROGRESS.md` were removed on 2026-07-19 because they steered work toward
+engine completeness (a feature marked ✅ when it merely *existed in a crate*)
+instead of toward a usable, tested human experience.
+
+## How to Work (attitude & behaviour)
+
+These rules override any impulse to "just implement the next engine thing."
+
+1. **The engine is frozen. Do not churn it.** `crates/inference`, `engine`,
+   `grammar`, `bnf-engine`, `agent`, `session`, `message`, `tools`,
+   `workspace` are correct and tested. Touch them only to fix a bug that
+   blocks a frontend feature, and keep the change minimal.
+2. **Build the experience, not the example.** A feature is not done because
+   a Rust module or an `examples/*.rs` binary exists. It is done only when a
+   human can reach it through the real UI and drive it. See Definition of
+   Done in `roadmap/README.md`.
+3. **Surface control, always.** Every artifact the AI produces is a
+   *suggestion* until the human accepts it. Expose accept / modify / skip /
+   stop visibly. Never hide pace control behind a menu.
+4. **Tests are part of the feature.** If you add a surface, add a test that
+   proves a human can drive it (unit for logic, integration/UI for the
+   surface). No test = not done. Do not report a task complete without one.
+5. **Small, reviewable steps.** Prefer one focused change over a large
+   rewrite. Keep the build green (`cargo test --workspace`, `cargo clippy
+   --workspace --all-targets -- --deny warnings`).
+6. **Write progress where the human can see it.** After a meaningful
+   change, append a line to `roadmap/progress.md` (what, where, done-or-not).
+   Do not rely on git history to communicate trajectory.
+7. **Be honest about partial work.** If you cannot meet the Definition of
+   Done, say so. Do not mark a ✅ you have not earned.
+8. **Don't gold-plate the core.** Grammar-coverage tidy-ups, extra
+   example binaries, and new crate scaffolding are not progress unless they
+   change what the human experiences. Resist them.
 
 ## Core Philosophy: Human Controls Pace, Not Reviews Output
 
@@ -95,81 +126,45 @@ probabilistic (model emits final_answer to stop).
 Both patterns use the same grammar infrastructure (`BnfConstraint` + vocab trie)
 The difference is whether the **iteration count** is predetermined or model-driven.
 
-## Status
+## Status — engine is frozen, experience is the work
 
-- **Inference**: works end-to-end on `RWKV-7 g1h 2.9B` (FP16 PTH → converted
-  to SafeTensors → quantized to NF4 at runtime on RTX 2050 / AMD iGPU).
-- **Grammar-constrained decoding**: **`BnfConstraint`** wraps the
-  token-level BNF engine provided by `crates/bnf-engine`, which itself
-  wraps `kbnf 0.5` (with `ahash`-backed vocabulary). The reason it's
-  isolated in its own crate: `kbnf`'s generic types (specifically
-  `string-interner`'s recursive `StringInterner`) trip Rust's
-  `error[E0275]` (type recursion overflow) when they enter the same
-  compilation unit as `web-rwkv`'s `TokioRuntime`; isolating it keeps
-  `inference` clean. `BnfConstraint` is still built on top in
-  `crates/grammar/src/bnf.rs` (vocab-built, `accept_token` /
-  `apply_mask` API). The `Schema` builder lives in
-  `crates/grammar/src/schema.rs` (`object().prop(...).build().to_gbnf()`),
-  with the JSON-Schema→GBNF converter in
-  `crates/grammar/src/json_schema.rs`. The old `bnf_sampler`+`qp-trie`
-  path and the `schoolmarm` fallback are no longer in the build; the
-  current rewrite happened in commit `22ebe66`.
-- **State-mixing / multi-session**: **Phase 1 implemented.**
-  `CompletionRequest::session` → session-based state save/restore via
-  `AnyState::back()`/`load()`, with an LRU pool (`max_sessions = 8`) in
-  `crates/session`. Enables persistent conversations across calls. Phase 2
-  (N-slot GPU pool with concurrent batching) and Phase 3 (tensor blending)
-  are forward work. `RwkvBackend::save_state()`/`load_state()` now serialize the
-  recurrent vector (incl. per-head min-decay channels) to/from bytes — usable
-  for introspection (see `docs/imagined-usecases.md`).
-- **Plan-and-execute harness**: **Implemented.** `Planner::plan()` produces
-  grammar-constrained plans; `Plan::execute()` runs wave-level dependency-aware
-  execution with topological sorting. Self-prompting chain assembly and inline
-  eval verification are documented in `goals/` but not yet wired into production.
-- **Mechanistic agent**: **Implemented.** `MechanisticAgent` (`crates/agent/src/mecha_agent.rs`) provides a code-driven controller + router pattern: model only fires at fixed, grammar-constrained points (`classify` → `think_with_intent` → `repair_derive` → dispatch). Routes register `(type, domain)` handlers that write into a sandboxed workspace. Supports repair loops with temperature/tokens decay, context budget gating via `ContextManager`, and self-correction chains.
-- **Story generation engine**: **Implemented end-to-end.** Dynamic
-  outline expansion, plot state tracking, context assembly, chapter
-  continuation, quality evaluation (model-as-judge, 7 dimensions),
-  revision support, and session persistence — all in
-  `crates/agent/src/story_engine.rs` and friends. The interaction layer
-  (outline editing, NL feedback, real-time preview, story direction,
-  chapter steering, writing assistant, commentary, interaction modes)
-  is also implemented; the surface that ties these into the live CLI
-  is `crates/cli/examples/story_human.rs` (the canonical entry point for
-  human-AI writing sessions).
-- **Observability**: **Implemented.** `ObservabilitySystem` records all model calls, decisions, actions, and quality assessments. Enables debugging, interpretability, and auditing.
-- **Reversibility**: **Implemented.** `VersionControl` provides workspace snapshots, action history, undo/redo, and rollback. Every agent action is reversible.
-- **Commentary**: **Implemented.** `Commentary` system provides bidirectional commentary — agent-generated explanations for every artifact, plus human annotations, verdicts, and notes. Every artifact can be reviewed and annotated by both agent and human.
-- **Writing Assistant**: **Implemented.** `WritingAssistant` analyzes user input, provides continuation suggestions, fill-in-the-middle, diff analysis, cross-referencing, and tagging.
-- **Interaction Modes**: **Implemented.** `InteractionMode` lets the human choose: interactive (see each chapter) or automatic (run to completion). Human can switch modes at any time.
-- **Natural Language Feedback**: **Implemented.** `FeedbackParser` parses human feedback into structured directives. Quick parse for simple commands, model-based parsing for complex feedback.
-- **Outline Editing**: **Implemented.** `OutlineEditor` for collaborative outline creation and modification. Commands: add, remove, move, modify, regenerate.
-- **Story Direction**: **Implemented.** `StoryDirection` captures and applies human's creative vision throughout generation.
-- **Chapter Steering**: **Implemented.** `ChapterSteerer` for pause/resume/steer mid-generation.
-- **Pull-based context management**: **Implemented.** `ContextManager` (`crates/agent/src/context.rs`) pulls relevant snippets from session store, memory store, and workspace files; scores via Jaccard word overlap; gates inclusion by token budget before each inference call.
-- **ReAct loop**: **Implemented.** `Agent::run()` in `crates/agent/src/agent.rs`
-  with `think` blocks, tool dispatch, gradual tool disclosure, and budget limits.
-- **Chat CLI**: `roco chat` example (`crates/cli/examples/chat.rs`) provides
-  a terminal REPL with streaming output, session persistence, grammar
-  constraints, and Ctrl+C interrupt. The `agent` example
-  (`crates/cli/examples/agent.rs`) runs the ReAct loop.
-- **Story human workflow**: `crates/cli/examples/story_human.rs` is the
-  canonical entry point for end-to-end story generation with human-AI
-  collaboration. Other story examples (`story_collaborative`,
-  `story_engine`, `story_full`, `story_pilot`, `story_eval`,
-  `story_step_eval`) exercise narrower slices — pilots, pure evals, full
-  pipeline with all bells on, etc.
-- **bnf-engine**: a dedicated isolation crate (`crates/bnf-engine/`)
-  wraps `kbnf 0.5`. The reason it's its own crate is documented above
-  (avoids the `string-interner` recursion E0275 against `web-rwkv`'s
-  `TokioRuntime`).
-- **Model loading**: `crates/inference/src/backend.rs` auto-detects
-  model shape from `Loader::info`, picks a quantization plan from
-  on-disk file size, and resolves model paths from
-  `$RWKV_MODEL` / `models/*.st`.
-- **Cleanup segfault**: `free(): invalid size` at process exit — **fixed**.
-  wgpu/tokio resources now drop in-order on the dedicated actor thread
-  via `RwkvBackend::Drop`.
+**The Rust core is done, correct, and tested. Do not churn it.** The items
+below are a compact record of what exists in the engine, kept so you know
+what you can *build on* — not a to-do list. If you find yourself "finishing"
+one of these, stop: it was already finished at the module level; the open work
+is surfacing it in the UI (see `roadmap/ux.md`).
+
+### Frozen core (build on, don't modify)
+- **Inference** — `RwkvBackend` on a dedicated actor thread, RWKV-7 g1h 2.9B,
+  NF4/Int8 quant, end-to-end.
+- **Grammar-constrained decoding** — `BnfConstraint` over `bnf-engine` (kbnf
+  0.5, isolated crate to avoid the `E0275` recursion against `web-rwkv`).
+- **State save/load + multi-session** — `RwkvBackend::save_state/load_state`,
+  LRU session pool (`max_sessions = 8`).
+- **Story engine** — outline expansion, plot-state tracking, context
+  assembly, chapter continuation, quality eval (7 dims), revision,
+  persistence — all in `crates/agent/src/`.
+- **Human-control logic (tested)** — `interaction.rs` (pace modes),
+  `story_direction.rs`, `chapter_steering.rs`, `commentary.rs`,
+  `natural_feedback.rs`, `outline_editing.rs`, `writing_assistant.rs`,
+  `reversibility.rs` (VersionControl). These encode accept/skip/stop/pause.
+- **Per-handler GBNF grammars** — `GBNF/` + `StoryGrammar` registry; prose
+  handlers still use prefill+strip-think as interim coverage.
+- **Tooling** — `roco eval` / `bless` snapshot workflow, `roco chat`,
+  `story_human.rs` (CLI surface), Zed LSP.
+
+### What is actually missing (the real work)
+This is the gap, and it is *experience*, not engine:
+1. **No tested human surface.** The control logic above is not exposed in any
+   UI with tests. `apps/` webapps have zero tests and don't surface
+   accept/skip/stop/pause/commentary.
+2. **Frontend migration.** Moving off the untested webapps toward a gpui
+   desktop app so the UI lives in the same tested Rust tree as the engine
+   (see `roadmap/blocked.md`).
+3. **Per-feature UI + tests** for each flow in `roadmap/ux.md`.
+
+If a task isn't on this short list or in `roadmap/`, question whether it
+moves the human experience forward before starting it.
 
 ## Layout
 
@@ -233,13 +228,10 @@ roco_ai/
 ├── templates/              # prompt templates used by the story engine
 ├── memory/                 # agent memory store scratchpads
 ├── datasets/               # in-tree training/eval datasets (plot_overview, project_planning, …)
-├── docs/                   # long-form human docs (separate from goals/)
+├── docs/                   # long-form human docs (separate from roadmap/)
 ├── agents/                 # agent run artifacts / scratch
-├── goals/                  # product roadmap (see goals/index.md)
-│   ├── story-engine/       # Story engine roadmap (human-AI interaction focus)
-│   ├── agent/, agent_chat/, browser_use/, coder/, infer/, message/,
-│   │   mechanistic-agent/, testing/, workspace/  # prerequisite layers
-│   └── future/             # archived goals (FAISS, dreaming, UIs, etc.)
+├── roadmap/                # LIVING PLAN — README.md (definition of done), ux.md,
+│                           #   progress.md (append-only), blocked.md (parking lot)
 ├── evals/results/          # rwkv benchmark JSON outputs
 ├── devenv.{yaml,nix}       # Nix dev shell (rust + Vulkan)
 ├── Makefile                # rwkv-focused dev targets
@@ -265,27 +257,12 @@ roco_ai/
 | `server` | `lib.rs`, `routes.rs`, `story_routes.rs` | HTTP server with story routes |
 | `gateway` | `lib.rs` | API gateway |
 
-## Goals
+## Plan & progress
 
-`goals/` is the product roadmap, organized as prerequisite-ordered layers
-from the local RWKV-7 engine up to a collaborative story writing tool:
-
-| Layer | What it covers | State |
-|---|---|---|
-| `infer/` | inference engine (model, quant, state, decoding, structured output) | ✅ complete |
-| `message/` | chat protocol (instructions, formatting, tool calls, chat CLI) | ✅ core done |
-| `workspace/` | the environment the agent acts in | ✅ sandbox + scoped tools |
-| `agent/` | the autonomous agent loop and its capabilities | ✅ core loop done |
-| `mechanistic-agent/` | code-driven controller + router | ✅ implemented (grammar gap in story prose remains) |
-| `story-engine/` | collaborative story writing engine (outline → wiki → chapter → publish) | ✅ end-to-end (prose-BNF coverage still in progress) |
-| `agent_chat/` | persistent workspace or folder-bound agent sessions | ✅ working (`crates/cli/examples/agent_chat.rs`) |
-| `browser_use/` | driving a real browser | ⬜ not started |
-| `testing/` | eval harness, oracles, regression gates | ✅ done |
-| `coder/` | **(future)** the agent's own develop/test/lint loop | ⬜ not started |
-
-Each folder contains an `index.md` listing its goals in dependency order.
-
-There is also a **`future/`** tree — archived goals that amplify a working core.
+The product plan and the definition of done live in **`roadmap/`**
+(`README.md`, `ux.md`, `progress.md`, `blocked.md`). This replaced the old
+`goals/` scratchpad, which steered work toward engine completeness rather
+than the human experience. Read `roadmap/README.md` before starting any task.
 
 ## Quickstart
 
@@ -525,38 +502,23 @@ wiring the coverage in.
 
 ## Next Things
 
-### Status snapshot — what's left
+The detailed plan is in `roadmap/`. In priority order, the work is about the
+**human experience**, not the engine:
 
-All Phase 2 human-AI interaction surfaces (collaborative outline editing,
-natural-language feedback, real-time preview, easy revision with diff,
-story direction persistence, chapter steering) are **implemented** in
-`crates/agent/src/`. What remains is wiring them into the production
-surface and tightening grammar coverage:
+1. **Frontend migration** — move off the untested `apps/` webapps toward a
+gpui desktop app so the UI lives in the same tested Rust tree as the engine
+(see `roadmap/blocked.md`). This is the structural fix for the neglected-UX
+problem: the UI can no longer hide in an untested folder.
+2. **Surface each control flow** in `roadmap/ux.md` — pace modes, accept /
+   skip / stop, outline editor, chapter steering, commentary, story
+   direction, revision-with-diff, persistence — each with a real UI and a
+   test proving a human can drive it.
+3. **Per-feature tests.** No surface ships without a test. This is the
+   Definition of Done (see `roadmap/README.md`); it is non-negotiable.
+4. **Keep the engine green.** `cargo test --workspace` and `cargo clippy
+   --workspace --all-targets -- --deny warnings` must stay green. Run them
+   before reporting done.
 
-1. **Per-handler BNF grammars** — the domain grammars for the prose
-   handlers (outline/wiki/chapter/validation/synopsis) now exist in
-   `GBNF/` and are exposed via `roco_grammar::grammar_library` (validated
-   against `roco-bnf-engine`). Remaining: route each prose handler
-   through its grammar so prose is generated outside the JSON envelope,
-   replacing the pre-fill + strip-think workaround.
-2. **Grammar coverage audit** — enumerate every free-form
-   `backend.complete()` call in the story pipeline; each one is a
-   contamination risk on under-trained RWKV models and should be
-   bounded by a `BnfConstraint`.
-3. **Live eval continuity** — keep `cargo test -p roco-agent` and
-   `roco eval` green as code lands; don't regress the 14/15b baseline
-   on the g1h 2.9B model.
-4. **Story human CLI polish** — `story_human.rs` is the canonical UX;
-   fold bug reports from use into it.
-
-### Infrastructure status (mostly resolved)
-
-- ~~JSON-Schema → GBNF converter~~ ✅ done (`crates/grammar/src/json_schema.rs`)
-- ~~Dead module cleanup~~ ✅ done
-- ~~Cleanup segfault~~ ✅ fixed (commit on process exit path)
-- ~~`bnf_sampler` integration~~ ✅ done (later **replaced** by `kbnf` in `bnf-engine`, commit `22ebe66`)
-- ~~State pool Phase 1~~ ✅ done
-- ~~Monorepo restructuring~~ ✅ done (14 crates now)
-- ~~Plan-and-execute architecture documented~~ ✅ done
-- ~~Mechanistic agent implementation~~ ✅ done
-- ~~Story engine core~~ ✅ done
+Do **not** resume the old engine todos (per-handler grammar routing,
+grammar-coverage audit, new example binaries) unless a human-facing feature
+requires it. Those were the ✅-checklist drift we removed.
