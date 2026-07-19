@@ -421,38 +421,32 @@ pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
 pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(
     backend: &B,
 ) -> Result<(), String> {
-    let instruction = "You are RoCo, a collaborative story-writing assistant. \
+    // Build full multi-shot prompt in one pass. We assemble the few-shot
+    // as a single user/assistant transcript so the recurrent state carries
+    // the persona + format in one shot, instead of a 6-call replay that
+    // pollutes the state with single-token partial responses (`max_tokens: 1`
+    // on each turn produced pathological outputs in early testing).
+    let system = "You are RoCo, a collaborative story-writing assistant. \
         Given the text BEFORE the cursor and the text AFTER the cursor, write \
-        ONLY the short passage that connects them (the INSERT field). Never \
-        repeat the BEFORE or AFTER text, never use <fim> tags, never add \
-        commentary.";
-    for (i, (context, answer)) in FIM_FEW_SHOT.iter().enumerate() {
-        let user_req = CompletionRequest {
-            system: if i == 0 { instruction.to_string() } else { String::new() },
-            prompt: context.to_string(),
-            prefill: Some("<think></think>".to_string()),
-            temperature: 0.0,
-            max_tokens: 1,
-            session: Some(FIM_SESSION.to_string()),
-            preserve_state: true,
-            ..Default::default()
-        };
-        if let Err(e) = backend.complete(user_req).await {
-            return Err(format!("FIM bake (user turn {i}) failed: {e}"));
-        }
-        let asst_req = CompletionRequest {
-            system: String::new(),
-            prompt: answer.to_string(),
-            prefill: Some("<think></think>".to_string()),
-            temperature: 0.0,
-            max_tokens: 1,
-            session: Some(FIM_SESSION.to_string()),
-            preserve_state: true,
-            ..Default::default()
-        };
-        if let Err(e) = backend.complete(asst_req).await {
-            return Err(format!("FIM bake (assistant turn {i}) failed: {e}"));
-        }
+        ONLY the short passage that connects them. Never repeat the BEFORE or \
+        AFTER text, never add commentary.";
+    let mut transcript = String::new();
+    for (context, answer) in FIM_FEW_SHOT.iter() {
+        transcript.push_str(&format!("\nUser: {context}\n\nAssistant:{answer}"));
+    }
+    transcript.push_str("\n\nAssistant:");
+    let req = CompletionRequest {
+        system: system.to_string(),
+        prompt: transcript,
+        prefill: Some("<think></think>".to_string()),
+        temperature: 0.0,
+        max_tokens: 4,
+        session: Some(FIM_SESSION.to_string()),
+        preserve_state: true,
+        ..Default::default()
+    };
+    if let Err(e) = backend.complete(req).await {
+        return Err(format!("FIM bake (single-shot): {e}"));
     }
     Ok(())
 }
