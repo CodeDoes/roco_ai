@@ -229,19 +229,32 @@ impl RocoDesktopApp {
 
 /// Conversation state for serialization
 #[derive(serde::Serialize, serde::Deserialize)]
-struct ConversationState {
-    id: String,
-    messages: Vec<ConversationMessage>,
-    pacing: String,
-    created_at: String,
-    updated_at: String,
+pub struct ConversationState {
+    pub id: String,
+    pub messages: Vec<ConversationMessage>,
+    pub pacing: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl ConversationState {
+    pub fn save(&self, path: &std::path::Path) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        std::fs::write(path, &json).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn load(path: &std::path::Path) -> Result<Self, String> {
+        let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&json).map_err(|e| e.to_string())
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct ConversationMessage {
-    role: String,
-    content: String,
-    timestamp: String,
+pub struct ConversationMessage {
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
 }
 
 impl eframe::App for RocoDesktopApp {
