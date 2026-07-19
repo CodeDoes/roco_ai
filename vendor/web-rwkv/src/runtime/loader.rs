@@ -739,6 +739,30 @@ impl<R: Reader> Loader<R> {
                 ).ok()?;
                 Some(Matrix::Int8 { w, m })
             }
+            Quant::NF4 | Quant::SF4 => {
+                // NF4/SF4 has scale (q), quantized weights (w), and min (m)
+                let scale_path = dir.join(format!("{safe}_scale.bin"));
+                let scale_data = fs::read(&scale_path).ok()?;
+                let m_len = m_bytes.len() / 2;
+                let w_shape = original_shape;
+                let scale_shape = Shape::new(scale_data.len() / 4, 1, 1, 1);
+                let m_shape = Shape::new(m_len, 1, 1, 1);
+                let scale_f32: Vec<f32> = cast_slice(&scale_data).to_vec();
+                let m_f16: Vec<f16> = cast_slice(&m_bytes).to_vec();
+                let q = self.context.tensor_from_data(
+                    scale_shape,
+                    Cow::Owned(scale_f32),
+                ).ok()?;
+                let w = self.context.tensor_from_data(
+                    w_shape,
+                    Cow::Owned(q_data),
+                ).ok()?;
+                let m = self.context.tensor_from_data(
+                    m_shape,
+                    Cow::Owned(m_f16),
+                ).ok()?;
+                Some(Matrix::Fp4 { q, w, m })
+            }
             _ => None,
         }
     }
@@ -764,7 +788,20 @@ impl<R: Reader> Loader<R> {
                     let _ = fs::write(&m_path, cast_slice(&m_cpu.data()[..]));
                 }
             }
-            _ => {}
+            Matrix::Fp4 { q, w, m } => {
+                let q_cpu = q.back_in_place();
+                let w_cpu = w.back_in_place();
+                let m_cpu = m.back_in_place();
+                if w_cpu.data().len() > 0 && m_cpu.data().len() > 0 && q_cpu.data().len() > 0 {
+                    let q_path = dir.join(format!("{safe}_scale.bin"));
+                    let w_path = dir.join(format!("{safe}_q.bin"));
+                    let m_path = dir.join(format!("{safe}_m.bin"));
+                    let _ = fs::write(&q_path, cast_slice(&q_cpu.data()[..]));
+                    let _ = fs::write(&w_path, cast_slice(&w_cpu.data()[..]));
+                    let _ = fs::write(&m_path, cast_slice(&m_cpu.data()[..]));
+                }
+            }
+            Matrix::Fp16(_) => {}
         }
     }
 
@@ -791,7 +828,9 @@ impl<R: Reader> Loader<R> {
                 let shape = self.tensor_shape(&name)?;
                 let buffer = context.tensor_init(shape);
                 self.load_in_place_matrix_f16(&buffer, &name)?;
-                Ok(Matrix::quant_nf4(&buffer)?)
+                let matrix = Matrix::quant_nf4(&buffer)?;
+                self.save_matrix_to_cache(&name, &matrix);
+                Ok(matrix)
             }
             Quant::SF4 => {
                 let shape = self.tensor_shape(&name)?;

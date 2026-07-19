@@ -18,6 +18,8 @@ use roco_session::store::SessionStore;
 
 use crate::rich_output as r;
 
+
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Configuration
 // ═════════════════════════════════════════════════════════════════════════════
@@ -165,6 +167,7 @@ fn run_prompt(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow::
         prompt: prompt.to_string(),
         temperature: 0.8,
         max_tokens: 1024,
+        prefill: Some("<think></think>".into()),
         ..Default::default()
     };
 
@@ -201,17 +204,8 @@ fn run_interactive(
 
     let mut state = ConversationState::new(session_id.clone(), pacing.label());
 
-    r::header(&format!("RoCo AI — Interactive Session ({})", session_id));
-    r::info(&format!(
-        "Pacing: {} — type :help for commands",
-        pacing.label()
-    ));
-    r::dim("Type your message, or use / commands to control pace.");
-    r::dim("  /accept, /skip, /stop, /pause, /resume, /undo, /redo");
-    r::dim("  /pace [planning|careful|rolling|auto]  — change pacing");
-    r::dim("  /save  — save session for later resume");
-    r::dim("  /help  — show this help");
-    r::dim("  /quit  — exit\n");
+    r::header("RoCo AI — Interactive");
+    r::dim("  Just type your story idea.  :h for help, :q to quit.\n");
 
     let mut current_pacing = pacing.to_interaction_mode();
     let mut interaction = InteractionState::new(current_pacing.clone(), 0);
@@ -226,6 +220,7 @@ fn run_interactive(
             prompt: initial.clone(),
             temperature: 0.8,
             max_tokens: 1024,
+            prefill: Some("<think></think>".into()),
             ..Default::default()
         };
         match futures::executor::block_on(backend.complete(request)) {
@@ -249,18 +244,16 @@ fn run_interactive(
     loop {
         // Show prompt
         let pacing_label = match &current_pacing {
-            InteractionMode::FullControl => "C",
-            InteractionMode::ModerateControl { .. } => "R",
-            InteractionMode::NoControl => "P",
-            InteractionMode::GoHam => "A",
+            InteractionMode::FullControl => "careful",
+            InteractionMode::ModerateControl { .. } => "rolling",
+            InteractionMode::NoControl => "planning",
+            InteractionMode::GoHam => "auto",
         };
 
         print!(
-            "\n{}[{}{}]{} > ",
+            "\n{}{} > ",
             r::Colors::DIM,
             pacing_label,
-            r::Colors::RESET,
-            r::Colors::BOLD
         );
         io::stdout().flush()?;
 
@@ -304,6 +297,7 @@ fn run_interactive(
             prompt: input.clone(),
             temperature: 0.8,
             max_tokens: 1024,
+            prefill: Some("<think></think>".into()),
             ..Default::default()
         };
 
@@ -322,7 +316,7 @@ fn run_interactive(
                 );
 
                 if should_pause {
-                    r::info("\nPaused for review. Choose: /accept, /skip, /revise, /stop");
+                    r::info("\n--- [a]ccept  [s]kip  [r]evise  [q]uit ---");
                     interaction.waiting_for_human = true;
                 }
             }
@@ -399,18 +393,16 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
 
     loop {
         let pacing_label = match &current_pacing {
-            InteractionMode::FullControl => "C",
-            InteractionMode::ModerateControl { .. } => "R",
-            InteractionMode::NoControl => "P",
-            InteractionMode::GoHam => "A",
+            InteractionMode::FullControl => "careful",
+            InteractionMode::ModerateControl { .. } => "rolling",
+            InteractionMode::NoControl => "planning",
+            InteractionMode::GoHam => "auto",
         };
 
         print!(
-            "\n{}[{}{}]{} > ",
+            "\n{}{} > ",
             r::Colors::DIM,
             pacing_label,
-            r::Colors::RESET,
-            r::Colors::BOLD
         );
         io::stdout().flush()?;
 
@@ -452,6 +444,7 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
             prompt: input.clone(),
             temperature: 0.8,
             max_tokens: 1024,
+            prefill: Some("<think></think>".into()),
             ..Default::default()
         };
 
@@ -469,7 +462,7 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
                 );
 
                 if should_pause {
-                    r::info("\nPaused for review. Choose: /accept, /skip, /revise, /stop");
+                    r::info("\n--- [a]ccept  [s]kip  [r]evise  [q]uit ---");
                     interaction.waiting_for_human = true;
                 }
             }
@@ -524,22 +517,25 @@ fn handle_command(
             Ok(false)
         }
 
-        "accept" => {
+        "accept" | "a" => {
             r::success("Accepted. Continuing...");
             interaction.waiting_for_human = false;
             Ok(false)
         }
 
-        "skip" => {
+        "skip" | "s" => {
             r::warning("Skipped.");
             interaction.waiting_for_human = false;
             Ok(false)
         }
 
         "stop" => {
-            r::error("Stopped.");
-            interaction.waiting_for_human = false;
-            Ok(false)
+            // Stop generation and exit — same as quit
+            if let Err(e) = state.save(session_path) {
+                r::warning(&format!("Auto-save failed: {e}"));
+            }
+            r::info("Session saved. Goodbye!");
+            Ok(true)
         }
 
         "undo" => {
