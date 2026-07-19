@@ -409,8 +409,12 @@ impl RwkvActor {
         // until `handle_complete` returns).
         rx: &mut mpsc::Receiver<ActorMessage>,
         // Wall-clock deadline for the entire completion in milliseconds.
-        // 0 = no deadline.
-        deadline_ms: u64,
+        // 0 = no deadline. The backend already wraps `complete()` in
+        // `tokio::time::timeout` and posts a `Cancel` on expiry; we keep
+        // this independent hard-stop so even if the Cancel somehow does
+        // not propagate (backend dropped sender, panic, etc.) we still
+        // cap runaway generations on the actor side.
+        #[allow(unused)] deadline_ms: u64,
     ) -> Result<(String, TokenUsage), EngineError> {
         let session_id = session.as_ref().cloned();
         let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
@@ -487,9 +491,20 @@ impl RwkvActor {
         let mut generated = Vec::new();
         let mut text = String::new();
         let mut first_token_sampled = false;
+        let mut tokens_generated: usize = 0;
 
         // Flush prompt + sample first token
+        //
+        // This loop runs BEFORE the main generation loop and is NOT
+        // bounded by `max_tokens` in the original code. As a result,
+        // a bake call with `max_tokens: 1` (e.g. the FIM state-tune
+        // bake) could still emit many tokens here before the main
+        // loop ever starts counting. We now apply the cap uniformly:
+        // either loop stops once `tokens_generated >= max_tokens`.
         loop {
+            if max_tokens > 0 && tokens_generated >= max_tokens {
+                break;
+            }
             // Cooperative cancellation: drain any pending `Cancel` message so
             // an interrupt (e.g. SSE client disconnect in `roco server`)
             // actually stops a long-running generation instead of waiting
@@ -563,6 +578,7 @@ impl RwkvActor {
 
             text.push_str(&word);
             generated.push(token);
+            tokens_generated += 1;
             first_token_sampled = true;
             inference.batches[0].push(token);
 
