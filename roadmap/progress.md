@@ -22,3 +22,22 @@
   accept-section/accept-selection; chat with pacing control; file tree, wiki
   browser, link graph, session browser, change timeline. Build rule: each
   widget tested standalone before composition. tmux 3.6 now installed.
+
+## 2026-07-19 (cont.)
+- Added `crates/ui` with egui dependency. Implemented **PacingWidget**
+  (standalone, tested) mapping UX pacing modes (Planning/Careful/Rolling/Auto-Accept)
+  to tested `roco_agent::interaction::InteractionMode` (NoControl/FullControl/
+  ModerateControl/GoHam). 11 unit tests pass covering mode conversion, state
+  sync, pause logic, progress display, and action emission. Engine unchanged
+  (path dep only). Meets Definition of Done for widget: surface + control +
+  tested.
+
+## 2026-07-19 (cont.)
+- Implemented **MarkdownEditor** widget — the PRIMARY SURFACE (prose is the product).
+  Features: per-range MS-Word-style comments, inline AI generate/replace actions
+  for selections, diff view for AI suggestions, accept-section/accept-selection
+  for suggestions, built on egui::TextEdit + Painter overlays (Lockbook-style),
+  undo/redo via document versioning, keyboard shortcuts (Ctrl+Z/Y/S).
+  13 unit tests pass covering document ops, suggestions, comments, undo/redo,
+  and action application. Meets Definition of Done for widget: surface + control +
+  tested + reversible (undo stack).
