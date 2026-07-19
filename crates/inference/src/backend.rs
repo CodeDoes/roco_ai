@@ -255,6 +255,19 @@ impl ModelBackend for RwkvBackend {
         })
     }
 
+    fn feed_eos(&self, session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down");
+        Box::pin(async move {
+            tx.send(ActorMessage::FeedEos(session))
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
+            Ok(())
+        })
+    }
+
     fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
         let tx = self
             .tx

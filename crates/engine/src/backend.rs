@@ -50,6 +50,14 @@ pub trait ModelBackend: Send + Sync {
     fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
         None
     }
+
+    /// Feed token 0 (EOS/end-of-document boundary) to update recurrent state.
+    /// During training, token 0 separates documents — omitting it between
+    /// state-tuning examples leaves the state in a distribution mismatch.
+    /// Default is no-op; RwkvBackend overrides to inject raw token 0.
+    fn feed_eos(&self, _session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
+        Box::pin(async move { Ok(()) })
+    }
 }
 
 /// Deterministic backend for tests / pre-model development.
@@ -232,6 +240,10 @@ pub async fn bake_persona(
             ..Default::default()
         };
         backend.complete(req_assistant).await?;
+        // Feed EOS (token 0) between examples to match training distribution
+        if i + 1 < examples.len() {
+            backend.feed_eos(None).await?;
+        }
     }
     backend.save_state().await
 }
@@ -280,6 +292,13 @@ pub async fn bake_into_session(
             ..Default::default()
         };
         backend.complete(asst_req).await?;
+        // Feed EOS (token 0) between examples to match training distribution
+        // where token 0 separates documents. Without this, the recurrent state
+        // accumulates across examples in a way that does not match how the
+        // model was trained (see RWKV-v5 make_data.py).
+        if i + 1 < examples.len() {
+            backend.feed_eos(Some(session.to_string())).await?;
+        }
     }
     Ok(())
 }
@@ -340,6 +359,10 @@ pub async fn bake_no_think_session(
             ..Default::default()
         };
         backend.complete(asst_req).await?;
+        // Feed EOS (token 0) between examples to match training distribution
+        if i + 1 < examples.len() {
+            backend.feed_eos(Some(session.to_string())).await?;
+        }
     }
     Ok(())
 }

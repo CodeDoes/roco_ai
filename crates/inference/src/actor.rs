@@ -124,6 +124,8 @@ pub enum ActorMessage {
     SaveState(oneshot::Sender<Result<Vec<u8>, EngineError>>),
     /// Restore a recurrent state previously produced by `SaveState`.
     LoadState(Vec<u8>, oneshot::Sender<Result<(), EngineError>>),
+    /// Feed token 0 (EOS) to update recurrent state without generating.
+    FeedEos(Option<String>),
 }
 
 impl From<CompleteReq> for ActorMessage {
@@ -992,6 +994,29 @@ impl RwkvActor {
                 LoadState(bytes, reply) => {
                     let result = self.load_state_bytes(&bytes).await;
                     let _ = reply.send(result);
+                }
+                FeedEos(session) => {
+                    let session_id = session.as_deref();
+                    // Load session state or use current
+                    if let Some(sid) = session_id {
+                        if let Some(Some(saved)) = self.state_pool.get(sid) {
+                            let _ = self.state.load(saved.clone(), 0);
+                        }
+                    }
+                    // Feed token 0 (EOS) to update recurrent state
+                    let _ = self
+                        .runtime
+                        .infer(RnnInput::new(
+                            vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
+                            self.token_chunk_size,
+                        ))
+                        .await;
+                    // Save updated state back to pool
+                    if let Some(sid) = session_id {
+                        if let Ok(tensor) = self.state.back(0).await {
+                            self.state_pool.insert(sid.to_string(), Some(tensor));
+                        }
+                    }
                 }
             }
         }
