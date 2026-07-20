@@ -68,6 +68,17 @@
   session management (New/Save), menu bar (File, View, Help). 39 tests pass.
   Launches via `roco gui` subcommand.
 
+## 2026-07-20
+- Wired **all 6 browser panels** into RocoDesktopApp (`crates/ui/src/desktop_app.rs`):
+  FileTree, WikiBrowser, LinkGraph, SessionBrowser, ChangeTimeline, and Editor
+  are now accessible via View menu or Tools sidebar. Each renders in a resizable
+  right panel with full action handling wired to the desktop state. The
+  RightPanelTool enum controls which tool is shown, and each tool refreshes its
+  data on activation. 81 unit tests + 9 user-story integration tests pass.
+- Fixed `test_chapter_steerer_lifecycle` assertion (word count: 5 not 6).
+- Fixed `test_handle_command_accept_skip_stop` to match actual stop-behavior.
+- Cleaned up unused imports in desktop_app.rs.
+
 ## 2026-07-19 (cont.)
 - Added **daemon lifecycle** — `roco gui` auto-starts gateway daemon on :8000
   if not running; gateway daemon auto-starts inference server on :8080 if not

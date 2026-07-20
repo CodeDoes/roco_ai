@@ -10,3 +10,6 @@ sessions/
 traces/
 workspaces/
 story/
+test-results/
+test.md
+apps/webapp/dist/

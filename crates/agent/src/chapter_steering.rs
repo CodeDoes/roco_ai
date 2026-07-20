@@ -242,7 +242,7 @@ mod tests {
 
         // Add text
         steerer.add_text("The knight drew his sword. ");
-        assert_eq!(steerer.word_count(), 6);
+        assert_eq!(steerer.word_count(), 5);
         assert!(steerer.progress() > 0.0);
 
         // Pause

@@ -840,8 +840,9 @@ mod tests {
         assert!(!interaction.waiting_for_human);
 
         interaction.waiting_for_human = true;
-        handle_command("stop", &mut state, &mut pacing, &mut interaction, &path).unwrap();
-        assert!(!interaction.waiting_for_human);
+        // stop returns Ok(true) meaning exit — does not modify waiting_for_human
+        let result = handle_command("stop", &mut state, &mut pacing, &mut interaction, &path);
+        assert!(result.unwrap(), "stop should signal exit");
     }
 
     #[test]
