@@ -16,6 +16,7 @@ members = [
     "crates/gateway",
     "crates/infer-client",
     "crates/ui",
+    "crates/app",
 ]
 resolver = "2"
 

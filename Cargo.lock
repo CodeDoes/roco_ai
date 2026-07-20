@@ -4178,6 +4178,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "roco-app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "reqwest",
+ "roco-agent",
+ "roco-engine",
+ "roco-infer-client",
+ "roco-inference",
+ "roco-message",
+ "roco-session",
+ "roco-workspace",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "roco-bnf-engine"
 version = "0.1.0"
 dependencies = [
@@ -4209,6 +4229,7 @@ dependencies = [
  "futures",
  "reqwest",
  "roco-agent",
+ "roco-app",
  "roco-bnf-engine",
  "roco-chat-common",
  "roco-engine",

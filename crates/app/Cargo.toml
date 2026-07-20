@@ -1,0 +1,21 @@
+[package]
+name = "roco-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+roco-engine = { path = "../engine" }
+roco-inference = { path = "../inference" }
+roco-session = { path = "../session" }
+roco-workspace = { path = "../workspace" }
+roco-agent = { path = "../agent" }
+roco-message = { path = "../message" }
+roco-infer-client = { path = "../infer-client" }
+
+tokio = { workspace = true }
+futures = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
