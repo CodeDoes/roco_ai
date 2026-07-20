@@ -1,5 +1,16 @@
 //! Mechanistic Agent — code-driven controller + router plugin.
 //!
+//! ════════════════════════════════════════════════════════════════════════════
+//! FILE STATUS: EDITABLE (experience layer). See EDIT_GUIDE.md for rules.
+//! SIZE: ~990 lines / 37 KB. Large — read section headers before editing.
+//! KEY SECTIONS (in order):
+//!   1. Config types (RepairConfig, Task, Plan, HandlerResult, MechanisticOutcome)
+//!   2. MechanisticAgent struct + methods (register, add_route, dispatch, commit)
+//!   3. BaseAgent trait impl
+//!   4. Backend call helper + grammar constants (INTENT_GRAMMAR, PLAN_GRAMMAR)
+//!   5. Tests (~20 tests covering dispatch, repair loop, validation, workspace)
+//! ════════════════════════════════════════════════════════════════════════════
+//!
 //! Replaces the model-driven ReAct loop with a **code-driven** pipeline:
 //! the model is a subroutine called only at fixed, grammar-constrained points;
 //! classic code owns all control flow, dispatch, and I/O.

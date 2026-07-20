@@ -85,3 +85,20 @@
   running. Uses PID files + health endpoint checks. `crates/cli/src/daemon.rs`
   with `ensure_daemon()` and `wait_for_healthy()`. GUI talks to gateway via
   `RemoteBackend` (HTTP) instead of loading model directly.
+
+## 2026-07-20 (cont.)
+- **Docs/structure pass.** Added writer-first documentation suite: `start.sh`,
+  `run_tests.sh`, `run_desktop.sh` (helpers); `USER_GUIDE.md`, `PROJECT_STRUCTURE.md`,
+  `AGENT_GUIDE.md`, `EDIT_GUIDE.md`, `STRATEGIC_PLAN.md`, `COMMANDS.md`, `EDITOR.md`,
+  `PLUGINS.md`, `API.md`, and 10 `TASK_*.md` phase tickets tracking the
+  desktop-widget-standalone-first work. Rewrote `AGENTS.md` (v3.0: protection
+  markers + Critical File Map + Pitfalls table) and `README.md` (writer-first
+  quick-start). Added `FILE STATUS:` header markers to the 5 largest source
+  files (`roco.rs` ~1373 lines, `desktop_app.rs` ~800 lines, `story_engine.rs`
+  ~954 lines, `mecha_agent.rs` ~990 lines, `crates/app/src/lib.rs`). Removed
+  accidentally-tracked `node_modules/.package-map.json` and
+  `.pnpm-workspace-state-v1.json`. No behavior change; build remains green
+  (`cargo check --workspace` passes; 0 errors, only pre-existing
+  `rich_output.rs` unused-function warnings). Engine frozen; this is a
+  documentation reorganization supporting the experience-first roadmap
+  (`STRATEGIC_PLAN.md` Phase 1 -> Phase 2).

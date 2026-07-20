@@ -1,5 +1,16 @@
 //! `roco` — unified CLI for RoCo AI.
 //!
+//! ════════════════════════════════════════════════════════════════════════════
+//! FILE STATUS: EDITABLE (CLI binary). See EDIT_GUIDE.md for rules.
+//! SIZE: ~1373 lines / 52 KB. Very large binary entry point.
+//! KEY SECTIONS (in order):
+//!   1. Helper functions (spawn_detached, default_detach_path) (lines 15-80)
+//!   2. main() — subcommand dispatch (eval, bless, rwkv, grammar, gpu-check, server, gateway, tui, gui, stop, story, interact) (lines 82-120)
+//!   3. cmd_eval / cmd_bless (lines 500-700)
+//!   4. cmd_server / cmd_gateway / cmd_tui / cmd_gui (lines 120-500)
+//!   5. Story pipeline (cmd_story) — outline → wiki → chapter ×3 → validation → correction → synopsis → publish (lines 700-1370)
+//! ════════════════════════════════════════════════════════════════════════════
+//!
 //! Usage:
 //!   roco eval [--output PATH]              run the RWKV eval suite
 //!   roco bless [--snapshot PATH]           bless current outputs as new oracle

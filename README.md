@@ -1,192 +1,150 @@
 # RoCo AI
 
-A collaborative story writing tool where humans and AI work together to create stories.
+> A collaborative story-writing tool where humans and AI work together. The AI writes; you decide.
 
-## Quick Start
+## Start Here (Choose Your Path)
+
+| I want to... | Go here |
+|---|---|
+| Write my first story (easiest) | `start.sh` or read [`QUICKSTART.md`](QUICKSTART.md) |
+| Understand the project quickly | [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) |
+| Learn the full user journey | [`USER_GUIDE.md`](USER_GUIDE.md) |
+| Run tests / verify edits | [`run_tests.sh`](run_tests.sh) |
+| Understand what's frozen vs editable | [`EDIT_GUIDE.md`](EDIT_GUIDE.md) |
+
+## Quick Start (30 Seconds)
 
 ```bash
-# Start writing (interactive mode)
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli
-
-# Start with a premise
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
-  "Write a dark fantasy about a fallen knight"
+# 1. Make sure you have a model file in models/ (see INSTALL.md)
+# 2. Run the interactive writer
+./start.sh
 ```
 
-That's it. The tool will guide you through the process.
+The tool asks a few questions, shows you an outline, and writes chapters one at a time. At each chapter you can:
 
-## What You Can Do
+- **Enter** — continue
+- **`f`** + feedback — tell the AI what to change
+- **`r`** — check quality
+- **`s`** — skip to next chapter
+- **`q`** — stop and publish
 
-### Write a Story from Scratch
+Your finished story appears in `.roco/workspaces/story_*/` as `06-STORY.md`.
+
+## What You Get (End User)
+
+Every story produces these files:
+
+| File | What's inside |
+|---|---|
+| `01-OUTLINE.md` | Your story structure |
+| `02-DIRECTION.md` | Tone, style, themes, pacing |
+| `03-CHAPTER_1.md`, `03-CHAPTER_2.md`, ... | Individual chapters |
+| `06-STORY.md` | The complete assembled story |
+| `07-PLOT-STATE.json` | Internal plot tracking |
+| `08-QUALITY-*.md` | Quality reports (if requested) |
+
+## Three Surfaces
+
+| Surface | Best for | Start it |
+|---|---|---|
+| **CLI** (`start.sh`) | Beginners, quick writing, scripting | `./start.sh` |
+| **Web Editor** (`apps/editor/`) | Visual editing, browser users | See [`EDITOR.md`](EDITOR.md) |
+| **Desktop GUI** (`crates/ui/`) | Power users, planned primary surface | See [`run_desktop.sh`](run_desktop.sh) and [`USER_GUIDE.md`](USER_GUIDE.md) |
+
+## Key Documents
+
+- [`QUICKSTART.md`](QUICKSTART.md) — 5-minute setup
+- [`INSTALL.md`](INSTALL.md) — Detailed installation (Rust, model download, GPU setup)
+- [`USER_GUIDE.md`](USER_GUIDE.md) — Full user journey, giving feedback, common questions
+- [`COMMANDS.md`](COMMANDS.md) — CLI, web, plugin, and desktop commands
+- [`EDITOR.md`](EDITOR.md) — Web editor setup and workflow
+- [`PLUGINS.md`](PLUGINS.md) — VSCode, Zed, Obsidian plugins
+- [`API.md`](API.md) — Server endpoints for custom integrations
+- [`AGENTS.md`](AGENTS.md) — Full agent behavior philosophy (for developers)
+- [`AGENT_GUIDE.md`](AGENT_GUIDE.md) — Short agent rules (for quick reference)
+- [`EDIT_GUIDE.md`](EDIT_GUIDE.md) — Which files are frozen / editable
+- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) — Directory map and naming explanation
+
+## Examples for Different Writers
+
+### Casual Writer
 ```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli
-```
-The tool will:
-1. Ask what kind of story you want
-2. Set the tone, style, themes
-3. Generate an outline
-4. Let you edit the outline
-5. Write chapters one at a time
-6. Let you give feedback
-7. Publish the finished story
-
-### Resume a Story
-```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
-  --resume .roco/workspaces/story_1234567890
-```
-
-### Use Existing Text
-```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
-  --from-file my_story.md
-```
-
-## How It Works
-
-### 1. Set the Direction
-Tell the AI what you want:
-- Tone: dark, light, humorous, serious
-- Style: literary, pulp, minimalist
-- Themes: redemption, revenge, love
-- Pacing: fast, slow, building
-
-### 2. Create the Outline
-The AI generates an outline. You can:
-- Add chapters
-- Remove chapters
-- Move chapters
-- Modify chapters
-- Skip and use as-is
-
-### 3. Write Chapters
-The AI writes one chapter at a time. You can:
-- Accept and continue
-- Give feedback ("make it darker", "add more dialogue")
-- Ask for quality check
-- Skip to next chapter
-- Stop and publish
-
-### 4. Give Feedback
-You can give feedback in plain English:
-- "make it darker"
-- "add more dialogue"
-- "the pacing is too slow"
-- "I want the knight to hesitate"
-
-### 5. Publish
-The story is saved to a workspace:
-- `06-STORY.md` — the complete story
-- `01-OUTLINE.md` — the outline
-- `03-CHAPTER_*.md` — individual chapters
-- `07-PLOT-STATE.json` — plot state
-
-## Output
-
-Stories are saved to `.roco/workspaces/story_<timestamp>/`:
-- `06-STORY.md` — complete story
-- `01-OUTLINE.md` — outline
-- `03-CHAPTER_1.md`, `03-CHAPTER_2.md`, ... — chapters
-- `07-PLOT-STATE.json` — plot state
-- `08-QUALITY-*.md` — quality reports
-
-## Examples
-
-### Example 1: Casual Writer
-```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli
-# Follow the prompts
+./start.sh
+# Follow the prompts; press Enter to skip questions
+# Accept the outline; see chapters appear one by one
 ```
 
-### Example 2: Experienced Writer
+### Experienced Writer
 ```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli
+./start.sh "Write a dark fantasy about a fallen knight"
 # Set direction: dark, literary, redemption
-# Edit outline: add/remove chapters
+# Edit outline: add, remove, move chapters
 # Give detailed feedback on each chapter
 ```
 
-### Example 3: Pantser
+### Pantser (Discover as You Go)
 ```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli
-# Set direction: whatever feels right
-# Skip outline editing
-# See where the story goes
+./start.sh
+# Skip outline editing; see where the story goes
 # Give feedback when inspired
 ```
 
-### Example 4: Plotter
+### Editor (From Existing Text)
 ```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli
-# Set direction: specific
-# Edit outline: detailed planning
-# Generate chapters that follow the outline
+./start.sh --from-file my_existing_story.md
+# AI analyzes existing text and continues
 ```
 
-### Example 5: Editor
+### Collaborator (Back-and-Forth)
 ```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
-  --from-file existing_story.md
-# AI analyzes existing text
-# AI continues from where you left off
-# Give feedback on continuations
-```
-
-### Example 6: Collaborator
-```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli
-# Write some text
-# AI continues
-# Write more text
-# AI continues
-# Back and forth
+RWKV_MODEL=... cargo run --release --example story_collaborative -p roco-cli
+# Write some text → AI continues → write more → AI continues
 ```
 
 ## Features
 
-### Core Engine
-- Dynamic outline expansion
-- Plot state tracking
-- Context assembly
-- Chapter continuation
-- Quality evaluation
-- Revision support
-- Session persistence
-
-### Human-AI Interaction
-- Interactive mode (human sees each chapter)
-- Automatic mode (agent runs to completion)
-- Natural language feedback
-- Outline editing
-- Story direction
-- Chapter steering
-
-### Observability
-- Model call recording
-- Decision tracing
-- Action logging
-- Quality assessment
-
-### Reversibility
-- Workspace snapshots
-- Action history
-- Undo/redo
-- Rollback
+- **Interactive mode** — you see every chapter before the AI continues
+- **Automatic mode** — runs to completion (`story_engine`)
+- **Natural language feedback** — plain English instructions
+- **Outline editing** — add, remove, move, modify chapters
+- **Quality evaluation** — check structure, coherence, style
+- **Session persistence** — resume any story later
+- **Workspace snapshots** — undo / rollback
+- **Desktop widgets** — markdown editor with inline AI (in development)
 
 ## Environment Variables
 
-| Variable | Effect | Default |
+| Variable | What it does | Default |
 |---|---|---|
-| `RWKV_MODEL` | Path to `.st` SafeTensors file | First `rwkv7-*.st` in `models/` |
-| `RWKV_QUANT` | Override quantization | Auto-picked |
-| `RWKV_ADAPTER` | GPU adapter name substring | First Vulkan adapter |
+| `RWKV_MODEL` | Path to `.st` model file | First `.st` in `models/` |
+| `RWKV_QUANT` | Quantization override (`nf4`, `int8`, `none`) | Auto-picked |
+| `RWKV_ADAPTER` | GPU adapter substring | First Vulkan adapter |
+| `RWKV_GRAMMAR` | GBNF grammar for constrained output | Unset |
+
+> See [`INSTALL.md`](INSTALL.md) for full environment details.
 
 ## Building
 
 ```bash
+# Quick build (debug — may hang with GPU)
+cargo build
+
+# Release build (required for GPU work)
 cargo build --release
+
+# Verify everything
+./run_tests.sh
 ```
+
+> **Important:** Release builds are required for GPU work. Debug builds hang on most consumer GPUs due to WGPU validation layers (`AGENTS.md`).
+
+## For Developers / Agents
+
+- Read [`AGENT_GUIDE.md`](AGENT_GUIDE.md) before editing any file.
+- Read [`EDIT_GUIDE.md`](EDIT_GUIDE.md) to know which files are frozen.
+- Read [`roadmap/README.md`](roadmap/README.md) for the current focus (experience, not engine).
+- The engine (`crates/inference/`, `engine/`, `grammar/`, etc.) is frozen. New work is frontend-only.
 
 ## License
 
-See LICENSE file.
+See `LICENSE` file.

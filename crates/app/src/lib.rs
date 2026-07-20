@@ -1,4 +1,6 @@
-//! `roco_app` — the single primitive every human-facing surface constructs.
+//! `roco_app` (`crates/app/`) — the single primitive every human-facing surface constructs.
+//!
+//! NOTE ON NAMING: `crates/app/` = this Rust library (`roco_app`). `apps/` = web frontends (`chat`, `studio`, `editor`). `crates/ui/` = desktop widgets (`roco_ui`). See `PROJECT_STRUCTURE.md`.
 //!
 //! `interact`, `tui`, `gui`, and `story` all build an [`AppContext`] and then
 //! call its capability methods. None of them touch `RwkvBackend`,

@@ -1,5 +1,15 @@
 //! Story Engine — dynamic, interactive story generation.
 //!
+//! ════════════════════════════════════════════════════════════════════════════
+//! FILE STATUS: EDITABLE — CAUTION ZONE (core story pipeline). See EDIT_GUIDE.md.
+//! SIZE: ~954 lines / 34 KB. Large — core pipeline: outline → plot state → chapter.
+//! KEY SECTIONS (read these before editing):
+//!   1. PlotState, CharacterState, OutlineExpansion (lines 30-200)
+//!   2. StoryConfig, StoryEngine (lines 250-650)
+//!   3. generate_outline(), expand_outline(), generate_chapter() (lines 650-950)
+//!   4. Quality evaluation (evaluate_chapter_quality, revise_chapter) (lines 950+)
+//! ════════════════════════════════════════════════════════════════════════════
+//!
 //! Extends the basic story pipeline with:
 //! - Dynamic outline expansion (no fixed chapter limit)
 //! - Plot state tracking (structured, not raw text)

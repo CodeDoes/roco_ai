@@ -1,5 +1,16 @@
 //! RoCo AI Desktop — Full GUI application built on egui/eframe.
 //!
+//! ════════════════════════════════════════════════════════════════════════════
+//! FILE STATUS: EDITABLE (desktop experience layer). See EDIT_GUIDE.md.
+//! SIZE: ~800 lines / 34 KB. Large desktop app — read sections before editing.
+//! KEY SECTIONS (in order):
+//!   1. RightPanelTool enum + labels/icons (lines 12-45)
+//!   2. RocoDesktopApp struct + new() (lines 47-115)
+//!   3. Widget action handlers (handle_chat_action, handle_file_tree_action, etc.) (lines 200-450)
+//!   4. show_right_panel() — renders Editor/FileTree/Wiki/LinkGraph/Sessions/Timeline (lines 450-600)
+//!   5. update() — menu bar, left panel, right panel, central chat (lines 600-900)
+//! ════════════════════════════════════════════════════════════════════════════
+//!
 //! Wires together all widgets (PacingWidget, ChatWidget, MarkdownEditor,
 //! FileTree, WikiBrowser, LinkGraph, SessionBrowser, ChangeTimeline) into a
 //! complete desktop experience with model-backed generation, session
