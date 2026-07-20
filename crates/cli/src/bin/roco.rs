@@ -105,6 +105,7 @@ fn main() {
         "gateway" => cmd_gateway(&extra),
         "tui" => cmd_tui(&extra),
         "gui" => cmd_gui(&extra),
+        "stop" => { crate::daemon::stop_all(); },
         "story" => cmd_story(&extra),
         "interact" => cmd_interact(&extra),
         _ => help(sub),
@@ -112,18 +113,10 @@ fn main() {
 }
 
 fn cmd_tui(_extra: &[&str]) {
-    use roco_inference::RwkvBackend;
-    use std::sync::Arc;
+    use crate::daemon;
 
-    println!("Loading model for TUI...");
-    let backend = match RwkvBackend::from_env() {
-        Ok(b) => Arc::new(b),
-        Err(e) => {
-            eprintln!("Error loading backend: {e}");
-            std::process::exit(1);
-        }
-    };
-    println!("Model loaded successfully.");
+    println!("Connecting to inference service...");
+    let backend = daemon::ensure_sync_backend();
     println!("Starting TUI...");
 
     if let Err(e) = roco_tui::App::new(backend).run() {
@@ -592,6 +585,7 @@ fn help(sub: &str) {
     eprintln!("  tui                               Start the interactive terminal chat UI");
     eprintln!("  gui                               Start the desktop GUI application");
     eprintln!("                                  (auto-starts gateway on :8000, which auto-starts inference on :8080)");
+    eprintln!("  stop                              Stop background inference + gateway");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");
     eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
     eprintln!(
@@ -772,8 +766,8 @@ where
 }
 
 fn cmd_interact(extra: &[&str]) {
+    use crate::daemon;
     use crate::interact_cli::{self, InteractMode, PacingChoice};
-    use roco_inference::RwkvBackend;
 
     // Check for --list-sessions
     if extra.iter().any(|&a| a == "--list-sessions" || a == "-l") {
@@ -797,7 +791,6 @@ fn cmd_interact(extra: &[&str]) {
     };
 
     let mode = if let Some(p) = prompt_arg {
-        // --prompt "text": one-shot, saves session, exits
         if p.is_empty() {
             eprintln!("Error: --prompt requires a non-empty prompt");
             std::process::exit(1);
@@ -810,7 +803,6 @@ fn cmd_interact(extra: &[&str]) {
             session_id: session_id.to_string(),
         }
     } else if interactive || extra.is_empty() {
-        // --interactive or no args: REPL
         let initial = if first_arg.is_empty() {
             None
         } else {
@@ -821,47 +813,22 @@ fn cmd_interact(extra: &[&str]) {
             prompt: initial,
         }
     } else {
-        // Plain arg without any flag: still interactive, with that arg as first message
         InteractMode::Interactive {
             pacing,
             prompt: Some(first_arg.to_string()),
         }
     };
 
-    // Load the model
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to build Tokio runtime");
+    let backend = daemon::ensure_sync_backend();
 
-    rt.block_on(async move {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-            )
-            .init();
-
-        // Only load model for non-list-sessions commands
-        println!("Loading model...");
-        let backend = match RwkvBackend::from_env() {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Error loading backend: {e}");
-                std::process::exit(1);
-            }
-        };
-        println!("Model loaded successfully.\n");
-
-        if let Err(e) = interact_cli::run(mode, &backend) {
-            eprintln!("Interactive session error: {e}");
-            std::process::exit(1);
-        }
-    });
+    if let Err(e) = interact_cli::run(mode, &*backend) {
+        eprintln!("Session error: {e}");
+        std::process::exit(1);
+    }
 }
 
 fn cmd_story(extra: &[&str]) {
-    use roco_inference::RwkvBackend;
+    use crate::daemon;
 
     let prompt = extra.first().cloned().unwrap_or(
         "Write a short story about a lighthouse keeper who discovers a message in a bottle.",
@@ -878,21 +845,15 @@ fn cmd_story(extra: &[&str]) {
         .build()
         .expect("Failed to build Tokio runtime");
 
+    let backend = daemon::ensure_backend();
+
     rt.block_on(async move {
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
             .init();
 
-        println!("Loading model for story generation...");
-        let backend = match RwkvBackend::from_env() {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Error loading backend: {e}");
-                std::process::exit(1);
-            }
-        };
-        println!("Model loaded successfully.");
+        println!("Generating story...");
 
         let mut agent = MechanisticAgent::new()
             .with_repair(RepairConfig {
@@ -914,15 +875,6 @@ fn cmd_story(extra: &[&str]) {
             ("validate", "chapter"),
             ("publish", "chapter"),
         ]);
-
-fn extract_title(outline: &str) -> String {
-    for line in outline.lines() {
-        if line.starts_with("Title:") {
-            return line.trim_start_matches("Title:").trim().to_string();
-        }
-    }
-    "Untitled Story".to_string()
-}
 
         // Strategy selectors
         let outline_strategy = StrategySelector::new(strategy_kind, StoryOutline::schema(), "");
@@ -1243,7 +1195,7 @@ fn extract_title(outline: &str) -> String {
 
         // Phase 1: outline
         println!("📝 Outline...");
-        let outline_result = agent.dispatch_single(&backend, &plan.tasks[0], &ws)
+        let outline_result = agent.dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)
             .expect("outline failed");
         let outline_text = &outline_result.output;
 
@@ -1256,7 +1208,7 @@ fn extract_title(outline: &str) -> String {
                 spec: serde_json::json!({"premise": prompt, "outline": outline_text}),
             }],
         };
-        let wiki_result = agent.dispatch_single(&backend, &wiki_plan.tasks[0], &ws)
+        let wiki_result = agent.dispatch_single(backend.as_ref(), &wiki_plan.tasks[0], &ws)
             .expect("wiki failed");
 
         // Phase 3: chapters ×3
@@ -1276,7 +1228,7 @@ fn extract_title(outline: &str) -> String {
                     "previous": previous,
                 }),
             };
-            let ch_result = agent.dispatch_single(&backend, &ch_task, &ws)
+            let ch_result = agent.dispatch_single(backend.as_ref(), &ch_task, &ws)
                 .expect("chapter failed");
             chapter_texts.push(ch_result.output.clone());
 
@@ -1289,7 +1241,7 @@ fn extract_title(outline: &str) -> String {
                     "text": ch_result.output,
                 }),
             };
-            let _val_result = agent.dispatch_single(&backend, &val_task, &ws)
+            let _val_result = agent.dispatch_single(backend.as_ref(), &val_task, &ws)
                 .expect("validation failed");
 
             // Self-correction loop
@@ -1327,7 +1279,7 @@ fn extract_title(outline: &str) -> String {
                             "retry": true,
                         }),
                     };
-                    let retry_result = agent.dispatch_single(&backend, &retry_task, &ws)
+                    let retry_result = agent.dispatch_single(backend.as_ref(), &retry_task, &ws)
                         .unwrap_or(ch_result);
 
                     let filename = format!("03-CHAPTER_{}.md", i);
@@ -1350,7 +1302,7 @@ fn extract_title(outline: &str) -> String {
             domain: "synopsis".into(),
             spec: serde_json::json!({"chapters": all_chapters}),
         };
-        let _synopsis_result = agent.dispatch_single(&backend, &synopsis_task, &ws)
+        let _synopsis_result = agent.dispatch_single(backend.as_ref(), &synopsis_task, &ws)
             .expect("synopsis failed");
 
         // Phase 5: publish
@@ -1360,7 +1312,7 @@ fn extract_title(outline: &str) -> String {
             domain: "chapter".into(),
             spec: serde_json::json!({}),
         };
-        let publish_result = agent.dispatch_single(&backend, &publish_task, &ws)
+        let publish_result = agent.dispatch_single(backend.as_ref(), &publish_task, &ws)
             .expect("publish failed");
 
         let outcome = agent.commit(plan.clone(), vec![
@@ -1377,6 +1329,15 @@ fn extract_title(outline: &str) -> String {
 
         println!("\nStory successfully published to 06-STORY.md inside the workspace: {}", outcome.workspace_path);
     });
+}
+
+fn extract_title(outline: &str) -> String {
+    for line in outline.lines() {
+        if line.starts_with("Title:") {
+            return line.trim_start_matches("Title:").trim().to_string();
+        }
+    }
+    "Untitled Story".to_string()
 }
 
 fn sanitize_story_dirname(s: &str) -> String {
