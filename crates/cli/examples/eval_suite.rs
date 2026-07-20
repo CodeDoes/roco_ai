@@ -11,7 +11,36 @@ use roco_engine::{
     MockBackend,
 };
 use roco_grammar::gbnf_to_kbnf;
-use roco_inference::RwkvBackend;
+
+/// Resolve the eval backend through the shared `AppContext` primitive.
+///
+/// `rwkv` and `remote` both go through `roco_app::daemon` (the same backend
+/// resolution / daemon-lifecycle path as every other surface). The concrete
+/// `RemoteBackend` is returned so the engine's `run_suite` / `run_one_streaming`
+/// bounds (`B: ModelBackend + Send + Sync`) are satisfied.
+fn eval_backend(backend: &str) -> roco_infer_client::RemoteBackend {
+    match backend {
+        "mock" => panic!("mock backend must use MockBackend directly"),
+        "rwkv" => {
+            // Ensure the daemon chain (gateway → inference) is up, then point
+            // at the gateway. No RWKV_MODEL needed — AppContext resolves it.
+            roco_app::daemon::ensure_sync_backend();
+            roco_infer_client::RemoteBackend::new(format!(
+                "http://127.0.0.1:{}",
+                roco_app::daemon::GATEWAY_PORT
+            ))
+        }
+        "remote" => {
+            let url = env::var("ROCO_API_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+            roco_infer_client::RemoteBackend::new(url)
+        }
+        other => {
+            eprintln!("Unknown backend: {other}");
+            std::process::exit(1);
+        }
+    }
+}
 
 struct Args {
     backend: String,
@@ -280,12 +309,8 @@ async fn main() {
                 let backend = MockBackend::new("mock-3b", 0);
                 run_one_streaming(&backend, default_eval_suite(), one).await;
             }
-            "rwkv" => {
-                let backend = RwkvBackend::from_env().unwrap_or_else(|e| {
-                    eprintln!("ERROR: Failed to create RwkvBackend: {e}");
-                    eprintln!("Set RWKV_MODEL and RWKV_VOCAB environment variables.");
-                    std::process::exit(1);
-                });
+            "rwkv" | "remote" => {
+                let backend = eval_backend(&args.backend);
                 let mut cases = default_eval_suite();
                 cases.extend(roco_engine::cases::message_eval_cases());
                 cases.extend(roco_engine::cases::fim_eval_cases());
@@ -309,21 +334,6 @@ async fn main() {
                 }
                 run_one_streaming(&backend, cases, one).await;
             }
-            "remote" => {
-                let backend = roco_infer_client::RemoteBackend::from_env();
-                let mut cases = default_eval_suite();
-                cases.extend(roco_engine::cases::message_eval_cases());
-                cases.extend(roco_engine::cases::fim_eval_cases());
-                let is_fim_bridge = cases.iter().any(|c| {
-                    c.name.contains(one) && c.session.as_deref() == Some(roco_engine::FIM_SESSION)
-                });
-                if is_fim_bridge {
-                    if let Err(e) = roco_engine::bake_fim_session(&backend).await {
-                        eprintln!("WARN: FIM session bake failed: {e}");
-                    }
-                }
-                run_one_streaming(&backend, cases, one).await;
-            }
             other => {
                 eprintln!("Unknown backend: {other}");
                 std::process::exit(1);
@@ -334,7 +344,7 @@ async fn main() {
 
     let report: EvalReport = match args.backend.as_str() {
         "mock" => {
-            let backend = MockBackend::new("mock-3b", 0);
+            let backend = eval_backend("mock");
             run_suite(
                 &args.suite,
                 &backend,
@@ -345,12 +355,8 @@ async fn main() {
             )
             .await
         }
-        "rwkv" => {
-            let backend = RwkvBackend::from_env().unwrap_or_else(|e| {
-                eprintln!("ERROR: Failed to create RwkvBackend: {e}");
-                eprintln!("Set RWKV_MODEL and RWKV_VOCAB environment variables.");
-                std::process::exit(1);
-            });
+        "rwkv" | "remote" => {
+            let backend = eval_backend(&args.backend);
             // The real model additionally runs the message-layer baseline
             // probes (system-instruction following + user-turn coherence),
             // the FIM completion probes (the shape the Zed/VS Code LSP sends),
@@ -363,30 +369,6 @@ async fn main() {
             if let Err(e) = roco_engine::bake_fim_session(&backend).await {
                 eprintln!("WARN: FIM session bake failed: {e}");
             }
-            build_masks(&backend, &mut cases);
-            run_suite(
-                &args.suite,
-                &backend,
-                cases,
-                args.filter.as_deref(),
-                trace_path.as_deref(),
-                args.live,
-            )
-            .await
-        }
-        "remote" => {
-            // Talk to the singleton inference API server (the same one the
-            // Zed/VS Code LSP uses via RemoteBackend). Requires the server to
-            // be running, e.g. `roco server --story --detach`.
-            let backend = roco_infer_client::RemoteBackend::from_env();
-            // Bake the few-shot FIM examples into a named session so the FIM
-            // cases resume from the correct recurrent state (state-tuning).
-            if let Err(e) = roco_engine::bake_fim_session(&backend).await {
-                eprintln!("WARN: FIM session bake failed: {e}");
-            }
-            let mut cases = default_eval_suite();
-            cases.extend(message_eval_cases());
-            cases.extend(fim_eval_cases());
             build_masks(&backend, &mut cases);
             run_suite(
                 &args.suite,

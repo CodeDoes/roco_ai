@@ -75,8 +75,8 @@ impl AppWorkspace {
         // Read both snapshot manifests and produce a unified diff of paths.
         let ra = self.read_snapshot_files(&a.id)?;
         let rb = self.read_snapshot_files(&b.id)?;
-        let added: Vec<_> = rb.keys().filter(|p| !ra.contains_key(*p)).collect();
-        let removed: Vec<_> = ra.keys().filter(|p| !rb.contains_key(*p)).collect();
+        let added: Vec<String> = rb.keys().filter(|p| ra.get(*p).is_none()).cloned().collect();
+        let removed: Vec<String> = ra.keys().filter(|p| rb.get(*p).is_none()).cloned().collect();
         let mut out = String::new();
         for p in &added {
             out.push_str(&format!("+ {p}\n"));
@@ -97,7 +97,8 @@ impl AppWorkspace {
             .root()
             .join(".snapshots")
             .join(format!("{id}.json"));
-        let content = std::fs::read_to_string(&path).map_err(|e| AppError::Other(e.to_string()))?;
+        let bytes = std::fs::read(&path).map_err(|e| AppError::Other(e.to_string()))?;
+        let content = String::from_utf8_lossy(&bytes).to_string();
         let snap: serde_json::Value =
             serde_json::from_str(&content).map_err(|e| AppError::Other(e.to_string()))?;
         let files = snap

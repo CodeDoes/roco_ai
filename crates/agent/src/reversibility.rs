@@ -70,7 +70,16 @@ impl VersionControl {
 
     /// Take a snapshot of the current workspace state
     pub fn snapshot(&self, description: &str) -> Result<String, String> {
-        let snapshot_id = format!("snap_{}", now());
+        // Use a monotonic counter + nanosecond timestamp so two snapshots
+        // taken in the same wall-clock second get distinct IDs and don't
+        // overwrite each other on disk.
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let snapshot_id = format!("snap_{}_{}", nanos, n);
         let mut files = HashMap::new();
 
         // Read all files in workspace
