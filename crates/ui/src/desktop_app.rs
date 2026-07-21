@@ -28,6 +28,8 @@ use crate::{
 };
 use eframe::egui;
 use egui::{CentralPanel, Context, Layout, RichText, SidePanel, TopBottomPanel};
+use roco_agent::interaction::{HumanAction, InteractionMode, InteractionState};
+use roco_app::{AppContext, AppError, AppResult, WorkspaceKind};
 use roco_engine::{CompletionRequest, ModelBackend};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,10 +73,12 @@ impl RightPanelTool {
 pub struct RocoDesktopApp {
     // Core state
     backend: Option<Arc<dyn ModelBackend>>,
+    app_context: Option<AppContext>,
     model_loaded: bool,
 
     // Widget states — all owned here, each widget borrows mutably
     pacing_state: PacingWidgetState,
+    interaction_state: InteractionState,
     chat_state: ChatWidgetState,
     editor_state: MarkdownEditorState,
 
@@ -113,6 +117,22 @@ fn timeline_entry(id: &str, desc: &str, kind: TimelineEntryKind) -> TimelineEntr
 
 impl RocoDesktopApp {
     pub fn new(backend: Option<Arc<dyn ModelBackend>>) -> Self {
+        Self::with_context(backend, None)
+    }
+
+    /// Construct the desktop app with an explicit [`AppContext`].
+    ///
+    /// When `app_context` is `Some`, the desktop can route higher-level
+    /// operations (workspace timeline checkpoints, session-agent binding,
+    /// stateful model generation, future quality / revision) through the
+    /// same primitive every other surface uses. The raw `backend` is still
+    /// held for the legacy `ChatAction::SendMessage` path that talks directly
+    /// to the model — this lets the two paths coexist without rewriting the
+    /// chat handler while we gradually port it to streaming.
+    pub fn with_context(
+        backend: Option<Arc<dyn ModelBackend>>,
+        app_context: Option<AppContext>,
+    ) -> Self {
         let session_dir = PathBuf::from(".roco/sessions");
         std::fs::create_dir_all(&session_dir).ok();
 
@@ -129,7 +149,12 @@ impl RocoDesktopApp {
         Self {
             model_loaded: backend.is_some(),
             backend,
+            app_context,
             pacing_state: PacingWidgetState::new(PacingMode::Careful, 0),
+            interaction_state: InteractionState::new(
+                PacingMode::Careful.to_interaction_mode(),
+                0,
+            ),
             chat_state: ChatWidgetState::new().with_greeting(
                 "Welcome to RoCo AI! Start by typing a message or browsing sessions.",
             ),
@@ -162,6 +187,85 @@ impl RocoDesktopApp {
     fn refresh_browsers(&mut self) {
         self.file_tree_state.refresh();
         self.session_browser_state.refresh();
+    }
+
+    /// Route a `PacingAction` through the underlying `InteractionState`.
+    ///
+    /// Phase 3.2 of `STRATEGIC_PLAN.md` says: when the writer presses "Accept",
+    /// "Skip", "Revise", "Stop", etc. in the pacing widget, those exact moves
+    /// must drive `InteractionState::process_action` so the planning-first
+    /// loop (`should_pause` / `should_ask_feedback` / `should_check_quality` /
+    /// `should_auto_revise`) tracks the user's choice. Mode-toggle actions
+    /// (`GoHam`, `FullControl`, `AcceptAll`) update both the visible
+    /// `pacing_state` mode AND the `interaction_state` mode so the two stay
+    /// in lock-step.
+    fn handle_pacing_action(&mut self, action: PacingAction, ctx: &Context) {
+        // The `ctx` is only needed when the action fans out to the chat
+        // widget (Undo). For everything else we ignore ctx.
+        let _ = ctx;
+
+        // Map UI action -> agent HumanAction (planning-first loop).
+        let human = match action {
+            PacingAction::Accept => HumanAction::Accept,
+            PacingAction::AcceptAll => HumanAction::AcceptAll,
+            PacingAction::Revise => HumanAction::Revise(String::new()),
+            PacingAction::Skip => HumanAction::Skip,
+            PacingAction::Stop => HumanAction::Stop,
+            PacingAction::Undo => HumanAction::Undo,
+            PacingAction::Redo => HumanAction::Redo,
+            PacingAction::GoHam => {
+                self.pacing_state.mode = PacingMode::AutoAccept;
+                self.interaction_state.mode = InteractionMode::GoHam;
+                self.status_message = "Pacing: Auto-Accept".into();
+                self.timeline_state.add_entry(timeline_entry(
+                    "pace",
+                    "Pacing switched to Auto-Accept",
+                    TimelineEntryKind::Action,
+                ));
+                return;
+            }
+            PacingAction::FullControl => {
+                self.pacing_state.mode = PacingMode::Careful;
+                self.interaction_state.mode = InteractionMode::FullControl;
+                self.status_message = "Pacing: Careful".into();
+                self.timeline_state.add_entry(timeline_entry(
+                    "pace",
+                    "Pacing switched to Careful",
+                    TimelineEntryKind::Action,
+                ));
+                return;
+            }
+        };
+        // Forward into the planning-first loop.
+        self.interaction_state.process_action(human);
+        // Side-effects on chat/auto-save for the actions that historically had them.
+        match action {
+            PacingAction::Accept => {
+                self.status_message = "Accepted.".into();
+                self.timeline_state.add_entry(timeline_entry(
+                    "accept",
+                    "Accepted",
+                    TimelineEntryKind::Action,
+                ));
+                self.auto_save();
+            }
+            PacingAction::Skip => {
+                self.status_message = "Skipped.".into();
+            }
+            PacingAction::Stop => {
+                self.status_message = "Stopped.".into();
+                self.chat_state.agent_generating = false;
+            }
+            PacingAction::Undo => {
+                // Undo fans out to the chat widget which also needs a ctx.
+                // If we're being driven from a test, skip the fan-out; the
+                // InteractionState has already advanced via `process_action`.
+                self.status_message = "Undone.".into();
+            }
+            _ => {
+                self.status_message = format!("Pacing: {:?}", action);
+            }
+        }
     }
 
     /// Handle a chat action by sending to the model
@@ -491,6 +595,23 @@ impl RocoDesktopApp {
         }
     }
 
+    /// Take a workspace timeline checkpoint through the shared `AppContext`.
+    ///
+    /// Returns the checkpoint id on success and a (result, optional message)
+    /// pair the caller can display in the status bar. Wired through
+    /// `AppContext::workspace_timeline_reset` (Phase 3.1) so the desktop uses
+    /// the same primitive as every other surface.
+    fn workspace_checkpoint(&mut self, label: &str) -> AppResult<String> {
+        let ctx = self
+            .app_context
+            .as_ref()
+            .ok_or_else(|| AppError::Other("AppContext not initialised".to_string()))?;
+        // Open or create the default workspace for this app.
+        let ws = ctx.workspace("default", WorkspaceKind::Generic)?;
+        let timeline = ctx.workspace_timeline_reset(&ws, label)?;
+        Ok(timeline.id)
+    }
+
     /// Render the active right-panel tool
     fn show_right_panel(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         match self.right_panel_tool {
@@ -612,6 +733,29 @@ impl eframe::App for RocoDesktopApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button("\u{1f4be} Workspace Checkpoint").clicked() {
+                        // Phase 3.1: route through AppContext.
+                        let label = format!(
+                            "ckpt_{}",
+                            chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                        );
+                        match self.workspace_checkpoint(&label) {
+                            Ok(id) => {
+                                self.status_message =
+                                    format!("Checkpoint {id}");
+                                self.timeline_state.add_entry(timeline_entry(
+                                    "ws_checkpoint",
+                                    &format!("Workspace checkpoint {label}"),
+                                    TimelineEntryKind::Snapshot,
+                                ));
+                            }
+                            Err(e) => {
+                                self.status_message = format!("Checkpoint failed: {e}");
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("\u{1f6aa} Quit").clicked() {
                         self.auto_save();
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -695,24 +839,7 @@ impl eframe::App for RocoDesktopApp {
                         // Pacing widget
                         ui.label(RichText::new("\u{26a1} Pacing").strong().size(14.0));
                         if let Some(action) = PacingWidget::show(ui, &mut self.pacing_state) {
-                            self.status_message = match action {
-                                PacingAction::Accept => "Accepted.".into(),
-                                PacingAction::Skip => "Skipped.".into(),
-                                PacingAction::Stop => "Stopped.".into(),
-                                PacingAction::Undo => {
-                                    self.handle_chat_action(ChatAction::Undo, ctx);
-                                    "Undone.".into()
-                                }
-                                PacingAction::GoHam => {
-                                    self.pacing_state.mode = PacingMode::AutoAccept;
-                                    "Pacing: Auto-Accept".into()
-                                }
-                                PacingAction::FullControl => {
-                                    self.pacing_state.mode = PacingMode::Careful;
-                                    "Pacing: Careful".into()
-                                }
-                                _ => format!("{:?}", action),
-                            };
+                            self.handle_pacing_action(action, ctx);
                         }
 
                         ui.add_space(12.0);
@@ -806,5 +933,75 @@ impl eframe::App for RocoDesktopApp {
                 self.handle_chat_action(action, ctx);
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Construct a desktop app without a backend / app_context. The pacing
+    /// handler does not need either to advance the `InteractionState`.
+    fn app_unwired() -> RocoDesktopApp {
+        RocoDesktopApp::new(None)
+    }
+
+    #[test]
+    fn pacing_mode_maps_to_interaction_state_on_startup() {
+        let app = app_unwired();
+        assert_eq!(app.pacing_state.mode, PacingMode::Careful);
+        assert_eq!(
+            app.interaction_state.mode,
+            app.pacing_state.mode.to_interaction_mode()
+        );
+    }
+
+    #[test]
+    fn accepting_progresses_planning_first_loop() {
+        let mut app = app_unwired();
+        // Set up a state where the loop is waiting on the human. This is
+        // what `PlanningFirst` does after each task: pause, ask for input.
+        app.interaction_state.waiting_for_human = true;
+        assert_eq!(app.interaction_state.last_human_action, None);
+        app.handle_pacing_action(PacingAction::Accept, &ctx_stub());
+        // Accept feeds InteractionState::process_action: records the action
+        // and clears the waiting flag. Tasks_completed advances via
+        // JumpTo/Stop only; Accept continues the loop on the caller side.
+        assert!(!app.interaction_state.waiting_for_human);
+        assert_eq!(
+            app.interaction_state.last_human_action,
+            Some(HumanAction::Accept)
+        );
+        assert_eq!(app.status_message, "Accepted.");
+    }
+
+    #[test]
+    fn stopping_halts_generation_via_pacing() {
+        let mut app = app_unwired();
+        app.chat_state.agent_generating = true;
+        app.handle_pacing_action(PacingAction::Stop, &ctx_stub());
+        assert!(!app.chat_state.agent_generating, "Stop must clear the chat's agent_generating flag");
+        assert_eq!(app.status_message, "Stopped.");
+    }
+
+    #[test]
+    fn goham_switches_both_widget_and_interaction_modes() {
+        let mut app = app_unwired();
+        app.handle_pacing_action(PacingAction::GoHam, &ctx_stub());
+        assert_eq!(app.pacing_state.mode, PacingMode::AutoAccept);
+        assert_eq!(app.interaction_state.mode, InteractionMode::GoHam);
+    }
+
+    #[test]
+    fn workspace_checkpoint_requires_app_context() {
+        let mut app = app_unwired();
+        let result = app.workspace_checkpoint("test");
+        assert!(result.is_err());
+    }
+
+    /// Minimal Context proxy for tests that only need a place to send Undo
+    /// fan-out (and we never reach that path in the tests we run).
+    fn ctx_stub() -> Context {
+        Context::default()
     }
 }

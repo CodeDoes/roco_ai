@@ -102,3 +102,23 @@
   `rich_output.rs` unused-function warnings). Engine frozen; this is a
   documentation reorganization supporting the experience-first roadmap
   (`STRATEGIC_PLAN.md` Phase 1 -> Phase 2).
+
+## 2026-07-20 (audit)
+- **Plan audit.** Verified state vs. `STRATEGIC_PLAN.md` Phase 2 claims:
+  `cargo test -p roco_ui --lib` -> 81 unit tests pass; `cargo test -p
+  roco_ui --test user_story` -> 9 user-story tests pass; all 8 widget
+  files (`pacing`, `markdown_editor`, `chat`, `file_tree`, `wiki_browser`,
+  `session_browser`, `link_graph`, `change_timeline`) have `#[cfg(test)]`
+  modules; all 6 browser panels wire into `RocoDesktopApp`. **Phase 2
+  (Standalone-First Build) is COMPLETE.**
+- **Open gap (Phase 3):** `crates/ui/src/desktop_app.rs` lines 170-203 talk
+  to `ModelBackend` directly instead of `AppContext`. Streaming,
+  planning-first loop (`PacingAction` -> `InteractionMode` ->
+  `classify`/`derive`/`dispatch`), `QualityAnalyzer` results, `VersionControl`
+  snapshots, and the `StoryEngine` writer-editor loop
+  (`evaluate_chapter_quality` -> `revise_chapter`) are not surfaced.
+  `tests/desktop_e2e.rs` does not exist yet.
+- **No engine modifications.** No frozen-file writes.
+- **Next execution:** Phase 3.1 AppContext -> desktop; Phase 3.2 pacing wires
+  into planning-first pipeline; Phase 3.3 quality results in right panel;
+  Phase 3.4 revision diff in editor; Phase 3.5 `tests/desktop_e2e.rs`.

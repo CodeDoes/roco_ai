@@ -138,6 +138,7 @@ fn cmd_tui(_extra: &[&str]) {
 fn cmd_gui(_extra: &[&str]) {
     use crate::daemon::{self, GATEWAY_PORT};
     use eframe::egui;
+    use roco_app::AppContext;
     use roco_infer_client::RemoteBackend;
     use roco_ui::RocoDesktopApp;
     use std::sync::Arc;
@@ -173,12 +174,17 @@ fn cmd_gui(_extra: &[&str]) {
         println!("Gateway already running.");
     }
 
-    // 2. Remote backend pointing at gateway
+    // 2. Construct the shared AppContext (Phase 3.1: single surface primitive).
+    // AppContext::connect_remote wraps the same gateway URL the RemoteBackend
+    // pushes to, so the GUI now shares workspace timeline, session binding,
+    // model_state_generate, and future quality / revision ops with every
+    // other surface (interact / tui / story).
     let gateway_url = format!("http://127.0.0.1:{}", GATEWAY_PORT);
     let backend: Option<Arc<dyn roco_engine::ModelBackend>> = Some(Arc::new(RemoteBackend::new(
         gateway_url.clone(),
     ))
         as Arc<dyn roco_engine::ModelBackend>);
+    let app_context = AppContext::connect_remote(&gateway_url);
 
     println!("Starting GUI (backend: {})...", gateway_url);
     let options = eframe::NativeOptions {
@@ -188,7 +194,7 @@ fn cmd_gui(_extra: &[&str]) {
         ..Default::default()
     };
 
-    let app = RocoDesktopApp::new(backend);
+    let app = RocoDesktopApp::with_context(backend, Some(app_context));
     eframe::run_native(
         "RoCo AI Desktop",
         options,

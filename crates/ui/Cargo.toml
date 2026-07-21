@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 roco-agent = { path = "../agent" }
+roco-app = { path = "../app", package = "roco-app" }
 roco-engine = { path = "../engine" }
 futures = { workspace = true }
 egui = { version = "0.31", features = ["accesskit"] }

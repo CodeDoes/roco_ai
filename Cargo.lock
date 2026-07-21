@@ -4435,6 +4435,7 @@ dependencies = [
  "egui_markdown",
  "futures",
  "roco-agent",
+ "roco-app",
  "roco-engine",
  "serde",
  "serde_json",
