@@ -116,21 +116,21 @@ Each phase has: **Files to Read**, **Files to Edit**, **Milestones** (testable e
 ### PHASE 3 — Full Interaction Flow + End-to-End Test (Target: 6 Weeks)
 **Strategic result:** The desktop supports the complete writer journey: direction → outline → edit → chapters → feedback → quality → revision → publish — with tests proving it.
 
-**Phase 3.1 — Wire AppContext to Desktop (Target: Week 4)**
+**Phase 3.1 — Wire AppContext to Desktop (COMPLETED 2026-07-20)**
 - **Files to read:** `crates/app/src/lib.rs`, `context.rs`, `session.rs`, `workspace.rs`
 - **Files to edit:** `desktop_app.rs` — create `AppContext` in `new()`; pass to widget handlers.
 - **What to wire:** `AppContext::generate_stream()` → `ChatWidget` streaming; `workspace_transform()` → `FileTree`; `session_agent_message` → chat persistence.
 - **Milestone:** Desktop creates/opens workspace (`.roco/workspaces/`) through UI; file operations visible in `FileTree`.
 - **Strategic note:** `AppContext` is the single surface primitive. Without it wired to desktop, the desktop is just a pretty shell.
 
-**Phase 3.2 — Interactive Mode with Pacing (Target: Week 4-5)**
+**Phase 3.2 — Interactive Mode with Pacing (COMPLETED 2026-07-20)**
 - **Files to read:** `crates/agent/src/interaction.rs`
 - **Files to edit:** `desktop_app.rs` — map `PacingAction` to `InteractionMode`; wire `ChatAction::SendMessage` to generation.
 - **What to add:** `PacingMode::Careful` shows outline first, then chapter individually. `AutoAccept` auto-advances through steps. User selects mode in left panel.
 - **Milestone:** User types `"Write a dark fantasy"` in chat; desktop shows outline; user can edit outline (via editor opening `01-OUTLINE.md`); first chapter appears.
 - **Strategic note:** This is the writer's primary interaction loop (`AGENTS.md` Section 4, Pattern 1). Without it, the desktop is incomplete.
 
-**Phase 3.3 — Quality Feedback Integration (Target: Week 5)**
+**Phase 3.3 — Quality Feedback Integration (NEXT — Target: Week 5)**
 - **Files to read:** `crates/agent/src/quality.rs`
 - **Files to edit:** `desktop_app.rs` — add quality check action; display `StoryCritique` results (scores: overall, pacing, show-don't-tell, character voice, plot coherence, engagement) in right panel or overlay.
 - **Milestone:** User clicks quality check; sees scores with revision suggestions.

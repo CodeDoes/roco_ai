@@ -29,6 +29,7 @@ use crate::{
 use eframe::egui;
 use egui::{CentralPanel, Context, Layout, RichText, SidePanel, TopBottomPanel};
 use roco_agent::interaction::{HumanAction, InteractionMode, InteractionState};
+use roco_agent::quality::{QualityAnalyzer, QualityIssue, QualityScore, StoryCritique};
 use roco_app::{AppContext, AppError, AppResult, WorkspaceKind};
 use roco_engine::{CompletionRequest, ModelBackend};
 use std::path::PathBuf;
@@ -43,6 +44,7 @@ pub enum RightPanelTool {
     LinkGraph,
     Sessions,
     Timeline,
+    Quality,
 }
 
 impl RightPanelTool {
@@ -54,6 +56,7 @@ impl RightPanelTool {
             RightPanelTool::LinkGraph => "Graph",
             RightPanelTool::Sessions => "Sessions",
             RightPanelTool::Timeline => "Timeline",
+            RightPanelTool::Quality => "Quality",
         }
     }
 
@@ -65,6 +68,7 @@ impl RightPanelTool {
             RightPanelTool::LinkGraph => "\u{1f517}",
             RightPanelTool::Sessions => "\u{1f4ac}",
             RightPanelTool::Timeline => "\u{23f1}\u{fe0f}",
+            RightPanelTool::Quality => "\u{2b50}",
         }
     }
 }
@@ -88,6 +92,10 @@ pub struct RocoDesktopApp {
     link_graph_state: LinkGraphState,
     session_browser_state: SessionBrowserState,
     timeline_state: ChangeTimelineState,
+
+    // Quality (Phase 3.3)
+    quality_result: Option<StoryCritique>,
+    quality_in_progress: bool,
 
     // Session
     session_dir: PathBuf,
@@ -166,6 +174,8 @@ impl RocoDesktopApp {
             link_graph_state,
             session_browser_state: SessionBrowserState::new(session_dir.clone()),
             timeline_state: ChangeTimelineState::new(),
+            quality_result: None,
+            quality_in_progress: false,
             session_dir,
             session_path: None,
             left_panel_open: true,
@@ -513,6 +523,87 @@ impl RocoDesktopApp {
         }
     }
 
+    /// Run a quality evaluation on the latest assistant message.
+    ///
+    /// Phase 3.3: uses `QualityAnalyzer::evaluate_chapter` to produce a
+    /// `StoryCritique` and switches the right panel to the Quality tab.
+    /// Falls back to a demo critique when no model is loaded so the UI
+    /// can be tested standalone.
+    fn handle_quality_check(&mut self) {
+        let text = self
+            .chat_state
+            .last_assistant_message()
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
+
+        if text.is_empty() {
+            self.status_message = "No text to evaluate.".to_string();
+            return;
+        }
+
+        self.quality_in_progress = true;
+        self.status_message = "Running quality check...".to_string();
+
+        let critique = if let Some(ref backend) = self.backend {
+            let analyzer = QualityAnalyzer::new(6.0);
+            match analyzer.evaluate_chapter(
+                backend.as_ref(),
+                &text,
+                1,
+                "(no context)",
+            ) {
+                Ok(c) => c,
+                Err(e) => {
+                    self.status_message = format!("Quality check failed: {e}");
+                    self.quality_in_progress = false;
+                    return;
+                }
+            }
+        } else {
+            // Demo critique — visible even without a model loaded
+            StoryCritique {
+                summary: "[Demo] This chapter has strong pacing and engagement but could improve prose quality and show-don't-tell balance.".to_string(),
+                scores: QualityScore {
+                    overall: 7.0,
+                    pacing: 8.0,
+                    show_dont_tell: 5.0,
+                    character_voice: 7.0,
+                    tense_consistency: 9.0,
+                    plot_coherence: 7.0,
+                    engagement: 8.0,
+                    prose_quality: 5.5,
+                    strengths: vec![
+                        "Strong pacing keeps the reader engaged".to_string(),
+                        "Dialogue feels natural and character-appropriate".to_string(),
+                    ],
+                    suggestions: vec![
+                        "Add more sensory detail to setting descriptions".to_string(),
+                        "Break up long paragraphs for visual rhythm".to_string(),
+                        "Show emotional reactions rather than telling them".to_string(),
+                    ],
+                    issues: vec![
+                        roco_agent::quality::QualityIssue {
+                            category: "show_dont_tell".to_string(),
+                            severity: "medium".to_string(),
+                            description: "Several emotional states are stated rather than demonstrated".to_string(),
+                            location: None,
+                        },
+                    ],
+                },
+                should_revise: true,
+                priority_revisions: vec![
+                    "Add sensory depth to scene descriptions".to_string(),
+                    "Rewrite emotional beats to show rather than tell".to_string(),
+                ],
+            }
+        };
+
+        self.quality_result = Some(critique);
+        self.right_panel_tool = Some(RightPanelTool::Quality);
+        self.quality_in_progress = false;
+        self.status_message = "Quality check complete.".to_string();
+    }
+
     fn auto_save(&self) {
         if let Some(ref path) = self.session_path {
             let state = ConversationState {
@@ -612,6 +703,191 @@ impl RocoDesktopApp {
         Ok(timeline.id)
     }
 
+    /// Render the quality check results panel.
+    ///
+    /// Shows a score card (overall + per-dimension), issues list, strengths,
+    /// and suggested revisions. The critique is produced by
+    /// `handle_quality_check` or falls back to a demo when no model is loaded.
+    fn show_quality_panel(&mut self, ui: &mut egui::Ui) {
+        if self.quality_in_progress {
+            ui.add_space(20.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    RichText::new("\u{23f3} Running quality check...")
+                        .size(14.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            });
+            return;
+        }
+
+        let Some(ref critique) = self.quality_result.clone() else {
+            ui.add_space(20.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    RichText::new("No quality data yet.")
+                        .size(14.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("Go to Review \u{2192} Check Quality or send a message first.")
+                        .size(12.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            });
+            return;
+        };
+
+        ui.add_space(4.0);
+
+        // ── Re-check button ────────────────────────────────────────────
+        if ui.button("\u{1f504} Re-check Quality").clicked() {
+            self.handle_quality_check();
+        }
+        ui.add_space(4.0);
+
+        // ── Summary ────────────────────────────────────────────────────
+        ui.label(RichText::new("Summary").strong().size(13.0));
+        ui.add_space(2.0);
+        ui.label(&critique.summary);
+        ui.add_space(8.0);
+
+        // ── Score card ─────────────────────────────────────────────────
+        ui.label(RichText::new("Score Card").strong().size(13.0));
+        ui.add_space(2.0);
+
+        let scores = &critique.scores;
+        let dims: &[(&str, f32)] = &[
+            ("Overall", scores.overall),
+            ("Pacing", scores.pacing),
+            ("Show-don't-tell", scores.show_dont_tell),
+            ("Character voice", scores.character_voice),
+            ("Tense consistency", scores.tense_consistency),
+            ("Plot coherence", scores.plot_coherence),
+            ("Engagement", scores.engagement),
+            ("Prose quality", scores.prose_quality),
+        ];
+
+        for (name, val) in dims {
+            let bar_width = ui.available_width() - 100.0;
+            let color = if *val >= 7.0 {
+                egui::Color32::GREEN
+            } else if *val >= 5.0 {
+                egui::Color32::YELLOW
+            } else {
+                egui::Color32::RED
+            };
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("{name}:"))
+                        .size(12.0)
+                        .strong(),
+                );
+                ui.add_space(2.0);
+                ui.label(
+                    RichText::new(format!("{val:.1}/10"))
+                        .size(12.0)
+                        .color(color),
+                );
+                ui.add_space(4.0);
+                // Bar
+                let bar_rect = egui::Rect::from_min_size(
+                    ui.cursor().left_top(),
+                    egui::vec2(bar_width * (*val / 10.0), 10.0),
+                );
+                ui.painter().rect_filled(bar_rect, 2.0, color);
+                // Advance cursor past the bar
+                ui.allocate_space(egui::vec2(bar_width, 10.0));
+            });
+            ui.add_space(2.0);
+        }
+
+        ui.add_space(8.0);
+        ui.separator();
+
+        // ── Issues ─────────────────────────────────────────────────────
+        if !scores.issues.is_empty() {
+            ui.label(RichText::new("Issues").strong().size(13.0));
+            ui.add_space(2.0);
+            for issue in &scores.issues {
+                let sev_color = match issue.severity.as_str() {
+                    "high" => egui::Color32::RED,
+                    "medium" => egui::Color32::YELLOW,
+                    _ => egui::Color32::GRAY,
+                };
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("[{}]", issue.severity))
+                            .size(11.0)
+                            .color(sev_color)
+                            .monospace(),
+                    );
+                    ui.label(
+                        RichText::new(&issue.description).size(12.0),
+                    );
+                });
+                if let Some(ref loc) = issue.location {
+                    ui.label(
+                        RichText::new(format!("   at: {loc}"))
+                            .size(10.0)
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                }
+                ui.add_space(2.0);
+            }
+            ui.add_space(6.0);
+        }
+
+        // ── Strengths ──────────────────────────────────────────────────
+        if !scores.strengths.is_empty() {
+            ui.label(RichText::new("Strengths").strong().size(13.0));
+            ui.add_space(2.0);
+            for s in &scores.strengths {
+                ui.label(
+                    RichText::new(format!("\u{2705} {s}")).size(12.0),
+                );
+            }
+            ui.add_space(6.0);
+        }
+
+        // ── Suggestions ────────────────────────────────────────────────
+        if !scores.suggestions.is_empty() {
+            ui.label(RichText::new("Suggestions").strong().size(13.0));
+            ui.add_space(2.0);
+            for (i, sug) in scores.suggestions.iter().enumerate() {
+                ui.label(
+                    RichText::new(format!("{}. {sug}", i + 1)).size(12.0),
+                );
+            }
+            ui.add_space(6.0);
+        }
+
+        // ── Revision verdict ───────────────────────────────────────────
+        ui.separator();
+        ui.add_space(4.0);
+        if critique.should_revise {
+            ui.label(
+                RichText::new("\u{26a0} Revision recommended")
+                    .size(13.0)
+                    .color(egui::Color32::YELLOW),
+            );
+            ui.add_space(2.0);
+            for (i, rev) in critique.priority_revisions.iter().enumerate() {
+                ui.label(
+                    RichText::new(format!("{}. {rev}", i + 1)).size(12.0),
+                );
+            }
+        } else {
+            ui.label(
+                RichText::new("\u{2705} No revision needed")
+                    .size(13.0)
+                    .color(egui::Color32::GREEN),
+            );
+        }
+    }
+
     /// Render the active right-panel tool
     fn show_right_panel(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         match self.right_panel_tool {
@@ -661,6 +937,11 @@ impl RocoDesktopApp {
                 if let Some(action) = ChangeTimeline::show(ui, &mut self.timeline_state) {
                     self.handle_timeline_action(action);
                 }
+            }
+            Some(RightPanelTool::Quality) => {
+                ui.label(RichText::new("\u{2b50} Quality").strong().size(14.0));
+                ui.separator();
+                self.show_quality_panel(ui);
             }
             None => {
                 // No tool selected — show a hint
@@ -778,6 +1059,7 @@ impl eframe::App for RocoDesktopApp {
                         RightPanelTool::LinkGraph,
                         RightPanelTool::Sessions,
                         RightPanelTool::Timeline,
+                        RightPanelTool::Quality,
                     ] {
                         let is_active = self.right_panel_tool == Some(tool);
                         let label = format!("{} {}", tool.icon(), tool.label());
@@ -789,6 +1071,22 @@ impl eframe::App for RocoDesktopApp {
                                 RightPanelTool::Sessions => self.session_browser_state.refresh(),
                                 _ => {}
                             }
+                            ui.close_menu();
+                        }
+                    }
+                });
+
+                ui.menu_button("Review", |ui| {
+                    if ui
+                        .button("\u{2b50} Check Quality")
+                        .clicked()
+                    {
+                        self.handle_quality_check();
+                        ui.close_menu();
+                    }
+                    if self.quality_result.is_some() {
+                        if ui.button("\u{1f4dd} View Quality Report").clicked() {
+                            self.right_panel_tool = Some(RightPanelTool::Quality);
                             ui.close_menu();
                         }
                     }
@@ -892,6 +1190,7 @@ impl eframe::App for RocoDesktopApp {
                             RightPanelTool::LinkGraph,
                             RightPanelTool::Sessions,
                             RightPanelTool::Timeline,
+                            RightPanelTool::Quality,
                         ] {
                             let label = format!("{} {}", tool.icon(), tool.label());
                             if ui.button(&label).clicked() {
@@ -997,6 +1296,65 @@ mod tests {
         let mut app = app_unwired();
         let result = app.workspace_checkpoint("test");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn quality_check_with_empty_text_shows_message() {
+        let mut app = app_unwired();
+        app.handle_quality_check();
+        // With no chat messages, last_assistant_message() returns None
+        // and the handler sets an error status.
+        assert_eq!(app.status_message, "No text to evaluate.");
+        assert!(app.quality_result.is_none());
+    }
+
+    #[test]
+    fn quality_check_with_text_produces_demo_result() {
+        let mut app = app_unwired();
+        // Add some chat text so there's something to evaluate
+        app.chat_state
+            .add_message(ChatMessage::user("write a story".to_string()));
+        app.chat_state
+            .add_message(ChatMessage::assistant("Once upon a time, in a land far away...".to_string()));
+        app.handle_quality_check();
+        // Without a backend, the handler produces a demo result
+        assert!(
+            app.quality_result.is_some(),
+            "should produce demo critique when no backend is loaded"
+        );
+        assert_eq!(app.status_message, "Quality check complete.");
+        assert_eq!(
+            app.right_panel_tool,
+            Some(RightPanelTool::Quality),
+            "quality check should switch to Quality tab"
+        );
+        // Verify demo scores are present
+        if let Some(ref critique) = app.quality_result {
+            assert_eq!(critique.scores.overall, 7.0);
+            assert!(critique.should_revise);
+            assert!(!critique.scores.strengths.is_empty());
+        }
+    }
+
+    #[test]
+    fn quality_panel_state_is_accessible() {
+        let mut app = app_unwired();
+        // Populate with demo result
+        app.chat_state
+            .add_message(ChatMessage::user("write a story".to_string()));
+        app.chat_state
+            .add_message(ChatMessage::assistant("Test chapter content...".to_string()));
+        app.handle_quality_check();
+        assert!(app.quality_result.is_some());
+
+        // Verify result structure
+        if let Some(ref critique) = app.quality_result {
+            assert!(critique.scores.overall > 0.0);
+            assert!(!critique.scores.strengths.is_empty());
+            assert!(critique.should_revise);
+            assert!(!critique.scores.issues.is_empty());
+            assert!(!critique.priority_revisions.is_empty());
+        }
     }
 
     /// Minimal Context proxy for tests that only need a place to send Undo
