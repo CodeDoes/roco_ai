@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Recreate engine from state
         // TODO: Implement StoryEngine::from_state()
-        StoryEngine::new(config)?
+        StoryEngine::new(config.clone())?
     } else {
         StoryEngine::new(config.clone())?
     };
