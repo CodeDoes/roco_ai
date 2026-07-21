@@ -149,25 +149,15 @@ impl PlotState {
             }
         }
 
-        // Merge conflicts
-        for conflict in new.active_conflicts {
-            if !self.active_conflicts.contains(&conflict) {
-                self.active_conflicts.push(conflict);
-            }
+        // Merge conflicts (dedup via helper)
+        merge_dedup(&mut self.active_conflicts, new.active_conflicts);
+        // Move resolved conflicts out of active, into resolved (dedup)
+        for c in &new.resolved_conflicts {
+            self.active_conflicts.retain(|a| a != c);
         }
-        for conflict in new.resolved_conflicts {
-            self.active_conflicts.retain(|c| c != &conflict);
-            if !self.resolved_conflicts.contains(&conflict) {
-                self.resolved_conflicts.push(conflict);
-            }
-        }
+        merge_dedup(&mut self.resolved_conflicts, new.resolved_conflicts);
 
-        // Merge foreshadowing
-        for seed in new.foreshadowing {
-            if !self.foreshadowing.contains(&seed) {
-                self.foreshadowing.push(seed);
-            }
-        }
+        merge_dedup(&mut self.foreshadowing, new.foreshadowing);
 
         // Keep recent events limited to last 3 chapters
         self.recent_events = new.recent_events;
@@ -175,12 +165,7 @@ impl PlotState {
             self.recent_events = self.recent_events[self.recent_events.len() - 3..].to_vec();
         }
 
-        // Merge themes
-        for theme in new.themes {
-            if !self.themes.contains(&theme) {
-                self.themes.push(theme);
-            }
-        }
+        merge_dedup(&mut self.themes, new.themes);
     }
 }
 
@@ -290,6 +275,16 @@ pub struct StoryEngine {
     revisions: Vec<RevisionRecord>,
     /// Interaction state
     interaction_state: InteractionState,
+}
+
+/// Dedup merge: append items from `src` to `dst` that aren't already present.
+/// Keeps insertion order (no HashSet/IndexSet dependency).
+fn merge_dedup<T: Eq + Clone>(dst: &mut Vec<T>, src: Vec<T>) {
+    for item in src {
+        if !dst.contains(&item) {
+            dst.push(item);
+        }
+    }
 }
 
 impl StoryEngine {
