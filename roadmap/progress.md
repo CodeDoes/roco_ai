@@ -154,3 +154,14 @@
   Made key desktop methods/fields `pub` for external test access. Fixed
   `with_context()` to honour `AppContext.session_root`. 108 tests total.
   **Phase 3 is COMPLETE.**
+
+## 2026-07-20 (Phase 4)
+- **4.1 Editor migration.** Markdown preview renderer (headings, bold/italic,
+  code, lists, blockquotes, links). `file_path` tracking in editor state.
+  `SaveToFile` action + toolbar button. Removed incompatible `egui_markdown` dep.
+- **4.2 Chat migration.** Assistant/system/user messages rendered as markdown
+  (same renderer). Streaming dots animation when generating.
+- **4.3 Studio integration.** Already complete via Phase 2.5+3 layout (left:
+  pacing/tools, center: chat, right: editor/browsers/timeline/quality).
+- **4.4 Web apps frozen.** README desktop → primary surface, web → legacy/frozen.
+  PROJECT_STRUCTURE updated. **Phase 4 is COMPLETE.**
