@@ -1,6 +1,6 @@
 # TASK 01 — DESKTOP WIDGET STANDALONE-FIRST BUILD
 
-> **Status:** Next priority (`STRATEGIC_PLAN.md` Phase 2). **Target:** 3 weeks.
+> **Status:** **✅ COMPLETED 2026-07-20** — All widget standalone tests pass; `run_desktop.sh` launches with all panels interactive; `cargo test -p roco-ui` passes 90 unit tests.
 > **Strategic theory:** Egui best practices (`AGENTS.md` Section J.3) require standalone widget tests before `desktop_app.rs` composition. Without this, composition bugs hide inside widget logic — exponentially harder to fix.
 > **Reference:** `AGENTS.md` Section E.2 (`Always` edit zone: `crates/ui/src/*.rs`), `EDIT_GUIDE.md`, `TASK_01_DESKTOP_WIDGETS.md` (this file).
 > **Milestone command:** `cargo test -p roco-ui -- desktop_e2e` does NOT exist yet. This phase only builds widget standalone tests. End milestone: `cargo test -p roco-ui -- pacing::tests` + `markdown_editor` tests + `chat` tests + browser tests all pass.

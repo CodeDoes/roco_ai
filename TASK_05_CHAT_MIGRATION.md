@@ -1,7 +1,7 @@
 # TASK 05 — CHAT MIGRATION (Web Chat → Desktop `ChatWidget`)
 
 > **Reference:** `AGENTS.md` Sections A, C, D, E.2, G; `EDIT_GUIDE.md`; `STRATEGIC_PLAN.md` Phase 4.2; `TASK_02_DESKTOP_INTERACTION.md` Phase 3.2 completed (interactive mode wired).
-> **Status:** Migration target (`apps/chat/` features → `crates/ui/src/chat.rs`).
+> **Status:** **✅ COMPLETED 2026-07-20** — Assistant/system/user messages rendered as markdown (same renderer as editor). Streaming dots animation when generating. Web chat frozen.
 > **Rule:** Same as `TASK_04_EDITOR_MIGRATION.md`: migrate existing capabilities, don't invent new ones. `crates/ui/src/chat.rs` is `Always` edit zone.
 
 ---

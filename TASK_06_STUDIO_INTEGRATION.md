@@ -1,7 +1,7 @@
 # TASK 06 — STUDIO INTEGRATION (Desktop Right-Panel Composition)
 
 > **Reference:** `AGENTS.md` Sections A, D, E.2, G; `EDIT_GUIDE.md`; `STRATEGIC_PLAN.md` Phase 4.3; `TASK_02_DESKTOP_INTERACTION.md` Phase 2.5 completed (desktop launches interactively); `TASK_05_CHAT_MIGRATION.md` completed (chat mechanism verified).
-> **Status:** Composition target — combine existing desktop widgets into unified studio interface (`FileTree` + `Wiki` + `Editor` + `LinkGraph` + `Sessions` + `Timeline` + `Chat` + `Pacing`).
+> **Status:** **✅ COMPLETED 2026-07-20** — Already complete via Phase 2.5 (composition) + Phase 3 (interaction flow). Left panel: pacing/tools. Center: chat. Right panel: editor, file tree, wiki, link graph, sessions, timeline, quality (switchable via `RightPanelTool`).
 > **Rule:** Only compose existing tested widgets. Don't invent new widget logic. `desktop_app.rs` is `Always` edit zone.
 
 ---

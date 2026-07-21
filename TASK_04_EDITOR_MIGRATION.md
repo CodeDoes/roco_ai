@@ -1,8 +1,10 @@
 # TASK 04 — EDITOR MIGRATION (Web Editor → Desktop `MarkdownEditor`)
 
 > **Reference:** `AGENTS.md` Section E.2 (`Always` zone: `crates/ui/src/*.rs`); `EDIT_GUIDE.md`; `STRATEGIC_PLAN.md` Phase 4.1; `TASK_02_DESKTOP_INTERACTION.md` Phase 3.5 completed.
-> **Status:** Migration target (`apps/editor/` features → `crates/ui/src/markdown_editor.rs`).
+> **Status:** **✅ COMPLETED 2026-07-20** — Markdown preview renderer added (headings, bold/italic, code, lists, blockquotes, links). `file_path` tracking. `SaveToFile` action + toolbar button. Incompatible `egui_markdown` dep removed.
 > **Rule:** No new features in `apps/editor/`. Only migration of existing capabilities to desktop widget.
+
+> **Migration notes:** Desktop uses direct `RwkvBackend` access, not server HTTP. Web editor now frozen.
 
 ---
 

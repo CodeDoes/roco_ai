@@ -1,7 +1,7 @@
 # TASK 03 — END-TO-END DESKTOP PIPELINE TEST
 
 > **Reference:** `AGENTS.md` Section G (Testing Strategy — Definition of Done), `EDIT_GUIDE.md`, `TASK_02_DESKTOP_INTERACTION.md` (prerequisite: Phase 3.5 target — desktop interaction wired).
-> **Status:** Pending (`TASK_02_DESKTOP_INTERACTION.md` Milestone 3.5 must pass first).
+> **Status:** **✅ COMPLETED 2026-07-20** — `tests/desktop_e2e.rs` has 3 integration tests (new-session-through-save, quality-revision-cycle, session-persistence). All pass via `cargo test -p roco-ui`.
 > **Strategic theory:** From `AGENTS.md` Section J.1 and `roadmap/README.md`: a feature isn't done without a test proving a human can drive it. This test proves the desktop supports the writer's full journey.
 
 ---

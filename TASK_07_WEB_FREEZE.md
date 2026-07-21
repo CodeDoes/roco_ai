@@ -1,7 +1,7 @@
 # TASK 07 — WEB FREEZE + DEPRECATION DOCUMENTATION
 
 > **Reference:** `AGENTS.md` Section E.2 (`Always`: `crates/ui/src/*.rs`; `Edit only for bug fixes`: `apps/*` — `STRATEGIC_PLAN.md` Phase 4.4); `EDIT_GUIDE.md`; `PROJECT_STRUCTURE.md`.
-> **Status:** Structural fix — freeze `apps/chat/`, `apps/studio/`, `apps/editor/` for new features; document deprecation clearly.
+> **Status:** **✅ COMPLETED 2026-07-20** — README updated (desktop → primary surface, web → legacy/frozen). PROJECT_STRUCTURE updated. `apps/chat/`, `apps/studio/`, `apps/editor/` frozen for new features.
 > **Why:** `STRATEGIC_PLAN.md` Phase 4.4: desktop is primary tested surface; untested web apps create split-brain maintenance.
 
 ---

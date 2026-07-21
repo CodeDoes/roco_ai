@@ -1,7 +1,7 @@
 # TASK 08 — PLUGIN VERIFICATION (VSCode, Zed, Obsidian)
 
 > **Reference:** `AGENTS.md` Sections A, C, E.2, G; `EDIT_GUIDE.md`; `PLUGINS.md` (exists); `TASK_07_WEB_FREEZE.md` (freeze doesn't affect plugins); `STRATEGIC_PLAN.md` Phase 5.1-5.2.
-> **Status:** Verify plugins work with desktop backend (`AppContext` direct) or server (`roco-server`) as appropriate.
+> **Status:** **✅ COMPLETED 2026-07-20** — VSCode: endpoints fixed (`/chapters/:num/generate`, `/chapters/:num/revise`), Check Quality command added. Obsidian: same endpoint fixes + default URL fix. Zed: compiles to wasm. PLUGINS.md: command table corrected, `--story` requirement documented.
 > **Rule:** Plugin fixes allowed (`Always` zone for plugin source files — `EDIT_GUIDE.md`). Plugin documentation updates allowed (`PLUGINS.md` editable freely).
 
 ---

@@ -1,7 +1,8 @@
 # TASK 09 — API DOCUMENTATION UPDATE (`API.md`)
 
 > **Reference:** `AGENTS.md` Sections C, D, F, G; `EDIT_GUIDE.md`; `API.md` (exists — edit freely); `TASK_08_PLUGIN_VERIFY.md` (plugin verification may reveal endpoint gaps); `TASK_04_EDITOR_MIGRATION.md` (desktop uses direct backend, not server, for core — document this distinction).
-> **Status:** Update only — no new server endpoints unless plugin verification (`TASK_08`) or desktop integration (`TASK_02`) revealed missing endpoints. Confirm before adding.
+> **Status:** **✅ COMPLETED 2026-07-20** — API.md completely rewritten: 20+ endpoints documented with request/response examples. Split into base endpoints (always available) vs story endpoints (require `--story`). Error status code table. curl examples. Desktop direct-backend distinction noted.
+> **Rule:** Update only — no new server endpoints unless plugin verification or desktop integration reveals gaps. Confirm before adding.
 
 ---
 
