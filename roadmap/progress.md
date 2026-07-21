@@ -140,3 +140,10 @@
   suggestions, and revision verdict. Menu item `Review \u2192 Check Quality` runs
   `QualityAnalyzer::evaluate_chapter` (or demo fallback when no model loaded).
   3 new tests. 104 tests total pass. Workspace compiles clean.
+
+## 2026-07-20 (Phase 3.4)
+- **Revision diff in editor.** `apply_quality_suggestions_to_editor()` converts
+  quality critique suggestions + priority revisions into `Suggestion` objects
+  in the MarkdownEditor state. "Apply Suggestions to Editor" button in Quality
+  panel, auto-enables diff view, switches to Editor tab. Uses the existing
+  `show_diff`/`paint_diff` infrastructure. 1 new test. 105 tests pass.
