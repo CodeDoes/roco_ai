@@ -133,3 +133,10 @@
   with a generic `merge_dedup()` helper. ~25 lines → 5 calls.
 - **Engine untouched.** Only agent/caution-zone files and Always-edit CLI files.
   All 101 roco_ui tests pass; workspace compiles with zero new errors.
+
+## 2026-07-20 (Phase 3.3)
+- **Quality Analyzer in desktop.** Added `RightPanelTool::Quality` panel with
+  score card (8 dimensions with color-coded bars), issues list, strengths,
+  suggestions, and revision verdict. Menu item `Review \u2192 Check Quality` runs
+  `QualityAnalyzer::evaluate_chapter` (or demo fallback when no model loaded).
+  3 new tests. 104 tests total pass. Workspace compiles clean.
