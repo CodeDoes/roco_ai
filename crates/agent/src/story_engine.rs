@@ -570,24 +570,18 @@ impl StoryEngine {
                 }
             }
 
-            if !self.plot_state.active_conflicts.is_empty() {
-                ctx.push_str("\nActive conflicts:\n");
-                for c in &self.plot_state.active_conflicts {
-                    ctx.push_str(&format!("- {}\n", c));
-                }
-            }
-
-            if !self.plot_state.foreshadowing.is_empty() {
-                ctx.push_str("\nForeshadowing planted:\n");
-                for f in &self.plot_state.foreshadowing {
-                    ctx.push_str(&format!("- {}\n", f));
-                }
-            }
-
-            if !self.plot_state.recent_events.is_empty() {
-                ctx.push_str("\nRecent events:\n");
-                for e in &self.plot_state.recent_events {
-                    ctx.push_str(&format!("- {}\n", e));
+            // Data-driven section for simple string-list fields
+            let sections: &[(&str, &Vec<String>)] = &[
+                ("\nActive conflicts:\n", &self.plot_state.active_conflicts),
+                ("\nForeshadowing planted:\n", &self.plot_state.foreshadowing),
+                ("\nRecent events:\n", &self.plot_state.recent_events),
+            ];
+            for (title, items) in sections {
+                if !items.is_empty() {
+                    ctx.push_str(title);
+                    for item in items.iter() {
+                        ctx.push_str(&format!("- {}\n", item));
+                    }
                 }
             }
         }
