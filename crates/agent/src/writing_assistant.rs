@@ -402,7 +402,7 @@ where
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    crate::util::parse_structured_response(&text)
 }
 
 #[cfg(test)]

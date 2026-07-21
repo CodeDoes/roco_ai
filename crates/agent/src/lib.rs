@@ -32,6 +32,7 @@ pub mod story_engine;
 pub mod story_persistence;
 pub mod subtask;
 pub mod tool_selector;
+pub mod util;
 pub mod writing_assistant;
 // Backward-compat re-export of mecha_agent as mechanistic
 #[doc(hidden)]
