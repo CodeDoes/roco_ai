@@ -1050,7 +1050,7 @@ impl Default for MarkdownEditor {
 /// blockquotes (`>`), unordered lists (`-` / `*`), and paragraphs.
 /// Tables and images are displayed as raw text + icon.
 /// This keeps the dependency footprint small (no external markdown crate needed).
-fn render_markdown_preview(ui: &mut Ui, text: &str) {
+pub fn render_markdown_preview(ui: &mut Ui, text: &str) {
     for line in text.lines() {
         let trimmed = line.trim();
 

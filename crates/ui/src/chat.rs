@@ -6,6 +6,7 @@
 //! - User input: text area, capabilities toggles, send button, attachments bar,
 //!   context info, agent pacing control
 
+use crate::markdown_editor::render_markdown_preview;
 use egui::{self, Color32, FontId, Layout, RichText, ScrollArea, Ui};
 use roco_agent::interaction::InteractionMode;
 
@@ -333,6 +334,22 @@ impl ChatWidget {
                         ..ChatMessage::assistant(String::new())
                     };
                     Self::show_message(ui, &stream_msg, state.messages.len());
+                } else if state.agent_generating {
+                    // Streaming indicator (animated dots)
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            let role_label = RichText::new("AI")
+                                .color(Color32::from_rgb(100, 180, 255))
+                                .size(11.0)
+                                .strong();
+                            ui.label(role_label);
+                            ui.label(
+                                RichText::new(" \u{25cf}\u{25cf}\u{25cf}")
+                                    .size(10.0)
+                                    .color(Color32::GRAY),
+                            );
+                        });
+                    });
                 }
             });
     }
@@ -417,13 +434,8 @@ impl ChatWidget {
                     );
                 }
                 _ => {
-                    ui.label(RichText::new(&message.content).size(14.0).color(
-                        if message.role == MessageRole::User {
-                            Color32::from_rgb(220, 220, 255)
-                        } else {
-                            ui.visuals().text_color()
-                        },
-                    ));
+                    // Render assistant/system/user messages as markdown
+                    render_markdown_preview(ui, &message.content);
                 }
             }
         });

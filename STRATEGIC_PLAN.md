@@ -153,13 +153,13 @@ Each phase has: **Files to Read**, **Files to Edit**, **Milestones** (testable e
 ### PHASE 4 — Web-to-Desktop Migration (Target: 8 Weeks)
 **Strategic result:** Web apps become secondary; desktop is the tested, integrated primary surface.
 
-**Phase 4.1 — Editor Migration (Target: Week 7)**
+**Phase 4.1 — Editor Migration (COMPLETED 2026-07-20)**
 - **Files to read:** `apps/editor/src/main.ts`, `api.ts`
 - **Files to edit:** `markdown_editor.rs` — rich text editing (`egui_markdown`), file tree integration, workspace auto-save, optional direct `RwkvBackend` connection (no HTTP needed for core).
 - **Decision confirmed:** Desktop uses direct backend, not server HTTP. `roco-server` remains for plugins/external use.
 - **Milestone:** User opens `01-OUTLINE.md` in desktop editor; edits; saves; sees file in workspace directory.
 
-**Phase 4.2 — Chat Migration (Target: Week 7)**
+**Phase 4.2 — Chat Migration (NEXT — Target: Week 7)**
 - **Files to read:** `apps/chat/components/chat.tsx`, `page.tsx`
 - **Files to edit:** `chat.rs` — streaming messages, markdown formatting, responsive layout adjustments.
 - **Milestone:** Chat renders streamed assistant messages; markdown works.
