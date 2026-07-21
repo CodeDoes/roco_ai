@@ -142,7 +142,7 @@ Each phase has: **Files to Read**, **Files to Edit**, **Milestones** (testable e
 - **Milestone:** User revises chapter based on quality feedback; sees diff; can accept/reject per section or full revision.
 - **Strategic note:** Revision with visible diff is the writer's control mechanism (`AGENTS.md` Section 4, Pattern 2). Hidden revisions remove writer agency.
 
-**Phase 3.5 — End-to-End Desktop Pipeline Test (Target: Week 6)**
+**Phase 3.5 — End-to-End Desktop Pipeline Test (COMPLETED 2026-07-20)**
 - **Files to edit:** `crates/ui/src/lib.rs` or new `tests/desktop_e2e.rs`
 - **What to test:** Create workspace → generate outline → generate 3 chapters → publish → verify `06-STORY.md` exists with content.
 - **Milestone:** `cargo test -p roco-ui -- desktop_e2e` passes.

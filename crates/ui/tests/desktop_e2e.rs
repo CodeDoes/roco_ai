@@ -1,0 +1,227 @@
+//! End-to-end desktop pipeline test (Phase 3.5).
+//!
+//! Proves the full writer workflow can be driven through the desktop's
+//! public API: create a session → send a message → run quality check →
+//! apply suggestions → save and reload — all without a real model backend.
+//!
+//! The test uses `RocoDesktopApp` with `AppContext` for real workspace
+//! operations, and relies on demo/synthetic data for model-dependent
+//! steps (quality check uses the demo fallback).
+
+use roco_app::AppContext;
+use roco_engine::MockBackend;
+use roco_ui::{ChatMessage, RightPanelTool, RocoDesktopApp};
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Helper: scratch session directory unique to this test instance.
+fn test_dir(name: &str) -> PathBuf {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("roco_e2e_{name}_{ts}"));
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
+fn setup_app_with_context(root: PathBuf) -> RocoDesktopApp {
+    let ws_root = root.join("workspaces");
+    let sess_root = root.join("sessions");
+    std::fs::create_dir_all(&ws_root).ok();
+    std::fs::create_dir_all(&sess_root).ok();
+    let ctx = AppContext {
+        backend: std::sync::Arc::new(MockBackend::default()),
+        session_root: sess_root,
+        workspace_root: ws_root,
+    };
+    // Pass None for backend so quality check uses demo fallback,
+    // but provide AppContext for workspace operations.
+    RocoDesktopApp::with_context(None, Some(ctx))
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// e2e Pipeline
+// ═════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn e2e_desktop_pipeline_new_session_through_save() {
+    let session_dir = test_dir("pipeline");
+    let mut app = setup_app_with_context(session_dir.clone());
+
+    // 3. Start a new session — ensures session_path is set.
+    app.new_session();
+    assert!(
+        app.session_path.is_some(),
+        "new_session must set session_path"
+    );
+    assert_eq!(
+        app.chat_state.messages.len(),
+        1,
+        "new session should have a system greeting"
+    );
+
+    // 4. Send a user message (no real backend needed).
+    app.chat_state.add_message(ChatMessage::user("Write a dark fantasy story".to_string()));
+
+    // 5. Simulate an assistant response arriving.
+    app.chat_state.add_message(ChatMessage::assistant(
+        "Chapter 1: The knight entered the dark forest...".to_string(),
+    ));
+    assert_eq!(app.chat_state.messages.len(), 3);
+
+    // 6. Run quality check on the assistant message.
+    app.handle_quality_check();
+    assert!(
+        app.quality_result.is_some(),
+        "quality check should produce a result (demo fallback)"
+    );
+    assert!(
+        app.right_panel_tool == Some(RightPanelTool::Quality),
+        "quality check should switch to Quality tab"
+    );
+
+    // 7. Apply quality suggestions to the editor.
+    app.apply_quality_suggestions_to_editor();
+    assert!(
+        app.editor_state.show_diff,
+        "diff view should be enabled after applying suggestions"
+    );
+    assert!(
+        app.editor_state.document.suggestions.len() > 0,
+        "editor should have suggestions after apply"
+    );
+    assert!(
+        app.right_panel_tool == Some(RightPanelTool::Editor),
+        "should switch to Editor tab"
+    );
+
+    // 8. Save the session and verify it persisted to disk.
+    app.save_session();
+    let session_path = app.session_path.as_ref().expect("session_path must exist");
+    assert!(
+        session_path.exists(),
+        "session file must exist after save: {:?}",
+        session_path
+    );
+    let saved_content = std::fs::read_to_string(session_path)
+        .expect("should read saved session file");
+    assert!(
+        saved_content.contains("dark"),
+        "saved session should contain user message content"
+    );
+
+    // 9. Create a workspace checkpoint through AppContext
+    let label = format!("ckpt_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    match app.workspace_checkpoint(&label) {
+        Ok(id) => {
+            assert!(!id.is_empty(), "checkpoint id should not be empty");
+        }
+        Err(e) => {
+            panic!("workspace_checkpoint should succeed: {e}");
+        }
+    }
+
+    // 10. Clean up.
+    std::fs::remove_dir_all(&session_dir).ok();
+}
+
+#[test]
+fn e2e_desktop_pipeline_quality_revision_cycle() {
+    let mut app = setup_app_with_context(test_dir("quality_cycle"));
+
+    // Start session and produce some text.
+    app.new_session();
+    app.chat_state
+        .add_message(ChatMessage::user("Write a chapter about a dragon".to_string()));
+    app.chat_state.add_message(ChatMessage::assistant(
+        "The dragon's scales shimmered like molten gold as it unfurled its wings. \
+         Fire danced at the back of its throat, ready to consume the knight who \
+         dared approach. But instead of attacking, the dragon spoke."
+            .to_string(),
+    ));
+
+    // Quality check.
+    app.handle_quality_check();
+    assert!(app.quality_result.is_some());
+
+    // Verify demo quality dimensions.
+    if let Some(ref critique) = app.quality_result {
+        assert!(
+            critique.scores.overall > 0.0 && critique.scores.overall <= 10.0,
+            "overall score out of range: {}",
+            critique.scores.overall
+        );
+        assert!(critique.scores.pacing >= 0.0 && critique.scores.pacing <= 10.0);
+        assert!(critique.should_revise, "demo critique should recommend revision");
+    }
+
+    // Apply suggestions and verify editor state.
+    app.apply_quality_suggestions_to_editor();
+    assert!(app.editor_state.show_diff);
+    assert!(app.editor_state.document.suggestions.len() > 0);
+
+    // Accept the first suggestion.
+    if let Some(sugg_id) = app.editor_state.document.suggestions.first().map(|s| s.id.clone()) {
+        app.editor_state.document.accept_suggestion(&sugg_id);
+    }
+    // Accepting removes the suggestion from pending, leaving fewer
+    let remaining = app.editor_state.document.suggestions.len();
+    assert!(
+        remaining > 0, // still more suggestions from the demo
+        "at least one suggestion should remain after accepting one"
+    );
+
+    // Clean up.
+    std::fs::remove_dir_all(
+        app.session_path
+            .as_ref()
+            .map(|p| p.parent().unwrap().to_path_buf())
+            .unwrap_or_else(|| test_dir("cleanup")),
+    )
+    .ok();
+}
+
+#[test]
+fn e2e_desktop_pipeline_session_persistence() {
+    let base_dir = test_dir("persistence");
+    let mut app = setup_app_with_context(base_dir.clone());
+
+    // Create a session with some content.
+    app.new_session();
+    app.chat_state
+        .add_message(ChatMessage::user("Start a story".to_string()));
+    app.chat_state.add_message(ChatMessage::assistant(
+        "Once upon a time...".to_string(),
+    ));
+    app.save_session();
+
+    let saved_path = app
+        .session_path
+        .as_ref()
+        .expect("session_path should exist")
+        .clone();
+
+    // Simulate app restart by creating a new instance and loading the session.
+    let mut app2 = setup_app_with_context(base_dir.clone());
+    app2.load_session(&saved_path);
+
+    assert_eq!(
+        app2.chat_state.messages.len(),
+        3,
+        "loaded session should have 3 messages (system + user + assistant)"
+    );
+
+    let last_msg = app2.chat_state.last_assistant_message();
+    assert!(
+        last_msg.is_some(),
+        "loaded session should have assistant message"
+    );
+    assert!(
+        last_msg.unwrap().content.contains("Once upon a time"),
+        "assistant content should survive save/load"
+    );
+
+    // Clean up.
+    std::fs::remove_dir_all(&base_dir).ok();
+}

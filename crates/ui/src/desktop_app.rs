@@ -76,37 +76,37 @@ impl RightPanelTool {
 /// The main desktop application
 pub struct RocoDesktopApp {
     // Core state
-    backend: Option<Arc<dyn ModelBackend>>,
-    app_context: Option<AppContext>,
-    model_loaded: bool,
+    pub backend: Option<Arc<dyn ModelBackend>>,
+    pub app_context: Option<AppContext>,
+    pub model_loaded: bool,
 
     // Widget states — all owned here, each widget borrows mutably
-    pacing_state: PacingWidgetState,
-    interaction_state: InteractionState,
-    chat_state: ChatWidgetState,
-    editor_state: MarkdownEditorState,
+    pub pacing_state: PacingWidgetState,
+    pub interaction_state: InteractionState,
+    pub chat_state: ChatWidgetState,
+    pub editor_state: MarkdownEditorState,
 
     // Browser widget states
-    file_tree_state: FileTreeState,
-    wiki_state: WikiBrowserState,
-    link_graph_state: LinkGraphState,
-    session_browser_state: SessionBrowserState,
-    timeline_state: ChangeTimelineState,
+    pub file_tree_state: FileTreeState,
+    pub wiki_state: WikiBrowserState,
+    pub link_graph_state: LinkGraphState,
+    pub session_browser_state: SessionBrowserState,
+    pub timeline_state: ChangeTimelineState,
 
     // Quality (Phase 3.3)
-    quality_result: Option<StoryCritique>,
-    quality_in_progress: bool,
+    pub quality_result: Option<StoryCritique>,
+    pub quality_in_progress: bool,
 
     // Session
-    session_dir: PathBuf,
-    session_path: Option<PathBuf>,
+    pub session_dir: PathBuf,
+    pub session_path: Option<PathBuf>,
 
     // Layout
-    left_panel_open: bool,
-    right_panel_tool: Option<RightPanelTool>,
+    pub left_panel_open: bool,
+    pub right_panel_tool: Option<RightPanelTool>,
 
     // Status
-    status_message: String,
+    pub status_message: String,
 }
 
 fn now_rfc3339() -> String {
@@ -141,7 +141,12 @@ impl RocoDesktopApp {
         backend: Option<Arc<dyn ModelBackend>>,
         app_context: Option<AppContext>,
     ) -> Self {
-        let session_dir = PathBuf::from(".roco/sessions");
+        // Use AppContext's session root when available, otherwise fall back
+        // to the default `.roco/sessions` relative to cwd.
+        let session_dir = app_context
+            .as_ref()
+            .map(|ctx| ctx.session_root.clone())
+            .unwrap_or_else(|| PathBuf::from(".roco/sessions"));
         std::fs::create_dir_all(&session_dir).ok();
 
         // Set up a minimal example link graph for demo
@@ -185,7 +190,7 @@ impl RocoDesktopApp {
     }
 
     /// Toggle a right-panel tool on/off
-    fn toggle_tool(&mut self, tool: RightPanelTool) {
+    pub fn toggle_tool(&mut self, tool: RightPanelTool) {
         self.right_panel_tool = if self.right_panel_tool == Some(tool) {
             None
         } else {
@@ -194,7 +199,7 @@ impl RocoDesktopApp {
     }
 
     /// Refresh browser states that depend on the filesystem
-    fn refresh_browsers(&mut self) {
+    pub fn refresh_browsers(&mut self) {
         self.file_tree_state.refresh();
         self.session_browser_state.refresh();
     }
@@ -209,7 +214,7 @@ impl RocoDesktopApp {
     /// (`GoHam`, `FullControl`, `AcceptAll`) update both the visible
     /// `pacing_state` mode AND the `interaction_state` mode so the two stay
     /// in lock-step.
-    fn handle_pacing_action(&mut self, action: PacingAction, ctx: &Context) {
+    pub fn handle_pacing_action(&mut self, action: PacingAction, ctx: &Context) {
         // The `ctx` is only needed when the action fans out to the chat
         // widget (Undo). For everything else we ignore ctx.
         let _ = ctx;
@@ -529,7 +534,7 @@ impl RocoDesktopApp {
     /// `StoryCritique` and switches the right panel to the Quality tab.
     /// Falls back to a demo critique when no model is loaded so the UI
     /// can be tested standalone.
-    fn handle_quality_check(&mut self) {
+    pub fn handle_quality_check(&mut self) {
         let text = self
             .chat_state
             .last_assistant_message()
@@ -609,7 +614,7 @@ impl RocoDesktopApp {
     /// Phase 3.4: each quality suggestion becomes a `Suggestion` object in
     /// the editor, visible as a colored diff annotation the writer can
     /// accept or reject per-suggestion.
-    fn apply_quality_suggestions_to_editor(&mut self) {
+    pub fn apply_quality_suggestions_to_editor(&mut self) {
         let Some(ref critique) = self.quality_result.clone() else {
             self.status_message = "No quality results to apply.".to_string();
             return;
@@ -678,7 +683,7 @@ impl RocoDesktopApp {
         );
     }
 
-    fn auto_save(&self) {
+    pub fn auto_save(&self) {
         if let Some(ref path) = self.session_path {
             let state = ConversationState {
                 id: self.chat_state.messages.len().to_string(),
@@ -702,7 +707,7 @@ impl RocoDesktopApp {
         }
     }
 
-    fn new_session(&mut self) {
+    pub fn new_session(&mut self) {
         let session_id = format!("gui_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
         let path = self.session_dir.join(format!("{}.json", session_id));
         self.session_path = Some(path);
@@ -718,7 +723,7 @@ impl RocoDesktopApp {
         self.refresh_browsers();
     }
 
-    fn save_session(&mut self) {
+    pub fn save_session(&mut self) {
         self.auto_save();
         if let Some(ref path) = self.session_path {
             self.status_message = format!("Saved: {}", path.display());
@@ -729,7 +734,7 @@ impl RocoDesktopApp {
         self.refresh_browsers();
     }
 
-    fn load_session(&mut self, path: &std::path::Path) {
+    pub fn load_session(&mut self, path: &std::path::Path) {
         if let Ok(json) = std::fs::read_to_string(path) {
             if let Ok(state) = serde_json::from_str::<ConversationState>(&json) {
                 self.chat_state.clear();
@@ -766,7 +771,7 @@ impl RocoDesktopApp {
     /// pair the caller can display in the status bar. Wired through
     /// `AppContext::workspace_timeline_reset` (Phase 3.1) so the desktop uses
     /// the same primitive as every other surface.
-    fn workspace_checkpoint(&mut self, label: &str) -> AppResult<String> {
+    pub fn workspace_checkpoint(&mut self, label: &str) -> AppResult<String> {
         let ctx = self
             .app_context
             .as_ref()
