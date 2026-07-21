@@ -147,3 +147,10 @@
   in the MarkdownEditor state. "Apply Suggestions to Editor" button in Quality
   panel, auto-enables diff view, switches to Editor tab. Uses the existing
   `show_diff`/`paint_diff` infrastructure. 1 new test. 105 tests pass.
+
+## 2026-07-20 (Phase 3.5)
+- **End-to-end desktop pipeline test.** `tests/desktop_e2e.rs` with 3 integration
+  tests: new-session-through-save, quality-revision-cycle, session-persistence.
+  Made key desktop methods/fields `pub` for external test access. Fixed
+  `with_context()` to honour `AppContext.session_root`. 108 tests total.
+  **Phase 3 is COMPLETE.**
