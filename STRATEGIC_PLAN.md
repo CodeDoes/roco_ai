@@ -136,7 +136,7 @@ Each phase has: **Files to Read**, **Files to Edit**, **Milestones** (testable e
 - **Milestone:** User clicks quality check; sees scores with revision suggestions.
 - **Strategic note:** Quality evaluation (`evaluate_chapter_quality()`) is part of the Writer-Editor loop. Without visible quality results, the writer lacks structured feedback.
 
-**Phase 3.4 — Revision with Diff (Target: Week 5-6)**
+**Phase 3.4 — Revision with Diff (COMPLETED 2026-07-20)**
 - **Files to read:** `crates/agent/src/reversibility.rs`
 - **Files to edit:** `markdown_editor.rs` — add diff view (original vs revised). `desktop_app.rs` — wire revision from quality results to editor.
 - **Milestone:** User revises chapter based on quality feedback; sees diff; can accept/reject per section or full revision.

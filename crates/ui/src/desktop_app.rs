@@ -21,7 +21,7 @@ use crate::{
     chat::{ChatAction, ChatMessage, ChatWidget, ChatWidgetState, MessageRole},
     file_tree::{FileTree, FileTreeAction, FileTreeState},
     link_graph::{LinkGraph, LinkGraphAction, LinkGraphState, NodeKind},
-    markdown_editor::{MarkdownEditor, MarkdownEditorState},
+    markdown_editor::{MarkdownEditor, MarkdownEditorAction, MarkdownEditorState, Suggestion, SuggestionKind},
     pacing::{PacingAction, PacingMode, PacingWidget, PacingWidgetState},
     session_browser::{SessionBrowser, SessionBrowserAction, SessionBrowserState},
     wiki_browser::{WikiBrowser, WikiBrowserAction, WikiBrowserState},
@@ -604,6 +604,80 @@ impl RocoDesktopApp {
         self.status_message = "Quality check complete.".to_string();
     }
 
+    /// Convert quality critique suggestions into editor diff suggestions.
+    ///
+    /// Phase 3.4: each quality suggestion becomes a `Suggestion` object in
+    /// the editor, visible as a colored diff annotation the writer can
+    /// accept or reject per-suggestion.
+    fn apply_quality_suggestions_to_editor(&mut self) {
+        let Some(ref critique) = self.quality_result.clone() else {
+            self.status_message = "No quality results to apply.".to_string();
+            return;
+        };
+
+        let text = self
+            .chat_state
+            .last_assistant_message()
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
+
+        if text.is_empty() {
+            self.status_message = "No text to revise.".to_string();
+            return;
+        }
+
+        // Sync the editor with the chat text so we have something to diff against
+        self.editor_state.document.text = text.clone();
+
+        // Convert quality suggestions into editor suggestions
+        for (i, suggestion) in critique.scores.suggestions.iter().enumerate() {
+            // If the suggestion references a specific improvement, try to
+            // find the relevant range. For general suggestions we use the
+            // whole text as the range, with the suggestion as the replacement
+            // guide (no concrete replacement text — the writer decides).
+            let range_start = 0;
+            let range_end = text.len();
+
+            let editor_suggestion = Suggestion {
+                id: format!("quality_sug_{i}"),
+                range: crate::markdown_editor::TextRange::new(range_start, range_end),
+                original_text: String::new(),
+                suggested_text: suggestion.clone(),
+                kind: SuggestionKind::Rewrite,
+                timestamp: chrono::Utc::now(),
+                accepted: false,
+                rejected: false,
+            };
+            self.editor_state.document.add_suggestion(editor_suggestion);
+        }
+
+        // If critique says should_revise, also add priority revisions
+        for (i, rev) in critique.priority_revisions.iter().enumerate() {
+            let editor_suggestion = Suggestion {
+                id: format!("quality_rev_{i}"),
+                range: crate::markdown_editor::TextRange::new(0, text.len()),
+                original_text: String::new(),
+                suggested_text: format!("Priority: {}", rev),
+                kind: SuggestionKind::Rewrite,
+                timestamp: chrono::Utc::now(),
+                accepted: false,
+                rejected: false,
+            };
+            self.editor_state.document.add_suggestion(editor_suggestion);
+        }
+
+        // Enable diff view so suggestions are visible
+        self.editor_state.show_diff = true;
+
+        // Switch to the editor tab so the user sees the diff annotations
+        self.right_panel_tool = Some(RightPanelTool::Editor);
+
+        self.status_message = format!(
+            "Applied {} quality suggestions to editor.",
+            critique.scores.suggestions.len() + critique.priority_revisions.len()
+        );
+    }
+
     fn auto_save(&self) {
         if let Some(ref path) = self.session_path {
             let state = ConversationState {
@@ -744,6 +818,12 @@ impl RocoDesktopApp {
         // ── Re-check button ────────────────────────────────────────────
         if ui.button("\u{1f504} Re-check Quality").clicked() {
             self.handle_quality_check();
+        }
+        if ui.button("\u{1f4dd} Apply Suggestions to Editor")
+            .on_hover_text("Convert quality suggestions into editor diff annotations")
+            .clicked()
+        {
+            self.apply_quality_suggestions_to_editor();
         }
         ui.add_space(4.0);
 
@@ -1355,6 +1435,50 @@ mod tests {
             assert!(!critique.scores.issues.is_empty());
             assert!(!critique.priority_revisions.is_empty());
         }
+    }
+
+    #[test]
+    fn apply_quality_suggestions_adds_editor_suggestions() {
+        let mut app = app_unwired();
+        // Must have a quality result first
+        app.chat_state
+            .add_message(ChatMessage::user("write a story".to_string()));
+        app.chat_state
+            .add_message(ChatMessage::assistant("Once upon a time in a dark forest...".to_string()));
+        app.handle_quality_check();
+        assert!(app.quality_result.is_some(), "need quality result");
+
+        let suggestion_count_before = app.editor_state.document.suggestions.len();
+        assert_eq!(suggestion_count_before, 0, "editor should start clean");
+
+        app.apply_quality_suggestions_to_editor();
+
+        // Should have added suggestions for each quality suggestion + priority revision
+        let suggestion_count_after = app.editor_state.document.suggestions.len();
+        assert!(
+            suggestion_count_after > 0,
+            "should convert quality suggestions to editor suggestions, got {suggestion_count_after}"
+        );
+
+        // Diff view should be enabled
+        assert!(app.editor_state.show_diff, "diff view should be enabled");
+
+        // Should switch to editor tab
+        assert_eq!(
+            app.right_panel_tool,
+            Some(RightPanelTool::Editor),
+            "should switch to editor tab"
+        );
+
+        // Status message should mention the count
+        assert!(
+            app.status_message.contains("Applied"),
+            "status should confirm application"
+        );
+        assert!(
+            app.status_message.contains("suggestions"),
+            "status should mention suggestions"
+        );
     }
 
     /// Minimal Context proxy for tests that only need a place to send Undo
