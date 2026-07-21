@@ -76,7 +76,9 @@ roco gui                       # Desktop GUI (starts gateway + backend)
 roco interact [--interactive] [--resume SESSION] [--pace MODE]
 ```
 
-**If a command fails:** See `STRATEGIC_PLAN.md` Phase 2 troubleshooting (`TASK_01_DESKTOP_WIDGETS.md` Section `If this fails, do this`).
+**Example error pattern (`EDIT_GUIDE.md` § Example Error Pattern): use `Result<_, Box<dyn std::error::Error>>` (not `anyhow::Result<()>`) in example `main()`.
+
+If a command fails:** See `STRATEGIC_PLAN.md` Phase 2 troubleshooting (`TASK_01_DESKTOP_WIDGETS.md` Section `If this fails, do this`).
 
 ---
 

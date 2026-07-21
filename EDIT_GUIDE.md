@@ -77,3 +77,8 @@ cargo clippy --workspace --all-targets -- --deny warnings
 # 5. Write progress
 # Append one line to roadmap/progress.md
 ```
+
+## Example Error Pattern — do not change without tests
+`crates/cli/examples/*.rs` call `Result<_, String>` APIs. Do NOT use `anyhow::Result<()>` in `main()`: `?` cannot coerce `String` in this repo's anyhow version.
+Use `fn main() -> Result<(), Box<dyn std::error::Error>>` in example binaries, and verify with `cargo check -p roco-cli --examples`.
+

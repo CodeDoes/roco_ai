@@ -128,3 +128,5 @@
   `story_human`, `story`, `story_collaborative`, `story_full`, `story_engine`, `story_pilot`, `story_step_eval` → `Result<(), Box<dyn std::error::Error>>`.
 - Updated `run_tests.sh` to also compile examples (`cargo check -p roco-cli --examples`) so `start.sh` regressions are caught.
 - Confirmed `./start.sh` auto-resolves the local `.st` model and launches `story_human`. Verified `cargo test -p roco_ui` passes (unit + user-story tests).
+
+- Documented example error rule in EDIT_GUIDE.md + AGENTS.md C: use `Result<_, Box<dyn std::error::Error>>` for example binaries, not `anyhow::Result<()>`.
