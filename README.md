@@ -43,12 +43,11 @@ Every story produces these files:
 | `07-PLOT-STATE.json` | Internal plot tracking |
 | `08-QUALITY-*.md` | Quality reports (if requested) |
 
-## Three Surfaces
+## Two Surfaces
 
 | Surface | Best for | Start it |
 |---|---|---|
 | **CLI** (`start.sh`) | Beginners, quick writing, scripting | `./start.sh` |
-| **Web Editor** (`apps/editor/`) | Legacy — frozen, bug fixes only | See [`EDITOR.md`](EDITOR.md) |
 | **Desktop GUI** (`crates/ui/`) | Power users, **primary surface** | See [`run_desktop.sh`](run_desktop.sh) and [`USER_GUIDE.md`](USER_GUIDE.md) |
 
 ## Key Documents
@@ -56,9 +55,7 @@ Every story produces these files:
 - [`QUICKSTART.md`](QUICKSTART.md) — 5-minute setup
 - [`INSTALL.md`](INSTALL.md) — Detailed installation (Rust, model download, GPU setup)
 - [`USER_GUIDE.md`](USER_GUIDE.md) — Full user journey, giving feedback, common questions
-- [`COMMANDS.md`](COMMANDS.md) — CLI, web, plugin, and desktop commands
-- [`EDITOR.md`](EDITOR.md) — Web editor setup and workflow
-- [`PLUGINS.md`](PLUGINS.md) — VSCode, Zed, Obsidian plugins
+- [`COMMANDS.md`](COMMANDS.md) — CLI, desktop, and plugin commands
 - [`API.md`](API.md) — Server endpoints for custom integrations
 - [`AGENTS.md`](AGENTS.md) — Full agent behavior philosophy (for developers)
 - [`AGENT_GUIDE.md`](AGENT_GUIDE.md) — Short agent rules (for quick reference)
@@ -142,7 +139,7 @@ cargo build --release
 
 - Read [`AGENT_GUIDE.md`](AGENT_GUIDE.md) before editing any file.
 - Read [`EDIT_GUIDE.md`](EDIT_GUIDE.md) to know which files are frozen.
-- Read [`roadmap/README.md`](roadmap/README.md) for the current focus (experience, not engine).
+- Read [`roadmap/v1.md`](roadmap/v1.md) for the current focus (experience, not engine).
 - The engine (`crates/inference/`, `engine/`, `grammar/`, etc.) is frozen. New work is frontend-only.
 
 ## License

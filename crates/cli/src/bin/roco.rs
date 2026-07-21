@@ -5,9 +5,9 @@
 //! SIZE: ~1373 lines / 52 KB. Very large binary entry point.
 //! KEY SECTIONS (in order):
 //!   1. Helper functions (spawn_detached, default_detach_path) (lines 15-80)
-//!   2. main() — subcommand dispatch (eval, bless, rwkv, grammar, gpu-check, server, gateway, tui, gui, stop, story, interact) (lines 82-120)
+//!   2. main() — subcommand dispatch (eval, bless, rwkv, grammar, gpu-check, server, gateway, gui, stop, story, interact) (lines 82-120)
 //!   3. cmd_eval / cmd_bless (lines 500-700)
-//!   4. cmd_server / cmd_gateway / cmd_tui / cmd_gui (lines 120-500)
+//!   4. cmd_server / cmd_gateway / cmd_gui (lines 120-500)
 //!   5. Story pipeline (cmd_story) — outline → wiki → chapter ×3 → validation → correction → synopsis → publish (lines 700-1370)
 //! ════════════════════════════════════════════════════════════════════════════
 //!
@@ -114,7 +114,6 @@ fn main() {
         "gpu-check" => cmd_gpu_check(&extra),
         "server" => cmd_server(&extra),
         "gateway" => cmd_gateway(&extra),
-        "tui" => cmd_tui(&extra),
         "gui" => cmd_gui(&extra),
         "stop" => { crate::daemon::stop_all(); },
         "story" => cmd_story(&extra),
@@ -123,17 +122,6 @@ fn main() {
     }
 }
 
-fn cmd_tui(_extra: &[&str]) {
-    use crate::daemon;
-
-    println!("Connecting to inference service...");
-    let backend = daemon::ensure_sync_backend();
-    println!("Starting TUI...");
-
-    if let Err(e) = roco_tui::App::new(backend).run() {
-        eprintln!("TUI run error: {e}");
-    }
-}
 
 fn cmd_gui(_extra: &[&str]) {
     use crate::daemon::{self, GATEWAY_PORT};
@@ -178,7 +166,7 @@ fn cmd_gui(_extra: &[&str]) {
     // AppContext::connect_remote wraps the same gateway URL the RemoteBackend
     // pushes to, so the GUI now shares workspace timeline, session binding,
     // model_state_generate, and future quality / revision ops with every
-    // other surface (interact / tui / story).
+    // other surface (interact / story).
     let gateway_url = format!("http://127.0.0.1:{}", GATEWAY_PORT);
     let backend: Option<Arc<dyn roco_engine::ModelBackend>> = Some(Arc::new(RemoteBackend::new(
         gateway_url.clone(),
@@ -599,7 +587,6 @@ fn help(sub: &str) {
     eprintln!(
         "                                  [--detach|-d] [--log-file PATH] [--pid-file PATH]"
     );
-    eprintln!("  tui                               Start the interactive terminal chat UI");
     eprintln!("  gui                               Start the desktop GUI application");
     eprintln!("                                  (auto-starts gateway on :8000, which auto-starts inference on :8080)");
     eprintln!("  stop                              Stop background inference + gateway");

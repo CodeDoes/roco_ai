@@ -115,7 +115,9 @@ fn facade_exposes_session_agent() {
 fn facade_exposes_workspace_and_timeline() {
     let b = TestBackend::new();
     let ctx = test_ctx(b);
-    let ws = ctx.workspace("test-ws-unique", WorkspaceKind::Generic).unwrap();
+    // Use a unique workspace name to avoid temp dir pollution between test runs
+    let ws_name = format!("test-ws-{}", std::process::id());
+    let ws = ctx.workspace(&ws_name, WorkspaceKind::Generic).unwrap();
     let t1 = ctx.workspace_timeline_reset(&ws, "init").unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
     ws.transform("write file", |w| {

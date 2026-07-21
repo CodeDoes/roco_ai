@@ -20,7 +20,6 @@ roco-bnf-engine = { path = "../bnf-engine" }
 roco-server = { path = "../server" }
 roco-gateway = { path = "../gateway" }
 roco-infer-client = { path = "../infer-client" }
-roco-tui = { path = "../tui" }
 roco-app = { path = "../app", package = "roco-app" }
 roco-session = { path = "../session" }
 roco_ui = { path = "../ui", package = "roco_ui" }

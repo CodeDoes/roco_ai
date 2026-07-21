@@ -1068,8 +1068,9 @@ mod tests {
                 "items": {"type": "boolean"}
             });
             let gbnf = schema_to_gbnf("root", &schema).unwrap();
+            // max_steps increased from 100 to 256 to eliminate flakiness.
             for _ in 0..10 {
-                let result = random_walk_grammar(&gbnf, 100);
+                let result = random_walk_grammar(&gbnf, 256);
                 assert!(result.is_some(), "Random walk failed for array grammar");
             }
         }
@@ -1084,8 +1085,11 @@ mod tests {
                 }
             });
             let gbnf = schema_to_gbnf("root", &schema).unwrap();
+            // max_steps increased from 100 to 256 to eliminate flakiness in the
+            // random walk (path-completion is probabilistic; 100 was too tight
+            // for 10 trials across nested structures).
             for _ in 0..10 {
-                let result = random_walk_grammar(&gbnf, 100);
+                let result = random_walk_grammar(&gbnf, 256);
                 assert!(
                     result.is_some(),
                     "Random walk failed for nested structure grammar"

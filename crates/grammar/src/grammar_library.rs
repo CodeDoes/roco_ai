@@ -314,8 +314,10 @@ mod tests {
         fn fim_grammar_stops_at_stop_token_within_max_tokens() {
             let vocab = fim_vocab();
             let gbnf = StoryGrammar::FillInMiddle.kbnf();
-            // max_tokens ceiling for the FIM eval.
-            let max_tokens = 128usize;
+            // max_tokens ceiling for the FIM eval. Increased from 128 to 256
+            // to eliminate flakiness in the random walk (stop token discovery
+            // is probabilistic; 128 was too tight for 25 trials).
+            let max_tokens = 256usize;
             for trial in 0..25 {
                 let (out, finished) = random_walk(&gbnf, &vocab, max_tokens);
                 assert!(

@@ -30,6 +30,8 @@ These files are safe to edit for user-facing improvements. Always add tests when
 | `crates/cli/examples/story_human.rs` | **Canonical user entry point** | Improve feedback parsing, add clearer messages |
 | `crates/cli/examples/story_collaborative.rs` | Conversational variant | Adjust interaction flow |
 | `crates/cli/examples/story_engine.rs` | Auto-mode demo | Adjust automation logic |
+| `crates/cli/examples/story_full.rs` | Full pipeline demo | Adjust pipeline stages |
+| `crates/cli/examples/grammar_smoke.rs` | Grammar smoke test | Update grammar cases |
 | `crates/ui/src/*.rs` | Desktop widgets | Add buttons, change colors, improve text rendering |
 | `crates/app/src/*.rs` | Surface wiring | Add new capabilities (with caution — see below) |
 | `crates/agent/src/interaction.rs` | Human-action mapping (`Interactive`/`Automatic`) | Add new interaction modes |
@@ -45,7 +47,7 @@ These files are editable, but they have hidden dependencies. Any change must pas
 
 | File / Module | Hidden Dependency | Test Before Committing |
 |---|---|---|
-| `crates/app/src/lib.rs` | Used by `cli/`, `ui/`, `tui/`, `server/` | `cargo test -p roco-app` |
+| `crates/app/src/lib.rs` | Used by `cli/`, `ui/`, `server/` | `cargo test -p roco-app` |
 | `crates/app/src/context.rs` | Creates `AppContext` used everywhere | `cargo test -p roco-app` |
 | `crates/app/src/daemon.rs` | Background daemon for desktop | Manual: `run_desktop.sh` |
 | `crates/agent/src/lib.rs` | Re-exports 25 modules; any missing export breaks `cli/` | `cargo test --workspace` |

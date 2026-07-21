@@ -1,8 +1,8 @@
 # AGENTS.md — RoCo AI
 
-> **Version:** 3.0 | **Date:** 2026-07-20 | **Status:** Human-curated (not LLM-generated — ETH Zurich study: auto-generated files reduce success ~3%, cost +20%).
+> **Version:** 4.0 | **Date:** 2026-07-21 | **Status:** Human-curated (not LLM-generated — ETH Zurich study: auto-generated files reduce success ~3%, cost +20%).
 >
-> **Read order:** This file first → nearest file to edited code wins → deeper docs (`EDIT_GUIDE.md`, `PROJECT_STRUCTURE.md`) → `STRATEGIC_PLAN.md` for direction.
+> **Read order:** This file first → nearest file to edited code wins → deeper docs (`EDIT_GUIDE.md`, `PROJECT_STRUCTURE.md`) → `roadmap/v1.md` for direction.
 >
 > **Protection markers:** Sections between `<!-- BEGIN PROTECTED -->` and `<!-- END PROTECTED -->` must not be modified by agents. Only humans edit these.
 
@@ -30,17 +30,17 @@ You are a senior Rust engineer with UX discipline. You are **not** an autonomous
 | Component | Path | State | Edit Rule |
 |---|---|---|---|
 | Engine (frozen) | `crates/inference/src/`, `engine/src/`, `grammar/src/`, `bnf-engine/src/lib.rs` | Done & tested | Never touch (see E.1). Only fix bugs blocking frontend. |
-| Story engine | `crates/agent/src/story_engine.rs`, `mecha_agent.rs` | Done (`story_engine.rs` ~954 lines; `mecha_agent.rs` ~990 lines) | Caution zone: read header markers before editing (`AGENTS.md` Section H.3). |
-| Desktop widgets | `crates/ui/src/*.rs` | Partial: `pacing.rs`, `markdown_editor.rs` (~1230 lines), `chat.rs`, browsers exist; no visible standalone tests yet | Always edit: add `#[cfg(test)]` module before wiring (`TASK_01_DESKTOP_WIDGETS.md`). |
+| Story engine | `crates/agent/src/story_engine.rs`, `mecha_agent.rs` | Done (`story_engine.rs` ~954 lines; `mecha_agent.rs` ~990 lines) | Caution zone: read header markers before editing (Section H.3). |
+| Desktop widgets | `crates/ui/src/*.rs` | **Complete**: all 8 widgets tested standalone (pacing, markdown_editor, chat, file_tree, wiki_browser, link_graph, session_browser, change_timeline); 101 tests pass | Always edit: `#[cfg(test)]` module exists for each widget |
 | CLI entry | `start.sh` | Works | Always edit freely. |
 | CLI binary | `crates/cli/src/bin/roco.rs` (~1373 lines) | Works | Always edit: header has section map. |
-| Web apps | `apps/chat/`, `studio/`, `editor/` | Untested; deprecated for new features (`STRATEGIC_PLAN.md` Phase 4) | Edit only for bug fixes; new features go to `crates/ui/`. |
-| Missing docs (fixed) | `COMMANDS.md`, `EDITOR.md`, `PLUGINS.md`, `API.md` | Created 2026-07-20 | Edit freely to expand if APIs change. |
+| CLI examples | `crates/cli/examples/*.rs` | 5 canonical examples (story_human, story_collaborative, story_engine, story_full, grammar_smoke) | Always edit freely. |
+| Editor plugins | `apps/plugins/` (VSCode, Zed, Obsidian) | Works against server API | Edit freely. |
 | Agent guide | `AGENT_GUIDE.md` | Short rules (exists) | Always edit freely. |
 | Edit boundaries | `EDIT_GUIDE.md` | Full zones (exists) | Always edit freely. |
 | User guide | `USER_GUIDE.md` | End-user journey (exists) | Always edit freely. |
 
-**Current phase:** Experience-first (`STRATEGIC_PLAN.md` Section A.4). Active: desktop widget standalone-first build (`Phase 2` in strategic plan).
+**Current phase:** Experience-first (`roadmap/v1.md` Section A). Active: desktop widget standalone-first build (`Phase 2` in roadmap).
 
 ---
 
@@ -68,7 +68,7 @@ RWKV_MODEL=... cargo run --release --example story_collaborative -p roco-cli
 # Subcommands (see COMMANDS.md for full reference)
 roco eval [--output PATH]     # Eval + snapshot
 roco bless [--snapshot PATH]  # Bless oracles
-roco rwkv                      # Backend smoke test
+roco rwkv                      # Backend smoke test (uses story_human example)
 roco grammar                   # Grammar smoke test
 roco gpu-check [--json]        # GPU + model info
 roco server [--detach]         # HTTP server (for plugins/web)
@@ -78,7 +78,7 @@ roco interact [--interactive] [--resume SESSION] [--pace MODE]
 
 **Example error pattern (`EDIT_GUIDE.md` § Example Error Pattern): use `Result<_, Box<dyn std::error::Error>>` (not `anyhow::Result<()>`) in example `main()`.
 
-If a command fails:** See `STRATEGIC_PLAN.md` Phase 2 troubleshooting (`TASK_01_DESKTOP_WIDGETS.md` Section `If this fails, do this`).
+If a command fails:** See `roadmap/v1.md` Phase 2 troubleshooting (`TASK_01_DESKTOP_WIDGETS.md` Section `If this fails, do this`).
 
 ---
 
@@ -102,7 +102,7 @@ Workspace (crates/workspace/src/workspace.rs) — sandbox .roco/workspaces/
 - **Plan-first (deterministic):** `classify()` → `Intent` (`INTENT_GRAMMAR`) → `derive()` → `Plan` (`PLAN_GRAMMAR`) → `dispatch()` (classic Rust loop) → `commit()` (workspace snapshot). Used for structured story pipeline.
 - **ReAct (open-ended):** `Agent::run()` — model-driven loop; model emits `final_answer`. Used for exploratory chat (`agent_chat.rs`, `chat.rs` example).
 
-**Key constraint (`AGENTS.md` original, experimentally validated `prompt_probe_eval.rs`):** Every LLM call uses BNF grammar. Free-form prompting on RWKV-7 2.9B produces `<think>` contamination. Suppress via `NO_THINK_PREFILL` (`<think></think>` prefill in `engine/src/backend.rs`) for content stages; allow `<think>` only in reasoning stages (outline, plot-state, quality) and strip before parsing JSON.
+**Key constraint (`AGENTS.md` original, experimentally validated `prompt_probe_eval.rs`):** Every LLM call uses BNF grammar. Free-form prompting on RWKV-7 2.9B produces `thinking` contamination. Suppress via `NO_THINK_PREFILL` (`thinking` prefill in `engine/src/backend.rs`) for content stages; allow `thinking` only in reasoning stages (outline, plot-state, quality) and strip before parsing JSON.
 
 ---
 
@@ -130,11 +130,10 @@ Read `EDIT_GUIDE.md` before any edit. File header markers confirm zone (`FILE ST
 - `crates/cli/src/bin/roco.rs`, `interact.rs`
 - `crates/cli/examples/*.rs` (`story_human.rs` = canonical user surface)
 - `crates/ui/src/*.rs` (desktop widgets — standalone-first: `#[cfg(test)]` before `desktop_app.rs` wiring)
-- `crates/app/src/lib.rs`, `context.rs`, `daemon.rs`, `workspace.rs` (caution zone: test with `cargo test -p roco-app`)
+- `crates/app/src/*.rs` (caution zone: test with `cargo test -p roco-app`)
 - `crates/agent/src/interaction.rs`, `natural_feedback.rs`, `outline_editing.rs`, `commentary.rs`, `chapter_steering.rs`, `quality.rs`
-- `apps/*` (bug fixes only — no new features; see `STRATEGIC_PLAN.md` Phase 4)
+- `apps/plugins/*` (bug fixes only — new features go to `crates/ui/`)
 - `docs/`, guides (`README.md`, etc.), `roadmap/`
-- `AGENTS.md` (update through `AGENTS.md` Section K)
 
 ### E.3 Ask First (Caution Zone — Read Before Edit)
 
@@ -163,7 +162,6 @@ Read `EDIT_GUIDE.md` before any edit. File header markers confirm zone (`FILE ST
 | Grammar | `kbnf` 0.5 (`bnf-engine/`) | `Cargo.toml` patch (`vendor/web-rwkv/`) | `Cargo.toml` `[patch.crates-io]` |
 | Desktop | `egui` + `eframe` (`crates/ui/`) | Chosen 2026-07-19; `gpui` rejected (`roadmap/blocked.md`) | `roadmap/blocked.md` |
 | CLI | `clap` 4 (`crates/cli/`) | `roco` binary + examples | `crates/cli/src/bin/roco.rs` |
-| Web apps | `Next.js` (`chat/`), `Vite` (`editor/`) | Untested; migration target `crates/ui/` (`STRATEGIC_PLAN.md`) | `apps/chat/package.json` |
 | Session store | `LruSessionPool` | Max 8 (`session/src/pool.rs`) | `crates/session/src/pool.rs` |
 | Workspace | `Workspace` (`workspace/src/`) | Sandbox `.roco/workspaces/` | `crates/workspace/src/workspace.rs` |
 | Testing | `cargo test --workspace` | No redirect (`>`); read terminal directly (`AGENTS.md` original rules) | `run_tests.sh` |
@@ -175,7 +173,7 @@ Read `EDIT_GUIDE.md` before any edit. File header markers confirm zone (`FILE ST
 From `AGENTS.md` original (`roadmap/README.md` Definition of Done): A feature is not done without a test proving a human can drive it.
 
 **Unit tests:** Mode conversion (`pacing.rs`), plot-state merge (`story_engine.rs` tests), grammar parsing (`grammar/src/grammar_library.rs` tests).
-**Integration tests:** CLI output (`start.sh` produces readable workspace files), desktop widget standalone (`pacing::tests`), desktop end-to-end (`tests/desktop_e2e.rs` — target from `STRATEGIC_PLAN.md` Phase 3.5).
+**Integration tests:** CLI output (`start.sh` produces readable workspace files), desktop widget standalone (`pacing::tests`), desktop end-to-end (`tests/desktop_e2e.rs` — target from `roadmap/v1.md` Phase 3.5).
 **Snapshot/bless:** `roco eval` saves `.snapshot.json`; `roco bless` updates `oracle:` fields (`crates/cli/src/bin/roco.rs` `cmd_bless()`).
 **No hidden failures:** Never redirect (`>` `2>&1`). If inference hangs in debug, use `RWKV_ADAPTER=llvmpipe` (`AGENTS.md` original Section `Build with --release`).
 
@@ -187,7 +185,7 @@ Every large source file has a `FILE STATUS:` header (added 2026-07-20). Read tha
 
 | Need | File (Header Line) | Section Keys | Do Not Touch (Unless Blocking) |
 |---|---|---|---|
-| CLI binary wiring | `crates/cli/src/bin/roco.rs` (line 4) | `spawn_detached`, `cmd_server`, `cmd_story`, `cmd_interact` (lines 15-120, 120-500, 700-1370) | `vendor/web-rwkv/` |
+| CLI binary wiring | `crates/cli/src/bin/roco.rs` (line 4) | `spawn_detached`, `cmd_server`, `cmd_gui`, `cmd_story`, `cmd_interact` (lines 15-120, 120-500, 700-1370) | `vendor/web-rwkv/` |
 | Mechanistic agent | `crates/agent/src/mecha_agent.rs` (line 4) | `RepairConfig`, `MechanisticAgent::new()`, `register`, `dispatch_single`, `run`, `BaseAgent` impl, `INTENT_GRAMMAR`, `PLAN_GRAMMAR`, `tests` (lines 4, 50-120, 150-300, 400-600, 700-950, 950-990) | `crates/bnf-engine/src/lib.rs` |
 | Story pipeline | `crates/agent/src/story_engine.rs` (line 4) | `PlotState`, `OutlineExpansion`, `StoryConfig`, `StoryEngine`, `generate_outline`, `expand_outline`, `generate_chapter`, `evaluate_chapter_quality`, `revise_chapter`, `publish` (lines 4, 30-200, 250-650, 650-950, 950+) | `crates/inference/src/actor.rs` |
 | Desktop app | `crates/ui/src/desktop_app.rs` (line 4) | `RightPanelTool`, `RocoDesktopApp`, `new()`, `handle_chat_action`, `show_right_panel`, `update()` (lines 12-45, 47-115, 200-450, 450-600, 600-900) | — (editable; standalone-first) |
@@ -208,11 +206,10 @@ Based on `AGENTS.md` original `Lessons Learned` and verified experimental result
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `<think>` tags leak into story output | Bare `Assistant:` start opens `<think>` block; system "no think" instruction backfires (primes emission) (`prompt_probe_eval.rs` verified) | Prefill `NO_THINK_PREFILL` (`<think></think>`) before assistant turns (`engine/src/backend.rs`). Allow `<think>` only in reasoning stages (outline, plot-state, quality) and strip before parse. |
+| `thinking` tags leak into story output | Bare `Assistant:` start opens `thinking` block; system "no think" instruction backfires (primes emission) (`prompt_probe_eval.rs` verified) | Prefill `NO_THINK_PREFILL` (`thinking`) before assistant turns (`engine/src/backend.rs`). Allow `thinking` only in reasoning stages (outline, plot-state, quality) and strip before parse. |
 | Agent tries to edit frozen engine file | Unclear file boundary; missing header marker check | Read `FILE STATUS:` at top of file (`mecha_agent.rs`, `story_engine.rs`, etc.). Check `EDIT_GUIDE.md`. Confirm bug blocks frontend feature. |
 | Desktop freezes on chat/generate | `.await` called inside `update()` loop (`desktop_app.rs`) | Always use `futures::executor::block_on()` for backend calls in GUI (`desktop_app.rs` lines handling chat actions). |
 | Large file split incorrectly | No section markers; agent guesses split points | All large files now have header markers (`FILE STATUS:` at line 4 of `roco.rs`, `mecha_agent.rs`, `story_engine.rs`, `desktop_app.rs`). Read markers first. |
-| Agent edits untested web apps extensively | `apps/` treated as primary surface; no clear deprecation note | `README.md` and `PROJECT_STRUCTURE.md` clearly state `crates/ui/` is planned primary; `STRATEGIC_PLAN.md` Phase 4 freezes web apps. Read strategic plan before `apps/` edits. |
 | Test output hidden / redirected | Agent uses `>` or `2>&1` out of habit (`AGENTS.md` original `Testing convention`) | Never redirect. Fix failure instead of hiding it (`run_tests.sh` notes this explicitly). |
 | Desktop widget fails after wiring | Widget not tested standalone before composition (`roadmap/ux.md` `standalone-first` rule) | Build widget test (`#[cfg(test)]`) before editing `desktop_app.rs`. See `TASK_01_DESKTOP_WIDGETS.md` Phase 2.1-2.4. |
 
@@ -227,7 +224,7 @@ This section exists so the agent does not need to research. Everything below is 
 ### J.1 Agent-Editable Repository Patterns (From ETH Zurich + Production Repos)
 - **Manual > auto (`AGENTS.md` v2.0 intro, ETH Zurich study reference).**
 - **Progressive disclosure (`EDIT_GUIDE.md` links to deeper docs; `PROJECT_STRUCTURE.md` for navigation).**
-- **Hierarchical precedence (`AGENTS.md` root + file-level markers; nearest file wins for subpackages — this repo uses single root + header markers rather than 88 nested files, appropriate for ~19 crates).**
+- **Hierarchical precedence (`AGENTS.md` root + file-level markers; nearest file wins for subpackages — this repo uses single root + header markers rather than 88 nested files, appropriate for ~16 crates).**
 - **Always include:** Agent Role (`A`), Tech Stack (`F`), Commands (`C`, with exact flags), Architecture (`D`), Boundaries (`E`), Critical Files (`H`), Pitfalls (`I`), Maintenance (`K`).
 
 ### J.2 Collaborative Writing UX (From Multi-Agent Studies)
@@ -237,7 +234,7 @@ This section exists so the agent does not need to research. Everything below is 
 
 ### J.3 Desktop (`egui`) Architecture (From `egui` Core + Production Apps)
 - **State-first (`desktop_app.rs`: `RocoDesktopApp` owns all widget states).**
-- **Standalone-first (`STRATEGIC_PLAN.md` Phase 2.1-2.4; `TASK_01_DESKTOP_WIDGETS.md`).**
+- **Standalone-first (`roadmap/v1.md` Phase 2.1-2.4; `TASK_01_DESKTOP_WIDGETS.md`).**
 - **No `.await` in `update()` (`desktop_app.rs` uses `block_on`).**
 
 ---
@@ -258,7 +255,7 @@ Based on `AGENTS.md` Guidelines (GitHub Gist) and `AGENTS.md` v2.0 design:
 
 **Protection rule:** Sections between `<!-- BEGIN PROTECTED -->` and `<!-- END PROTECTED -->` can only be edited by the human. If an agent needs to propose changes to protected sections, it must ask the user explicitly (per Section E.3 `Ask First` protocol: confirm blocking feature, document reason, propose minimal change, ask confirmation).
 
-**File size target:** Root `AGENTS.md` should stay under ~200 lines (`AGENTS.md` research: shorter = better agent performance). If it grows beyond this, split into nested `AGENTS.md` files (`crates/ui/AGENTS.md` for desktop-specific rules, `crates/cli/AGENTS.md` for CLI-specific). For this repo (19 crates, one primary desktop surface), a single root file with progressive disclosure (`EDIT_GUIDE.md`, `TASK_*.md` files) is sufficient.
+**File size target:** Root `AGENTS.md` should stay under ~200 lines (`AGENTS.md` research: shorter = better agent performance). If it grows beyond this, split into nested `AGENTS.md` files (`crates/ui/AGENTS.md` for desktop-specific rules, `crates/cli/AGENTS.md` for CLI-specific). For this repo (16 crates, one primary desktop surface), a single root file with progressive disclosure (`EDIT_GUIDE.md`, `TASK_*.md` files) is sufficient.
 
 ---
 

@@ -11,7 +11,6 @@ members = [
     "crates/agent",
     "crates/chat-common",
     "crates/cli",
-    "crates/tui",
     "crates/server",
     "crates/gateway",
     "crates/infer-client",
