@@ -165,3 +165,12 @@
   pacing/tools, center: chat, right: editor/browsers/timeline/quality).
 - **4.4 Web apps frozen.** README desktop → primary surface, web → legacy/frozen.
   PROJECT_STRUCTURE updated. **Phase 4 is COMPLETE.**
+
+## 2026-07-20 (Phase 5)
+- **5.1 VSCode plugin.** Fixed endpoint paths to match server routes
+  (`/chapters/:num/generate`, `/chapters/:num/revise`, `/chapters/:num/quality`).
+  Added Check Quality command with webview score report.
+- **5.2 Zed + Obsidian.** Zed compiles to wasm. Obsidian: endpoint fixes, default
+  URL to localhost:8080. PLUGINS.md updated with --story requirement.
+- **5.3 API docs.** Complete rewrite of API.md with 20+ endpoints, request/response
+  examples, error codes, and curl examples. **Phase 5 is COMPLETE.**
