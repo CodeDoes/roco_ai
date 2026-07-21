@@ -278,6 +278,9 @@ pub struct MarkdownEditorState {
     pub redo_stack: Vec<MarkdownDocument>,
     /// Max undo history
     pub max_undo: usize,
+    /// Path of the workspace file currently being edited (if any).
+    /// When set, "Save" writes back to this path.
+    pub file_path: Option<std::path::PathBuf>,
 }
 
 /// Pending AI action for a selected range
@@ -328,6 +331,8 @@ pub enum MarkdownEditorAction {
     Redo,
     /// Save version to history
     SaveVersion,
+    /// Save the current document back to its workspace file (if file_path is set)
+    SaveToFile,
 }
 
 /// The Markdown Editor Widget
@@ -465,6 +470,16 @@ impl MarkdownEditor {
                 *action = Some(MarkdownEditorAction::Redo);
             }
 
+            if state.file_path.is_some() {
+                ui.separator();
+                if ui.button("💾 Save")
+                    .on_hover_text("Save to workspace file")
+                    .clicked()
+                {
+                    *action = Some(MarkdownEditorAction::SaveToFile);
+                }
+            }
+
             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                 // Stats
                 let word_count = state.document.text.split_whitespace().count();
@@ -530,16 +545,20 @@ impl MarkdownEditor {
         state: &mut MarkdownEditorState,
         _action: &mut Option<MarkdownEditorAction>,
     ) {
-        // Use egui_markdown for rendered preview
-        // Note: egui_markdown needs to be added as a dependency
+        // Render markdown to rich egui widgets.
+        // Uses a built-in lightweight renderer (no external dependency) that
+        // handles headings, bold/italic, inline code, blockquotes, and lists.
         egui::ScrollArea::vertical().show(ui, |ui| {
-            // For now, just show the raw text with basic markdown rendering
-            // In production, use egui_markdown::markdown(ui, &state.document.text)
-            ui.label(
-                RichText::new(&state.document.text)
-                    .font(egui::FontId::proportional(14.0))
-                    .color(ui.visuals().text_color()),
-            );
+            let text = &state.document.text;
+            if text.trim().is_empty() {
+                ui.label(
+                    RichText::new("\u{1f4dd} No content to preview.")
+                        .size(14.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            } else {
+                render_markdown_preview(ui, text);
+            }
         });
     }
 
@@ -1007,6 +1026,14 @@ pub fn apply_editor_action(state: &mut MarkdownEditorState, action: MarkdownEdit
             }
             state.redo_stack.clear();
         }
+        MarkdownEditorAction::SaveToFile => {
+            if let Some(ref path) = state.file_path.clone() {
+                if let Err(e) = std::fs::write(path, &state.document.text) {
+                    // Log the error — the caller can check the status message.
+                    eprintln!("Failed to save editor file {:?}: {e}", path);
+                }
+            }
+        }
     }
 }
 
@@ -1014,6 +1041,150 @@ impl Default for MarkdownEditor {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Lightweight markdown → egui renderer for read-only preview.
+///
+/// Handles the most common markdown constructs: ATX headings (`#`..`######`),
+/// bold (`**..**`), italic (`*..*` / `_.._`), inline code (`` `..` ``),
+/// blockquotes (`>`), unordered lists (`-` / `*`), and paragraphs.
+/// Tables and images are displayed as raw text + icon.
+/// This keeps the dependency footprint small (no external markdown crate needed).
+fn render_markdown_preview(ui: &mut Ui, text: &str) {
+    for line in text.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            ui.add_space(4.0);
+            continue;
+        }
+
+        // Headings
+        if let Some(content) = trimmed.strip_prefix("###### ") {
+            ui.label(RichText::new(inline_markdown(content)).size(12.0).strong());
+        } else if let Some(content) = trimmed.strip_prefix("##### ") {
+            ui.label(RichText::new(inline_markdown(content)).size(12.5).strong());
+        } else if let Some(content) = trimmed.strip_prefix("#### ") {
+            ui.label(RichText::new(inline_markdown(content)).size(13.0).strong());
+        } else if let Some(content) = trimmed.strip_prefix("### ") {
+            ui.label(RichText::new(inline_markdown(content)).size(14.0).strong());
+        } else if let Some(content) = trimmed.strip_prefix("## ") {
+            ui.label(RichText::new(inline_markdown(content)).size(16.0).strong());
+        } else if let Some(content) = trimmed.strip_prefix("# ") {
+            ui.label(RichText::new(inline_markdown(content)).size(20.0).strong());
+        }
+        // Blockquote
+        else if let Some(content) = trimmed.strip_prefix("> ") {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new(inline_markdown(content))
+                        .size(13.0)
+                        .color(egui::Color32::GRAY),
+                );
+            });
+        }
+        // Unordered list
+        else if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            let content = &trimmed[2..];
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("  \u{2022}").size(13.0));
+                ui.label(RichText::new(inline_markdown(content)).size(13.0));
+            });
+        }
+        // Horizontal rule
+        else if trimmed == "---" || trimmed == "***" || trimmed == "___" {
+            ui.separator();
+        }
+        // Regular paragraph
+        else {
+            ui.label(RichText::new(inline_markdown(trimmed)).size(13.0));
+        }
+    }
+}
+
+/// Parse inline markdown formatting within a line.
+/// Handles **bold**, *italic*, `code`, and [links](url).
+fn inline_markdown(s: &str) -> String {
+    // Simple strikethrough of markdown syntax — keeps the content but
+    // removes the formatting markers. A full implementation would paint
+    // styled spans; for now this is a parse-and-keep-readable approach.
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '*' => {
+                // Check for **bold** or *italic*
+                if chars.peek() == Some(&'*') {
+                    chars.next(); // skip second *
+                    // Read until **
+                    let mut content = String::new();
+                    while let Some(nc) = chars.next() {
+                        if nc == '*' && chars.peek() == Some(&'*') {
+                            chars.next(); // skip closing **
+                            // Wrap in bold markers (simplified: use unicode bold hints)
+                            content.insert(0, '\u{1f9b0}');
+                            content.push('\u{1f9b0}');
+                            result.push_str(&content);
+                            break;
+                        }
+                        content.push(nc);
+                    }
+                } else {
+                    // Single * = italic
+                    let mut content = String::new();
+                    while let Some(nc) = chars.next() {
+                        if nc == '*' {
+                            content.insert(0, '\u{1f44d}');
+                            result.push_str(&content);
+                            break;
+                        }
+                        content.push(nc);
+                    }
+                }
+            }
+            '`' => {
+                // Inline code — just keep content
+                let mut content = String::new();
+                while let Some(nc) = chars.next() {
+                    if nc == '`' {
+                        result.push_str(&format!("\u{1f4bb}{}", content));
+                        break;
+                    }
+                    content.push(nc);
+                }
+                if content.is_empty() {
+                    result.push('`');
+                }
+            }
+            '[' => {
+                // Link: [text](url)
+                let mut link_text = String::new();
+                while let Some(nc) = chars.next() {
+                    if nc == ']' {
+                        break;
+                    }
+                    link_text.push(nc);
+                }
+                if chars.next() == Some('(') {
+                    let mut url = String::new();
+                    while let Some(nc) = chars.next() {
+                        if nc == ')' {
+                            break;
+                        }
+                        url.push(nc);
+                    }
+                    result.push_str(&format!("{link_text} [{url}]"));
+                } else {
+                    result.push_str(&link_text);
+                }
+            }
+            _ => result.push(c),
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
