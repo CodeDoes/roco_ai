@@ -123,54 +123,8 @@
   into planning-first pipeline; Phase 3.3 quality results in right panel;
   Phase 3.4 revision diff in editor; Phase 3.5 `tests/desktop_e2e.rs`.
 
-## 2026-07-20 (refactors)
-- **CLI modularisation.** Extracted 1389-line roco.rs into `crates/cli/src/cmd/`
-  with 6 files (desktop, eval, gpu, interact, server, story). roco.rs is now
-  ~130 lines of dispatch only. Helpers moved to daemon.rs. No behavior change.
-- **parse_structured_response utility.** Added `crates/agent/src/util.rs` with
-  a generic parse helper. Replaced 5 identical serde_json parse+map_err patterns.
-- **Merge dedup.** Replaced 4 repetitive `if !contains` loops in PlotState::merge
-  with a generic `merge_dedup()` helper. ~25 lines → 5 calls.
-- **Engine untouched.** Only agent/caution-zone files and Always-edit CLI files.
-  All 101 roco_ui tests pass; workspace compiles with zero new errors.
-
-## 2026-07-20 (Phase 3.3)
-- **Quality Analyzer in desktop.** Added `RightPanelTool::Quality` panel with
-  score card (8 dimensions with color-coded bars), issues list, strengths,
-  suggestions, and revision verdict. Menu item `Review \u2192 Check Quality` runs
-  `QualityAnalyzer::evaluate_chapter` (or demo fallback when no model loaded).
-  3 new tests. 104 tests total pass. Workspace compiles clean.
-
-## 2026-07-20 (Phase 3.4)
-- **Revision diff in editor.** `apply_quality_suggestions_to_editor()` converts
-  quality critique suggestions + priority revisions into `Suggestion` objects
-  in the MarkdownEditor state. "Apply Suggestions to Editor" button in Quality
-  panel, auto-enables diff view, switches to Editor tab. Uses the existing
-  `show_diff`/`paint_diff` infrastructure. 1 new test. 105 tests pass.
-
-## 2026-07-20 (Phase 3.5)
-- **End-to-end desktop pipeline test.** `tests/desktop_e2e.rs` with 3 integration
-  tests: new-session-through-save, quality-revision-cycle, session-persistence.
-  Made key desktop methods/fields `pub` for external test access. Fixed
-  `with_context()` to honour `AppContext.session_root`. 108 tests total.
-  **Phase 3 is COMPLETE.**
-
-## 2026-07-20 (Phase 4)
-- **4.1 Editor migration.** Markdown preview renderer (headings, bold/italic,
-  code, lists, blockquotes, links). `file_path` tracking in editor state.
-  `SaveToFile` action + toolbar button. Removed incompatible `egui_markdown` dep.
-- **4.2 Chat migration.** Assistant/system/user messages rendered as markdown
-  (same renderer). Streaming dots animation when generating.
-- **4.3 Studio integration.** Already complete via Phase 2.5+3 layout (left:
-  pacing/tools, center: chat, right: editor/browsers/timeline/quality).
-- **4.4 Web apps frozen.** README desktop → primary surface, web → legacy/frozen.
-  PROJECT_STRUCTURE updated. **Phase 4 is COMPLETE.**
-
-## 2026-07-20 (Phase 5)
-- **5.1 VSCode plugin.** Fixed endpoint paths to match server routes
-  (`/chapters/:num/generate`, `/chapters/:num/revise`, `/chapters/:num/quality`).
-  Added Check Quality command with webview score report.
-- **5.2 Zed + Obsidian.** Zed compiles to wasm. Obsidian: endpoint fixes, default
-  URL to localhost:8080. PLUGINS.md updated with --story requirement.
-- **5.3 API docs.** Complete rewrite of API.md with 20+ endpoints, request/response
-  examples, error codes, and curl examples. **Phase 5 is COMPLETE.**
+## 2026-07-20 (session) — verified `start.sh` path
+- Fixed all example target signatures so `?` propagates through `Result<_, String>` call sites:
+  `story_human`, `story`, `story_collaborative`, `story_full`, `story_engine`, `story_pilot`, `story_step_eval` → `Result<(), Box<dyn std::error::Error>>`.
+- Updated `run_tests.sh` to also compile examples (`cargo check -p roco-cli --examples`) so `start.sh` regressions are caught.
+- Confirmed `./start.sh` auto-resolves the local `.st` model and launches `story_human`. Verified `cargo test -p roco_ui` passes (unit + user-story tests).

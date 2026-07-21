@@ -40,7 +40,7 @@ space ::= " "?
 "#;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let step = std::env::args().nth(1).unwrap_or_else(|| "all".to_string());
     let prompt = std::env::args()
         .nth(2)

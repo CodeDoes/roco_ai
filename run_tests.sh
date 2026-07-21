@@ -31,3 +31,9 @@ echo "  Use 'RWKV_ADAPTER=llvmpipe cargo test -p roco-inference' for CPU fallbac
 echo ""
 echo "✅ Verification complete."
 echo "If any step failed, fix it before committing."
+
+echo "Step 5: Example target build tests..."
+# Compile every example target so surface scripts like start.sh stay working.
+# We skip execution because examples may launch long-running generations.
+cargo check -p roco-cli --examples
+echo ""

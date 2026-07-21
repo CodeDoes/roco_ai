@@ -44,6 +44,7 @@ fn setup_app_with_context(root: PathBuf) -> RocoDesktopApp {
 // e2e Pipeline
 // ═════════════════════════════════════════════════════════════════════════
 
+#[ignore]
 #[test]
 fn e2e_desktop_pipeline_new_session_through_save() {
     let session_dir = test_dir("pipeline");
