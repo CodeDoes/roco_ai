@@ -175,18 +175,18 @@ Each phase has: **Files to Read**, **Files to Edit**, **Milestones** (testable e
 
 ---
 
-### PHASE 5 — Plugin & API Verification (Target: 9+ Weeks)
+### PHASE 5 — Plugin & API Verification (COMPLETED 2026-07-20)
 **Strategic result:** Plugins work with desktop backend or server; API docs accurate.
 
-**Phase 5.1 — VSCode Plugin Verification (Target: Week 9)**
+**Phase 5.1 — VSCode Plugin Verification (COMPLETED 2026-07-20)**
 - **Files to read/edit:** `apps/plugins/vscode/src/extension.ts` (only if broken)
 - **Milestone:** Plugin connects to `roco-server`; `RoCo: Generate Chapter` executes successfully.
 
-**Phase 5.2 — Zed + Obsidian Plugin Verification (Target: Week 9)**
+**Phase 5.2 — Zed + Obsidian Plugin Verification (COMPLETED 2026-07-20)**
 - **Files:** `apps/plugins/zed/src/lib.rs`, `extension.toml`; `apps/plugins/obsidian/main.ts`
 - **Milestone:** Plugins documented (`PLUGINS.md` already exists); basic functionality verified or documented as limited.
 
-**Phase 5.3 — API Documentation Update (Target: Week 10)**
+**Phase 5.3 — API Documentation Update (COMPLETED 2026-07-20)**
 - **Files to read/edit:** `API.md` — expand if desktop backend introduces new endpoints or if server behavior changes due to desktop-first migration.
 - **Milestone:** API docs match actual server behavior when desktop connects via `RemoteBackend`.
 

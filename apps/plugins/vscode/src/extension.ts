@@ -19,7 +19,7 @@ async function apiRequest(path: string, options?: RequestInit): Promise<any> {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    // Generate Chapter
+    // Generate Chapter at cursor
     context.subscriptions.push(
         vscode.commands.registerCommand('roco.generateChapter', async () => {
             const editor = vscode.window.activeTextEditor;
@@ -31,20 +31,28 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage('Generating chapter...');
 
             try {
-                const result = await apiRequest('/chapters/generate', {
+                // Story server expects chapter number in path: /chapters/:num/generate
+                const chapterNum = await vscode.window.showInputBox({
+                    prompt: 'Chapter number to generate',
+                    value: '1',
+                });
+                if (!chapterNum) return;
+
+                const result = await apiRequest(`/chapters/${chapterNum}/generate`, {
                     method: 'POST',
                     body: JSON.stringify({
-                        content: editor.document.getText(),
+                        direction: editor.document.getText(),
                     }),
                 });
 
                 editor.edit((editBuilder) => {
-                    editBuilder.replace(editor.selection, result.content);
+                    const fullText = `Chapter ${chapterNum}: ${result.title || ''}\n\n${result.content || ''}`;
+                    editBuilder.replace(editor.selection, fullText);
                 });
 
-                vscode.window.showInformationMessage('Chapter generated!');
+                vscode.window.showInformationMessage(`Chapter ${chapterNum} generated!`);
             } catch (error) {
-                vscode.window.showErrorMessage('Failed to generate chapter');
+                vscode.window.showErrorMessage('Failed to generate chapter — is roco-server running with --story?');
                 console.error(error);
             }
         })
@@ -69,12 +77,11 @@ export function activate(context: vscode.ExtensionContext) {
                     method: 'POST',
                     body: JSON.stringify({
                         text: line,
-                        position: { line: position.line, character: position.character },
                     }),
                 });
 
                 editor.edit((editBuilder) => {
-                    editBuilder.insert(position, result.text);
+                    editBuilder.insert(position, result.text || '');
                 });
 
                 vscode.window.showInformationMessage('Continued!');
@@ -144,24 +151,29 @@ export function activate(context: vscode.ExtensionContext) {
                 prompt: 'Enter feedback for revision',
                 placeHolder: 'e.g., make it darker, add more dialogue',
             });
-
             if (!feedback) return;
+
+            const chapterNum = await vscode.window.showInputBox({
+                prompt: 'Chapter number',
+                value: '1',
+            });
+            if (!chapterNum) return;
 
             vscode.window.showInformationMessage('Revising...');
 
             try {
-                const result = await apiRequest('/revise', {
+                const result = await apiRequest(`/chapters/${chapterNum}/revise`, {
                     method: 'POST',
-                    body: JSON.stringify({ text: selection, feedback }),
+                    body: JSON.stringify({ feedback }),
                 });
 
                 editor.edit((editBuilder) => {
-                    editBuilder.replace(editor.selection, result.text);
+                    editBuilder.replace(editor.selection, result.content || result.text || '');
                 });
 
                 vscode.window.showInformationMessage('Revised!');
             } catch (error) {
-                vscode.window.showErrorMessage('Failed to revise');
+                vscode.window.showErrorMessage('Failed to revise — is roco-server running with --story?');
                 console.error(error);
             }
         })
@@ -195,6 +207,70 @@ export function activate(context: vscode.ExtensionContext) {
             });
 
             vscode.window.showInformationMessage('Comment added');
+        })
+    );
+
+    // Check Quality
+    context.subscriptions.push(
+        vscode.commands.registerCommand('roco.checkQuality', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showWarningMessage('No active editor');
+                return;
+            }
+
+            const chapterNum = await vscode.window.showInputBox({
+                prompt: 'Chapter number to evaluate',
+                value: '1',
+            });
+            if (!chapterNum) return;
+
+            vscode.window.showInformationMessage('Evaluating quality...');
+
+            try {
+                const result = await apiRequest(`/chapters/${chapterNum}/quality`);
+
+                const panel = vscode.window.createWebviewPanel(
+                    'rocoQuality',
+                    `RoCo Quality — Chapter ${chapterNum}`,
+                    vscode.ViewColumn.Beside,
+                    {}
+                );
+
+                const issues = (result.issues || []).map((i: any) =>
+                    `<li><strong>${i.category}</strong> [${i.severity}]: ${i.description}</li>`
+                ).join('');
+                const strengths = (result.strengths || []).map((s: string) =>
+                    `<li>${s}</li>`
+                ).join('');
+                const suggestions = (result.suggestions || []).map((s: string) =>
+                    `<li>${s}</li>`
+                ).join('');
+
+                panel.webview.html = `
+                    <!DOCTYPE html>
+                    <html><head><style>
+                        body { font-family: sans-serif; padding: 16px; }
+                        h2 { color: #e94560; }
+                        .score { font-size: 24px; font-weight: bold; }
+                        .section { margin-bottom: 16px; }
+                        .good { color: green; } .warn { color: orange; } .bad { color: red; }
+                    </style></head><body>
+                        <h2>Quality Report — Chapter ${chapterNum}</h2>
+                        <div class="section">
+                            <p>Overall: <span class="score ${result.overall >= 7 ? 'good' : result.overall >= 5 ? 'warn' : 'bad'}">${result.overall || '?'}/10</span></p>
+                            <p>Pacing: ${result.pacing || '?'} | Show-don't-tell: ${result.show_dont_tell || '?'} | Character voice: ${result.character_voice || '?'}</p>
+                            <p>Engagement: ${result.engagement || '?'} | Coherence: ${result.plot_coherence || '?'} | Prose: ${result.prose_quality || '?'}</p>
+                        </div>
+                        ${issues ? `<div class="section"><h3>Issues</h3><ul>${issues}</ul></div>` : ''}
+                        ${strengths ? `<div class="section"><h3>Strengths</h3><ul>${strengths}</ul></div>` : ''}
+                        ${suggestions ? `<div class="section"><h3>Suggestions</h3><ul>${suggestions}</ul></div>` : ''}
+                    </body></html>
+                `;
+            } catch (error) {
+                vscode.window.showErrorMessage('Failed to check quality — is roco-server running with --story?');
+                console.error(error);
+            }
         })
     );
 

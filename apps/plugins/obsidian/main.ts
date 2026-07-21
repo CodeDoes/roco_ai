@@ -15,7 +15,7 @@ interface RoCoSettings {
 }
 
 const DEFAULT_SETTINGS: RoCoSettings = {
-  apiUrl: 'http://localhost:3000',
+  apiUrl: 'http://localhost:8080',
   autoSuggest: true,
   showPlotState: true,
 };
@@ -121,20 +121,24 @@ export default class RoCoPlugin extends Plugin {
       return;
     }
 
+    const chapterNum = prompt('Chapter number to generate:', '1');
+    if (!chapterNum) return;
+
     new Notice('Generating chapter...');
 
     try {
-      const result = await this.apiRequest('/chapters/generate', {
+      const result = await this.apiRequest(`/chapters/${chapterNum}/generate`, {
         method: 'POST',
         body: JSON.stringify({
-          content: view.editor.getValue(),
+          direction: view.editor.getValue(),
         }),
       });
 
-      view.editor.replaceSelection(result.content);
-      new Notice('Chapter generated!');
+      const fullText = `## ${result.title || `Chapter ${chapterNum}`}\n\n${result.content || ''}`;
+      view.editor.replaceSelection(fullText);
+      new Notice(`Chapter ${chapterNum} generated!`);
     } catch (error) {
-      new Notice('Failed to generate chapter');
+      new Notice('Failed to generate chapter — is roco-server running with --story?');
       console.error(error);
     }
   }
@@ -198,22 +202,25 @@ export default class RoCoPlugin extends Plugin {
     const feedback = await this.promptForFeedback();
     if (!feedback) return;
 
+    const chapterNum = prompt('Chapter number:', '1');
+    if (!chapterNum) return;
+
     new Notice('Revising...');
 
     try {
-      const result = await this.apiRequest('/revise', {
+      const result = await this.apiRequest(`/chapters/${chapterNum}/revise`, {
         method: 'POST',
-        body: JSON.stringify({ text, feedback }),
+        body: JSON.stringify({ feedback }),
       });
 
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (view) {
-        view.editor.replaceSelection(result.text);
+        view.editor.replaceSelection(result.content || result.text || '');
       }
 
       new Notice('Revised!');
     } catch (error) {
-      new Notice('Failed to revise');
+      new Notice('Failed to revise — is roco-server running with --story?');
       console.error(error);
     }
   }

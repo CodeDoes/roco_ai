@@ -18,16 +18,32 @@ code .
 
 | Command | What it does |
 |---|---|
-| `RoCo: Generate Chapter` | Creates the next chapter based on outline |
-| `RoCo: Continue Writing` | Extends current text |
-| `RoCo: Check Quality` | Runs quality evaluation |
-| `RoCo: Apply Feedback` | Applies natural-language feedback |
-| `RoCo: Edit Outline` | Opens outline editor |
+| `RoCo: Generate Chapter` | Creates the next chapter based on outline (requires chapter number) |
+| `RoCo: Continue Writing` | Extends current text from cursor position |
+| `RoCo: Get Suggestions` | Fetches AI suggestions for current document |
+| `RoCo: Check Quality` | Runs quality evaluation for a chapter (opens webview report) |
+| `RoCo: Revise Selection` | Revises selected text based on natural-language feedback |
+| `RoCo: Add Comment` | Inserts an inline comment annotation |
+| `RoCo: Show Plot State` | Opens a webview showing characters, locations, conflicts |
 
 ### Requirements
 
-- `roco-server` running locally (`cargo run --release -p roco-server`)
+- `roco-server` running with `--story` (`roco server --story --detach`)
 - `RWKV_MODEL` set in server environment
+- Default API URL: `http://localhost:8080` (configurable via VSCode settings → `roco.apiUrl`)
+
+## Connection Notes
+
+All plugins communicate with the RoCo server over HTTP. Story-specific endpoints (chapter
+generate, revise, quality, plot state) require the server to be started with the `--story`
+flag:
+
+```bash
+roco server --story --detach
+```
+
+Without `--story`, only the base endpoints (`/health`, `/complete`, `/v1/completions`, `/vocab`)
+are available.
 
 ## Zed (`apps/plugins/zed/`)
 
