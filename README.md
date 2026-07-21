@@ -48,8 +48,8 @@ Every story produces these files:
 | Surface | Best for | Start it |
 |---|---|---|
 | **CLI** (`start.sh`) | Beginners, quick writing, scripting | `./start.sh` |
-| **Web Editor** (`apps/editor/`) | Visual editing, browser users | See [`EDITOR.md`](EDITOR.md) |
-| **Desktop GUI** (`crates/ui/`) | Power users, planned primary surface | See [`run_desktop.sh`](run_desktop.sh) and [`USER_GUIDE.md`](USER_GUIDE.md) |
+| **Web Editor** (`apps/editor/`) | Legacy — frozen, bug fixes only | See [`EDITOR.md`](EDITOR.md) |
+| **Desktop GUI** (`crates/ui/`) | Power users, **primary surface** | See [`run_desktop.sh`](run_desktop.sh) and [`USER_GUIDE.md`](USER_GUIDE.md) |
 
 ## Key Documents
 

@@ -164,12 +164,12 @@ Each phase has: **Files to Read**, **Files to Edit**, **Milestones** (testable e
 - **Files to edit:** `chat.rs` — streaming messages, markdown formatting, responsive layout adjustments.
 - **Milestone:** Chat renders streamed assistant messages; markdown works.
 
-**Phase 4.3 — Studio Integration (Target: Week 8)**
+**Phase 4.3 — Studio Integration (COMPLETED — via Phase 2.5 + Phase 3)**
 - **Files to read:** `apps/studio/components/*.tsx`
 - **Files to edit:** `desktop_app.rs` — compose existing widgets into unified interface (`FileTree` + `Wiki` + `LinkGraph` + `Sessions` + `Timeline` + `Editor` + `Chat`).
 - **Milestone:** Desktop shows unified studio: left (pacing + session info), center (chat + generation), right (editor + browsers + timeline). All interactive.
 
-**Phase 4.4 — Freeze Web Apps (Concurrent with 4.1-4.3)**
+**Phase 4.4 — Freeze Web Apps (NEXT — Target: Week 7)**
 - **Policy:** `apps/chat/`, `apps/studio/`, `apps/editor/` frozen for new features. Bug fixes allowed. New features go to `crates/ui/`.
 - **Milestone:** `README.md` and `PROJECT_STRUCTURE.md` clearly state desktop is primary; web apps deprecated for new development.
 

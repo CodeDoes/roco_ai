@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `crates/app/` | Rust library (`roco_app`) | Core primitive that wires sessions, workspace, and model backends. Every surface uses it. | Only for feature work; see `EDIT_GUIDE.md` |
 | `crates/ui/` | Rust library (`roco_ui`) | Desktop widgets (egui) — pacing, chat, markdown editor, file tree, etc. | Yes — standalone-first rule applies |
-| `apps/` | Web frontends | `chat/` (Next.js), `studio/` (Next.js), `editor/` (Vite), plugins (`vscode/`, `zed/`, `obsidian/`) | Yes — untested; migrate toward `crates/ui` per `roadmap/README.md` |
+| `apps/` | Web frontends (FROZEN) | `chat/` (Next.js), `studio/` (Next.js), `editor/` (Vite), plugins (`vscode/`, `zed/`, `obsidian/`) | Bug fixes only — no new features. Desktop (`crates/ui/`) is the primary surface. |
 
 ## Main Entry Points for End Users
 
@@ -16,7 +16,7 @@
 |---|---|
 | Write a story (CLI, interactive) | `start.sh` or `cargo run --release --example story_human -p roco-cli` |
 | Run desktop GUI (egui) | `run_desktop.sh` or `cargo run --release -p roco-ui` (if binary exists) |
-| Start web chat server + UI | `cargo run --release -p roco-server` + `npm run dev` in `apps/chat/` |
+| Start web chat server + UI (legacy) | `cargo run --release -p roco-server` + `npm run dev` in `apps/chat/` |
 | Run tests quickly | `run_tests.sh` |
 | Check agent-edit safety | Read `AGENT_GUIDE.md` and `EDIT_GUIDE.md` first |
 
