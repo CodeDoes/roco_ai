@@ -1,0 +1,43 @@
+{
+  // RoCo AI — per-crate rust-analyzer config for fast edit loops.
+  //
+  // Default `cargo check` builds only the CLI crate (default-members).
+  // rust-analyzer should NOT check the full workspace (wgpu, egui, axum)
+  // unless you explicitly open those crates' Cargo.toml.
+  //
+  // To check a specific crate, open its directory in a separate VS Code
+  // window, or use `make watch CRATE=roco-agent` in the terminal.
+
+  "rust-analyzer.check.workspace": false,
+
+  // Check only the package nearest to the open file. This avoids pulling
+  // in GPU/GUI/HTTP deps when editing agent, engine, or grammar code.
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "check",
+    "--manifest-path",
+    "${workspaceFolder}/Cargo.toml",
+    "--no-default-features",
+    "-p",
+    "roco-cli"
+  ],
+
+  // Don't build the whole workspace on save — too slow.
+  "rust-analyzer.cargo.allFeatures": false,
+  "rust-analyzer.cargo.noDefaultFeatures": true,
+
+  // Only load workspace crates relevant to the default CLI path.
+  // Load the full set only when explicitly needed.
+  "rust-analyzer.linkedProjects": [
+    "crates/cli/Cargo.toml",
+    "crates/agent/Cargo.toml",
+    "crates/engine/Cargo.toml",
+    "crates/grammar/Cargo.toml",
+    "crates/app/Cargo.toml",
+    "crates/workspace/Cargo.toml",
+    "crates/session/Cargo.toml",
+    "crates/message/Cargo.toml",
+    "crates/infer-client/Cargo.toml",
+    "crates/tools/Cargo.toml",
+  ]
+}

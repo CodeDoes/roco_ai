@@ -1,15 +1,4 @@
-//! Desktop subcommands: `roco tui` and `roco gui`.
-
-use crate::daemon;
-
-pub fn cmd_tui(_extra: &[&str]) {
-    println!("Connecting to inference service...");
-    let backend = daemon::ensure_sync_backend();
-    println!("Starting TUI...");
-    if let Err(e) = roco_tui::App::new(backend).run() {
-        eprintln!("TUI run error: {e}");
-    }
-}
+//! Desktop subcommands: `roco gui`.
 
 pub fn cmd_gui(_extra: &[&str]) {
     use eframe::egui;
@@ -21,11 +10,11 @@ pub fn cmd_gui(_extra: &[&str]) {
     let exe = std::env::current_exe().expect("failed to get current exe path");
 
     // 1. Start gateway daemon if not running
-    println!("Checking gateway daemon on port {}...", daemon::GATEWAY_PORT);
-    let already_running = daemon::ensure_daemon(
+    println!("Checking gateway daemon on port {}...", crate::daemon::GATEWAY_PORT);
+    let already_running = crate::daemon::ensure_daemon(
         &exe,
         "gateway",
-        daemon::GATEWAY_PORT,
+        crate::daemon::GATEWAY_PORT,
         &["--detach"],
     );
 
@@ -36,8 +25,8 @@ pub fn cmd_gui(_extra: &[&str]) {
             .build()
             .expect("Failed to build Tokio runtime");
         rt.block_on(async {
-            match daemon::wait_for_healthy(
-                daemon::GATEWAY_PORT,
+            match crate::daemon::wait_for_healthy(
+                crate::daemon::GATEWAY_PORT,
                 std::time::Duration::from_secs(15),
                 "Gateway",
             )
@@ -54,8 +43,8 @@ pub fn cmd_gui(_extra: &[&str]) {
         println!("Gateway already running.");
     }
 
-    // 2. Construct the shared AppContext (Phase 3.1: single surface primitive).
-    let gateway_url = format!("http://127.0.0.1:{}", daemon::GATEWAY_PORT);
+    // 2. Construct the shared AppContext.
+    let gateway_url = format!("http://127.0.0.1:{}", crate::daemon::GATEWAY_PORT);
     let backend: Option<Arc<dyn roco_engine::ModelBackend>> = Some(
         Arc::new(RemoteBackend::new(gateway_url.clone()))
             as Arc<dyn roco_engine::ModelBackend>,

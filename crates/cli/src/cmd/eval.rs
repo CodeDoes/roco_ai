@@ -2,17 +2,15 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::parse_opt;
-
 pub fn cmd_eval(extra: &[&str]) {
-    let output = parse_opt("--output", extra).unwrap_or("evals/results/latest.json");
+    let output = crate::parse_opt("--output", extra).unwrap_or("evals/results/latest.json");
     let exit_code = crate::run_cargo_get_code(
         "run",
         &[
             "-p",
-            "roco-cli",
+            "roco-inference",
             "--example",
-            "eval_suite",
+            "rwkv_test",
             "--release",
             "--",
             "--backend",
@@ -30,10 +28,7 @@ pub fn cmd_eval(extra: &[&str]) {
                     let name = r["name"].as_str().unwrap_or("");
                     let out = r["output"].as_str().unwrap_or("").trim();
                     if !name.is_empty() {
-                        snap.insert(
-                            name.to_string(),
-                            serde_json::Value::String(out.to_string()),
-                        );
+                        snap.insert(name.to_string(), serde_json::Value::String(out.to_string()));
                     }
                 }
                 let snap_json = serde_json::Value::Object(snap);
@@ -48,7 +43,7 @@ pub fn cmd_eval(extra: &[&str]) {
 }
 
 pub fn cmd_bless(extra: &[&str]) {
-    let snapshot = parse_opt("--snapshot", extra)
+    let snapshot = crate::parse_opt("--snapshot", extra)
         .map(PathBuf::from)
         .unwrap_or_else(|| snapshot_path("evals/results/latest.json"));
 
@@ -83,16 +78,16 @@ pub fn cmd_bless(extra: &[&str]) {
         let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
         let mut changed = 0;
 
-        for (name, out_val) in obj.iter() {
+        for (name, out_val) in obj {
             let out_str = out_val.as_str().unwrap_or("");
-            if let Some(name_line) = lines.iter().position(|l| {
-                l.trim() == &format!("name: \"{}\".into(),", name)
-            }) {
+            if let Some(name_line) = lines
+                .iter()
+                .position(|l| l.trim() == format!("name: \"{}\".into(),", name))
+            {
                 let mut oracle_line = None;
-                for i in name_line..lines.len() {
-                    let trimmed = lines[i].trim();
-                    if trimmed.starts_with("oracle: Some(")
-                        || trimmed.starts_with("oracle: None,")
+                for (i, line) in lines.iter().enumerate().skip(name_line) {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,")
                     {
                         oracle_line = Some(i);
                         break;
@@ -108,8 +103,7 @@ pub fn cmd_bless(extra: &[&str]) {
                         .replace('\\', "\\\\")
                         .replace('"', "\\\"")
                         .replace('\n', "\\n");
-                    let indent =
-                        &lines[oi][..lines[oi].len() - lines[oi].trim_start().len()];
+                    let indent = &lines[oi][..lines[oi].len() - lines[oi].trim_start().len()];
                     lines[oi] = format!("{indent}oracle: Some(\"{escaped}\".into()),");
                     changed += 1;
                     eprintln!("  blessed {name}: \"{escaped}\"");
