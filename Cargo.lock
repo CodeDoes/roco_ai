@@ -4567,6 +4567,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "roco-validation"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "roco-engine",
+ "roco-grammar",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "roco-workspace"
 version = "0.1.0"
 dependencies = [
