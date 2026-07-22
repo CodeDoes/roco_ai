@@ -202,17 +202,13 @@ impl FileTree {
         };
 
         let _id = ui.make_persistent_id(format!("file_{:?}", node.path));
-        let response = egui::Frame::none()
+        let response = egui::Frame::NONE
             .fill(bg)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.add_space(indent);
                     let label = format!("{} {}", icon, node.name);
-                    let resp = if node.is_dir {
-                        ui.selectable_label(selected, &label)
-                    } else {
-                        ui.selectable_label(selected, &label)
-                    };
+                    let resp = ui.selectable_label(selected, &label);
 
                     if resp.clicked() {
                         if node.is_dir {
@@ -289,10 +285,8 @@ mod tests {
         ));
         let _ = std::fs::create_dir_all(&dir);
         // Clean any leftover files
-        for entry in std::fs::read_dir(&dir).unwrap_or_else(|_| std::fs::read_dir("/").unwrap()) {
-            if let Ok(e) = entry {
-                let _ = std::fs::remove_file(e.path());
-            }
+        for e in std::fs::read_dir(&dir).unwrap_or_else(|_| std::fs::read_dir("/").unwrap()).flatten() {
+            let _ = std::fs::remove_file(e.path());
         }
         let _ = std::fs::write(dir.join("hello.md"), "# Hello");
         let _ = std::fs::write(dir.join("main.rs"), "fn main() {}");

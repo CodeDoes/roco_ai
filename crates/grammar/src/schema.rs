@@ -254,7 +254,7 @@ mod tests {
 
         let number_schema = Schema::number();
         let compiled = JSONSchema::compile(number_schema.to_json()).unwrap();
-        assert!(compiled.is_valid(&json!(3.14)));
+        assert!(compiled.is_valid(&json!(3.5)));
         assert!(compiled.is_valid(&json!(42)));
 
         let boolean_schema = Schema::boolean();

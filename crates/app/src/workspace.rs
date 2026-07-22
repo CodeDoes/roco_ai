@@ -4,7 +4,7 @@
 //! Wraps `roco_workspace::Workspace` + `roco_agent::reversibility::VersionControl`
 //! so surfaces don't import either directly.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use roco_agent::reversibility::VersionControl;
 use roco_workspace::{Workspace as CoreWorkspace, WorkspaceKind};
@@ -27,7 +27,7 @@ pub struct Timeline {
 
 impl AppWorkspace {
     /// Open (creating if missing) a workspace of `kind` under `root`.
-    pub fn open(root: &PathBuf, name: &str, kind: WorkspaceKind) -> AppResult<Self> {
+    pub fn open(root: &Path, name: &str, kind: WorkspaceKind) -> AppResult<Self> {
         let core = CoreWorkspace::new(root.join(name), kind).map_err(AppError::Workspace)?;
         let vc = VersionControl::new(root.join(name));
         Ok(Self {
@@ -73,12 +73,12 @@ impl AppWorkspace {
         let rb = self.read_snapshot_files(&b.id)?;
         let added: Vec<String> = rb
             .keys()
-            .filter(|p| ra.get(*p).is_none())
+            .filter(|p| !ra.contains_key(*p))
             .cloned()
             .collect();
         let removed: Vec<String> = ra
             .keys()
-            .filter(|p| rb.get(*p).is_none())
+            .filter(|p| !rb.contains_key(*p))
             .cloned()
             .collect();
         let mut out = String::new();

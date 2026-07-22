@@ -6,6 +6,7 @@
 //! produce a human response, possibly reading/writing files via tools along the
 //! way.
 
+use async_trait::async_trait;
 use roco_engine::ModelBackend;
 
 use crate::error::AgentError;
@@ -21,7 +22,7 @@ use crate::error::AgentError;
 /// Note: this trait uses native async fn (Rust 2021), which requires static
 /// dispatch (`fn foo<T: BaseAgent>(agent: &T)`). Dynamic dispatch
 /// (`Box<dyn BaseAgent>`) would require the `async-trait` crate.
-#[allow(async_fn_in_trait)]
+#[async_trait]
 pub trait BaseAgent: Send + Sync {
     /// Run the agent pipeline for a single human message.
     ///

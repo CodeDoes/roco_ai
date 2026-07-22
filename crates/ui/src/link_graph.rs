@@ -377,7 +377,7 @@ impl LinkGraph {
                     NodeKind::Theme,
                 ] {
                     let color = kind.default_color();
-                    egui::Frame::none().fill(color).show(ui, |ui| { ui.allocate_space(Vec2::splat(8.0)); });
+                    egui::Frame::NONE.fill(color).show(ui, |ui| { ui.allocate_space(Vec2::splat(8.0)); });
                     ui.label(RichText::new(kind.label()).size(10.0));
                     ui.add_space(8.0);
                 }

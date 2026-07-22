@@ -6,6 +6,9 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Callback invoked for each token emitted during streaming generation.
+pub type OnToken = Option<Box<dyn Fn(&str) + Send + Sync>>;
+
 #[derive(Debug, Error)]
 pub enum EngineError {
     #[error("backend failure: {0}")]
@@ -48,7 +51,7 @@ pub struct CompletionRequest {
     pub thinking: bool,
     pub preserve_state: bool,
     #[serde(skip)]
-    pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_token: OnToken,
     pub session: Option<String>,
     /// Wall-clock deadline for the entire completion (including prompt
     /// processing and all generated tokens). Specified in milliseconds.

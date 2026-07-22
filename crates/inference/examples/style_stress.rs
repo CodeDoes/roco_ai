@@ -142,12 +142,12 @@ async fn main() -> anyhow::Result<()> {
         let mut total_prompt = 0;
         let mut total_completion = 0;
         let mut scores: Vec<(f64, f64)> = Vec::new();
-        for i in 0..turns_per_style {
+        for (i, input) in inputs.iter().enumerate() {
             eprint!("  {:>2}/{}: ", i + 1, turns_per_style);
             let _ = std::io::stderr().flush();
             let streamed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
             let cloned = streamed.clone();
-            let prompt = build_prompt(style, &turns, &inputs[i], system);
+            let prompt = build_prompt(style, &turns, input, system);
             let resp = backend
                 .complete(CompletionRequest {
                     system: String::new(),

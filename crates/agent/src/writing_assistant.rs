@@ -154,6 +154,12 @@ pub struct WritingAssistant {
     themes: Vec<String>,
 }
 
+impl Default for WritingAssistant {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WritingAssistant {
     /// Create a new writing assistant
     pub fn new() -> Self {

@@ -207,7 +207,7 @@ mod tests {
     fn parse_assistant_response_mixed() {
         let text = r#"Hello <think>Let me check</think> The answer is <tool_call>{"name": "read", "arguments": {"path": "x"}}</tool_call> Done."#;
         let segments = parse_assistant_response(text);
-        assert!(segments.len() >= 1);
+        assert!(!segments.is_empty());
         // The first segment should be text or think
         let has_think = segments
             .iter()

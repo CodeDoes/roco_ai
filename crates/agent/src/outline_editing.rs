@@ -321,11 +321,7 @@ impl OutlineEditor {
 
         // Remove chapter
         if lower.starts_with("remove ") || lower.starts_with("delete ") {
-            let rest = if lower.starts_with("remove ") {
-                &input[7..]
-            } else {
-                &input[7..]
-            };
+            let rest = &input[7..];
 
             if let Ok(pos) = rest.trim().parse::<usize>() {
                 return Some(OutlineCommand::Remove { position: pos - 1 });

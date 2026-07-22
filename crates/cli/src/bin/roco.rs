@@ -9,6 +9,7 @@
 //!   3. cmd_eval / cmd_bless (lines 500-700)
 //!   4. cmd_server / cmd_gateway / cmd_gui (lines 120-500)
 //!   5. Story pipeline (cmd_story) — outline → wiki → chapter ×3 → validation → correction → synopsis → publish (lines 700-1370)
+//!
 //! ════════════════════════════════════════════════════════════════════════════
 //!
 //! Usage:
@@ -87,6 +88,12 @@ fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path
     println!("roco {subcmd} started (PID {pid})");
     println!("  log:      {}", log_path.display());
     println!("  pidfile:  {}", pid_path.display());
+
+    // Detach: child is a daemon that outlives the caller.
+    // The parent (main) exits right after this, so child is adopted by init
+    // which reaps it. `forget` prevents clippy::zombie_processes and also
+    // keeps the process alive on Windows (where Child::drop would kill it).
+    std::mem::forget(child);
 }
 
 /// Compute a default path under `/tmp/roco/` for PID or log files.
@@ -481,8 +488,8 @@ fn cmd_bless(extra: &[&str]) {
                 .position(|l| l.trim() == format!("name: \"{}\".into(),", name))
             {
                 let mut oracle_line = None;
-                for i in name_line..lines.len() {
-                    let trimmed = lines[i].trim();
+                for (i, line) in lines.iter().enumerate().skip(name_line) {
+                    let trimmed = line.trim();
                     if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,")
                     {
                         oracle_line = Some(i);
@@ -874,7 +881,7 @@ fn cmd_story(extra: &[&str]) {
     );
 
     let strategy_str = parse_opt("--strategy", extra).unwrap_or("loose");
-    let strategy_kind = StrategyKind::from_str(strategy_str).unwrap_or(StrategyKind::LooseJson);
+    let strategy_kind = StrategyKind::parse(strategy_str).unwrap_or(StrategyKind::LooseJson);
 
     let max_tok_str = parse_opt("--max-tokens", extra).unwrap_or("600");
     let max_tokens = max_tok_str.parse::<usize>().unwrap_or(600);

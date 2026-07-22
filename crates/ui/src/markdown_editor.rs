@@ -1307,9 +1307,11 @@ mod tests {
 
     #[test]
     fn test_selection_state() {
-        let mut sel = SelectionState::default();
-        sel.cursor = 10;
-        sel.selection_end = Some(20);
+        let mut sel = SelectionState {
+            cursor: 10,
+            selection_end: Some(20),
+            ..Default::default()
+        };
         assert!(sel.has_selection());
         assert_eq!(sel.range(), Some(TextRange::new(10, 20)));
 

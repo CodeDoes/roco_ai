@@ -60,7 +60,6 @@ macro_rules! state_load {
 }
 
 impl AnyState {
-    #[allow(dead_code)]
     async fn back(&self, batch: usize) -> Result<TensorCpu<f32>, TensorError> {
         match self {
             AnyState::V4(s) => state_back!(s, web_rwkv::runtime::v4::State, batch),
@@ -90,15 +89,13 @@ pub struct CompleteReq {
     pub max_tokens: usize,
     pub temperature: f32,
     pub top_a: Option<f32>,
-    #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
     pub grammar: Option<String>,
     /// Opaque grammar constraint callback, created outside this crate
     /// so grammar-engine types never enter this compilation unit.
-    #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
     pub bnf_mask: Option<Box<dyn BnfMask>>,
     pub reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
     pub preserve_state: bool,
-    pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_token: roco_engine::OnToken,
     pub session: Option<String>,
     /// Wall-clock deadline for the entire completion in milliseconds.
     /// 0 = no deadline.
@@ -160,7 +157,6 @@ pub struct RwkvActor {
     /// Vocab bytes (token_id → raw bytes) used by application layer to create
     /// `BnfMask` instances. Stored as plain bytes — no kbnf types ever enter
     /// this crate.
-    #[cfg_attr(not(feature = "grammar"), allow(dead_code))]
     pub vocab_bytes: Vec<Vec<u8>>,
     pub token_chunk_size: usize,
     pub _model_data: Vec<u8>,
@@ -483,31 +479,30 @@ impl RwkvActor {
 
     pub async fn handle_complete(
         &mut self,
-        system: String,
-        prompt: String,
-        prefill: Option<String>,
-        max_tokens: usize,
-        temperature: f32,
-        top_a: Option<f32>,
-        preserve_state: bool,
-        on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
-        #[cfg_attr(not(feature = "grammar"), allow(unused))] grammar: Option<String>,
-        session: Option<String>,
-        mut bnf_mask: Option<Box<dyn BnfMask>>,
+        req: CompleteReq,
         // Receiver half of the actor's mailbox. We carry it into
         // `handle_complete` so we can drain `Cancel` messages cooperatively
         // without round-tripping through the actor's main loop (the main
         // loop is blocked inside this call and cannot poll its own mailbox
         // until `handle_complete` returns).
         rx: &mut mpsc::Receiver<ActorMessage>,
-        // Wall-clock deadline for the entire completion in milliseconds.
-        // 0 = no deadline. The backend already wraps `complete()` in
-        // `tokio::time::timeout` and posts a `Cancel` on expiry; we keep
-        // this independent hard-stop so even if the Cancel somehow does
-        // not propagate (backend dropped sender, panic, etc.) we still
-        // cap runaway generations on the actor side.
-        #[allow(unused)] deadline_ms: u64,
-    ) -> Result<(String, TokenUsage), EngineError> {
+    ) {
+        // Destructure request fields for backward-compatible access
+        let CompleteReq {
+            system,
+            prompt,
+            prefill,
+            max_tokens,
+            temperature,
+            top_a,
+            preserve_state,
+            on_token,
+            grammar: _grammar,
+            session,
+            bnf_mask: mut bnf_mask,
+            reply,
+            ..
+        } = req;
         let session_id = session.as_ref().cloned();
         let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
 
@@ -550,12 +545,13 @@ impl RwkvActor {
         // model echo the scaffolding. So resumed calls feed only the
         // incremental context. The bake call itself (preserve_state) also
         // skips the System wrapper for the same reason.
-        let full = if system.is_empty() {
-            format!("User: {prompt}\n\nAssistant:")
-        } else if session_id.is_some() || preserve_state {
-            format!("User: {prompt}\n\nAssistant:")
-        } else {
+        let use_system = !system.is_empty()
+            && session_id.is_none()
+            && !preserve_state;
+        let full = if use_system {
             format!("System: {}\n\nUser: {prompt}\n\nAssistant:", system.trim())
+        } else {
+            format!("User: {prompt}\n\nAssistant:")
         };
 
         // Pre-fill if provided (for pre-think blocks, etc.)
@@ -639,7 +635,7 @@ impl RwkvActor {
                 .map_err(|e| EngineError::Backend(format!("RWKV inference: {e:?}")))?;
             inference = input;
 
-            if inference.batches[0].tokens.len() > 0 {
+            if !inference.batches[0].tokens.is_empty() {
                 continue;
             }
 
@@ -734,13 +730,14 @@ impl RwkvActor {
         }
 
         if !first_token_sampled {
-            return Ok((
+            let _ = reply.send(Ok((
                 text,
                 TokenUsage {
                     prompt_tokens: prompt_len,
                     completion_tokens: 0,
                 },
-            ));
+            )));
+            return;
         }
 
         // Generate remaining tokens
@@ -888,7 +885,8 @@ impl RwkvActor {
         }
 
         let result_text = if generated.is_empty() {
-            return Err(EngineError::EmptyResponse);
+            let _ = reply.send(Err(EngineError::EmptyResponse));
+            return;
         } else {
             let decoded = self
                 .tokenizer
@@ -920,13 +918,13 @@ impl RwkvActor {
             }
         }
 
-        Ok((
+        let _ = reply.send(Ok((
             result_text,
             TokenUsage {
                 prompt_tokens: prompt_len,
                 completion_tokens: generated.len(),
             },
-        ))
+        )));
     }
 
     pub async fn run(mut self, mut rx: mpsc::Receiver<ActorMessage>) {
@@ -935,39 +933,10 @@ impl RwkvActor {
             match msg {
                 Complete(req) => {
                     self.cancel.store(false, Ordering::Relaxed);
-                    let CompleteReq {
-                        system,
-                        prompt,
-                        prefill,
-                        max_tokens,
-                        temperature,
-                        top_a,
-                        grammar,
-                        bnf_mask,
-                        reply,
-                        preserve_state,
-                        on_token,
-                        session,
-                        deadline_ms,
-                    } = req;
                     let result = self
-                        .handle_complete(
-                            system,
-                            prompt,
-                            prefill,
-                            max_tokens,
-                            temperature,
-                            top_a,
-                            preserve_state,
-                            on_token,
-                            grammar,
-                            session,
-                            bnf_mask,
-                            &mut rx,
-                            deadline_ms,
-                        )
+                        .handle_complete(req, &mut rx)
                         .await;
-                    let _ = reply.send(result);
+                    // reply is sent inside handle_complete
                 }
                 BlendStates(req) => {
                     let BlendReq {
@@ -1043,7 +1012,7 @@ fn serialize_state(t: &TensorCpu<f32>) -> Vec<u8> {
 }
 
 fn deserialize_state(bytes: &[u8]) -> Result<(Vec<u32>, Vec<f32>), EngineError> {
-    if bytes.len() < 16 || (bytes.len() - 16) % 4 != 0 {
+    if bytes.len() < 16 || !(bytes.len() - 16).is_multiple_of(4) {
         return Err(EngineError::Backend("state bytes malformed".into()));
     }
     let mut dims = [0u32; 4];

@@ -8,6 +8,7 @@
 //!   2. StoryConfig, StoryEngine (lines 250-650)
 //!   3. generate_outline(), expand_outline(), generate_chapter() (lines 650-950)
 //!   4. Quality evaluation (evaluate_chapter_quality, revise_chapter) (lines 950+)
+//!
 //! ════════════════════════════════════════════════════════════════════════════
 //!
 //! Extends the basic story pipeline with:

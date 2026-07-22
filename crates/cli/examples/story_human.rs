@@ -16,7 +16,7 @@
 
 use std::io::{self, Write};
 
-use roco_agent::interaction::{HumanAction, InteractionMode};
+use roco_agent::interaction::InteractionMode;
 use roco_agent::natural_feedback::FeedbackParser;
 use roco_agent::outline_editing::OutlineEditor;
 use roco_agent::story_direction::StoryDirection;

@@ -9,6 +9,7 @@
 //!   3. Widget action handlers (handle_chat_action, handle_file_tree_action, etc.) (lines 200-450)
 //!   4. show_right_panel() — renders Editor/FileTree/Wiki/LinkGraph/Sessions/Timeline (lines 450-600)
 //!   5. update() — menu bar, left panel, right panel, central chat (lines 600-900)
+//!
 //! ════════════════════════════════════════════════════════════════════════════
 //!
 //! Wires together all widgets (PacingWidget, ChatWidget, MarkdownEditor,

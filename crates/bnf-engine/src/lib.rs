@@ -192,10 +192,7 @@ impl BnfMask for BnfEngine {
         // If accept_token returns an error (token not allowed), the grammar
         // is still alive — the caller just made a bad choice. Return false
         // only on Finished.
-        match self.accept_token(token_id) {
-            Ok(active) => active,
-            Err(_) => true, // token rejected but grammar still active
-        }
+        self.accept_token(token_id).unwrap_or(true)
     }
 }
 
@@ -247,7 +244,7 @@ mod tests {
             " ",
             "root ::= \"{\" \"\\\"key\\\"\" \":\" string \"}\";",
         );
-        let mut engine = BnfEngine::new(&grammar, &vocab).unwrap();
+        let mut engine = BnfEngine::new(grammar, &vocab).unwrap();
 
         // Initial state: '{' (4) should be the only allowed token
         let mut logits = vec![0.0f32; vocab.len()];
@@ -334,7 +331,7 @@ mod tests {
             }
         }
 
-        let engine = BnfEngine::new(&grammar, &vocab).unwrap();
+        let engine = BnfEngine::new(grammar, &vocab).unwrap();
         eprintln!(
             "  allowed_count after init: {} / {}",
             engine.allowed_count(),
@@ -348,7 +345,7 @@ mod tests {
         // Check that '{' (byte 0x7b) is allowed
         let mut logits = vec![0.0f32; vocab.len()];
         engine.mask_logits(&mut logits).unwrap();
-        let open_brace = 0x7b as usize;
+        let open_brace = 0x7b_usize;
         assert!(
             logits[open_brace].is_finite(),
             "'{{' (token {}) should be allowed at start",

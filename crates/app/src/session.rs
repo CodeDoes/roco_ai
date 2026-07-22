@@ -3,7 +3,7 @@
 //! Wraps `roco_session::store::SessionStore` and `roco_agent::SessionStore`
 //! so surfaces don't import either directly.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use roco_agent::SessionStore as AgentSessionStore;
@@ -35,7 +35,7 @@ impl SessionHandle {
     }
 
     /// List all session ids under `root`.
-    pub fn list(root: &PathBuf) -> Vec<String> {
+    pub fn list(root: &Path) -> Vec<String> {
         let mut ids = Vec::new();
         // Sessions live under `<root>/.roco/sessions/`.
         let sessions_dir = root.join(".roco").join("sessions");

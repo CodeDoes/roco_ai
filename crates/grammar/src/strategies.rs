@@ -20,6 +20,10 @@ use serde::de::DeserializeOwned;
 use crate::json_schema::schema_to_gbnf;
 use crate::Schema;
 
+/// Generic parser function for structured output strategies.
+/// Takes raw model output text and returns a parsed value or error string.
+pub type ParserFn<T> = Box<dyn Fn(&str) -> Result<T, String> + Send + Sync>;
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Trait
 // ═════════════════════════════════════════════════════════════════════════════
@@ -169,7 +173,7 @@ impl<T: DeserializeOwned> OutputParser<T> for LooseJsonStrategy {
 /// classes, etc.), but parsing is manual and prone to schema drift.
 pub struct RawGbnfStrategy<T> {
     grammar: String,
-    parser: Box<dyn Fn(&str) -> Result<T, String> + Send + Sync>,
+    parser: ParserFn<T>,
 }
 
 impl<T: DeserializeOwned + Send + Sync + 'static> RawGbnfStrategy<T> {
@@ -194,7 +198,7 @@ impl<T: DeserializeOwned + Send + Sync + 'static> RawGbnfStrategy<T> {
     /// Create with a custom parser (e.g., for non-JSON output formats).
     pub fn with_parser(
         grammar: &str,
-        parser: Box<dyn Fn(&str) -> Result<T, String> + Send + Sync>,
+        parser: ParserFn<T>,
     ) -> Self {
         Self {
             grammar: grammar.to_string(),
@@ -246,7 +250,7 @@ impl StrategyKind {
         ]
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "schema" | "strict" => Some(Self::Schema),
             "loose" | "loose-json" | "permissive" => Some(Self::LooseJson),
@@ -344,7 +348,7 @@ fn clean_json_output(text: &str) -> String {
 
     // No fences found — try to find JSON object/array directly
     // Look for first '{' or '[' and last '}' or ']'
-    if let Some(start) = trimmed.find(|c| c == '{' || c == '[') {
+    if let Some(start) = trimmed.find(['{', '[']) {
         let end_char = if trimmed.as_bytes()[start] == b'{' {
             '}'
         } else {

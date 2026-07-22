@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use roco_engine::{CompletionRequest, ModelBackend, TokenUsage};
 use roco_message::{
     assistant_response_gbnf, error::complete_with_retry, error::RetryConfig, MessageFormatOptions,
@@ -405,6 +406,7 @@ impl Default for Agent {
 
 // ── BaseAgent trait impl ────────────────────────────────────────────────
 
+#[async_trait]
 impl BaseAgent for Agent {
     /// Run the agent and return only the final human-readable text.
     async fn run(&self, backend: &dyn ModelBackend, msg: &str) -> Result<String, AgentError> {

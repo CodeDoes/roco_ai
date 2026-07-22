@@ -76,12 +76,12 @@ pub fn auto_quant(
 
     let mut plan = HashMap::new();
     for l in 0..n {
-        let q = if (l as usize) < edge || (l as usize) >= n - edge {
+        let q = if l < edge || l >= n - edge {
             Quant::None
         } else {
             q_mid
         };
-        plan.insert(l as usize, q);
+        plan.insert(l, q);
     }
 
     info!(
@@ -181,10 +181,10 @@ pub fn sandwich_quant(info: &ModelInfo, gpu_coop: bool) -> HashMap<usize, Quant>
     let q_mid = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
     let mut plan = HashMap::new();
     for l in 0..n {
-        if (l as usize) < edge || (l as usize) >= n - edge {
-            plan.insert(l as usize, Quant::None);
+        if l < edge || l >= n - edge {
+            plan.insert(l, Quant::None);
         } else {
-            plan.insert(l as usize, q_mid);
+            plan.insert(l, q_mid);
         }
     }
     plan

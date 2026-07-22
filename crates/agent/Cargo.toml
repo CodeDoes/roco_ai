@@ -20,3 +20,4 @@ tracing.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 futures.workspace = true
+async-trait.workspace = true

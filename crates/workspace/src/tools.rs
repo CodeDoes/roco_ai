@@ -336,7 +336,7 @@ impl Tool for WorkspaceListTool {
             let ft = entry.file_type().ok();
             entries.push(serde_json::json!({
                 "name": entry.file_name().to_string_lossy(),
-                "dir": ft.map_or(false, |f| f.is_dir()),
+                "dir": ft.is_some_and(|f| f.is_dir()),
                 "size": entry.metadata().ok().map(|m| m.len())
             }));
         }

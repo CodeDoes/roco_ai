@@ -157,14 +157,14 @@ fn run_daemon() -> anyhow::Result<()> {
                     };
                     let _ = stream
                         .try_clone()
-                        .and_then(|mut s| write!(s, "{}\n", serde_json::to_string(&resp)?));
+                        .and_then(|mut s| writeln!(s, "{}", serde_json::to_string(&resp)?));
                     continue;
                 }
             };
             let resp = handle_request(&req);
             let _ = stream
                 .try_clone()
-                .and_then(|mut s| write!(s, "{}\n", serde_json::to_string(&resp)?));
+                .and_then(|mut s| writeln!(s, "{}", serde_json::to_string(&resp)?));
             if req.method == "stop" {
                 eprintln!("daemon stopping");
                 remove_lockfile();

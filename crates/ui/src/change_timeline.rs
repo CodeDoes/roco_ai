@@ -228,7 +228,7 @@ impl ChangeTimeline {
                             ui.visuals().faint_bg_color
                         };
 
-                        let response = egui::Frame::none()
+                        let response = egui::Frame::NONE
                             .fill(bg)
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {

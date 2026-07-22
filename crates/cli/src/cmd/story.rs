@@ -218,7 +218,7 @@ pub fn cmd_story(extra: &[&str]) {
 
     let strategy_str = parse_opt("--strategy", extra).unwrap_or("loose");
     let strategy_kind =
-        StrategyKind::from_str(strategy_str).unwrap_or(StrategyKind::LooseJson);
+        StrategyKind::parse(strategy_str).unwrap_or(StrategyKind::LooseJson);
 
     let max_tok_str = parse_opt("--max-tokens", extra).unwrap_or("600");
     let max_tokens = max_tok_str.parse::<usize>().unwrap_or(600);

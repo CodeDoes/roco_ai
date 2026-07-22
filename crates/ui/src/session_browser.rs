@@ -215,7 +215,7 @@ impl SessionBrowser {
                         };
 
                         let _id = ui.make_persistent_id(format!("session_{}", entry.id));
-                        let response = egui::Frame::none()
+                        let response = egui::Frame::NONE
                             .fill(bg)
                             .show(ui, |ui| {
                                 ui.set_min_width(ui.available_width());
@@ -356,7 +356,7 @@ mod tests {
         dir
     }
 
-    fn write_test_session(dir: &PathBuf, id: &str, pacing: &str, messages: usize) {
+    fn write_test_session(dir: &std::path::Path, id: &str, pacing: &str, messages: usize) {
         let mut msgs = Vec::new();
         for i in 0..messages {
             msgs.push(serde_json::json!({
@@ -382,7 +382,7 @@ mod tests {
         write_test_session(&dir, "test1", "careful", 2);
         write_test_session(&dir, "test2", "rolling", 4);
 
-        let mut state = SessionBrowserState::new(dir.clone());
+        let state = SessionBrowserState::new(dir.clone());
         assert_eq!(state.sessions.len(), 2);
         assert!(state.sessions.iter().any(|s| s.id == "test1"));
         assert!(state.sessions.iter().any(|s| s.id == "test2"));

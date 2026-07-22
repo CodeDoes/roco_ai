@@ -123,7 +123,7 @@ fn facade_exposes_workspace_and_timeline() {
     let t1 = ctx.workspace_timeline_reset(&ws, "init").unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
     ws.transform("write file", |w| {
-        let p = w.resolve("draft.md").map_err(|e| AppError::Workspace(e))?;
+        let p = w.resolve("draft.md").map_err(AppError::Workspace)?;
         std::fs::write(&p, "# Draft").map_err(|e| AppError::Other(e.to_string()))?;
         Ok(())
     })

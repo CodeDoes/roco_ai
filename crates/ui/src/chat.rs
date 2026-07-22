@@ -316,7 +316,7 @@ pub fn split_response_with_thinking(raw_text: &str) -> Vec<ChatMessage> {
         }};
     }
 
-    let mut push_think = |chunks: &mut Vec<ChatMessage>, content: &str| {
+    let push_think = |chunks: &mut Vec<ChatMessage>, content: &str| {
         let content = content.trim();
         if content.is_empty() {
             return;
@@ -362,7 +362,7 @@ pub fn split_response_with_thinking(raw_text: &str) -> Vec<ChatMessage> {
         if has_assistant {
             flush_assistant!();
         }
-        push_think(&mut chunks, &content);
+        push_think(&mut chunks, content);
         cursor = body_end + close_tag.len();
         // Capture any post-think assistant prose.
         let next_think_rel = trimmed[cursor..].find(open_tag);
@@ -390,7 +390,6 @@ pub fn split_response_with_thinking(raw_text: &str) -> Vec<ChatMessage> {
 }
 
 /// Chat rendering widget
-
 pub struct ChatWidget;
 
 impl ChatWidget {
@@ -405,7 +404,6 @@ impl ChatWidget {
             ui.min_rect().left_top(),
             egui::vec2(ui.available_width(), messages_height),
         );
-        #[allow(deprecated)]
         let mut messages_ui = ui.child_ui(
             messages_rect,
             egui::Layout::top_down(egui::Align::LEFT),
@@ -420,7 +418,6 @@ impl ChatWidget {
             egui::pos2(ui.min_rect().left(), messages_ui.min_rect().bottom()),
             egui::vec2(ui.available_width(), input_height),
         );
-        #[allow(deprecated)]
         let mut input_ui = ui.child_ui(input_rect, egui::Layout::top_down(egui::Align::LEFT), None);
         let act = &mut action;
         Self::show_input_area(&mut input_ui, state, act);

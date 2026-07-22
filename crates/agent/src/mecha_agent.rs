@@ -9,6 +9,7 @@
 //!   3. BaseAgent trait impl
 //!   4. Backend call helper + grammar constants (INTENT_GRAMMAR, PLAN_GRAMMAR)
 //!   5. Tests (~20 tests covering dispatch, repair loop, validation, workspace)
+//!
 //! ════════════════════════════════════════════════════════════════════════════
 //!
 //! Replaces the model-driven ReAct loop with a **code-driven** pipeline:
@@ -41,6 +42,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_workspace::{Workspace, WorkspaceKind};
@@ -202,6 +204,12 @@ pub struct MechanisticAgent {
     memory_store: Option<Arc<MemoryStore>>,
     /// Context budget in tokens per inference call (0 = no limit).
     context_budget_tokens: usize,
+}
+
+impl Default for MechanisticAgent {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MechanisticAgent {
@@ -401,41 +409,6 @@ impl MechanisticAgent {
     /// tag contamination on undertrained RWKV models. Use `repair_derive()` with
     /// structured Intent context instead.
     ///
-    /// Prepend-pull protocol: surfaces context from past sessions and memory
-    /// that shares keywords with the current request or its goal.
-    #[deprecated(note = "Eliminates free-form generation that causes think-tag contamination")]
-    #[allow(dead_code)]
-    async fn think_with_intent(
-        &self,
-        backend: &dyn ModelBackend,
-        intent: &Intent,
-        msg: &str,
-    ) -> Result<String, AgentError> {
-        // Combine message + goal for richer query.
-        let query = format!("{} {}", msg, intent.goal);
-        let mut ctx_mgr = self.build_context_manager(&query, None);
-        let snippets = ctx_mgr.collect(&query);
-        let ctx_block = super::context::ContextManager::to_prompt_block(&snippets);
-
-        let mut prompt = format!(
-            "Route: {}\nGoal: {}\n\nRequest: {}\n\nReason about this and plan a response:",
-            intent.route, intent.goal, msg
-        );
-        if !ctx_block.is_empty() {
-            prompt.insert_str(0, &format!("{}\n\n", ctx_block));
-        }
-        let resp = backend_call(backend, "", &prompt, None, 512, 0.7).await?;
-        Ok(resp)
-    }
-
-    /// Phase 1 core: free-form model call without intent context.
-    #[allow(dead_code)]
-    async fn think(&self, _backend: &dyn ModelBackend, msg: &str) -> Result<String, AgentError> {
-        let prompt = format!("Reason about this request and plan a response:\n{}", msg);
-        let resp = backend_call(_backend, "", &prompt, None, 512, 0.7).await?;
-        Ok(resp)
-    }
-
     /// Phase 2: grammar-constrained model call with repair loop.
     ///
     /// Takes the structured Intent directly as context — no free-form thinking
@@ -588,6 +561,7 @@ pub type MechaAgent = MechanisticAgent;
 
 // ── BaseAgent trait impl ────────────────────────────────────────────────
 
+#[async_trait]
 impl BaseAgent for MechanisticAgent {
     /// Run the mechanistic pipeline and return only the final human-readable text.
     async fn run(&self, backend: &dyn ModelBackend, msg: &str) -> Result<String, AgentError> {

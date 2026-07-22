@@ -64,17 +64,6 @@ impl PacingChoice {
     }
 }
 
-/// Session metadata for resume
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SessionMeta {
-    pub id: String,
-    pub label: String,
-    pub pacing: String,
-    pub created_at: String,
-    pub message_count: usize,
-    pub last_prompt: Option<String>,
-}
-
 // ═════════════════════════════════════════════════════════════════════════════
 // Conversation State (mirrors ChatWidgetState for the CLI)
 // ═════════════════════════════════════════════════════════════════════════════

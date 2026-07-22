@@ -24,6 +24,7 @@ use serde::Deserialize;
 /// Top-level configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct RoCoConfig {
     pub model: ModelConfig,
     pub server: ServerConfig,
@@ -33,6 +34,7 @@ pub struct RoCoConfig {
 /// Model / inference settings.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct ModelConfig {
     /// Path to the RWKV-7 `.st` model file.
     pub path: Option<String>,
@@ -61,24 +63,7 @@ pub struct GatewayConfig {
 // Defaults
 // ═════════════════════════════════════════════════════════════════════════════
 
-impl Default for RoCoConfig {
-    fn default() -> Self {
-        Self {
-            model: ModelConfig::default(),
-            server: ServerConfig::default(),
-            gateway: GatewayConfig::default(),
-        }
-    }
-}
 
-impl Default for ModelConfig {
-    fn default() -> Self {
-        Self {
-            path: None,
-            vocab: None,
-        }
-    }
-}
 
 impl Default for ServerConfig {
     fn default() -> Self {

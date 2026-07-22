@@ -27,18 +27,6 @@ fn temp_session_dir(name: &str) -> PathBuf {
     dir
 }
 
-/// Helper: collect all session files in a directory.
-fn session_files(dir: &PathBuf) -> Vec<PathBuf> {
-    let mut files: Vec<_> = std::fs::read_dir(dir)
-        .unwrap_or_else(|_| std::fs::read_dir("/").unwrap())
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
-        .map(|e| e.path())
-        .collect();
-    files.sort();
-    files
-}
-
 /// A BDD-style user story in test-space.
 ///
 /// Story: "As a writer, I want to collaborate with AI to write a story,
@@ -293,7 +281,7 @@ fn user_story_complete_writing_session() {
     // THEN the writer can see the session in the browser timeline
     // ====================================================================
     assert!(
-        browser.filtered_sessions().len() >= 1,
+        !browser.filtered_sessions().is_empty(),
         "session browser shows at least one session"
     );
 

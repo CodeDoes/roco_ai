@@ -31,8 +31,7 @@ fn log_path(name: &str, port: u16) -> PathBuf {
 }
 
 /// Check if a daemon is running via health endpoint (synchronous, spawns its
-/// own runtime if needed). Safe to call from outside a tokio runtime only —
-/// use [`is_running_async`] from inside one.
+/// own runtime if needed).
 pub fn is_running(name: &str, port: u16) -> bool {
     let pid_file = pid_path(name);
     if !pid_file.exists() {
@@ -62,25 +61,7 @@ pub fn is_running(name: &str, port: u16) -> bool {
     true
 }
 
-/// Non-blocking version of `is_running` for use inside a tokio runtime.
-async fn is_running_async(name: &str, port: u16) -> bool {
-    let pid_file = pid_path(name);
-    if !pid_file.exists() {
-        return false;
-    }
 
-    let url = format!("http://127.0.0.1:{}/health", port);
-    let healthy = reqwest::get(&url)
-        .await
-        .map(|r| r.status().is_success())
-        .unwrap_or(false);
-
-    if !healthy {
-        let _ = std::fs::remove_file(&pid_file);
-        return false;
-    }
-    true
-}
 
 /// Start a daemon if not already running. Safe to call from both sync and
 /// async contexts. Tries to detect an already-running instance first.

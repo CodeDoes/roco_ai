@@ -68,15 +68,7 @@ pub struct Suggestion {
     pub confidence: f32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct QualityScore {
-    pub overall: f32,
-    pub pacing: f32,
-    pub engagement: f32,
-    pub plot_coherence: f32,
-    pub issues: Vec<String>,
-    pub suggestions: Vec<String>,
-}
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PlotStateResponse {
@@ -87,18 +79,9 @@ pub struct PlotStateResponse {
     pub arc_stage: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FeedbackResponse {
-    pub intent: String,
-    pub response: String,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PublishResponse {
-    pub path: String,
-    pub chapters: usize,
-    pub words: usize,
-}
+
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StatusResponse {

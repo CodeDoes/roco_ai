@@ -140,7 +140,7 @@ impl StoryPersistence {
         }
 
         // Sort by last saved (most recent first)
-        stories.sort_by(|a, b| b.last_saved.cmp(&a.last_saved));
+        stories.sort_by_key(|b| std::cmp::Reverse(b.last_saved));
 
         Ok(stories)
     }

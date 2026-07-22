@@ -9,6 +9,9 @@ pub trait SessionPool: Send {
     fn remove(&mut self, id: &str) -> Result<(), SessionError>;
     fn contains(&self, id: &str) -> bool;
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn max_capacity(&self) -> usize;
 }
 

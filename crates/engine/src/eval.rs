@@ -173,7 +173,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
         )
     };
 
-    let on_token: Option<Box<dyn Fn(&str) + Send + Sync>> = match trace_path {
+    let on_token: crate::types::OnToken = match trace_path {
         Some(path) => {
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
@@ -257,7 +257,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 if let Some(ref oracle) = case.oracle {
                     use std::io::Write;
                     let note = if output.contains(oracle) {
-                        format!("\n✓ oracle matches\n")
+                        "\n✓ oracle matches\n".to_string()
                     } else {
                         let trunc = |s: &str| {
                             let s = s.trim();
@@ -331,7 +331,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
             }
 
             let sentences: Vec<&str> = output
-                .split(|c: char| c == '.' || c == '!' || c == '?')
+                .split(['.', '!', '?'])
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
                 .collect();

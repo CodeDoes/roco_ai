@@ -36,7 +36,7 @@ impl WorkspaceKind {
         }
     }
 
-    pub fn from_str(s: &str) -> WorkspaceKind {
+    pub fn parse(s: &str) -> WorkspaceKind {
         match s.to_ascii_lowercase().as_str() {
             "eval" => WorkspaceKind::Eval,
             "temp" => WorkspaceKind::Temp,

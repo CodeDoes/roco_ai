@@ -31,6 +31,7 @@ use serde_json::Value;
 
 /// Which structural features to enable in the message GBNF.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub struct MessageFormatOptions {
     /// Whether the model may emit `<think>...</think>` reasoning blocks.
     pub think: bool,
@@ -38,14 +39,6 @@ pub struct MessageFormatOptions {
     pub tools: bool,
 }
 
-impl Default for MessageFormatOptions {
-    fn default() -> Self {
-        Self {
-            think: false,
-            tools: false,
-        }
-    }
-}
 
 /// Generate a GBNF grammar for the structured chat message format.
 ///
@@ -154,7 +147,7 @@ fn tool_schema_to_gbnf(schema: &Value) -> String {
         .unwrap_or("tool");
     // Produce a simple JSON object with name, description, parameters keys.
     // Each value is a JSON string or object, referencing the JSON library rules.
-    format!("\"{{\" string \":\" string \",\" string \":\" string \",\" string \":\" object \"}}\"")
+    "\"{\" string \":\" string \",\" string \":\" string \",\" string \":\" object \"}\"".to_string()
 }
 
 /// Build a `MessageFormatOptions` from flags.

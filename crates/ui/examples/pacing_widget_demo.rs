@@ -1,5 +1,5 @@
 use eframe::egui;
-use roco_ui::{PacingMode, PacingWidget, PacingWidgetState};
+use roco_ui::{PacingMode, PacingWidgetState};
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {

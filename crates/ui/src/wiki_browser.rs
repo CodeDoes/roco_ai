@@ -183,15 +183,15 @@ impl WikiBrowser {
                                 .show(ui, |inner_ui| {
                                     // Basic markdown rendering (plain text with headers)
                                     for line in page.content.lines() {
-                                        if line.starts_with("# ") {
-                                            inner_ui.heading(&line[2..]);
-                                        } else if line.starts_with("## ") {
+                                        if let Some(rest) = line.strip_prefix("# ") {
+                                            inner_ui.heading(rest);
+                                        } else if let Some(rest) = line.strip_prefix("## ") {
                                             inner_ui.label(
-                                                RichText::new(&line[3..]).size(18.0).strong(),
+                                                RichText::new(rest).size(18.0).strong(),
                                             );
-                                        } else if line.starts_with("### ") {
+                                        } else if let Some(rest) = line.strip_prefix("### ") {
                                             inner_ui.label(
-                                                RichText::new(&line[4..]).size(16.0).strong(),
+                                                RichText::new(rest).size(16.0).strong(),
                                             );
                                         } else if line.starts_with("- ") || line.starts_with("* ") {
                                             inner_ui.label(format!("  • {}", &line[2..]));

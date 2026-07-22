@@ -423,8 +423,8 @@ pub fn build_quant_plan(
     }
     let mut plan = HashMap::new();
     let q = if gpu_coop { Quant::NF4 } else { Quant::Int8 };
-    for layer in 0..num_layers {
-        if !layer_has_fp16[layer] {
+    for (layer, has_fp16) in layer_has_fp16.iter().enumerate() {
+        if !has_fp16 {
             plan.insert(layer, q);
         }
     }
