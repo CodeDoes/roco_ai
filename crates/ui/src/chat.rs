@@ -274,9 +274,123 @@ impl ChatWidgetState {
             .rev()
             .find(|m| m.role == MessageRole::Assistant)
     }
+
+    /// Add a model response, splitting `<think>...</think>` blocks
+    /// into their own collapsible `MessageRole::Think` entries.
+    /// See `split_response_with_thinking` for the behaviour.
+    pub fn add_assistant_response(&mut self, raw_text: &str) {
+        for chunk in split_response_with_thinking(raw_text) {
+            self.messages.push(chunk);
+        }
+    }
+}
+
+pub fn split_response_with_thinking(raw_text: &str) -> Vec<ChatMessage> {
+    let trimmed = raw_text.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let open_tag = "<think>";
+    let close_tag = "</think>";
+    // We walk the input linearly and append to a sequence of
+    // chunks. Each `<think>` block pushes via `push_or_coalesce_think`
+    // so adjacent think blocks (or one with intervening assistant
+    // content that we later re-emit into the same chunk) appear as
+    // a single `Think` entry in the chat list. The chat UI's
+    // `collapsing("Thinking trace", ...)` panel reads from a single
+    // `Think` message so any number of reasoning steps still show
+    // collapsed under one heading.
+    let mut chunks: Vec<ChatMessage> = Vec::new();
+    let mut pending_assistant: Option<String> = None;
+    let mut cursor: usize = 0;
+
+    // pending_assistant buffers prose we want to emit ahead of the
+    // next think (so a leading assistant gets pushed first).
+    macro_rules! flush_assistant {
+        () => {{
+            if let Some(t) = pending_assistant.take() {
+                {
+                    chunks.push(ChatMessage::assistant(t));
+                }
+            }
+        }};
+    }
+
+    let mut push_think = |chunks: &mut Vec<ChatMessage>, content: &str| {
+        let content = content.trim();
+        if content.is_empty() {
+            return;
+        }
+        // Try to coalesce with the previous Think chunk.
+        let last_think = chunks
+            .iter_mut()
+            .rev()
+            .find(|c| c.role == MessageRole::Think);
+        if let Some(last) = last_think {
+            if !last.content.is_empty() {
+                last.content.push_str("\n\n");
+            }
+            last.content.push_str(content);
+        } else {
+            chunks.push(ChatMessage::think(content.to_string()));
+        }
+    };
+
+    while let Some(rel) = trimmed[cursor..].find(open_tag) {
+        let abs_open = cursor + rel;
+        // Pre-tag prose is buffered into pending_assistant so it
+        // can be emitted in original order (before-or-after any think
+        // that follows).
+        let pre = trimmed[cursor..abs_open].trim();
+        if !pre.is_empty() {
+            pending_assistant = Some(pre.to_string());
+        }
+        let body_start = abs_open + open_tag.len();
+        let Some(close_rel) = trimmed[body_start..].find(close_tag) else {
+            // Unclosed: drop the partial content as a single
+            // assistant bubble, flush any pending assistant, stop.
+            let tail = trimmed[abs_open..].trim();
+            if !tail.is_empty() {
+                pending_assistant = Some(tail.to_string());
+            }
+            cursor = trimmed.len();
+            break;
+        };
+        let body_end = body_start + close_rel;
+        let content = trimmed[body_start..body_end].trim();
+        let has_assistant = pending_assistant.is_some();
+        if has_assistant {
+            flush_assistant!();
+        }
+        push_think(&mut chunks, &content);
+        cursor = body_end + close_tag.len();
+        // Capture any post-think assistant prose.
+        let next_think_rel = trimmed[cursor..].find(open_tag);
+        let between_end = match next_think_rel {
+            Some(i) => cursor + i,
+            None => trimmed.len(),
+        };
+        let between = trimmed[cursor..between_end].trim();
+        if !between.is_empty() {
+            // Intervening prose between two think blocks becomes a
+            // standalone assistant message. It is NOT pushed into the
+            // preceding think via coalescing: even if the previous chunk
+            // was a Think, prose is plain assistant output.
+            chunks.push(ChatMessage::assistant(between.to_string()));
+        }
+        cursor = between_end;
+    }
+    // Trailing assistant prose, if any.
+    let tail = trimmed[cursor..].trim();
+    if !tail.is_empty() {
+        pending_assistant = Some(tail.to_string());
+    }
+    flush_assistant!();
+    chunks
 }
 
 /// Chat rendering widget
+
 pub struct ChatWidget;
 
 impl ChatWidget {
@@ -856,5 +970,93 @@ mod tests {
     fn test_auto_scroll_default() {
         let state = ChatWidgetState::new();
         assert!(state.auto_scroll);
+    }
+    #[test]
+    fn split_response_plain_text_passes_through_as_assistant() {
+        let chunks = split_response_with_thinking("Hello there.");
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].role, MessageRole::Assistant);
+        assert_eq!(chunks[0].content, "Hello there.");
+    }
+
+    #[test]
+    fn split_response_empty_returns_empty_vec() {
+        assert!(split_response_with_thinking("").is_empty());
+        assert!(split_response_with_thinking("   \n\t  ").is_empty());
+    }
+
+    #[test]
+    fn split_response_think_only_no_assistant() {
+        let chunks = split_response_with_thinking("<think>just reasoning, no body</think>");
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].role, MessageRole::Think);
+        assert_eq!(chunks[0].content, "just reasoning, no body");
+    }
+
+    #[test]
+    fn split_response_think_then_answer_demotes_thinking() {
+        let chunks = split_response_with_thinking("<think>Ahem, plot</think>The quick brown fox.");
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].role, MessageRole::Think);
+        assert_eq!(chunks[0].content, "Ahem, plot");
+        assert_eq!(chunks[1].role, MessageRole::Assistant);
+        assert_eq!(chunks[1].content, "The quick brown fox.");
+    }
+
+    #[test]
+    fn split_response_pre_text_then_think_then_answer() {
+        let chunks =
+            split_response_with_thinking("Lead-in prose.<think>reasoning</think>Tail answer.");
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0].role, MessageRole::Assistant);
+        assert_eq!(chunks[0].content, "Lead-in prose.");
+        assert_eq!(chunks[1].role, MessageRole::Think);
+        assert_eq!(chunks[1].content, "reasoning");
+        assert_eq!(chunks[2].role, MessageRole::Assistant);
+        assert_eq!(chunks[2].content, "Tail answer.");
+    }
+
+    #[test]
+    fn split_response_multiple_thinks_coalesce_into_one() {
+        let chunks = split_response_with_thinking(
+            "<think>first thought</think>mid prose<think>second thought</think>end.",
+        );
+        // Two thinks coalesce into a single `Think` with newline-join;
+        // "mid prose" and "end." are the two assistants.
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0].role, MessageRole::Think);
+        assert!(chunks[0].content.contains("first thought"));
+        assert!(chunks[0].content.contains("second thought"));
+        assert!(chunks[0].content.contains("\n\n"));
+        assert_eq!(chunks[1].role, MessageRole::Assistant);
+        assert_eq!(chunks[1].content, "mid prose");
+        assert_eq!(chunks[2].role, MessageRole::Assistant);
+        assert_eq!(chunks[2].content, "end.");
+    }
+
+    #[test]
+    fn split_response_truncated_unclosed_think_drops_to_assistant() {
+        // No matching close tag -> the whole input becomes one Assistant
+        // bubble so the user sees the partial answer mid-stream.
+        let chunks = split_response_with_thinking("<think>opened but not closed... mid answer");
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].role, MessageRole::Assistant);
+        assert_eq!(
+            chunks[0].content,
+            "<think>opened but not closed... mid answer"
+        );
+    }
+
+    #[test]
+    fn chat_widget_add_assistant_response_demotes() {
+        // End-to-end on ChatWidgetState: a think-then-answer response
+        // should land as two messages, the first collapsed/Think.
+        let mut state = ChatWidgetState::new();
+        state.add_assistant_response("<think>plotting</think>Final line.");
+        assert_eq!(state.messages.len(), 2);
+        assert_eq!(state.messages[0].role, MessageRole::Think);
+        assert_eq!(state.messages[0].content, "plotting");
+        assert_eq!(state.messages[1].role, MessageRole::Assistant);
+        assert_eq!(state.messages[1].content, "Final line.");
     }
 }
