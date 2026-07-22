@@ -78,7 +78,7 @@ impl SessionAgent {
     pub fn bind(session: &Arc<SessionHandle>, agent: &str) -> AppResult<Self> {
         session
             .core
-            .switch_agent(session.id.clone(), agent.to_string())
+            .switch_agent(session.id.clone(), agent)
             .map_err(|e| AppError::Session(e.0.clone()))?;
         Ok(Self {
             agent: agent.to_string(),
@@ -95,7 +95,7 @@ impl SessionAgent {
     pub fn switch_to(&mut self, agent: &str) -> AppResult<()> {
         self.session
             .core
-            .switch_agent(self.session.id.clone(), agent.to_string())
+            .switch_agent(self.session.id.clone(), agent)
             .map_err(|e| AppError::Session(e.0.clone()))?;
         self.agent = agent.to_string();
         Ok(())

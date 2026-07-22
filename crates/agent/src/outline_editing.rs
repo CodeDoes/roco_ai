@@ -6,8 +6,6 @@
 //! - AI suggests improvements
 //! - Human approves final outline
 
-use roco_engine::{CompletionRequest, ModelBackend};
-use roco_grammar::{schema_to_gbnf, Schema};
 use serde::{Deserialize, Serialize};
 
 use super::story_engine::ChapterInfo;

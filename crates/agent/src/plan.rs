@@ -278,7 +278,7 @@ impl Plan {
                 let ready = self.steps[i].depends_on.iter().all(|d| {
                     id_to_idx
                         .get(d.as_str())
-                        .map_or(false, |&j| done.contains(&j))
+                        .is_some_and(|&j| done.contains(&j))
                 });
                 if ready {
                     wave.push(i);

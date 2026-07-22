@@ -3,7 +3,7 @@
 //! Shows characters, locations, plot threads, and their relationships as
 //! an interactive directed/undirected graph. Built with egui Painter.
 
-use egui::{self, Color32, Pos2, Rect, RichText, Stroke, Ui, Vec2};
+use egui::{self, Color32, Pos2, RichText, Stroke, Ui, Vec2};
 use std::collections::HashMap;
 
 /// A node in the graph (character, location, plot thread, etc.)
@@ -292,7 +292,7 @@ impl LinkGraph {
             // Draw nodes
             for node in &state.nodes {
                 let screen_pos = to_screen(node.pos);
-                let is_selected = state.selected_node.as_ref().map_or(false, |s| s == &node.id);
+                let is_selected = state.selected_node.as_ref() == Some(&node.id);
                 let radius = node.radius * state.zoom;
 
                 // Glow for selected
@@ -340,7 +340,7 @@ impl LinkGraph {
                     let dist = (click_pos - screen_pos).length();
                     let threshold = node.radius * state.zoom + 4.0;
                     if dist < threshold {
-                        let better = closest.map_or(true, |(_, d)| dist < d);
+                        let better = closest.is_none_or(|(_, d)| dist < d);
                         if better {
                             closest = Some((i, dist));
                         }
@@ -403,10 +403,7 @@ impl LinkGraph {
                 .color(ui.visuals().weak_text_color()),
             );
             for node in &state.nodes {
-                let selected = state
-                    .selected_node
-                    .as_ref()
-                    .map_or(false, |s| s == &node.id);
+                let selected = state.selected_node.as_ref() == Some(&node.id);
                 let label = format!("{} {}", node.kind.icon(), node.label);
                 if ui.selectable_label(selected, &label).clicked() {
                     state.selected_node = Some(node.id.clone());

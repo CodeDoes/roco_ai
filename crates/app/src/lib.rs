@@ -20,14 +20,8 @@
 //! - `workspace_timeline_reset` — snapshot (timeline checkpoint)
 //! - `workspace_timeline_compare` — diff two checkpoints
 
-use std::path::PathBuf;
-use std::sync::Arc;
-
-use roco_agent::SessionStore as AgentSessionStore;
 use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
-use roco_infer_client::RemoteBackend;
-use roco_session::store::SessionStore as CoreSessionStore;
-use roco_workspace::{Workspace, WorkspaceError};
+use roco_workspace::WorkspaceError;
 
 pub mod context;
 pub mod daemon;

@@ -206,7 +206,7 @@ impl SessionBrowser {
                 .show(ui, |ui| {
                     for &real_idx in &filtered_indices {
                         let entry = &state.sessions[real_idx];
-                        let selected = state.selected_index == Some(real_idx);
+                        let _selected = state.selected_index == Some(real_idx);
                         let selected = state.selected_index == Some(real_idx);
                         let bg = if selected {
                             ui.visuals().selection.bg_fill
@@ -214,7 +214,7 @@ impl SessionBrowser {
                             ui.visuals().faint_bg_color
                         };
 
-                        let id = ui.make_persistent_id(format!("session_{}", entry.id));
+                        let _id = ui.make_persistent_id(format!("session_{}", entry.id));
                         let response = egui::Frame::none()
                             .fill(bg)
                             .show(ui, |ui| {

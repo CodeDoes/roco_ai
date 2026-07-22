@@ -13,10 +13,10 @@
 //! - Improvement (analyze patterns, optimize prompts)
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TraceId(pub String);
 
+impl Default for TraceId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TraceId {
     pub fn new() -> Self {
         Self(unique_id("trace"))
@@ -37,6 +43,12 @@ impl TraceId {
 /// Unique identifier for a span within a trace
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SpanId(pub String);
+
+impl Default for SpanId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl SpanId {
     pub fn new() -> Self {
@@ -484,7 +496,7 @@ mod tests {
         let obs = ObservabilitySystem::new(temp_dir.clone());
 
         // Start trace
-        let trace_id = obs.start_trace(HashMap::new());
+        let _trace_id = obs.start_trace(HashMap::new());
 
         // Start span
         let span_id = obs.start_span("test_span", SpanType::ModelCall);

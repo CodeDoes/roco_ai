@@ -25,16 +25,12 @@
 //!                          └───────────┘ (dynamic loop)
 //! ```
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_grammar::{schema_to_gbnf, Schema};
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Serialize};
 
 use super::interaction::{HumanAction, InteractionMode, InteractionState};
-use super::mechanistic::{HandlerResult, MechanisticAgent, Plan, Task};
 use super::quality::{QualityAnalyzer, QualityScore, StoryCritique};
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -126,7 +122,7 @@ impl PlotState {
     }
 
     /// Create initial plot state from outline
-    pub fn from_outline(outline: &str) -> Self {
+    pub fn from_outline(_outline: &str) -> Self {
         Self {
             chapter_count: 0,
             arc_stage: "setup".to_string(),
@@ -626,7 +622,7 @@ impl StoryEngine {
         }
 
         // Add chapters
-        for (i, chapter) in self.chapters.iter().enumerate() {
+        for chapter in self.chapters.iter() {
             story.push_str(chapter);
             story.push_str("\n\n---\n\n");
         }

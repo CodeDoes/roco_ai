@@ -3,7 +3,7 @@
 //! Uses egui_markdown for rendering. Displays character bios, setting lore,
 //! and other worldbuilding content from a markdown file or text source.
 
-use egui::{self, Color32, RichText, Ui};
+use egui::{self, RichText, Ui};
 
 /// Wiki entry types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,21 +55,11 @@ pub enum WikiBrowserAction {
 }
 
 /// Wiki browser state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct WikiBrowserState {
     pub pages: Vec<WikiPage>,
     pub selected_index: Option<usize>,
     pub search_text: String,
-}
-
-impl Default for WikiBrowserState {
-    fn default() -> Self {
-        Self {
-            pages: Vec::new(),
-            selected_index: None,
-            search_text: String::new(),
-        }
-    }
 }
 
 impl WikiBrowserState {

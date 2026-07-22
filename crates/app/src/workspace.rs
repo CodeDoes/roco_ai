@@ -28,7 +28,7 @@ pub struct Timeline {
 impl AppWorkspace {
     /// Open (creating if missing) a workspace of `kind` under `root`.
     pub fn open(root: &PathBuf, name: &str, kind: WorkspaceKind) -> AppResult<Self> {
-        let core = CoreWorkspace::new(root.join(name), kind).map_err(|e| AppError::Workspace(e))?;
+        let core = CoreWorkspace::new(root.join(name), kind).map_err(AppError::Workspace)?;
         let vc = VersionControl::new(root.join(name));
         Ok(Self {
             name: name.to_string(),
@@ -53,13 +53,13 @@ impl AppWorkspace {
         transform(&self.core)?;
         self.vc
             .record_action("transform", description, "", "")
-            .map_err(|e| AppError::Other(e))?;
+            .map_err(AppError::Other)?;
         Ok(())
     }
 
     /// Take a timeline checkpoint (the `workspace_timeline_reset` op).
     pub fn checkpoint(&self, label: &str) -> AppResult<Timeline> {
-        let id = self.vc.snapshot(label).map_err(|e| AppError::Other(e))?;
+        let id = self.vc.snapshot(label).map_err(AppError::Other)?;
         Ok(Timeline {
             id,
             label: label.to_string(),
@@ -125,6 +125,6 @@ impl AppWorkspace {
         self.vc
             .undo()
             .map(|o| o.map(|a| a.description))
-            .map_err(|e| AppError::Other(e))
+            .map_err(AppError::Other)
     }
 }

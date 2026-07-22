@@ -206,7 +206,7 @@ fn cmd_gateway(extra: &[&str]) {
     let limit = limit_str.parse::<usize>().unwrap_or(60);
 
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
-    let is_child = extra.iter().any(|&a| a == "--_child-gateway");
+    let is_child = extra.contains(&"--_child-gateway");
     let log_path = parse_opt("--log-file", extra)
         .map(PathBuf::from)
         .unwrap_or_else(|| default_detach_path("gateway", port, "log"));
@@ -258,7 +258,7 @@ fn cmd_server(extra: &[&str]) {
     let port_str = parse_opt("--port", extra).unwrap_or("8080");
     let port = port_str.parse::<u16>().unwrap_or(8080);
     let story_mode = extra.iter().any(|&a| a == "--story" || a == "-s");
-    let stdio_lsp = extra.iter().any(|&a| a == "--stdio-lsp");
+    let stdio_lsp = extra.contains(&"--stdio-lsp");
     let inference_url = parse_opt("--inference-url", extra)
         .map(|s| s.to_string())
         .unwrap_or_else(|| {
@@ -267,7 +267,7 @@ fn cmd_server(extra: &[&str]) {
 
     // Detach mode
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
-    let is_child = extra.iter().any(|&a| a == "--_child-server");
+    let is_child = extra.contains(&"--_child-server");
     let log_path = parse_opt("--log-file", extra)
         .map(PathBuf::from)
         .unwrap_or_else(|| default_detach_path("server", port, "log"));
@@ -455,7 +455,7 @@ fn cmd_bless(extra: &[&str]) {
             let out_str = out_val.as_str().unwrap_or("");
             if let Some(name_line) = lines
                 .iter()
-                .position(|l| l.trim() == &format!("name: \"{}\".into(),", name))
+                .position(|l| l.trim() == format!("name: \"{}\".into(),", name))
             {
                 let mut oracle_line = None;
                 for i in name_line..lines.len() {
@@ -788,7 +788,7 @@ fn cmd_interact(extra: &[&str]) {
     let resume = parse_opt("--resume", extra);
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
     let pace_str = parse_opt("--pace", extra).unwrap_or("careful");
-    let first_arg = extra.first().map(|s| *s).unwrap_or("");
+    let first_arg = extra.first().copied().unwrap_or("");
 
     let pacing = match pace_str {
         "planning" | "plan" => PacingChoice::Planning,
@@ -1166,7 +1166,7 @@ fn cmd_story(extra: &[&str]) {
             if !synopsis.is_empty() {
                 story.push_str("## Synopsis\n\n");
                 story.push_str(&synopsis);
-                story.push_str("\n");
+                story.push('\n');
             }
 
             let path = ws.resolve("06-STORY.md").unwrap();
@@ -1195,7 +1195,7 @@ fn cmd_story(extra: &[&str]) {
             ],
         };
 
-        let ws = create_story_workspace(&prompt).unwrap();
+        let ws = create_story_workspace(prompt).unwrap();
         let workspace_path = ws.root().to_string_lossy().to_string();
 
         println!("\nWorkspace: {workspace_path}\n");

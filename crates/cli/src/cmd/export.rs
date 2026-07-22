@@ -3,7 +3,7 @@
 //! Bundles a finished `.roco/workspaces/story_*` directory into a single
 //! export artifact. Pure std + existing CLI helpers, no external deps.
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Escape prose for HTML output.
 fn clean(s: &str) -> String {
@@ -34,10 +34,7 @@ pub fn run(
         eprintln!("Story directory does not exist: {story_dir:?}");
         std::process::exit(2);
     }
-    let fmt = match format_hint {
-        Some(s) => s,
-        None => "md",
-    };
+    let fmt = format_hint.unwrap_or("md");
     let mut chapters = Vec::new();
     for ent in fs::read_dir(story_dir).unwrap_or_else(|e| {
         eprintln!("failed to read story dir: {e}");

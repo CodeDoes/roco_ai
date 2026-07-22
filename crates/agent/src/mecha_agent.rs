@@ -991,7 +991,7 @@ mod tests {
         match result {
             Ok(intent) => {
                 // If parsed, route should be one of the registered routes or default.
-                assert!(&intent.route == "storyTeller" || &intent.route == DEFAULT_ROUTE);
+                assert!(&intent.route == "storyTeller" || intent.route == DEFAULT_ROUTE);
             }
             Err(e) => {
                 assert!(e.to_string().contains("failed to parse intent"));

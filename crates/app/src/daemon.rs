@@ -190,7 +190,6 @@ fn read_pid(name: &str) -> Option<u32> {
 fn send_term(pid: u32) {
     #[cfg(unix)]
     {
-        use std::os::unix::process::CommandExt;
         let _ = Command::new("kill")
             .arg("-TERM")
             .arg(pid.to_string())
@@ -261,7 +260,7 @@ pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate
         .expect("failed to clone log file handle");
 
     let mut cmd = Command::new(&exe);
-    cmd.args(&["gateway"]);
+    cmd.args(["gateway"]);
     cmd.args(&args);
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(log_file);

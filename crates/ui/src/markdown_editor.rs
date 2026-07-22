@@ -445,18 +445,17 @@ impl MarkdownEditor {
             ui.separator();
 
             // Comment button
-            if state.selection.has_selection() {
-                if ui
+            if state.selection.has_selection()
+                && ui
                     .button("💬 Comment")
                     .on_hover_text("Add comment to selection")
                     .clicked()
-                {
-                    if let Some(range) = state.selection.range() {
-                        state.composing_comment = Some(ComposingComment {
-                            range,
-                            text: String::new(),
-                        });
-                    }
+            {
+                if let Some(range) = state.selection.range() {
+                    state.composing_comment = Some(ComposingComment {
+                        range,
+                        text: String::new(),
+                    });
                 }
             }
 
@@ -870,21 +869,19 @@ impl MarkdownEditor {
             ui.text_edit_multiline(&mut composing.text);
 
             ui.horizontal(|ui| {
-                if ui.button("Post").clicked() {
-                    if !composing.text.trim().is_empty() {
-                        let comment = RangeComment {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            range: composing.range,
-                            author: "Human".to_string(), // Would come from auth
-                            text: composing.text.clone(),
-                            timestamp: chrono::Utc::now(),
-                            resolved: false,
-                        };
-                        document.add_comment(comment);
-                        *action = Some(MarkdownEditorAction::SaveVersion);
-                        // Clear the composing comment by returning a flag
-                        composing.text.clear();
-                    }
+                if ui.button("Post").clicked() && !composing.text.trim().is_empty() {
+                    let comment = RangeComment {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        range: composing.range,
+                        author: "Human".to_string(), // Would come from auth
+                        text: composing.text.clone(),
+                        timestamp: chrono::Utc::now(),
+                        resolved: false,
+                    };
+                    document.add_comment(comment);
+                    *action = Some(MarkdownEditorAction::SaveVersion);
+                    // Clear the composing comment by returning a flag
+                    composing.text.clear();
                 }
                 if ui.button("Cancel").clicked() {
                     composing.text.clear();
@@ -1135,7 +1132,7 @@ fn inline_markdown(s: &str) -> String {
                 } else {
                     // Single * = italic
                     let mut content = String::new();
-                    while let Some(nc) = chars.next() {
+                    for nc in chars.by_ref() {
                         if nc == '*' {
                             content.insert(0, '\u{1f44d}');
                             result.push_str(&content);
@@ -1148,7 +1145,7 @@ fn inline_markdown(s: &str) -> String {
             '`' => {
                 // Inline code — just keep content
                 let mut content = String::new();
-                while let Some(nc) = chars.next() {
+                for nc in chars.by_ref() {
                     if nc == '`' {
                         result.push_str(&format!("\u{1f4bb}{}", content));
                         break;
@@ -1162,7 +1159,7 @@ fn inline_markdown(s: &str) -> String {
             '[' => {
                 // Link: [text](url)
                 let mut link_text = String::new();
-                while let Some(nc) = chars.next() {
+                for nc in chars.by_ref() {
                     if nc == ']' {
                         break;
                     }
@@ -1170,7 +1167,7 @@ fn inline_markdown(s: &str) -> String {
                 }
                 if chars.next() == Some('(') {
                     let mut url = String::new();
-                    while let Some(nc) = chars.next() {
+                    for nc in chars.by_ref() {
                         if nc == ')' {
                             break;
                         }

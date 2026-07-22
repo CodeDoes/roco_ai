@@ -150,7 +150,7 @@ mod tests {
         let backend = MockBackend::default();
         let trace = chat.run(&backend, "do a benign task").await.unwrap();
         assert!(
-            trace.steps.len() >= 1,
+            !trace.steps.is_empty(),
             "agent should take at least one step"
         );
 

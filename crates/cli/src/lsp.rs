@@ -73,7 +73,7 @@ async fn bake_fim_session(
     // the file content.
     let today = chrono_date();
     for (uri, text) in docs {
-        let name = uri.split('/').last().unwrap_or(uri);
+        let name = uri.split('/').next_back().unwrap_or(uri);
         let truncated: String = text.chars().take(1500).collect();
         if truncated.trim().is_empty() {
             continue;
@@ -111,7 +111,7 @@ fn chrono_date() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     // 2026-07-18 epoch-ish fallback handled by formatting below.
-    let secs = now % 86400;
+    let _secs = now % 86400;
     let days = now / 86400;
     // Simple Gregorian approximation is overkill; return a stable ISO-ish
     // stamp derived from the unix day count offset from 2026-01-01.

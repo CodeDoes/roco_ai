@@ -107,6 +107,12 @@ pub struct AgentTrace {
     pub stop_reason: Option<String>,
 }
 
+impl Default for AgentTrace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AgentTrace {
     pub fn new() -> Self {
         Self {
@@ -289,7 +295,7 @@ impl Agent {
             let response_text = resp.text.clone();
             let segments = parse_assistant_response(&response_text);
             let mut step = AgentStep::new(step_count);
-            step.usage = resp.usage.clone();
+            step.usage = resp.usage;
 
             let mut final_text = String::new();
             let mut has_tool_calls = false;
@@ -450,7 +456,7 @@ mod tests {
             .await
             .unwrap();
         // Either completed or stopped by step limit — both are valid.
-        assert!(trace.steps.len() >= 1);
+        assert!(!trace.steps.is_empty());
     }
 
     #[tokio::test]
@@ -502,7 +508,7 @@ mod tests {
         let backend = MockBackend::default();
         let trace = agent.run(&backend, "do something benign").await.unwrap();
         assert!(
-            trace.steps.len() >= 1,
+            !trace.steps.is_empty(),
             "agent should run with the combined registry"
         );
 

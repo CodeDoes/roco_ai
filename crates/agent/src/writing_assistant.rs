@@ -9,8 +9,6 @@
 //!
 //! Designed for fast, local inference with small models.
 
-use std::collections::HashMap;
-
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_grammar::{schema_to_gbnf, Schema};
 use serde::{Deserialize, Serialize};

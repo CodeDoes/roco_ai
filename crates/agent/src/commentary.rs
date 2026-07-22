@@ -153,7 +153,7 @@ impl Commentary {
         comment.push_str(&format!("Reasoning: {}\n", self.reasoning));
 
         if !self.alternatives.is_empty() {
-            comment.push_str(&format!("\nAlternatives considered:\n"));
+            comment.push_str("\nAlternatives considered:\n");
             for alt in &self.alternatives {
                 comment.push_str(&format!("- {}\n", alt.description));
                 comment.push_str(&format!("  Rejected: {}\n", alt.reason_rejected));
@@ -162,7 +162,7 @@ impl Commentary {
         }
 
         if !self.trade_offs.is_empty() {
-            comment.push_str(&format!("\nTrade-offs:\n"));
+            comment.push_str("\nTrade-offs:\n");
             for trade in &self.trade_offs {
                 comment.push_str(&format!("- Gained: {}\n", trade.gained));
                 comment.push_str(&format!("  Lost: {}\n", trade.lost));
@@ -171,7 +171,7 @@ impl Commentary {
         }
 
         if !self.review_points.is_empty() {
-            comment.push_str(&format!("\nPlease review:\n"));
+            comment.push_str("\nPlease review:\n");
             for point in &self.review_points {
                 comment.push_str(&format!("- {}\n", point));
             }
@@ -182,7 +182,7 @@ impl Commentary {
         }
 
         if !self.human_notes.is_empty() {
-            comment.push_str(&format!("\nHuman notes:\n"));
+            comment.push_str("\nHuman notes:\n");
             for note in &self.human_notes {
                 comment.push_str(&format!("- {}\n", note));
             }
@@ -190,7 +190,7 @@ impl Commentary {
 
         comment.push_str(&format!("\nConfidence: {:.0}%\n", self.confidence * 100.0));
         comment.push_str(&format!("Timestamp: {}\n", self.timestamp));
-        comment.push_str(&format!("-->\n"));
+        comment.push_str("-->\n");
 
         comment
     }

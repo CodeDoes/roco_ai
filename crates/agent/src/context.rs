@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn test_truncate_returns_full_when_short() {
         let content = "short string";
-        let truncated = truncate_for_context(&content, 200);
+        let truncated = truncate_for_context(content, 200);
         assert_eq!(truncated, content);
     }
 

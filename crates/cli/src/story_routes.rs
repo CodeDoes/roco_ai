@@ -5,13 +5,10 @@ use axum::{
     Json, Router,
 };
 use roco_agent::natural_feedback::FeedbackParser;
-use roco_agent::outline_editing::OutlineEditor;
-use roco_agent::quality::QualityAnalyzer;
-use roco_agent::story_engine::{PlotState, StoryConfig, StoryEngine};
-use roco_engine::{CompletionRequest, ModelBackend};
+use roco_agent::story_engine::StoryEngine;
+use roco_engine::ModelBackend;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::info;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Story API Types
@@ -177,9 +174,9 @@ async fn get_outline(State(state): State<StoryState>) -> impl IntoResponse {
 
 async fn update_outline(
     State(state): State<StoryState>,
-    Json(outline): Json<Outline>,
+    Json(_outline): Json<Outline>,
 ) -> impl IntoResponse {
-    let mut engine = state.engine.lock().await;
+    let _engine = state.engine.lock().await;
     // TODO: Update outline in engine
     Json(serde_json::json!({ "status": "ok" }))
 }
@@ -201,9 +198,9 @@ async fn get_chapter(State(state): State<StoryState>, Path(num): Path<usize>) ->
 }
 
 async fn save_chapter(
-    State(state): State<StoryState>,
-    Path(num): Path<usize>,
-    Json(chapter): Json<Chapter>,
+    State(_state): State<StoryState>,
+    Path(_num): Path<usize>,
+    Json(_chapter): Json<Chapter>,
 ) -> impl IntoResponse {
     // TODO: Save chapter to engine
     Json(serde_json::json!({ "status": "ok" }))
@@ -211,8 +208,8 @@ async fn save_chapter(
 
 async fn generate_chapter(
     State(state): State<StoryState>,
-    Path(num): Path<usize>,
-    Json(req): Json<GenerateRequest>,
+    Path(_num): Path<usize>,
+    Json(_req): Json<GenerateRequest>,
 ) -> impl IntoResponse {
     let backend = state.backend.clone();
     let mut engine = state.engine.lock().await;
@@ -232,11 +229,11 @@ async fn generate_chapter(
 
 async fn revise_chapter(
     State(state): State<StoryState>,
-    Path(num): Path<usize>,
-    Json(req): Json<ReviseRequest>,
+    Path(_num): Path<usize>,
+    Json(_req): Json<ReviseRequest>,
 ) -> impl IntoResponse {
-    let backend = state.backend.clone();
-    let mut engine = state.engine.lock().await;
+    let _backend = state.backend.clone();
+    let _engine = state.engine.lock().await;
 
     // TODO: Implement revision with feedback
     Json(serde_json::json!({ "status": "ok", "message": "Revision not yet implemented" }))
@@ -263,8 +260,8 @@ async fn evaluate_quality(
 }
 
 async fn get_suggestions(
-    State(state): State<StoryState>,
-    Json(req): Json<SuggestRequest>,
+    State(_state): State<StoryState>,
+    Json(_req): Json<SuggestRequest>,
 ) -> impl IntoResponse {
     // TODO: Get suggestions from writing assistant
     Json(serde_json::json!({
@@ -286,7 +283,7 @@ async fn get_suggestions(
 }
 
 async fn apply_suggestion(
-    State(state): State<StoryState>,
+    State(_state): State<StoryState>,
     Json(suggestion): Json<Suggestion>,
 ) -> impl IntoResponse {
     // TODO: Apply suggestion to editor
@@ -294,8 +291,8 @@ async fn apply_suggestion(
 }
 
 async fn continue_writing(
-    State(state): State<StoryState>,
-    Json(req): Json<ContinueRequest>,
+    State(_state): State<StoryState>,
+    Json(_req): Json<ContinueRequest>,
 ) -> impl IntoResponse {
     // TODO: Continue writing from current text
     Json(serde_json::json!({
@@ -307,7 +304,7 @@ async fn send_feedback(
     State(state): State<StoryState>,
     Json(req): Json<FeedbackRequest>,
 ) -> impl IntoResponse {
-    let backend = state.backend.clone();
+    let _backend = state.backend.clone();
 
     // Parse feedback
     if let Some(parsed) = FeedbackParser::quick_parse(&req.feedback) {

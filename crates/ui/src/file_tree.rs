@@ -3,8 +3,8 @@
 //! Displays a hierarchical file tree for a given root directory.
 //! Supports expand/collapse, file selection, and file actions.
 
-use egui::{self, Color32, RichText, Ui};
-use std::path::{Path, PathBuf};
+use egui::{self, RichText, Ui};
+use std::path::PathBuf;
 
 /// A node in the file tree
 #[derive(Debug, Clone)]
@@ -193,7 +193,7 @@ impl FileTree {
         let selected = state
             .selected_path
             .as_ref()
-            .map_or(false, |p| *p == node.path);
+            .is_some_and(|p| *p == node.path);
 
         let bg = if selected {
             ui.visuals().selection.bg_fill
@@ -235,10 +235,8 @@ impl FileTree {
                 action = Some(FileTreeAction::SelectFile(node.path.clone()));
             }
         }
-        if response.double_clicked() {
-            if !node.is_dir {
-                action = Some(FileTreeAction::OpenFile(node.path.clone()));
-            }
+        if response.double_clicked() && !node.is_dir {
+            action = Some(FileTreeAction::OpenFile(node.path.clone()));
         }
 
         // Context menu

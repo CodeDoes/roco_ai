@@ -13,8 +13,7 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use roco_agent::interaction::{HumanAction, InteractionMode, InteractionState};
-use roco_session::store::SessionStore;
+use roco_agent::interaction::{InteractionMode, InteractionState};
 
 use crate::rich_output as r;
 

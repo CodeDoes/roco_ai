@@ -116,7 +116,7 @@ impl ChapterSteerer {
 
         // Create checkpoint every 100 words
         let word_count = self.word_count();
-        if word_count % 100 == 0 && word_count > 0 {
+        if word_count.is_multiple_of(100) && word_count > 0 {
             self.checkpoints.push(GenerationCheckpoint {
                 words_generated: word_count,
                 text_so_far: self.text_buffer.clone(),
@@ -165,7 +165,7 @@ impl ChapterSteerer {
     fn get_last_sentence(&self) -> String {
         self.text_buffer
             .split(['.', '!', '?'])
-            .last()
+            .next_back()
             .unwrap_or("")
             .trim()
             .to_string()

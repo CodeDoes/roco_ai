@@ -13,9 +13,10 @@ use serde::{Deserialize, Serialize};
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// How much human involvement is needed
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum InteractionMode {
     /// One task at a time, human reviews each one
+    #[default]
     FullControl,
     /// Batch of tasks, human reviews batch
     ModerateControl { batch_size: usize },
@@ -31,7 +32,7 @@ impl InteractionMode {
         match self {
             InteractionMode::FullControl => true,
             InteractionMode::ModerateControl { batch_size } => {
-                tasks_completed % batch_size == 0 || tasks_completed >= total_tasks
+                tasks_completed.is_multiple_of(*batch_size) || tasks_completed >= total_tasks
             }
             InteractionMode::NoControl => tasks_completed >= total_tasks,
             InteractionMode::GoHam => false,
@@ -97,12 +98,6 @@ impl InteractionMode {
                 "Go ham: agent runs without stopping, maximum speed".to_string()
             }
         }
-    }
-}
-
-impl Default for InteractionMode {
-    fn default() -> Self {
-        InteractionMode::FullControl
     }
 }
 

@@ -483,10 +483,8 @@ impl ChatWidget {
                             state.input_text.clear();
                         }
                     }
-                    if state.agent_generating {
-                        if ui.button("⏹ Stop").clicked() {
-                            *action = Some(ChatAction::Stop);
-                        }
+                    if state.agent_generating && ui.button("⏹ Stop").clicked() {
+                        *action = Some(ChatAction::Stop);
                     }
                 });
             });

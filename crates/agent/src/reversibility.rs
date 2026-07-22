@@ -7,7 +7,7 @@
 //! - Git-like versioning for story state
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -155,7 +155,7 @@ impl VersionControl {
 
     /// Undo the last action
     pub fn undo(&self) -> Result<Option<ReversibleAction>, String> {
-        let mut history = self.action_history.lock().unwrap();
+        let history = self.action_history.lock().unwrap();
         let mut position = self.current_position.lock().unwrap();
 
         if *position == 0 {
@@ -173,7 +173,7 @@ impl VersionControl {
 
     /// Redo the last undone action
     pub fn redo(&self) -> Result<Option<ReversibleAction>, String> {
-        let mut history = self.action_history.lock().unwrap();
+        let history = self.action_history.lock().unwrap();
         let mut position = self.current_position.lock().unwrap();
 
         if *position >= history.len() {
@@ -370,7 +370,7 @@ mod tests {
         .unwrap();
 
         // Take another snapshot
-        let snap2 = vc.snapshot("after write").unwrap();
+        let _snap2 = vc.snapshot("after write").unwrap();
 
         // Write another file
         std::fs::write(temp_dir.join("test2.txt"), "world").unwrap();
