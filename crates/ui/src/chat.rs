@@ -404,10 +404,10 @@ impl ChatWidget {
             ui.min_rect().left_top(),
             egui::vec2(ui.available_width(), messages_height),
         );
-        let mut messages_ui = ui.child_ui(
-            messages_rect,
-            egui::Layout::top_down(egui::Align::LEFT),
-            None,
+        let mut messages_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(messages_rect)
+                .layout(egui::Layout::top_down(egui::Align::LEFT)),
         );
         messages_ui.set_min_height(messages_height);
         let act = &mut action;
@@ -418,7 +418,11 @@ impl ChatWidget {
             egui::pos2(ui.min_rect().left(), messages_ui.min_rect().bottom()),
             egui::vec2(ui.available_width(), input_height),
         );
-        let mut input_ui = ui.child_ui(input_rect, egui::Layout::top_down(egui::Align::LEFT), None);
+        let mut input_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(input_rect)
+                .layout(egui::Layout::top_down(egui::Align::LEFT)),
+        );
         let act = &mut action;
         Self::show_input_area(&mut input_ui, state, act);
 

@@ -57,7 +57,10 @@ fn main() {
         .build()
         .expect("tokio runtime");
 
-    eprintln!("roco-inferd: listening on http://{}:{}", args.host, args.port);
+    eprintln!(
+        "roco-inferd: listening on http://{}:{}",
+        args.host, args.port
+    );
     if let Err(e) = rt.block_on(server.run()) {
         eprintln!("roco-inferd error: {e}");
         std::process::exit(1);

@@ -285,7 +285,10 @@ mod tests {
         ));
         let _ = std::fs::create_dir_all(&dir);
         // Clean any leftover files
-        for e in std::fs::read_dir(&dir).unwrap_or_else(|_| std::fs::read_dir("/").unwrap()).flatten() {
+        for e in std::fs::read_dir(&dir)
+            .unwrap_or_else(|_| std::fs::read_dir("/").unwrap())
+            .flatten()
+        {
             let _ = std::fs::remove_file(e.path());
         }
         let _ = std::fs::write(dir.join("hello.md"), "# Hello");

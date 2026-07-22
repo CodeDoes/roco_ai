@@ -12,7 +12,7 @@ fn main() {
     cfg.apply_to_environment();
 
     let args: Vec<String> = std::env::args().collect();
-    let sub = args.get(1).map(|s| s.as_str()).unwrap_or("interact");
+    let sub = args.get(1).map(|s| s.as_str()).unwrap_or("router");
     let extra: Vec<&str> = args.iter().skip(2).map(|s| s.as_str()).collect();
 
     match sub {
@@ -20,7 +20,13 @@ fn main() {
         "bless" => cmd::eval::cmd_bless(&extra),
         "rwkv" => run_cargo(
             "run",
-            &["-p", "roco-inference", "--example", "rwkv_test", "--release"],
+            &[
+                "-p",
+                "roco-inference",
+                "--example",
+                "rwkv_test",
+                "--release",
+            ],
             &extra,
         ),
         "grammar" => run_cargo(
@@ -61,7 +67,11 @@ fn main() {
             roco_cli::daemon::stop_all();
         }
         "story" => cmd::story::cmd_story(&extra),
+        "game" => cmd::game::cmd_game(&extra),
+        "html" => cmd::html::cmd_html(&extra),
+        "code" => cmd::coder::cmd_coder(&extra),
         "interact" => cmd::interact::cmd_interact(&extra),
+        "coder" => cmd::coder::cmd_coder(&extra),
         "export" => {
             cmd::export::run(
                 extra.first().copied().unwrap_or("."),
@@ -70,11 +80,13 @@ fn main() {
             );
         }
         "help" | "--help" | "-h" => help(None),
+        "pet" => cmd::pet::cmd_pet(&extra),
+        "router" => cmd::router::cmd_router(&extra),
         _ => {
-            // Unknown subcommand → interact with that text as the prompt.
+            // Unknown subcommand → route through mode router with that text as prompt.
             let mut args_with_prompt = vec![sub];
             args_with_prompt.extend(extra.iter().copied());
-            cmd::interact::cmd_interact(&args_with_prompt);
+            cmd::router::cmd_router(&args_with_prompt);
         }
     }
 }

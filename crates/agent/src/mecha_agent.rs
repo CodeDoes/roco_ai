@@ -40,9 +40,9 @@
 //! The model never touches the filesystem, never decides control flow.
 //! Classic code (handlers) does all file I/O in a scoped temp workspace.
 
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use async_trait::async_trait;
 
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_workspace::{Workspace, WorkspaceKind};

@@ -34,3 +34,7 @@ pub use change_timeline::*;
 
 mod link_graph;
 pub use link_graph::*;
+
+// Desktop Pet — transparent always-on-top companion
+mod pet;
+pub use pet::*;

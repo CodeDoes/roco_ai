@@ -14,7 +14,7 @@ path = "src/bin/roco.rs"
 [features]
 default = []
 # Desktop GUI (egui). Off by default.
-desktop = ["dep:eframe", "dep:roco_ui"]
+desktop = ["dep:eframe", "dep:roco_ui", "dep:tray-icon", "dep:image"]
 # HTTP server / gateway / story façade. Off by default — use `roco-inferd` for
 # model serving; enable this only when working on the HTTP surface.
 net = ["dep:roco-server", "dep:roco-gateway", "dep:axum"]
@@ -51,6 +51,8 @@ tokio = { workspace = true, features = [
     "sync",
     "time",
 ] }
+tray-icon = { version = "0.24", optional = true }
+image = { version = "0.25", optional = true, default-features = false, features = ["png", "ico"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true

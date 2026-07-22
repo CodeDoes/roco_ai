@@ -30,7 +30,6 @@ fn log_path(name: &str, port: u16) -> PathBuf {
     pid_dir().join(format!("{}_{}.log", name, port))
 }
 
-
 /// Default path under the system temp dir for PID/log files.
 pub fn default_detach_path(subcmd: &str, port: u16, ext: &str) -> PathBuf {
     let dir = pid_dir();
@@ -77,7 +76,6 @@ pub fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &PathBuf, pid_path
     std::mem::forget(child);
 }
 
-
 /// Check if a daemon is running via health endpoint (synchronous, spawns its
 /// own runtime if needed).
 pub fn is_running(name: &str, port: u16) -> bool {
@@ -108,8 +106,6 @@ pub fn is_running(name: &str, port: u16) -> bool {
     }
     true
 }
-
-
 
 /// Locate the `roco-inferd` binary (sibling of current exe, then PATH).
 fn find_inferd(current_exe: &PathBuf) -> Option<PathBuf> {
@@ -151,7 +147,10 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
         let log_file = match std::fs::File::create(&log_file_path) {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("Warning: failed to create log {}: {e}", log_file_path.display());
+                eprintln!(
+                    "Warning: failed to create log {}: {e}",
+                    log_file_path.display()
+                );
                 return false;
             }
         };

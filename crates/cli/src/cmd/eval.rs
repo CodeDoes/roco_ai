@@ -30,10 +30,7 @@ pub fn cmd_eval(extra: &[&str]) {
                     let name = r["name"].as_str().unwrap_or("");
                     let out = r["output"].as_str().unwrap_or("").trim();
                     if !name.is_empty() {
-                        snap.insert(
-                            name.to_string(),
-                            serde_json::Value::String(out.to_string()),
-                        );
+                        snap.insert(name.to_string(), serde_json::Value::String(out.to_string()));
                     }
                 }
                 let snap_json = serde_json::Value::Object(snap);
@@ -85,14 +82,14 @@ pub fn cmd_bless(extra: &[&str]) {
 
         for (name, out_val) in obj.iter() {
             let out_str = out_val.as_str().unwrap_or("");
-            if let Some(name_line) = lines.iter().position(|l| {
-                l.trim() == &format!("name: \"{}\".into(),", name)
-            }) {
+            if let Some(name_line) = lines
+                .iter()
+                .position(|l| l.trim() == &format!("name: \"{}\".into(),", name))
+            {
                 let mut oracle_line = None;
                 for i in name_line..lines.len() {
                     let trimmed = lines[i].trim();
-                    if trimmed.starts_with("oracle: Some(")
-                        || trimmed.starts_with("oracle: None,")
+                    if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,")
                     {
                         oracle_line = Some(i);
                         break;
@@ -108,8 +105,7 @@ pub fn cmd_bless(extra: &[&str]) {
                         .replace('\\', "\\\\")
                         .replace('"', "\\\"")
                         .replace('\n', "\\n");
-                    let indent =
-                        &lines[oi][..lines[oi].len() - lines[oi].trim_start().len()];
+                    let indent = &lines[oi][..lines[oi].len() - lines[oi].trim_start().len()];
                     lines[oi] = format!("{indent}oracle: Some(\"{escaped}\".into()),");
                     changed += 1;
                     eprintln!("  blessed {name}: \"{escaped}\"");

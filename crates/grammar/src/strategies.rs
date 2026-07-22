@@ -196,10 +196,7 @@ impl<T: DeserializeOwned + Send + Sync + 'static> RawGbnfStrategy<T> {
     }
 
     /// Create with a custom parser (e.g., for non-JSON output formats).
-    pub fn with_parser(
-        grammar: &str,
-        parser: ParserFn<T>,
-    ) -> Self {
+    pub fn with_parser(grammar: &str, parser: ParserFn<T>) -> Self {
         Self {
             grammar: grammar.to_string(),
             parser,

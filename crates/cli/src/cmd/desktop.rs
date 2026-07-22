@@ -11,7 +11,10 @@ pub fn cmd_gui(_extra: &[&str]) {
 
     let exe = std::env::current_exe().expect("failed to get current exe path");
 
-    println!("Checking gateway daemon on port {}...", daemon::GATEWAY_PORT);
+    println!(
+        "Checking gateway daemon on port {}...",
+        daemon::GATEWAY_PORT
+    );
     let already_running =
         daemon::ensure_daemon(&exe, "gateway", daemon::GATEWAY_PORT, &["--detach"]);
 

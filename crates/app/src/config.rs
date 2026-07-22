@@ -63,8 +63,6 @@ pub struct GatewayConfig {
 // Defaults
 // ═════════════════════════════════════════════════════════════════════════════
 
-
-
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {

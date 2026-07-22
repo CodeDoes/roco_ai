@@ -49,11 +49,12 @@ pub fn help(_sub: Option<&str>) {
     eprintln!("  roco <subcommand> [args]             Run a specific command\n");
     eprintln!("Subcommands:");
     eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
-    eprintln!(
-        "                                  Interactive CLI with pacing (default)"
-    );
+    eprintln!("                                  Interactive CLI with pacing (default)");
     eprintln!("  interact --list-sessions           List saved sessions");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Structured short story");
+    eprintln!("  game [scenario]                 Adventure game mode (interactive fiction)");
+    eprintln!("  html [--port PORT]                Live HTML canvas — agent responds in HTML, served via local web server");
+    eprintln!("  code <question> [--lang LANG]   AI coding assistant");
     eprintln!("  gui                               Desktop GUI (--features desktop)");
     eprintln!(
         "  server [...]                      HTTP surface (--features net); GPU via roco-inferd"

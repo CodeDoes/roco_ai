@@ -213,7 +213,8 @@ pub fn cmd_server(extra: &[&str]) {
             }
         };
 
-        let app = create_router(backend.clone()).merge(create_story_router(backend.clone(), engine));
+        let app =
+            create_router(backend.clone()).merge(create_story_router(backend.clone(), engine));
         let addr = format!("{host}:{port}");
         println!("Starting story server on {addr} (model via roco-inferd)...");
         let listener = tokio::net::TcpListener::bind(&addr)
