@@ -290,7 +290,11 @@ impl RocoDesktopApp {
                     match result {
                         Ok(response) => {
                             let text = response.text.trim().to_string();
-                            self.chat_state.add_message(ChatMessage::assistant(text));
+                            // Demote `<think>...</think>` blocks to their
+                            // own collapsible MessageRole::Think entries so
+                            // the user sees a "Thinking trace" panel above
+                            // each answer instead of buried raw text.
+                            self.chat_state.add_assistant_response(&text);
                             self.status_message = "Ready".to_string();
                             self.timeline_state.add_entry(timeline_entry(
                                 "gen_done",
