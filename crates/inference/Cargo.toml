@@ -9,7 +9,7 @@ name = "roco_inference"
 [dependencies]
 roco-engine = { path = "../engine" }
 roco-grammar = { path = "../grammar", optional = true }
-tokio.workspace = true
+tokio = { workspace = true, features = ["fs", "macros", "rt", "sync", "time"] }
 tracing.workspace = true
 anyhow.workspace = true
 serde.workspace = true
@@ -21,8 +21,16 @@ fastrand = { version = "2.3" }
 bit-set = { version = "0.5" }
 futures.workspace = true
 web-rwkv = { version = "0.10", default-features = false, features = ["native"] }
-wgpu = "29.0"
+# Linux/dev builds only need Vulkan. Dropping dx12/metal/webgpu cuts a large
+# amount of wgpu-hal/naga backend code out of the unit graph.
+wgpu = { version = "29.0", default-features = false, features = ["std", "parking_lot", "vulkan", "wgsl", "gles"] }
 
 [features]
 default = ["grammar"]
 grammar = ["dep:roco-grammar"]
+
+[dev-dependencies]
+roco-agent = { path = "../agent" }
+roco-grammar = { path = "../grammar" }
+roco-bnf-engine = { path = "../bnf-engine" }
+anyhow.workspace = true

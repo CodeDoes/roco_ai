@@ -19,13 +19,16 @@
 //!   roco grammar                           grammar-constrained decode
 //!   roco gpu-check                         show Vulkan + model info
 
+#[cfg(feature = "net")]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(feature = "net")]
 #[path = "../story_routes.rs"]
 mod story_routes;
 
+#[cfg(feature = "net")]
 #[path = "../lsp.rs"]
 mod lsp_handler;
 
@@ -43,6 +46,7 @@ mod cmd_export;
 
 /// Spawn a detached child process for `roco server` or `roco gateway`.
 /// The parent redirects stdio to a log file, writes a PID file, and exits.
+#[cfg(feature = "net")]
 fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path) {
     let exe = std::env::current_exe().expect("failed to get current exe path");
 
@@ -97,6 +101,7 @@ fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path
 }
 
 /// Compute a default path under `/tmp/roco/` for PID or log files.
+#[cfg(feature = "net")]
 fn default_detach_path(subcmd: &str, port: u16, ext: &str) -> PathBuf {
     let dir = std::env::temp_dir().join("roco");
     let _ = fs::create_dir_all(&dir);
@@ -120,18 +125,48 @@ fn main() {
         "bless" => cmd_bless(&extra),
         "rwkv" => run_cargo(
             "run",
-            &["-p", "roco-cli", "--example", "rwkv_test", "--release"],
+            &["-p", "roco-inference", "--example", "rwkv_test", "--release"],
             &extra,
         ),
         "grammar" => run_cargo(
             "run",
-            &["-p", "roco-cli", "--example", "grammar_smoke", "--release"],
+            &["-p", "roco-inference", "--example", "grammar_smoke", "--release"],
             &extra,
         ),
         "gpu-check" => cmd_gpu_check(&extra),
-        "server" => cmd_server(&extra),
-        "gateway" => cmd_gateway(&extra),
-        "gui" => cmd_gui(&extra),
+        "server" => {
+            #[cfg(feature = "net")]
+            cmd_server(&extra);
+            #[cfg(not(feature = "net"))]
+            {
+                eprintln!(
+                    "error: `roco server` needs `--features net`.\n                     For local GPU inference use: cargo run -p roco-inferd\n                     Or rebuild: cargo build -p roco-cli --features net"
+                );
+                std::process::exit(2);
+            }
+        }
+        "gateway" => {
+            #[cfg(feature = "net")]
+            cmd_gateway(&extra);
+            #[cfg(not(feature = "net"))]
+            {
+                eprintln!(
+                    "error: `roco gateway` needs `--features net`.\n                     rebuild: cargo build -p roco-cli --features net"
+                );
+                std::process::exit(2);
+            }
+        }
+        "gui" => {
+            #[cfg(feature = "desktop")]
+            cmd_gui(&extra);
+            #[cfg(not(feature = "desktop"))]
+            {
+                eprintln!(
+                    "error: `roco gui` requires the desktop feature.\n                     rebuild with: cargo build -p roco-cli --features desktop\n                     or:            make build-desktop"
+                );
+                std::process::exit(2);
+            }
+        }
         "stop" => {
             crate::daemon::stop_all();
         }
@@ -157,6 +192,7 @@ fn main() {
     }
 }
 
+#[cfg(feature = "desktop")]
 fn cmd_gui(_extra: &[&str]) {
     use crate::daemon::{self, GATEWAY_PORT};
     use eframe::egui;
@@ -225,6 +261,7 @@ fn cmd_gui(_extra: &[&str]) {
     .expect("GUI failed to start");
 }
 
+#[cfg(feature = "net")]
 fn cmd_gateway(extra: &[&str]) {
     use roco_gateway::Gateway;
 
@@ -276,13 +313,17 @@ fn cmd_gateway(extra: &[&str]) {
     });
 }
 
+#[cfg(feature = "net")]
 fn cmd_server(extra: &[&str]) {
-    use crate::story_routes::create_story_router;
-    use roco_agent::story_engine::{StoryConfig, StoryEngine};
     use roco_infer_client::RemoteBackend;
-    use roco_inference::RwkvBackend;
-    use roco_server::{Server, ServerConfig};
     use std::sync::Arc;
+
+    // Local GPU inference was split into `roco-inferd` so this CLI binary never
+    // links wgpu/web-rwkv. `roco server` remains as:
+    //   - LSP front-end (`--stdio-lsp`)
+    //   - story HTTP façade (`--story`) proxying to inferd
+    //   - plain reverse-compat entry that starts/waits for roco-inferd and
+    //     serves the same HTTP API via RemoteBackend (no in-process model)
 
     let host = parse_opt("--host", extra).unwrap_or("127.0.0.1");
     let port_str = parse_opt("--port", extra).unwrap_or("8080");
@@ -295,7 +336,6 @@ fn cmd_server(extra: &[&str]) {
             std::env::var("ROCO_API_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
         });
 
-    // Detach mode
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
     let is_child = extra.contains(&"--_child-server");
     let log_path = parse_opt("--log-file", extra)
@@ -306,17 +346,25 @@ fn cmd_server(extra: &[&str]) {
         .unwrap_or_else(|| default_detach_path("server", port, "pid"));
 
     if detach && !is_child {
+        // Prefer handing off to roco-inferd when the user wants a detached
+        // plain inference server (no --story / --stdio-lsp).
+        if !story_mode && !stdio_lsp {
+            let exe = std::env::current_exe().ok();
+            if let Some(exe) = exe.as_ref() {
+                if crate::daemon::ensure_inference_daemon(exe, port) || crate::daemon::is_running("inferd", port) || crate::daemon::is_running("server", port) {
+                    println!("inference daemon already running or started on port {port}");
+                    return;
+                }
+            }
+            eprintln!(
+                "error: could not start roco-inferd.\n                 Build it with: cargo build -p roco-inferd\n                 Then:          roco-inferd --port {port}"
+            );
+            std::process::exit(2);
+        }
         spawn_detached("server", extra, &log_path, &pid_path);
         return;
     }
 
-    // ── LSP front-end ──────────────────────────────────────────────────────
-    // When spawned by an editor (e.g. Zed's `language_server_command`), run
-    // only the LSP loop over stdin/stdout. The LSP is a thin client to the
-    // singleton inference API server and does NOT load its own model. This
-    // avoids binding a TCP port (which would conflict with the user's
-    // manually-started server) and lets the process exit cleanly when the
-    // editor closes stdin.
     if stdio_lsp {
         println!("Starting RoCo LSP (client → {inference_url})...");
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -342,6 +390,55 @@ fn cmd_server(extra: &[&str]) {
         return;
     }
 
+    if !story_mode {
+        // Plain `roco server` → tell the user to use roco-inferd (or start it).
+        let exe = std::env::current_exe().expect("exe");
+        println!("roco server: local model serving moved to `roco-inferd`.");
+        if crate::daemon::is_running("inferd", port) || crate::daemon::is_running("server", port) {
+            println!("inference already healthy on port {port}");
+            // Block until killed, proxying is unnecessary — inferd already serves.
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                if !(crate::daemon::is_running("inferd", port) || crate::daemon::is_running("server", port)) {
+                    eprintln!("inference daemon exited");
+                    std::process::exit(1);
+                }
+            }
+        }
+        crate::daemon::ensure_inference_daemon(&exe, port);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        if let Err(e) = rt.block_on(crate::daemon::wait_for_healthy(
+            port,
+            std::time::Duration::from_secs(120),
+            "roco-inferd",
+        )) {
+            eprintln!("{e}");
+            eprintln!("Build/run the daemon: cargo run -p roco-inferd -- --port {port}");
+            std::process::exit(1);
+        }
+        println!("roco-inferd is healthy on port {port}");
+        // Stay alive so supervisors that expect `roco server` to be long-running
+        // keep a parent process; health is owned by inferd.
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            if !(crate::daemon::is_running("inferd", port) || crate::daemon::is_running("server", port)) {
+                eprintln!("inference daemon exited");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Story mode: HTTP façade that talks to inferd via RemoteBackend.
+    use crate::story_routes::create_story_router;
+    use roco_agent::story_engine::{StoryConfig, StoryEngine};
+    use roco_server::routes::create_router;
+
+    let exe = std::env::current_exe().expect("exe");
+    crate::daemon::ensure_inference_daemon(&exe, crate::daemon::INFERENCE_PORT);
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -355,52 +452,43 @@ fn cmd_server(extra: &[&str]) {
             )
             .init();
 
-        println!("Loading model...");
-        let backend = match RwkvBackend::from_env() {
-            Ok(b) => Arc::new(b),
+        if let Err(e) = crate::daemon::wait_for_healthy(
+            crate::daemon::INFERENCE_PORT,
+            std::time::Duration::from_secs(120),
+            "roco-inferd",
+        )
+        .await
+        {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+
+        let backend: Arc<dyn roco_engine::ModelBackend> = Arc::new(RemoteBackend::new(
+            format!("http://127.0.0.1:{}", crate::daemon::INFERENCE_PORT),
+        ));
+
+        println!("Story mode enabled — initializing story engine...");
+        let story_config = StoryConfig {
+            interactive: true,
+            validate_quality: true,
+            ..Default::default()
+        };
+        let engine = match StoryEngine::new(story_config) {
+            Ok(e) => e,
             Err(e) => {
-                eprintln!("Error loading backend: {e}");
+                eprintln!("Error creating story engine: {e}");
                 std::process::exit(1);
             }
         };
-        println!("Model loaded successfully.");
 
-        if story_mode {
-            println!("Story mode enabled — initializing story engine...");
-            let story_config = StoryConfig {
-                interactive: true,
-                validate_quality: true,
-                ..Default::default()
-            };
-            let engine = match StoryEngine::new(story_config) {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("Error creating story engine: {e}");
-                    std::process::exit(1);
-                }
-            };
-
-            let app = roco_server::routes::create_router(backend.clone())
-                .merge(create_story_router(backend.clone(), engine));
-
-            let addr = format!("{host}:{port}");
-            println!("Starting story server on {addr}...");
-            let listener = tokio::net::TcpListener::bind(&addr)
-                .await
-                .expect("Failed to bind TCP listener");
-            if let Err(e) = axum::serve(listener, app).await {
-                eprintln!("Server error: {e}");
-            }
-        } else {
-            let config = ServerConfig {
-                host: host.to_string(),
-                port,
-            };
-            let server = Server::new(config, backend);
-            println!("Starting server on {host}:{port}...");
-            if let Err(e) = server.run().await {
-                eprintln!("Server error: {e}");
-            }
+        let app = create_router(backend.clone()).merge(create_story_router(backend.clone(), engine));
+        let addr = format!("{host}:{port}");
+        println!("Starting story server on {addr} (model via roco-inferd)...");
+        let listener = tokio::net::TcpListener::bind(&addr)
+            .await
+            .expect("Failed to bind TCP listener");
+        if let Err(e) = axum::serve(listener, app).await {
+            eprintln!("Server error: {e}");
         }
     });
 }
@@ -411,9 +499,9 @@ fn cmd_eval(extra: &[&str]) {
         "run",
         &[
             "-p",
-            "roco-cli",
+            "roco-inference",
             "--example",
-            "eval_suite",
+            "rwkv_test",
             "--release",
             "--",
             "--backend",

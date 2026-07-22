@@ -53,10 +53,10 @@
   scripts.test.exec = "mkdir -p .roco/tests && cargo test --workspace > .roco/tests/latest.log 2>&1 || true";
   scripts.build.exec = "cargo build --workspace";
   scripts.rwkv.exec = "cargo run -p roco-inference --example rwkv_test --release";
-  scripts.grammar.exec = "cargo run -p roco-cli --example grammar_smoke --release";
-  scripts.eval.exec = "cargo run -p roco-cli --example eval_suite --release -- --backend rwkv";
-  scripts.chat.exec = "cargo run -p roco-cli --example chat --release";
-  scripts.agent.exec = "cargo run -p roco-cli --example agent --release --";
+  scripts.grammar.exec = "cargo run -p roco-inference --example grammar_smoke --release";
+  scripts.eval.exec = "cargo run -p roco-cli -- eval";
+  scripts.chat.exec = "cargo run -p roco-cli -- interact";
+  scripts.agent.exec = "cargo run -p roco-cli -- interact --";
   scripts.daemon.exec = "cargo run -p roco-server --example daemon --release";
   scripts.quant-analyze.exec = "cargo run -p roco-inference --example quant_analyze --release";
   scripts.style-stress.exec = "cargo run -p roco-inference --example style_stress --release";
@@ -111,8 +111,13 @@
     # sccache: cache compiled Rust crate artifacts across builds so repeated
     # `cargo build`/`cargo check` are fast (sccache warms across builds).
     # This is what actually addresses slow cargo builds — cachix does not.
-    export RUSTC_WRAPPER=sccache
+    # Edit-loop default: incremental ON. sccache is opt-in (see make build-cold).
+    export CARGO_INCREMENTAL="''${CARGO_INCREMENTAL:-1}"
+    # Keep sccache available but do not wrap rustc by default.
     export SCCACHE_DIR="/home/kit/.cache/sccache"
+    # Uncomment to force sccache (disables incremental):
+    # export RUSTC_WRAPPER=sccache
+    # export CARGO_INCREMENTAL=0
     export SCCACHE_CACHE_SIZE="20G"
 
     echo "RoCo AI — devenv ready"

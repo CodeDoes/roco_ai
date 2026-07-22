@@ -1,12 +1,13 @@
 //! Session capabilities: `session`, `session_agent`, `session_agent_message`.
 //!
-//! Wraps `roco_session::store::SessionStore` and `roco_agent::SessionStore`
-//! so surfaces don't import either directly.
+//! Wraps `roco_session::store::SessionStore` so surfaces don't import it directly.
+//! (Agent-specific transcript search lives in `roco-agent` and is not required
+//! for the app façade — keeping `roco-app` free of `roco-agent` speeds up
+//! incremental rebuilds when agent code changes.)
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use roco_agent::SessionStore as AgentSessionStore;
 use roco_session::store::SessionStore as CoreSessionStore;
 
 use crate::{AppError, AppResult};
@@ -17,7 +18,6 @@ use crate::{AppError, AppResult};
 pub struct SessionHandle {
     pub id: String,
     core: Arc<CoreSessionStore>,
-    agent_store: Arc<AgentSessionStore>,
 }
 
 impl SessionHandle {
@@ -26,18 +26,15 @@ impl SessionHandle {
         let core =
             Arc::new(CoreSessionStore::new(root).map_err(|e| AppError::Session(e.0.clone()))?);
         let _ = core.create_root(id);
-        let agent_store = Arc::new(AgentSessionStore::new(root.join("agent")));
         Ok(Self {
             id: id.to_string(),
             core,
-            agent_store,
         })
     }
 
     /// List all session ids under `root`.
     pub fn list(root: &Path) -> Vec<String> {
         let mut ids = Vec::new();
-        // Sessions live under `<root>/.roco/sessions/`.
         let sessions_dir = root.join(".roco").join("sessions");
         if let Ok(entries) = std::fs::read_dir(&sessions_dir) {
             for e in entries.flatten() {
@@ -58,11 +55,6 @@ impl SessionHandle {
         self.core
             .log_conversation(self.id.clone(), &format!("[{role}] {text}"))
             .map_err(|e| AppError::Session(e.0.clone()))
-    }
-
-    /// Persist the agent transcript for this session.
-    pub fn record_transcript(&self, transcript: roco_agent::SessionTranscript) {
-        self.agent_store.record(transcript);
     }
 }
 

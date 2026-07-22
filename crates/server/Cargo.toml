@@ -8,10 +8,11 @@ name = "roco_server"
 
 [dependencies]
 roco-engine = { path = "../engine" }
-roco-inference = { path = "../inference" }
 roco-session = { path = "../session" }
 roco-message = { path = "../message" }
-tokio.workspace = true
+tokio = { workspace = true, features = [
+    "macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time",
+] }
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true

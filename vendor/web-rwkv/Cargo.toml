@@ -213,6 +213,20 @@ version = "0.10"
 
 [dependencies.wgpu]
 version = "29.0"
+# RoCo only targets native Vulkan (Linux) / Metal (macOS) / DX12 (Windows)
+# via wgpu's cfg-gated backends. Disabling webgpu/webgl cuts wasm glue.
+# Platform backends are still listed so macOS/Windows builds keep working;
+# unused OS backends are cfg'd out by wgpu itself.
+default-features = false
+features = [
+    "std",
+    "parking_lot",
+    "vulkan",
+    "wgsl",
+    "gles",
+    "metal",
+    "dx12",
+]
 
 [dev-dependencies.anyhow]
 version = "1.0"

@@ -60,10 +60,10 @@ The `story` subcommand runs a formal pipeline (outline → wiki → chapters →
 
 ```bash
 # Run the human-centered story writing example
-cargo run --release --example story_human -p roco-cli
+cargo run --release --example story_human -p roco-inference
 
 # Run the story engine example (auto-mode)
-cargo run --release --example story_engine -p roco-cli --auto
+cargo run --release --example story_engine -p roco-inference --auto
 ```
 
 ## Web Apps (`apps/`)

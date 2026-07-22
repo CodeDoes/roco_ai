@@ -74,7 +74,8 @@ cargo test --workspace --no-run
 # ── Step 4: example targets (used by start.sh + surfaces) ────────────────
 echo ""
 echo "Step 4: Example target build (start.sh, story_*, grammar_smoke)..."
-cargo check -p roco-cli --examples
+cargo check -p roco-inference --examples
+cargo check -p roco-cli
 
 # ── Step 5: rustfmt check ────────────────────────────────────────────────
 # Drift in formatting is a low-cost quality signal; catch it before the

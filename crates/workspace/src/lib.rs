@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod tools;
+pub mod version;
 pub mod workspace;
 
 pub use error::WorkspaceError;
@@ -16,3 +17,5 @@ pub use tools::{
 pub use workspace::blocked_command_reason;
 pub use workspace::Workspace;
 pub use workspace::WorkspaceKind;
+
+pub use version::{ReversibleAction, Snapshot, SnapshotSummary, VersionControl};

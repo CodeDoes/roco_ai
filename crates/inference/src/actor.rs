@@ -487,7 +487,9 @@ impl RwkvActor {
         // until `handle_complete` returns).
         rx: &mut mpsc::Receiver<ActorMessage>,
     ) {
-        // Destructure request fields for backward-compatible access
+        // Destructure request fields for backward-compatible access.
+        // `reply` is held outside the fallible body so every path (Ok / Err /
+        // cancel) delivers exactly one response on the oneshot.
         let CompleteReq {
             system,
             prompt,
@@ -503,6 +505,8 @@ impl RwkvActor {
             reply,
             ..
         } = req;
+
+        let outcome: Result<(String, TokenUsage), EngineError> = async {
         let session_id = session.as_ref().cloned();
         let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
 
@@ -730,14 +734,13 @@ impl RwkvActor {
         }
 
         if !first_token_sampled {
-            let _ = reply.send(Ok((
+            return Ok((
                 text,
                 TokenUsage {
                     prompt_tokens: prompt_len,
                     completion_tokens: 0,
                 },
-            )));
-            return;
+            ));
         }
 
         // Generate remaining tokens
@@ -885,8 +888,7 @@ impl RwkvActor {
         }
 
         let result_text = if generated.is_empty() {
-            let _ = reply.send(Err(EngineError::EmptyResponse));
-            return;
+            return Err(EngineError::EmptyResponse);
         } else {
             let decoded = self
                 .tokenizer
@@ -918,13 +920,17 @@ impl RwkvActor {
             }
         }
 
-        let _ = reply.send(Ok((
+        Ok((
             result_text,
             TokenUsage {
                 prompt_tokens: prompt_len,
                 completion_tokens: generated.len(),
             },
-        )));
+        ))
+        }
+        .await;
+
+        let _ = reply.send(outcome);
     }
 
     pub async fn run(mut self, mut rx: mpsc::Receiver<ActorMessage>) {

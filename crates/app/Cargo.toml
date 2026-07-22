@@ -5,10 +5,8 @@ edition = "2021"
 
 [dependencies]
 roco-engine = { path = "../engine" }
-roco-inference = { path = "../inference" }
 roco-session = { path = "../session" }
 roco-workspace = { path = "../workspace" }
-roco-agent = { path = "../agent" }
 roco-message = { path = "../message" }
 roco-infer-client = { path = "../infer-client" }
 

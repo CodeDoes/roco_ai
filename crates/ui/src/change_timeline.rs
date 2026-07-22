@@ -1,6 +1,6 @@
 //! Change Timeline — version control history viewer.
 //!
-//! Uses the existing `roco_agent::reversibility::VersionControl` engine API.
+//! Uses the existing `roco_workspace::VersionControl` engine API.
 //! Displays a timeline of snapshots and actions with undo/redo controls.
 
 use egui::{self, Color32, RichText, Ui, Vec2};

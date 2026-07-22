@@ -1,0 +1,20 @@
+[package]
+name = "roco-inferd"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Local RWKV inference daemon (wgpu). Not part of default-members."
+
+[[bin]]
+name = "roco-inferd"
+path = "src/main.rs"
+
+[dependencies]
+roco-engine = { path = "../engine" }
+roco-inference = { path = "../inference" }
+roco-server = { path = "../server" }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "signal"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+clap = { workspace = true }

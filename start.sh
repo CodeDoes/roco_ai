@@ -13,6 +13,7 @@ echo "========================================"
 echo ""
 echo "  Natural language mode. Just start writing."
 echo "  Model auto-detected or from config file."
+echo "  Local GPU server: roco-inferd (auto-started if built)."
 echo ""
 
 # Build and run (no env var needed — config handles it)

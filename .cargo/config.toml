@@ -1,0 +1,24 @@
+# Compile-speed defaults. See COMPILE_SPEED_REPORT.md.
+#
+# MOLD: rustc always emits gcc/clang-style linker args (-m64, -Wl,..., -fuse-ld=lld).
+# mold cannot be used as `linker = "mold"` directly — it rejects those flags
+# (`unknown -m argument: 64`). The supported pattern is:
+#   linker = "clang"   +   -C link-arg=-fuse-ld=mold
+# so clang is the driver and mold is the actual linker. This is "using mold
+# correctly", not a half-setup.
+
+[build]
+
+[term]
+quiet = false
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[net]
+git-fetch-with-cli = true

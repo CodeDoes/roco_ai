@@ -7,31 +7,50 @@ edition.workspace = true
 name = "roco"
 path = "src/bin/roco.rs"
 
+[features]
+default = []
+# Desktop GUI (egui). Off by default.
+desktop = ["dep:eframe", "dep:roco_ui"]
+# HTTP server / gateway / story façade. Off by default — use `roco-inferd` for
+# model serving; enable this only when working on the HTTP surface.
+net = ["dep:roco-server", "dep:roco-gateway", "dep:axum"]
+
 [dependencies]
 roco-engine = { path = "../engine" }
 roco-grammar = { path = "../grammar" }
-roco-inference = { path = "../inference" }
 roco-message = { path = "../message" }
 roco-agent = { path = "../agent" }
-roco-chat-common = { path = "../chat-common" }
 roco-tools = { path = "../tools" }
 roco-workspace = { path = "../workspace" }
-roco-bnf-engine = { path = "../bnf-engine" }
-roco-server = { path = "../server" }
-roco-gateway = { path = "../gateway" }
 roco-infer-client = { path = "../infer-client" }
 roco-app = { path = "../app", package = "roco-app" }
 roco-session = { path = "../session" }
-roco_ui = { path = "../ui", package = "roco_ui" }
-tokio.workspace = true
+# Optional surfaces — not in the fast default path.
+roco-server = { path = "../server", optional = true }
+roco-gateway = { path = "../gateway", optional = true }
+roco_ui = { path = "../ui", package = "roco_ui", optional = true }
+axum = { version = "0.7", features = ["macros"], optional = true }
+eframe = { version = "0.31", optional = true, default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "x11",
+    "wayland",
+] }
+tokio = { workspace = true, features = [
+    "io-std",
+    "io-util",
+    "macros",
+    "net",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-clap.workspace = true
 futures.workspace = true
-axum = { version = "0.7", features = ["macros"] }
 chrono = { version = "0.4", features = ["serde"] }
-reqwest.workspace = true
-eframe = { version = "0.31" }

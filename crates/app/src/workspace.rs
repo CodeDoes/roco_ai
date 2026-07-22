@@ -1,13 +1,12 @@
 //! Workspace capabilities: `workspace`, `workspace_transform`,
 //! `workspace_timeline_reset`, `workspace_timeline_compare`.
 //!
-//! Wraps `roco_workspace::Workspace` + `roco_agent::reversibility::VersionControl`
+//! Wraps `roco_workspace::Workspace` + `roco_workspace::VersionControl`
 //! so surfaces don't import either directly.
 
 use std::path::{Path, PathBuf};
 
-use roco_agent::reversibility::VersionControl;
-use roco_workspace::{Workspace as CoreWorkspace, WorkspaceKind};
+use roco_workspace::{VersionControl, Workspace as CoreWorkspace, WorkspaceKind};
 
 use crate::{AppError, AppResult};
 

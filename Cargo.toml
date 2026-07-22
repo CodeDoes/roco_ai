@@ -14,8 +14,18 @@ members = [
     "crates/server",
     "crates/gateway",
     "crates/infer-client",
+    "crates/inferd",
     "crates/ui",
     "crates/app",
+]
+# Fast default path: NO wgpu/web-rwkv (inference/inferd) and NO egui (ui).
+# Local GPU daemon:  cargo build -p roco-inferd
+# Desktop GUI:       cargo build -p roco-cli --features desktop -p roco_ui
+# Everything:        cargo check --workspace
+# ONLY the CLI binary. Its path-deps pull the rest. Listing extra members
+# here forces cargo to compile them even when nothing needs them.
+default-members = [
+    "crates/cli",
 ]
 resolver = "2"
 
@@ -24,7 +34,13 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", default-features = false, features = [
+    "macros",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
@@ -33,7 +49,7 @@ async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 clap = { version = "4", features = ["derive"] }
 parking_lot = "0.12"
 futures-channel = "0.3"
@@ -43,8 +59,43 @@ toml = "0.8"
 [patch.crates-io]
 web-rwkv = { path = "vendor/web-rwkv" }
 
+# ── Dev: fastest incremental edit/check loop ───────────────────────────────
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+incremental = true
+# More CGUs → better parallelism on incremental dirty units (slightly larger
+# final link, but mold makes that cheap).
+codegen-units = 256
+# Unpacked split DWARF avoids rewriting giant .debug sections on every link.
+split-debuginfo = "unpacked"
+
+# Keep proc-macro / build-script crates a bit optimized — they run during
+# compile, so a little opt pays for itself without slowing workspace crates.
+[profile.dev.build-override]
+opt-level = 1
+
+# ── Release (day-to-day): thin LTO — ~3-8× faster than fat LTO + CGU=1 ─────
 [profile.release]
 opt-level = 3
+lto = "thin"
+codegen-units = 8
+panic = "abort"
+incremental = false
+# Enough for backtraces/perf without full bloat that slows link.
+debug = 0
+strip = "debuginfo"
+
+# ── Release-fast: no LTO, max parallelism — CI smoke / local benches prep ──
+[profile.release-fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = "none"
+
+# ── Dist: previous max-opt settings for final shipping binaries only ───────
+[profile.dist]
+inherits = "release"
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+strip = "symbols"

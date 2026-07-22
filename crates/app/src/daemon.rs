@@ -63,6 +63,85 @@ pub fn is_running(name: &str, port: u16) -> bool {
 
 
 
+/// Locate the `roco-inferd` binary (sibling of current exe, then PATH).
+fn find_inferd(current_exe: &PathBuf) -> Option<PathBuf> {
+    if let Some(dir) = current_exe.parent() {
+        let sibling = dir.join("roco-inferd");
+        if sibling.is_file() {
+            return Some(sibling);
+        }
+        // cargo run layout: target/debug/roco next to target/debug/roco-inferd
+    }
+    // PATH lookup
+    if let Ok(path) = std::env::var("PATH") {
+        for entry in path.split(':') {
+            let cand = PathBuf::from(entry).join("roco-inferd");
+            if cand.is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
+/// Start the local GPU inference daemon.
+///
+/// Prefers the dedicated `roco-inferd` binary (does not live inside `roco`,
+/// so the CLI never links wgpu). Falls back to `roco server` only if
+/// `roco-inferd` is missing, with a loud warning — that fallback cannot
+/// load a model anymore and will itself try to reach inferd.
+pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
+    if is_running("server", port) || is_running("inferd", port) {
+        return true;
+    }
+    let _ = std::fs::create_dir_all(pid_dir());
+
+    if let Some(inferd) = find_inferd(roco_exe) {
+        let log_file_path = log_path("inferd", port);
+        let pid_file_path = pid_path("inferd");
+        let _ = std::fs::remove_file(&pid_file_path);
+        let log_file = match std::fs::File::create(&log_file_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Warning: failed to create log {}: {e}", log_file_path.display());
+                return false;
+            }
+        };
+        let log_clone = match log_file.try_clone() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        match Command::new(&inferd)
+            .args(["--port", &port.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(log_file)
+            .stderr(log_clone)
+            .spawn()
+        {
+            Ok(child) => {
+                let pid = child.id();
+                let _ = std::fs::write(&pid_file_path, pid.to_string());
+                // Also write server.pid so legacy is_running("server") checks pass.
+                let _ = std::fs::write(pid_path("server"), pid.to_string());
+                eprintln!(
+                    "Started roco-inferd (PID {pid}, log: {})",
+                    log_file_path.display()
+                );
+                return false;
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to spawn roco-inferd: {e}");
+            }
+        }
+    } else {
+        eprintln!(
+            "error: `roco-inferd` not found next to {} or on PATH.\n             Local GPU inference was split out of the CLI so everyday builds stay fast.\n             Build it with:  cargo build -p roco-inferd\n             Or:             make build-inferd",
+            roco_exe.display()
+        );
+    }
+    false
+}
+
 /// Start a daemon if not already running. Safe to call from both sync and
 /// async contexts. Tries to detect an already-running instance first.
 pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]) -> bool {
@@ -220,7 +299,7 @@ pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate
     let exe = std::env::current_exe().expect("failed to get current exe path");
 
     // Ensure inference server is running
-    ensure_daemon(&exe, "server", INFERENCE_PORT, &["--detach"]);
+    ensure_inference_daemon(&exe, INFERENCE_PORT);
 
     // Build args for the gateway (without --detach, as we're already the child)
     let args = vec![
@@ -288,8 +367,8 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
         .build()
         .expect("failed to build runtime for daemon wait");
 
-    // 1. Start and wait for inference server
-    ensure_daemon(&exe, "server", INFERENCE_PORT, &["--detach"]);
+    // 1. Start and wait for inference server (roco-inferd)
+    ensure_inference_daemon(&exe, INFERENCE_PORT);
     rt.block_on(wait_for_healthy(
         INFERENCE_PORT,
         Duration::from_secs(60),

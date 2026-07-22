@@ -47,8 +47,7 @@ pub fn cmd_gateway(extra: &[&str]) {
 pub fn cmd_server(extra: &[&str]) {
     use roco_agent::story_engine::{StoryConfig, StoryEngine};
     use roco_infer_client::RemoteBackend;
-    use roco_inference::RwkvBackend;
-    use roco_server::{Server, ServerConfig};
+        use roco_server::{Server, ServerConfig};
     use std::sync::Arc;
 
     let host = parse_opt("--host", extra).unwrap_or("127.0.0.1");
@@ -104,17 +103,11 @@ pub fn cmd_server(extra: &[&str]) {
         return;
     }
 
-    // Resolve backend
+    // Resolve backend via daemon (RemoteBackend → roco-inferd). Never link wgpu here.
     let backend: Arc<dyn roco_engine::ModelBackend> = if inference_url.contains("localhost")
         || inference_url.contains("127.0.0.1")
     {
-        match RwkvBackend::from_env() {
-            Ok(b) => Arc::new(b) as Arc<dyn roco_engine::ModelBackend>,
-            Err(e) => {
-                eprintln!("Error loading backend: {e}");
-                std::process::exit(1);
-            }
-        }
+        crate::daemon::ensure_backend()
     } else {
         Arc::new(RemoteBackend::new(inference_url)) as Arc<dyn roco_engine::ModelBackend>
     };

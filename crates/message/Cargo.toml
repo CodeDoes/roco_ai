@@ -12,11 +12,13 @@ roco-grammar = { path = "../grammar", optional = true }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
 tracing.workspace = true
+# Production retry backoff uses tokio::time::sleep
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 schoolmarm = "0.1"
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [features]
 default = ["grammar"]
