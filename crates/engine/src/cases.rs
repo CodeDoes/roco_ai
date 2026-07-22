@@ -2,7 +2,7 @@
 
 use crate::eval::{EvalCase, EvalCategory};
 
-pub fn default_eval_suite() -> Vec<EvalCase> {
+pub(crate) fn default_eval_suite() -> Vec<EvalCase> {
     vec![
         EvalCase {
             name: "smoke_basic_reply".into(),
@@ -205,7 +205,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
     ]
 }
 
-pub fn throughput_eval_cases() -> Vec<EvalCase> {
+pub(crate) fn throughput_eval_cases() -> Vec<EvalCase> {
     vec![EvalCase {
         name: "throughput_long_gen".into(),
         description: "Generate a substantial amount of text to measure tokens/second".into(),
@@ -226,7 +226,7 @@ pub fn throughput_eval_cases() -> Vec<EvalCase> {
     }]
 }
 
-pub fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
+pub(crate) fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
     vec![EvalCase {
         name: "context_long_recall".into(),
         description: "Recalls a fact from a long system prompt".into(),
@@ -247,11 +247,11 @@ pub fn context_eval_cases(long_text: &str) -> Vec<EvalCase> {
     }]
 }
 
-pub fn grammar_eval_cases() -> Vec<EvalCase> {
+pub(crate) fn grammar_eval_cases() -> Vec<EvalCase> {
     Vec::new()
 }
 
-pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
+pub(crate) fn jsonschema_eval_cases() -> Vec<EvalCase> {
     use crate::eval::EvalCase;
     use crate::eval::EvalCategory;
     vec![
@@ -325,7 +325,7 @@ pub fn jsonschema_eval_cases() -> Vec<EvalCase> {
 /// They are intentionally run against the real RWKV backend (not the
 /// non-semantic `MockBackend`), since the mock echoes the prompt and cannot
 /// represent instruction adherence. See `eval_suite.rs` for wiring.
-pub fn message_eval_cases() -> Vec<EvalCase> {
+pub(crate) fn message_eval_cases() -> Vec<EvalCase> {
     vec![
         EvalCase {
             name: "instruct_baseline_persona".into(),
@@ -435,7 +435,7 @@ pub fn message_eval_cases() -> Vec<EvalCase> {
 // there instead of running to `max_tokens`. The grammar structurally forbids
 // `<`, so think/scaffolding leaks (`<fim>`, `<?>`) cannot appear. The actor's
 // per-token stop-conditions are a belt-and-suspenders backstop.
-pub fn fim_eval_cases() -> Vec<EvalCase> {
+pub(crate) fn fim_eval_cases() -> Vec<EvalCase> {
     use crate::eval::{EvalCase, EvalCategory};
     use roco_grammar::grammar_library::StoryGrammar;
 

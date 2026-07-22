@@ -51,7 +51,8 @@ impl AppContext {
     /// Used by the LSP client and by `gui` when pointing at an external server.
     #[cfg(feature = "remote")]
     pub fn connect_remote(url: &str) -> Self {
-        let backend: Arc<dyn ModelBackend> = Arc::new(roco_infer_client::RemoteBackend::new(url.to_string()));
+        let backend: Arc<dyn ModelBackend> =
+            Arc::new(roco_infer_client::RemoteBackend::new(url.to_string()));
         let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
             backend,

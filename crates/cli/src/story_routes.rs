@@ -68,8 +68,6 @@ pub struct Suggestion {
     pub confidence: f32,
 }
 
-
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PlotStateResponse {
     pub characters: Vec<String>,
@@ -78,10 +76,6 @@ pub struct PlotStateResponse {
     pub themes: Vec<String>,
     pub arc_stage: String,
 }
-
-
-
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StatusResponse {

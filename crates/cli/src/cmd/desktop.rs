@@ -10,13 +10,12 @@ pub fn cmd_gui(_extra: &[&str]) {
     let exe = std::env::current_exe().expect("failed to get current exe path");
 
     // 1. Start gateway daemon if not running
-    println!("Checking gateway daemon on port {}...", crate::daemon::GATEWAY_PORT);
-    let already_running = crate::daemon::ensure_daemon(
-        &exe,
-        "gateway",
-        crate::daemon::GATEWAY_PORT,
-        &["--detach"],
+    println!(
+        "Checking gateway daemon on port {}...",
+        crate::daemon::GATEWAY_PORT
     );
+    let already_running =
+        crate::daemon::ensure_daemon(&exe, "gateway", crate::daemon::GATEWAY_PORT, &["--detach"]);
 
     if !already_running {
         println!("Gateway starting...");
@@ -45,10 +44,10 @@ pub fn cmd_gui(_extra: &[&str]) {
 
     // 2. Construct the shared AppContext.
     let gateway_url = format!("http://127.0.0.1:{}", crate::daemon::GATEWAY_PORT);
-    let backend: Option<Arc<dyn roco_engine::ModelBackend>> = Some(
-        Arc::new(RemoteBackend::new(gateway_url.clone()))
-            as Arc<dyn roco_engine::ModelBackend>,
-    );
+    let backend: Option<Arc<dyn roco_engine::ModelBackend>> = Some(Arc::new(RemoteBackend::new(
+        gateway_url.clone(),
+    ))
+        as Arc<dyn roco_engine::ModelBackend>);
     let app_context = AppContext::connect_remote(&gateway_url);
 
     println!("Starting GUI (backend: {})...", gateway_url);

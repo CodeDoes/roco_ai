@@ -1,0 +1,34 @@
+# cargo-nextest configuration.
+#
+# Run with: cargo nextest run --workspace --no-fail-fast
+# See: scripts/run_quick_tests.sh for the standard command pattern.
+#
+# Goal: per-crate test runs without re-checking the whole CLI.
+# Each step in the matrix (Step 1 of COMPILE_SPEED plan) isolates test
+# compile to a single crate so `cargo check` drag stays minimal.
+
+[profile.default]
+# Fail fast — keep noise tight.
+fail-fast = true
+# Status lines, but compact.
+status-level = "skip"
+# Stop after first failure, but list the rest.
+final-status-level = "fail"
+# Capture output (don't print on success).
+output = "final"
+
+# "Default to type-checking, then test the touch-point only" pattern.
+# Use: NEXTEST_PROFILE=quick cargo nextest run -p roco-agent
+[profile.quick]
+fail-fast = true
+status-level = "skip"
+final-status-level = "fail"
+# Don't print output by default; useful for `cargo nextest show-test-groups`.
+output = "final"
+
+# For CI: stable, exhaustive.
+[profile.ci]
+fail-fast = false
+status-level = "none"
+final-status-level = "always"
+output = "always"

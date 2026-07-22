@@ -70,15 +70,36 @@ cat EDIT_GUIDE.md | grep -A 2 "File / Module"
 
 # 2. Make your change
 
-# 3. Verify the workspace builds
+# 3. Per-crate quick test (compile + test only the touched crate)
+scripts/run_quick_tests.sh roco-agent
+
+# 4. Before commit: full workspace check
 run_tests.sh
 
-# 4. Verify no clippy warnings
+# 5. Verify no clippy warnings (workspace-wide gate)
 cargo clippy --workspace --all-targets -- --deny warnings
 
-# 5. Write progress
+# 6. Write progress
 # Append one line to roadmap/progress.md
 ```
+
+## Compile Zones (Per-Crate Build Targets)
+
+Different crates have different fan-out. Build only the relevant slice during your edit loop:
+
+| Loop | Command | Speed (typical) |
+|---|---|---|
+| Editing `agent/*` (logic-only) | `cargo check -p roco-agent` | ~0.6s incremental |
+| Editing `app/*` | `cargo check -p roco-app` | ~0.6s incremental |
+| Editing `cli/src/*.rs` (logic) | `cargo check -p roco-cli` (default features) | ~19s cold / incremental |
+| Editing `cli` with server | `cargo check -p roco-cli --features net` | adds reqwest/rustls |
+| Editing `cli` + GUI | `cargo check -p roco-cli --features desktop` | adds eframe |
+| Editing `ui/*` | `cargo check -p roco-ui` | adds egui/eframe |
+| Editing `inferd/*` | `cargo check -p roco-inferd` | adds wgpu/web-rwkv |
+
+The CLI default features exclude reqwest/rustls/ring, so everyday CLI compiles stay around 19s. Re-enable with `--features remote` (auto-implied by `desktop`/`net`).
+
+**rust-analyzer is pre-configured** in `.vscode/settings.json` to use `cargo check --no-default-features -p roco-cli` so it doesn't pull the heavy GPU/egui crates.
 
 ## Example Error Pattern — do not change without tests
 `crates/cli/examples/*.rs` call `Result<_, String>` APIs. Do NOT use `anyhow::Result<()>` in `main()`: `?` cannot coerce `String` in this repo's anyhow version.

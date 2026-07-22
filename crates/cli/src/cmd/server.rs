@@ -90,7 +90,10 @@ pub fn cmd_server(extra: &[&str]) {
         if !story_mode && !stdio_lsp {
             let exe = std::env::current_exe().ok();
             if let Some(exe) = exe.as_ref() {
-                if crate::daemon::ensure_inference_daemon(exe, port) || crate::daemon::is_running("inferd", port) || crate::daemon::is_running("server", port) {
+                if crate::daemon::ensure_inference_daemon(exe, port)
+                    || crate::daemon::is_running("inferd", port)
+                    || crate::daemon::is_running("server", port)
+                {
                     println!("inference daemon already running or started on port {port}");
                     return;
                 }
@@ -137,7 +140,9 @@ pub fn cmd_server(extra: &[&str]) {
             println!("inference already healthy on port {port}");
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
-                if !(crate::daemon::is_running("inferd", port) || crate::daemon::is_running("server", port)) {
+                if !(crate::daemon::is_running("inferd", port)
+                    || crate::daemon::is_running("server", port))
+                {
                     eprintln!("inference daemon exited");
                     std::process::exit(1);
                 }
@@ -160,7 +165,9 @@ pub fn cmd_server(extra: &[&str]) {
         println!("roco-inferd is healthy on port {port}");
         loop {
             std::thread::sleep(std::time::Duration::from_secs(60));
-            if !(crate::daemon::is_running("inferd", port) || crate::daemon::is_running("server", port)) {
+            if !(crate::daemon::is_running("inferd", port)
+                || crate::daemon::is_running("server", port))
+            {
                 eprintln!("inference daemon exited");
                 std::process::exit(1);
             }
@@ -198,9 +205,10 @@ pub fn cmd_server(extra: &[&str]) {
             std::process::exit(1);
         }
 
-        let backend: Arc<dyn roco_engine::ModelBackend> = Arc::new(RemoteBackend::new(
-            format!("http://127.0.0.1:{}", crate::daemon::INFERENCE_PORT),
-        ));
+        let backend: Arc<dyn roco_engine::ModelBackend> = Arc::new(RemoteBackend::new(format!(
+            "http://127.0.0.1:{}",
+            crate::daemon::INFERENCE_PORT
+        )));
 
         println!("Story mode enabled — initializing story engine...");
         let story_config = StoryConfig {
@@ -216,7 +224,8 @@ pub fn cmd_server(extra: &[&str]) {
             }
         };
 
-        let app = create_router(backend.clone()).merge(create_story_router(backend.clone(), engine));
+        let app =
+            create_router(backend.clone()).merge(create_story_router(backend.clone(), engine));
         let addr = format!("{host}:{port}");
         println!("Starting story server on {addr} (model via roco-inferd)...");
         let listener = tokio::net::TcpListener::bind(&addr)

@@ -507,426 +507,425 @@ impl RwkvActor {
         } = req;
 
         let outcome: Result<(String, TokenUsage), EngineError> = async {
-        let session_id = session.as_ref().cloned();
-        let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
+            let session_id = session.as_ref().cloned();
+            let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
 
-        // Load session state or reset
-        if let Some(ref sid) = session_id {
-            if let Some(pos) = self.session_lru.iter().position(|s| s == sid) {
-                self.session_lru.remove(pos);
-            }
-            self.session_lru.push_back(sid.clone());
-            match self.state_pool.get(sid) {
-                Some(Some(saved)) => {
-                    self.state
-                        .load(saved.clone(), 0)
-                        .map_err(|e| EngineError::Backend(format!("session load failed: {e}")))?;
-                    info!(session = sid, "loaded session state");
+            // Load session state or reset
+            if let Some(ref sid) = session_id {
+                if let Some(pos) = self.session_lru.iter().position(|s| s == sid) {
+                    self.session_lru.remove(pos);
                 }
-                _ => {
-                    self.state
-                        .load(self.initial_state.clone(), 0)
-                        .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
-                    info!(session = sid, "new session (blank state)");
-                }
-            }
-        } else if !preserve_state {
-            self.state
-                .load(self.initial_state.clone(), 0)
-                .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
-        }
-
-        // Grammar constraint — passed in as opaque Box<dyn BnfMask>.
-        // Cannot be created here — kbnf types would overflow the compiler
-        // (E0275 against web-rwkv's TokioRuntime). The application layer
-        // builds the BnfMask from grammar + vocab_bytes and passes it in.
-
-        // Build prompt.
-        //
-        // When resuming a baked session (session_id.is_some()) the system
-        // prompt and few-shot context are already encoded in the recurrent
-        // state — re-prepending `System:` would double-feed it and make the
-        // model echo the scaffolding. So resumed calls feed only the
-        // incremental context. The bake call itself (preserve_state) also
-        // skips the System wrapper for the same reason.
-        let use_system = !system.is_empty()
-            && session_id.is_none()
-            && !preserve_state;
-        let full = if use_system {
-            format!("System: {}\n\nUser: {prompt}\n\nAssistant:", system.trim())
-        } else {
-            format!("User: {prompt}\n\nAssistant:")
-        };
-
-        // Pre-fill if provided (for pre-think blocks, etc.)
-        let prefill_tokens = if let Some(pf) = prefill {
-            Some(
-                self.tokenizer
-                    .encode(pf.as_bytes())
-                    .map_err(|e| EngineError::Backend(format!("prefill tokenize: {e}")))?,
-            )
-        } else {
-            None
-        };
-
-        let prompt_tokens = self
-            .tokenizer
-            .encode(full.as_bytes())
-            .map_err(|e| EngineError::Backend(format!("tokenizer encode: {e}")))?;
-        let prompt_len = prompt_tokens.len();
-
-        let top_p = if temperature < 0.3 {
-            0.8
-        } else if temperature < 0.7 {
-            0.9
-        } else {
-            0.95
-        };
-        let top_a_val = top_a.unwrap_or(0.0);
-
-        // Combine prompt tokens with prefill tokens if any
-        let mut all_prompt_tokens = prompt_tokens;
-        if let Some(pf) = prefill_tokens {
-            all_prompt_tokens.extend(pf);
-        }
-        let total_prompt_len = all_prompt_tokens.len();
-
-        let mut inference = RnnInput::new(
-            vec![RnnInputBatch::new(all_prompt_tokens, RnnOption::Last)],
-            self.token_chunk_size,
-        );
-
-        let mut generated = Vec::new();
-        let mut text = String::new();
-        let mut first_token_sampled = false;
-        let mut tokens_generated: usize = 0;
-
-        // Flush prompt + sample first token
-        //
-        // This loop runs BEFORE the main generation loop and is NOT
-        // bounded by `max_tokens` in the original code. As a result,
-        // a bake call with `max_tokens: 1` (e.g. the FIM state-tune
-        // bake) could still emit many tokens here before the main
-        // loop ever starts counting. We now apply the cap uniformly:
-        // either loop stops once `tokens_generated >= max_tokens`.
-        loop {
-            if max_tokens > 0 && tokens_generated >= max_tokens {
-                break;
-            }
-            // Cooperative cancellation: drain any pending `Cancel` message so
-            // an interrupt (e.g. SSE client disconnect in `roco server`)
-            // actually stops a long-running generation instead of waiting
-            // for it to finish naturally at `max_tokens`. The actor's main
-            // loop is currently blocked inside this call, so it cannot poll
-            // its own mailbox; we do it here at every generation step.
-            while let Ok(ActorMessage::Cancel) = rx.try_recv() {
-                self.cancel.store(true, Ordering::Relaxed);
-            }
-            if self.cancel.load(Ordering::Relaxed) {
-                return Ok((
-                    text,
-                    TokenUsage {
-                        prompt_tokens: total_prompt_len,
-                        completion_tokens: generated.len(),
-                    },
-                ));
-            }
-            let input = inference.clone();
-            let (input, output) = self
-                .runtime
-                .infer(input)
-                .await
-                .map_err(|e| EngineError::Backend(format!("RWKV inference: {e:?}")))?;
-            inference = input;
-
-            if !inference.batches[0].tokens.is_empty() {
-                continue;
-            }
-
-            let ot = output[0].0.clone();
-            if ot.size() == 0 {
-                break;
-            }
-
-            let probs = softmax_one(
-                &self.context,
-                TensorCpu::from_data(ot.shape(), ot.to_vec())
-                    .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?,
-            )
-            .await
-            .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
-
-            let mut p = probs.data().to_vec();
-
-            #[cfg(feature = "grammar")]
-            let token = {
-                if let Some(mask) = bnf_mask.as_mut() {
-                    mask.mask(&mut p);
-                    // Renormalize so grammar-constrained tokens have full probability mass
-                    let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
-                    if sum > 0.0 {
-                        for v in p.iter_mut() {
-                            if v.is_finite() {
-                                *v /= sum;
-                            }
-                        }
+                self.session_lru.push_back(sid.clone());
+                match self.state_pool.get(sid) {
+                    Some(Some(saved)) => {
+                        self.state.load(saved.clone(), 0).map_err(|e| {
+                            EngineError::Backend(format!("session load failed: {e}"))
+                        })?;
+                        info!(session = sid, "loaded session state");
                     }
-                    let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
-                    if t > 0 {
-                        mask.accept(t);
-                        t
-                    } else {
-                        break;
+                    _ => {
+                        self.state
+                            .load(self.initial_state.clone(), 0)
+                            .map_err(|e| {
+                                EngineError::Backend(format!("state reset failed: {e}"))
+                            })?;
+                        info!(session = sid, "new session (blank state)");
                     }
-                } else {
-                    sampling::sample_token(&p, temperature, top_p, top_a_val)
                 }
+            } else if !preserve_state {
+                self.state
+                    .load(self.initial_state.clone(), 0)
+                    .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
+            }
+
+            // Grammar constraint — passed in as opaque Box<dyn BnfMask>.
+            // Cannot be created here — kbnf types would overflow the compiler
+            // (E0275 against web-rwkv's TokioRuntime). The application layer
+            // builds the BnfMask from grammar + vocab_bytes and passes it in.
+
+            // Build prompt.
+            //
+            // When resuming a baked session (session_id.is_some()) the system
+            // prompt and few-shot context are already encoded in the recurrent
+            // state — re-prepending `System:` would double-feed it and make the
+            // model echo the scaffolding. So resumed calls feed only the
+            // incremental context. The bake call itself (preserve_state) also
+            // skips the System wrapper for the same reason.
+            let use_system = !system.is_empty() && session_id.is_none() && !preserve_state;
+            let full = if use_system {
+                format!("System: {}\n\nUser: {prompt}\n\nAssistant:", system.trim())
+            } else {
+                format!("User: {prompt}\n\nAssistant:")
             };
-            #[cfg(not(feature = "grammar"))]
-            let token = sampling::sample_token(probs.data(), temperature, top_p, top_a_val);
 
-            if token == 0 {
-                break;
-            }
+            // Pre-fill if provided (for pre-think blocks, etc.)
+            let prefill_tokens = if let Some(pf) = prefill {
+                Some(
+                    self.tokenizer
+                        .encode(pf.as_bytes())
+                        .map_err(|e| EngineError::Backend(format!("prefill tokenize: {e}")))?,
+                )
+            } else {
+                None
+            };
 
-            let decoded = self
+            let prompt_tokens = self
                 .tokenizer
-                .decode(&[token])
-                .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
-            let word = String::from_utf8_lossy(&decoded).to_string();
+                .encode(full.as_bytes())
+                .map_err(|e| EngineError::Backend(format!("tokenizer encode: {e}")))?;
+            let prompt_len = prompt_tokens.len();
 
-            if let Some(ref cb) = on_token {
-                cb(&word);
+            let top_p = if temperature < 0.3 {
+                0.8
+            } else if temperature < 0.7 {
+                0.9
+            } else {
+                0.95
+            };
+            let top_a_val = top_a.unwrap_or(0.0);
+
+            // Combine prompt tokens with prefill tokens if any
+            let mut all_prompt_tokens = prompt_tokens;
+            if let Some(pf) = prefill_tokens {
+                all_prompt_tokens.extend(pf);
             }
+            let total_prompt_len = all_prompt_tokens.len();
 
-            // Stop conditions - catch FIM template pattern variations so the
-            // model doesn't echo the BEFORE/AFTER/INSERT scaffolding.
-            let potential_text = format!("{}{}", text, word);
-            let is_stop = word == "\n\n"
-                || word.trim() == "User:"
-                || word.trim() == "Human:"
-                || word.trim() == "NOW"
-                || word.trim_start().starts_with("BEFORE:")
-                || word.trim_start().starts_with("AFTER:")
-                || word.trim_start().starts_with("INSERT:")
-                || potential_text.contains("User: NOW")
-                || potential_text.contains("BEFORE:")
-                || potential_text.contains("AFTER:")
-                || potential_text.contains("INSERT:");
-            if is_stop {
-                break;
-            }
+            let mut inference = RnnInput::new(
+                vec![RnnInputBatch::new(all_prompt_tokens, RnnOption::Last)],
+                self.token_chunk_size,
+            );
 
-            text.push_str(&word);
-            generated.push(token);
-            tokens_generated += 1;
-            first_token_sampled = true;
-            inference.batches[0].push(token);
+            let mut generated = Vec::new();
+            let mut text = String::new();
+            let mut first_token_sampled = false;
+            let mut tokens_generated: usize = 0;
 
-            // If the generated span picked up template markers, stop now.
-            if text.contains("User: NOW")
-                || text.contains("BEFORE:")
-                || text.contains("AFTER:")
-                || text.contains("INSERT:")
-            {
-                break;
-            }
-        }
+            // Flush prompt + sample first token
+            //
+            // This loop runs BEFORE the main generation loop and is NOT
+            // bounded by `max_tokens` in the original code. As a result,
+            // a bake call with `max_tokens: 1` (e.g. the FIM state-tune
+            // bake) could still emit many tokens here before the main
+            // loop ever starts counting. We now apply the cap uniformly:
+            // either loop stops once `tokens_generated >= max_tokens`.
+            loop {
+                if max_tokens > 0 && tokens_generated >= max_tokens {
+                    break;
+                }
+                // Cooperative cancellation: drain any pending `Cancel` message so
+                // an interrupt (e.g. SSE client disconnect in `roco server`)
+                // actually stops a long-running generation instead of waiting
+                // for it to finish naturally at `max_tokens`. The actor's main
+                // loop is currently blocked inside this call, so it cannot poll
+                // its own mailbox; we do it here at every generation step.
+                while let Ok(ActorMessage::Cancel) = rx.try_recv() {
+                    self.cancel.store(true, Ordering::Relaxed);
+                }
+                if self.cancel.load(Ordering::Relaxed) {
+                    return Ok((
+                        text,
+                        TokenUsage {
+                            prompt_tokens: total_prompt_len,
+                            completion_tokens: generated.len(),
+                        },
+                    ));
+                }
+                let input = inference.clone();
+                let (input, output) = self
+                    .runtime
+                    .infer(input)
+                    .await
+                    .map_err(|e| EngineError::Backend(format!("RWKV inference: {e:?}")))?;
+                inference = input;
 
-        if !first_token_sampled {
-            return Ok((
-                text,
-                TokenUsage {
-                    prompt_tokens: prompt_len,
-                    completion_tokens: 0,
-                },
-            ));
-        }
+                if !inference.batches[0].tokens.is_empty() {
+                    continue;
+                }
 
-        // Generate remaining tokens
-        let mut fim_tokens_generated = 0usize;
-        for _ in 1..max_tokens {
-            // Cooperative cancellation (see note above): drain any pending
-            // `Cancel` so an SSE-disconnect / Ctrl+C interrupt reaches the
-            // generation within one token of arriving instead of waiting
-            // for `max_tokens`.
-            while let Ok(ActorMessage::Cancel) = rx.try_recv() {
-                self.cancel.store(true, Ordering::Relaxed);
-            }
-            if self.cancel.load(Ordering::Relaxed) {
-                break;
-            }
-            let input = inference.clone();
-            let (input, output) = self
-                .runtime
-                .infer(input)
+                let ot = output[0].0.clone();
+                if ot.size() == 0 {
+                    break;
+                }
+
+                let probs = softmax_one(
+                    &self.context,
+                    TensorCpu::from_data(ot.shape(), ot.to_vec())
+                        .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?,
+                )
                 .await
-                .map_err(|e| EngineError::Backend(format!("RWKV inference (gen): {e:?}")))?;
-            inference = input;
+                .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
 
-            let ot = output[0].0.clone();
-            if ot.size() == 0 {
-                break;
-            }
-
-            let probs = softmax_one(
-                &self.context,
-                TensorCpu::from_data(ot.shape(), ot.to_vec())
-                    .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?,
-            )
-            .await
-            .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
-
-            #[cfg(feature = "grammar")]
-            let token_opt: Option<u32> = {
                 let mut p = probs.data().to_vec();
-                if let Some(mask) = bnf_mask.as_mut() {
-                    mask.mask(&mut p);
-                    // Renormalize so grammar-constrained tokens have full probability mass
-                    let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
-                    if sum > 0.0 {
-                        for v in p.iter_mut() {
-                            if v.is_finite() {
-                                *v /= sum;
+
+                #[cfg(feature = "grammar")]
+                let token = {
+                    if let Some(mask) = bnf_mask.as_mut() {
+                        mask.mask(&mut p);
+                        // Renormalize so grammar-constrained tokens have full probability mass
+                        let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
+                        if sum > 0.0 {
+                            for v in p.iter_mut() {
+                                if v.is_finite() {
+                                    *v /= sum;
+                                }
                             }
                         }
-                    }
-                    let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
-                    if t > 0 {
-                        mask.accept(t);
-                        Some(t)
+                        let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
+                        if t > 0 {
+                            mask.accept(t);
+                            t
+                        } else {
+                            break;
+                        }
                     } else {
-                        None
+                        sampling::sample_token(&p, temperature, top_p, top_a_val)
                     }
-                } else {
-                    Some(sampling::sample_token(&p, temperature, top_p, top_a_val))
+                };
+                #[cfg(not(feature = "grammar"))]
+                let token = sampling::sample_token(probs.data(), temperature, top_p, top_a_val);
+
+                if token == 0 {
+                    break;
                 }
-            };
-            #[cfg(not(feature = "grammar"))]
-            let token_opt: Option<u32> = Some(sampling::sample_token(
-                probs.data(),
-                temperature,
-                top_p,
-                top_a_val,
-            ));
 
-            let token = match token_opt {
-                Some(t) => t,
-                None => break,
-            };
+                let decoded = self
+                    .tokenizer
+                    .decode(&[token])
+                    .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
+                let word = String::from_utf8_lossy(&decoded).to_string();
 
-            if token == 0 {
-                break;
-            }
-
-            let decoded = self
-                .tokenizer
-                .decode(&[token])
-                .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
-            let word = String::from_utf8_lossy(&decoded).to_string();
-
-            if let Some(ref cb) = on_token {
-                cb(&word);
-            }
-
-            // General stop conditions — must run on EVERY token (not just the
-            // first) or the model echoes the FIM template and loops. This is
-            // the guard that keeps a resumed/baked FIM session from repeating
-            // the BEFORE/AFTER/INSERT scaffolding.
-            let potential_text = format!("{}{}", text, word);
-            let is_stop = word == "\n\n"
-                || word.trim() == "User:"
-                || word.trim() == "Human:"
-                || word.trim() == "NOW"
-                || word.trim_start().starts_with("BEFORE:")
-                || word.trim_start().starts_with("AFTER:")
-                || word.trim_start().starts_with("INSERT:")
-                || potential_text.contains("User: NOW")
-                || potential_text.contains("BEFORE:")
-                || potential_text.contains("AFTER:")
-                || potential_text.contains("INSERT:");
-            if is_stop {
-                // Don't append the stop marker to the output.
-                break;
-            }
-
-            text.push_str(&word);
-            generated.push(token);
-            inference.batches[0] = RnnInputBatch::new(vec![token], RnnOption::Last);
-
-            // FIM session handling: after generating a reasonable INSERT,
-            // force-feed token 0 (end-of-sequence) to properly terminate
-            // the recurrent state, then break.
-            if is_fim_session {
-                fim_tokens_generated += 1;
-                // Allow at least 8 tokens for the INSERT, max 64 before forcing end
-                if fim_tokens_generated >= 8 {
-                    // Check if we've hit a natural stopping point (sentence end)
-                    // OR if we detect the FIM template pattern looping
-                    let is_template_loop = text.contains("User: NOW")
-                        || text.contains("BEFORE:")
-                        || text.contains("AFTER:")
-                        || text.contains("INSERT:");
-                    let should_force_end = fim_tokens_generated >= 64
-                        || word.ends_with('.')
-                        || word.ends_with('?')
-                        || word.ends_with('!')
-                        || is_template_loop;
-                    if should_force_end {
-                        // Feed token 0 to the model to update recurrent state with EOS
-                        let _ = self
-                            .runtime
-                            .infer(RnnInput::new(
-                                vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
-                                self.token_chunk_size,
-                            ))
-                            .await;
-                        break;
-                    }
+                if let Some(ref cb) = on_token {
+                    cb(&word);
                 }
-            }
-        }
 
-        let result_text = if generated.is_empty() {
-            return Err(EngineError::EmptyResponse);
-        } else {
-            let decoded = self
-                .tokenizer
-                .decode(&generated)
-                .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
-            String::from_utf8_lossy(&decoded).to_string()
-        };
-
-        // Save session state
-        if let Some(ref sid) = session_id {
-            match self.state.back(0).await {
-                Ok(saved_state) => {
-                    self.state_pool.insert(sid.clone(), Some(saved_state));
-                    info!(
-                        session = sid,
-                        tokens = generated.len(),
-                        "saved session state"
-                    );
+                // Stop conditions - catch FIM template pattern variations so the
+                // model doesn't echo the BEFORE/AFTER/INSERT scaffolding.
+                let potential_text = format!("{}{}", text, word);
+                let is_stop = word == "\n\n"
+                    || word.trim() == "User:"
+                    || word.trim() == "Human:"
+                    || word.trim() == "NOW"
+                    || word.trim_start().starts_with("BEFORE:")
+                    || word.trim_start().starts_with("AFTER:")
+                    || word.trim_start().starts_with("INSERT:")
+                    || potential_text.contains("User: NOW")
+                    || potential_text.contains("BEFORE:")
+                    || potential_text.contains("AFTER:")
+                    || potential_text.contains("INSERT:");
+                if is_stop {
+                    break;
                 }
-                Err(e) => warn!(session = sid, error = %e, "failed to save session state"),
-            }
-            while self.state_pool.len() > self.max_sessions {
-                if let Some(oldest) = self.session_lru.pop_front() {
-                    self.state_pool.remove(&oldest);
-                    info!(session = oldest, "evicted session (LRU)");
-                } else {
+
+                text.push_str(&word);
+                generated.push(token);
+                tokens_generated += 1;
+                first_token_sampled = true;
+                inference.batches[0].push(token);
+
+                // If the generated span picked up template markers, stop now.
+                if text.contains("User: NOW")
+                    || text.contains("BEFORE:")
+                    || text.contains("AFTER:")
+                    || text.contains("INSERT:")
+                {
                     break;
                 }
             }
-        }
 
-        Ok((
-            result_text,
-            TokenUsage {
-                prompt_tokens: prompt_len,
-                completion_tokens: generated.len(),
-            },
-        ))
+            if !first_token_sampled {
+                return Ok((
+                    text,
+                    TokenUsage {
+                        prompt_tokens: prompt_len,
+                        completion_tokens: 0,
+                    },
+                ));
+            }
+
+            // Generate remaining tokens
+            let mut fim_tokens_generated = 0usize;
+            for _ in 1..max_tokens {
+                // Cooperative cancellation (see note above): drain any pending
+                // `Cancel` so an SSE-disconnect / Ctrl+C interrupt reaches the
+                // generation within one token of arriving instead of waiting
+                // for `max_tokens`.
+                while let Ok(ActorMessage::Cancel) = rx.try_recv() {
+                    self.cancel.store(true, Ordering::Relaxed);
+                }
+                if self.cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let input = inference.clone();
+                let (input, output) =
+                    self.runtime.infer(input).await.map_err(|e| {
+                        EngineError::Backend(format!("RWKV inference (gen): {e:?}"))
+                    })?;
+                inference = input;
+
+                let ot = output[0].0.clone();
+                if ot.size() == 0 {
+                    break;
+                }
+
+                let probs = softmax_one(
+                    &self.context,
+                    TensorCpu::from_data(ot.shape(), ot.to_vec())
+                        .map_err(|e| EngineError::Backend(format!("tensor creation: {e}")))?,
+                )
+                .await
+                .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
+
+                #[cfg(feature = "grammar")]
+                let token_opt: Option<u32> = {
+                    let mut p = probs.data().to_vec();
+                    if let Some(mask) = bnf_mask.as_mut() {
+                        mask.mask(&mut p);
+                        // Renormalize so grammar-constrained tokens have full probability mass
+                        let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
+                        if sum > 0.0 {
+                            for v in p.iter_mut() {
+                                if v.is_finite() {
+                                    *v /= sum;
+                                }
+                            }
+                        }
+                        let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
+                        if t > 0 {
+                            mask.accept(t);
+                            Some(t)
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(sampling::sample_token(&p, temperature, top_p, top_a_val))
+                    }
+                };
+                #[cfg(not(feature = "grammar"))]
+                let token_opt: Option<u32> = Some(sampling::sample_token(
+                    probs.data(),
+                    temperature,
+                    top_p,
+                    top_a_val,
+                ));
+
+                let token = match token_opt {
+                    Some(t) => t,
+                    None => break,
+                };
+
+                if token == 0 {
+                    break;
+                }
+
+                let decoded = self
+                    .tokenizer
+                    .decode(&[token])
+                    .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
+                let word = String::from_utf8_lossy(&decoded).to_string();
+
+                if let Some(ref cb) = on_token {
+                    cb(&word);
+                }
+
+                // General stop conditions — must run on EVERY token (not just the
+                // first) or the model echoes the FIM template and loops. This is
+                // the guard that keeps a resumed/baked FIM session from repeating
+                // the BEFORE/AFTER/INSERT scaffolding.
+                let potential_text = format!("{}{}", text, word);
+                let is_stop = word == "\n\n"
+                    || word.trim() == "User:"
+                    || word.trim() == "Human:"
+                    || word.trim() == "NOW"
+                    || word.trim_start().starts_with("BEFORE:")
+                    || word.trim_start().starts_with("AFTER:")
+                    || word.trim_start().starts_with("INSERT:")
+                    || potential_text.contains("User: NOW")
+                    || potential_text.contains("BEFORE:")
+                    || potential_text.contains("AFTER:")
+                    || potential_text.contains("INSERT:");
+                if is_stop {
+                    // Don't append the stop marker to the output.
+                    break;
+                }
+
+                text.push_str(&word);
+                generated.push(token);
+                inference.batches[0] = RnnInputBatch::new(vec![token], RnnOption::Last);
+
+                // FIM session handling: after generating a reasonable INSERT,
+                // force-feed token 0 (end-of-sequence) to properly terminate
+                // the recurrent state, then break.
+                if is_fim_session {
+                    fim_tokens_generated += 1;
+                    // Allow at least 8 tokens for the INSERT, max 64 before forcing end
+                    if fim_tokens_generated >= 8 {
+                        // Check if we've hit a natural stopping point (sentence end)
+                        // OR if we detect the FIM template pattern looping
+                        let is_template_loop = text.contains("User: NOW")
+                            || text.contains("BEFORE:")
+                            || text.contains("AFTER:")
+                            || text.contains("INSERT:");
+                        let should_force_end = fim_tokens_generated >= 64
+                            || word.ends_with('.')
+                            || word.ends_with('?')
+                            || word.ends_with('!')
+                            || is_template_loop;
+                        if should_force_end {
+                            // Feed token 0 to the model to update recurrent state with EOS
+                            let _ = self
+                                .runtime
+                                .infer(RnnInput::new(
+                                    vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
+                                    self.token_chunk_size,
+                                ))
+                                .await;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let result_text = if generated.is_empty() {
+                return Err(EngineError::EmptyResponse);
+            } else {
+                let decoded = self
+                    .tokenizer
+                    .decode(&generated)
+                    .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
+                String::from_utf8_lossy(&decoded).to_string()
+            };
+
+            // Save session state
+            if let Some(ref sid) = session_id {
+                match self.state.back(0).await {
+                    Ok(saved_state) => {
+                        self.state_pool.insert(sid.clone(), Some(saved_state));
+                        info!(
+                            session = sid,
+                            tokens = generated.len(),
+                            "saved session state"
+                        );
+                    }
+                    Err(e) => warn!(session = sid, error = %e, "failed to save session state"),
+                }
+                while self.state_pool.len() > self.max_sessions {
+                    if let Some(oldest) = self.session_lru.pop_front() {
+                        self.state_pool.remove(&oldest);
+                        info!(session = oldest, "evicted session (LRU)");
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            Ok((
+                result_text,
+                TokenUsage {
+                    prompt_tokens: prompt_len,
+                    completion_tokens: generated.len(),
+                },
+            ))
         }
         .await;
 
@@ -939,9 +938,7 @@ impl RwkvActor {
             match msg {
                 Complete(req) => {
                     self.cancel.store(false, Ordering::Relaxed);
-                    let result = self
-                        .handle_complete(req, &mut rx)
-                        .await;
+                    let result = self.handle_complete(req, &mut rx).await;
                     // reply is sent inside handle_complete
                 }
                 BlendStates(req) => {

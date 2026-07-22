@@ -22,9 +22,9 @@
 use std::collections::HashMap;
 
 use futures::future::BoxFuture;
-use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 #[cfg(feature = "remote")]
 use roco_engine::TokenUsage;
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 
 /// Default base URL for the singleton inference API server.
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8080";
@@ -87,7 +87,9 @@ impl RemoteBackend {
 impl RemoteBackend {
     /// Stub — panics because the `remote` feature is disabled.
     pub fn new(_base_url: impl Into<String>) -> Self {
-        Self { name: "remote".to_string() }
+        Self {
+            name: "remote".to_string(),
+        }
     }
 
     /// Stub — panics because the `remote` feature is disabled.
@@ -95,12 +97,16 @@ impl RemoteBackend {
         _base_url: impl Into<String>,
         _extra_headers: HashMap<String, String>,
     ) -> Self {
-        Self { name: "remote".to_string() }
+        Self {
+            name: "remote".to_string(),
+        }
     }
 
     /// Stub — panics because the `remote` feature is disabled.
     pub fn from_env() -> Self {
-        Self { name: "remote".to_string() }
+        Self {
+            name: "remote".to_string(),
+        }
     }
 }
 

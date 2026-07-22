@@ -106,12 +106,13 @@ pub async fn complete_with_retry(
                 if config.shorten_on_truncation
                     && resp.usage.completion_tokens >= req.max_tokens
                     && req.max_tokens > config.truncation_step
-                    && retries < config.max_retries {
-                        req.max_tokens = req.max_tokens.saturating_sub(config.truncation_step);
-                        retries += 1;
-                        tokio::time::sleep(config.base_delay * (1u32 << retries.min(10))).await;
-                        continue;
-                    }
+                    && retries < config.max_retries
+                {
+                    req.max_tokens = req.max_tokens.saturating_sub(config.truncation_step);
+                    retries += 1;
+                    tokio::time::sleep(config.base_delay * (1u32 << retries.min(10))).await;
+                    continue;
+                }
                 return Ok(resp);
             }
             Err(e) => {

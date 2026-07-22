@@ -1,0 +1,21 @@
+[package]
+name = "roco-agent-story"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "roco_agent_story"
+
+[dependencies]
+roco-engine = { path = "../engine" }
+roco-grammar = { path = "../grammar" }
+roco-workspace = { path = "../workspace" }
+roco-agent-core = { path = "../agent-core" }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

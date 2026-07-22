@@ -41,20 +41,20 @@ mod rich_output;
 #[path = "../daemon.rs"]
 mod daemon;
 
+#[cfg(feature = "desktop")]
+#[path = "../cmd/desktop.rs"]
+mod cmd_desktop;
+#[path = "../cmd/eval.rs"]
+mod cmd_eval_mod;
 #[path = "../cmd/export.rs"]
 mod cmd_export;
 #[path = "../cmd/gpu.rs"]
 mod cmd_gpu;
-#[cfg(feature = "desktop")]
-#[path = "../cmd/desktop.rs"]
-mod cmd_desktop;
+#[path = "../cmd/interact.rs"]
+mod cmd_interact_mod;
 #[cfg(feature = "net")]
 #[path = "../cmd/server.rs"]
 mod cmd_server_mod;
-#[path = "../cmd/eval.rs"]
-mod cmd_eval_mod;
-#[path = "../cmd/interact.rs"]
-mod cmd_interact_mod;
 #[path = "../cmd/story.rs"]
 mod cmd_story_mod;
 
@@ -139,12 +139,24 @@ fn main() {
         "bless" => cmd_eval_mod::cmd_bless(&extra),
         "rwkv" => run_cargo(
             "run",
-            &["-p", "roco-inference", "--example", "rwkv_test", "--release"],
+            &[
+                "-p",
+                "roco-inference",
+                "--example",
+                "rwkv_test",
+                "--release",
+            ],
             &extra,
         ),
         "grammar" => run_cargo(
             "run",
-            &["-p", "roco-inference", "--example", "grammar_smoke", "--release"],
+            &[
+                "-p",
+                "roco-inference",
+                "--example",
+                "grammar_smoke",
+                "--release",
+            ],
             &extra,
         ),
         "gpu-check" => cmd_gpu::cmd_gpu_check(&extra),
@@ -219,8 +231,6 @@ pub(crate) fn run_cargo_get_code(cmd: &str, args: &[&str], extra: &[&str]) -> i3
     c.status().map(|s| s.code().unwrap_or(1)).unwrap_or(1)
 }
 
-
-
 pub(crate) fn help(sub: Option<&str>) {
     eprintln!("RoCo AI — Collaborative Writing Assistant\n");
     eprintln!("Usage:");
@@ -266,4 +276,3 @@ pub(crate) fn parse_opt<'a>(name: &str, args: &'a [&str]) -> Option<&'a str> {
     args.windows(2)
         .find_map(|w| if w[0] == name { Some(w[1]) } else { None })
 }
-

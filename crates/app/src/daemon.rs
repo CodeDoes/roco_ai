@@ -116,7 +116,10 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
         let log_file = match std::fs::File::create(&log_file_path) {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("Warning: failed to create log {}: {e}", log_file_path.display());
+                eprintln!(
+                    "Warning: failed to create log {}: {e}",
+                    log_file_path.display()
+                );
                 return false;
             }
         };
