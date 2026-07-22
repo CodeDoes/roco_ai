@@ -48,6 +48,77 @@ pub trait OutputParser<T: DeserializeOwned> {
     fn parse(&self, text: &str) -> Result<T, String>;
 }
 
+/// Strip markdown code fences (```json ... ```), "thinking" blocks, and
+/// other non-JSON prefixes from model output.
+///
+/// The model sometimes wraps JSON in code fences or starts with a
+/// "thinking" reasoning block before the actual JSON. This function
+/// strips all that and returns only the JSON portion.
+pub fn strip_code_fences(text: &str) -> String {
+    let trimmed = text.trim();
+
+    // Step 1: Strip markdown code fences
+    let after_fences = if let Some(start) = trimmed.find('\n') {
+        // Check if the first line looks like a code fence
+        let first_line = &trimmed[..start];
+        let stripped_first = first_line.trim();
+        if stripped_first.starts_with("```") || stripped_first.starts_with("~~~") {
+            let content = &trimmed[start + 1..];
+            // Find closing fence
+            if let Some(end) = content.rfind("```").or_else(|| content.rfind("~~~")) {
+                content[..end].trim().to_string()
+            } else {
+                content.trim().to_string()
+            }
+        } else {
+            trimmed.to_string()
+        }
+    } else {
+        trimmed.to_string()
+    };
+
+    // Step 2: Find the first JSON-like start ({ or [) and trim everything before it
+    if let Some(json_start) = after_fences.find(|c: char| c == '{' || c == '[') {
+        // Find the matching close
+        let opening = after_fences[json_start..].chars().next().unwrap();
+        let closing = if opening == '{' { '}' } else { ']' };
+        let mut depth = 0i32;
+        let mut in_string = false;
+        let mut escaped = false;
+        let mut end_pos = after_fences.len();
+
+        for (i, c) in after_fences[json_start..].char_indices() {
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == '"' {
+                    in_string = false;
+                }
+                continue;
+            }
+            match c {
+                '{' | '[' => depth += 1,
+                '}' | ']' => {
+                    depth -= 1;
+                    if depth == 0 && c == closing {
+                        end_pos = json_start + i + c.len_utf8();
+                        break;
+                    }
+                }
+                '"' => in_string = true,
+                _ => {}
+            }
+        }
+
+        return after_fences[json_start..end_pos].to_string();
+    }
+
+    // Step 3: If no JSON start found, return the text as-is (will fail at parse)
+    after_fences
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SchemaStrategy — Schema builder → schema_to_gbnf → serde_json
 // ═════════════════════════════════════════════════════════════════════════════
@@ -87,9 +158,9 @@ impl OutputStrategy for SchemaStrategy {
 
 impl<T: DeserializeOwned> OutputParser<T> for SchemaStrategy {
     fn parse(&self, text: &str) -> Result<T, String> {
-        let trimmed = text.trim();
-        serde_json::from_str::<T>(trimmed)
-            .map_err(|e| format!("SchemaStrategy parse error: {e}\nraw: {trimmed}"))
+        let cleaned = strip_code_fences(text);
+        serde_json::from_str::<T>(&cleaned)
+            .map_err(|e| format!("SchemaStrategy parse error: {e}\nraw: {cleaned}"))
     }
 }
 
@@ -157,9 +228,9 @@ impl OutputStrategy for LooseJsonStrategy {
 
 impl<T: DeserializeOwned> OutputParser<T> for LooseJsonStrategy {
     fn parse(&self, text: &str) -> Result<T, String> {
-        let trimmed = text.trim();
-        serde_json::from_str::<T>(trimmed)
-            .map_err(|e| format!("LooseJsonStrategy parse error: {e}\nraw: {trimmed}"))
+        let cleaned = strip_code_fences(text);
+        serde_json::from_str::<T>(&cleaned)
+            .map_err(|e| format!("LooseJsonStrategy parse error: {e}\nraw: {cleaned}"))
     }
 }
 
@@ -188,9 +259,9 @@ impl<T: DeserializeOwned + Send + Sync + 'static> RawGbnfStrategy<T> {
         Self {
             grammar,
             parser: Box::new(move |text| {
-                let trimmed = text.trim();
-                serde_json::from_str::<T>(trimmed)
-                    .map_err(|e| format!("RawGbnfStrategy parse error: {e}\nraw: {trimmed}"))
+                let cleaned = strip_code_fences(text);
+                serde_json::from_str::<T>(&cleaned)
+                    .map_err(|e| format!("RawGbnfStrategy parse error: {e}\nraw: {cleaned}"))
             }),
         }
     }
@@ -317,8 +388,87 @@ impl<T: DeserializeOwned> OutputParser<T> for StateTunedStrategy {
     }
 }
 
+/// Attempt to repair truncated JSON by closing unterminated strings and objects.
+///
+/// RWKV models sometimes hit max_tokens before finishing a JSON string or
+/// before closing the final brace. This function adds the missing closing
+/// quote and/or brace to make the JSON parseable.
+pub fn repair_truncated_json(s: &str) -> String {
+    let s = s.trim();
+    if s.is_empty() {
+        return s.to_string();
+    }
+
+    let mut result = s.to_string();
+    let chars: Vec<char> = result.chars().collect();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut last_key_value_end = result.len();
+    let mut needs_quote = false;
+
+    for (i, &c) in chars.iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '{' | '[' => {
+                depth += 1;
+                last_key_value_end = i + 1;
+            }
+            '}' | ']' => {
+                depth -= 1;
+                if depth >= 0 {
+                    last_key_value_end = i + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // If we're still in a string at the end, the string is unterminated
+    if in_string {
+        result.push('"');
+        needs_quote = true;
+    }
+
+    // Close unclosed objects/arrays
+    while depth > 0 {
+        // Determine what to close based on what was opened
+        let mut open_depth = 0;
+        for c in result.chars() {
+            match c {
+                '{' | '[' => open_depth += 1,
+                '}' | ']' => open_depth -= 1,
+                _ => {}
+            }
+        }
+        if open_depth <= 0 {
+            break;
+        }
+        // Try to find the matching opening brace for closing
+        let last_open = result.rfind(|c| c == '{' || c == '[');
+        let closing = match last_open {
+            Some(pos) if result.as_bytes()[pos] == b'{' => '}',
+            _ => ']',
+        };
+        result.push(closing);
+        depth -= 1;
+    }
+
+    result
+}
+
 /// Strip markdown code fences and other common wrappers from model output.
-fn clean_json_output(text: &str) -> String {
+pub fn clean_json_output(text: &str) -> String {
     let trimmed = text.trim();
 
     // Try to extract JSON from markdown code blocks (most common)
@@ -339,7 +489,7 @@ fn clean_json_output(text: &str) -> String {
         // No closing fence — use everything after opening
         let json = content_start.trim();
         if !json.is_empty() {
-            return json.to_string();
+            return repair_truncated_json(json);
         }
     }
 
@@ -354,6 +504,9 @@ fn clean_json_output(text: &str) -> String {
         if let Some(end) = trimmed[start..].rfind(end_char) {
             return trimmed[start..=start + end].to_string();
         }
+        // No matching close found — assume truncated and repair
+        let partial = &trimmed[start..];
+        return repair_truncated_json(partial);
     }
 
     // Fallback: return trimmed text

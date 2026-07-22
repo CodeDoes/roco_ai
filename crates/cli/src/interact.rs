@@ -123,6 +123,9 @@ impl ConversationState {
 
 /// Run the interactive CLI. This is the entry point called from `roco interact`.
 pub fn run(mode: InteractMode, backend: &dyn roco_engine::ModelBackend) -> anyhow::Result<()> {
+    // Initialize the agent journal so all components can log
+    let _ = roco_app::agent_journal::AgentJournal::init();
+
     match mode {
         InteractMode::Prompt { prompt } => run_prompt(backend, &prompt),
         InteractMode::Interactive { pacing, prompt } => run_interactive(backend, pacing, prompt),

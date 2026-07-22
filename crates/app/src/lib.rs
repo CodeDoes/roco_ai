@@ -23,6 +23,7 @@
 use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 use roco_workspace::WorkspaceError;
 
+pub mod agent_journal;
 pub mod config;
 pub mod context;
 pub mod daemon;
