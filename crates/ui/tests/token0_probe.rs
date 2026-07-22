@@ -28,7 +28,11 @@ fn tune_with_eos_padding(
         for (i, (user, assistant)) in examples.iter().enumerate() {
             backend
                 .complete(CompletionRequest {
-                    system: if i == 0 { system.to_string() } else { String::new() },
+                    system: if i == 0 {
+                        system.to_string()
+                    } else {
+                        String::new()
+                    },
                     prompt: user.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
@@ -77,7 +81,11 @@ fn tune_without_eos_but_with_prefill(
         for (i, (user, assistant)) in examples.iter().enumerate() {
             backend
                 .complete(CompletionRequest {
-                    system: if i == 0 { system.to_string() } else { String::new() },
+                    system: if i == 0 {
+                        system.to_string()
+                    } else {
+                        String::new()
+                    },
                     prompt: user.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
@@ -126,7 +134,11 @@ fn tune_pure_state(
         for (i, (user, assistant)) in examples.iter().enumerate() {
             backend
                 .complete(CompletionRequest {
-                    system: if i == 0 { system.to_string() } else { String::new() },
+                    system: if i == 0 {
+                        system.to_string()
+                    } else {
+                        String::new()
+                    },
                     prompt: user.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
@@ -176,9 +188,18 @@ mod tests {
     fn test_eos_padded_state_tuning_works() {
         let backend = MockBackend::new("token0-probe", 0);
         let examples: &[(&str, &str)] = &[
-            ("Write a story opening.", "The morning sun cast long shadows across the valley."),
-            ("Describe a character.", "Elena was a woman of few words and many secrets."),
-            ("Set the mood.", "A cold wind whispered through the ancient pines."),
+            (
+                "Write a story opening.",
+                "The morning sun cast long shadows across the valley.",
+            ),
+            (
+                "Describe a character.",
+                "Elena was a woman of few words and many secrets.",
+            ),
+            (
+                "Set the mood.",
+                "A cold wind whispered through the ancient pines.",
+            ),
         ];
         let result = tune_with_eos_padding(&backend, "You are a writer.", examples, "Continue.");
         assert!(!result.is_empty(), "EOS-padded tuning produced a response");
@@ -192,7 +213,8 @@ mod tests {
             ("Write an opening.", "The morning sun cast long shadows."),
             ("Describe a character.", "Elena was a woman of few words."),
         ];
-        let result = tune_without_eos_but_with_prefill(&backend, "You are a writer.", examples, "Continue.");
+        let result =
+            tune_without_eos_but_with_prefill(&backend, "You are a writer.", examples, "Continue.");
         assert!(!result.is_empty(), "prefill approach produced a response");
     }
 
@@ -203,11 +225,23 @@ mod tests {
         let examples: &[(&str, &str)] = &[
             ("Write a story opening.", "Dawn broke over the valley."),
             ("Continue the story.", "She walked the winding path."),
-            ("Describe the setting.", "An old castle stood atop the hill."),
+            (
+                "Describe the setting.",
+                "An old castle stood atop the hill.",
+            ),
         ];
-        let result = tune_pure_state(&backend, "You are a writer.", examples, "What happens next?");
+        let result = tune_pure_state(
+            &backend,
+            "You are a writer.",
+            examples,
+            "What happens next?",
+        );
         assert!(!result.is_empty());
-        assert!(result.len() > 20, "response has content: {} chars", result.len());
+        assert!(
+            result.len() > 20,
+            "response has content: {} chars",
+            result.len()
+        );
     }
 
     /// Verify feed_eos is no-op on MockBackend (default impl).
@@ -216,8 +250,14 @@ mod tests {
         let backend = MockBackend::new("eos-test", 0);
         run(async {
             backend.feed_eos(None).await.unwrap();
-            backend.feed_eos(Some("test-session".to_string())).await.unwrap();
-            let resp = backend.complete(CompletionRequest::new("sys", "prompt")).await.unwrap();
+            backend
+                .feed_eos(Some("test-session".to_string()))
+                .await
+                .unwrap();
+            let resp = backend
+                .complete(CompletionRequest::new("sys", "prompt"))
+                .await
+                .unwrap();
             assert!(!resp.text.is_empty());
         });
     }
@@ -231,7 +271,12 @@ mod tests {
             ("Write chapter 2.", "Chapter 2: Shadows."),
             ("Write chapter 3.", "Chapter 3: The end."),
         ];
-        tune_with_eos_padding(&backend, "You are a novelist.", examples, "Write chapter 4.");
+        tune_with_eos_padding(
+            &backend,
+            "You are a novelist.",
+            examples,
+            "Write chapter 4.",
+        );
 
         let mut mode = InteractionMode::FullControl;
         assert!(mode.should_pause(1, 5), "FullControl pauses after 1");
@@ -253,9 +298,14 @@ mod tests {
             ("Write a poem", "Roses are red."),
         ];
         run(async {
-            roco_engine::bake_no_think_session(&backend, "test-session", "You are a poet.", examples)
-                .await
-                .unwrap();
+            roco_engine::bake_no_think_session(
+                &backend,
+                "test-session",
+                "You are a poet.",
+                examples,
+            )
+            .await
+            .unwrap();
             let resp = backend
                 .complete(CompletionRequest {
                     system: String::new(),

@@ -17,7 +17,9 @@
 //! management, and the full human-paced interaction flow.
 
 use crate::{
-    change_timeline::{ChangeTimeline, ChangeTimelineState, TimelineAction, TimelineEntry, TimelineEntryKind},
+    change_timeline::{
+        ChangeTimeline, ChangeTimelineState, TimelineAction, TimelineEntry, TimelineEntryKind,
+    },
     chat::{ChatAction, ChatMessage, ChatWidget, ChatWidgetState, MessageRole},
     file_tree::{FileTree, FileTreeAction, FileTreeState},
     link_graph::{LinkGraph, LinkGraphAction, LinkGraphState, NodeKind},
@@ -151,10 +153,7 @@ impl RocoDesktopApp {
             backend,
             app_context,
             pacing_state: PacingWidgetState::new(PacingMode::Careful, 0),
-            interaction_state: InteractionState::new(
-                PacingMode::Careful.to_interaction_mode(),
-                0,
-            ),
+            interaction_state: InteractionState::new(PacingMode::Careful.to_interaction_mode(), 0),
             chat_state: ChatWidgetState::new().with_greeting(
                 "Welcome to RoCo AI! Start by typing a message or browsing sessions.",
             ),
@@ -275,7 +274,9 @@ impl RocoDesktopApp {
                 if let Some(ref backend) = self.backend {
                     self.status_message = "Generating...".to_string();
                     self.timeline_state.add_entry(timeline_entry(
-                        "send", "Send message", TimelineEntryKind::Action,
+                        "send",
+                        "Send message",
+                        TimelineEntryKind::Action,
                     ));
 
                     let request = CompletionRequest {
@@ -292,7 +293,9 @@ impl RocoDesktopApp {
                             self.chat_state.add_message(ChatMessage::assistant(text));
                             self.status_message = "Ready".to_string();
                             self.timeline_state.add_entry(timeline_entry(
-                                "gen_done", "Generation complete", TimelineEntryKind::Checkpoint,
+                                "gen_done",
+                                "Generation complete",
+                                TimelineEntryKind::Checkpoint,
                             ));
                         }
                         Err(e) => {
@@ -311,7 +314,9 @@ impl RocoDesktopApp {
             ChatAction::Accept => {
                 self.status_message = "Accepted. Continuing...".to_string();
                 self.timeline_state.add_entry(timeline_entry(
-                    "accept", "Accepted suggestion", TimelineEntryKind::Action,
+                    "accept",
+                    "Accepted suggestion",
+                    TimelineEntryKind::Action,
                 ));
                 self.auto_save();
             }
@@ -475,13 +480,17 @@ impl RocoDesktopApp {
             TimelineAction::Undo => {
                 self.status_message = "Undo (wired via VersionControl in engine)".to_string();
                 self.timeline_state.add_entry(timeline_entry(
-                    "undo", "Undo action", TimelineEntryKind::Undo,
+                    "undo",
+                    "Undo action",
+                    TimelineEntryKind::Undo,
                 ));
             }
             TimelineAction::Redo => {
                 self.status_message = "Redo".to_string();
                 self.timeline_state.add_entry(timeline_entry(
-                    "redo", "Redo action", TimelineEntryKind::Redo,
+                    "redo",
+                    "Redo action",
+                    TimelineEntryKind::Redo,
                 ));
             }
             TimelineAction::CreateSnapshot(label) => {
@@ -547,7 +556,9 @@ impl RocoDesktopApp {
         self.status_message = format!("Session {session_id}");
         self.timeline_state.clear();
         self.timeline_state.add_entry(timeline_entry(
-            "session_start", "Session started", TimelineEntryKind::Checkpoint,
+            "session_start",
+            "Session started",
+            TimelineEntryKind::Checkpoint,
         ));
         self.auto_save();
         self.refresh_browsers();
@@ -558,7 +569,9 @@ impl RocoDesktopApp {
         if let Some(ref path) = self.session_path {
             self.status_message = format!("Saved: {}", path.display());
             self.timeline_state.add_entry(timeline_entry(
-                "session_saved", "Session saved", TimelineEntryKind::Checkpoint,
+                "session_saved",
+                "Session saved",
+                TimelineEntryKind::Checkpoint,
             ));
         }
         self.refresh_browsers();
@@ -589,7 +602,9 @@ impl RocoDesktopApp {
                 );
                 self.timeline_state.clear();
                 self.timeline_state.add_entry(timeline_entry(
-                    "session_loaded", "Session loaded", TimelineEntryKind::Checkpoint,
+                    "session_loaded",
+                    "Session loaded",
+                    TimelineEntryKind::Checkpoint,
                 ));
             }
         }
@@ -656,7 +671,11 @@ impl RocoDesktopApp {
                 }
             }
             Some(RightPanelTool::Timeline) => {
-                ui.label(RichText::new("\u{23f1}\u{fe0f} Timeline").strong().size(14.0));
+                ui.label(
+                    RichText::new("\u{23f1}\u{fe0f} Timeline")
+                        .strong()
+                        .size(14.0),
+                );
                 ui.separator();
                 if let Some(action) = ChangeTimeline::show(ui, &mut self.timeline_state) {
                     self.handle_timeline_action(action);
@@ -735,14 +754,10 @@ impl eframe::App for RocoDesktopApp {
                     ui.separator();
                     if ui.button("\u{1f4be} Workspace Checkpoint").clicked() {
                         // Phase 3.1: route through AppContext.
-                        let label = format!(
-                            "ckpt_{}",
-                            chrono::Utc::now().format("%Y%m%d_%H%M%S")
-                        );
+                        let label = format!("ckpt_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
                         match self.workspace_checkpoint(&label) {
                             Ok(id) => {
-                                self.status_message =
-                                    format!("Checkpoint {id}");
+                                self.status_message = format!("Checkpoint {id}");
                                 self.timeline_state.add_entry(timeline_entry(
                                     "ws_checkpoint",
                                     &format!("Workspace checkpoint {label}"),
@@ -863,7 +878,10 @@ impl eframe::App for RocoDesktopApp {
                                     .color(ui.visuals().weak_text_color()),
                             );
                         }
-                        ui.label(format!("\u{1f4ac} {} messages", self.chat_state.messages.len()));
+                        ui.label(format!(
+                            "\u{1f4ac} {} messages",
+                            self.chat_state.messages.len()
+                        ));
                         let word_count: usize = self
                             .chat_state
                             .messages
@@ -898,7 +916,9 @@ impl eframe::App for RocoDesktopApp {
                                 self.toggle_tool(tool);
                                 match tool {
                                     RightPanelTool::FileTree => self.file_tree_state.refresh(),
-                                    RightPanelTool::Sessions => self.session_browser_state.refresh(),
+                                    RightPanelTool::Sessions => {
+                                        self.session_browser_state.refresh()
+                                    }
                                     _ => {}
                                 }
                             }
@@ -980,7 +1000,10 @@ mod tests {
         let mut app = app_unwired();
         app.chat_state.agent_generating = true;
         app.handle_pacing_action(PacingAction::Stop, &ctx_stub());
-        assert!(!app.chat_state.agent_generating, "Stop must clear the chat's agent_generating flag");
+        assert!(
+            !app.chat_state.agent_generating,
+            "Stop must clear the chat's agent_generating flag"
+        );
         assert_eq!(app.status_message, "Stopped.");
     }
 

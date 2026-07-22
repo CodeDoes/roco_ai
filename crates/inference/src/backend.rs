@@ -256,10 +256,7 @@ impl ModelBackend for RwkvBackend {
     }
 
     fn feed_eos(&self, session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
-        let tx = self
-            .tx
-            .clone()
-            .expect("rwkv backend already shut down");
+        let tx = self.tx.clone().expect("rwkv backend already shut down");
         Box::pin(async move {
             tx.send(ActorMessage::FeedEos(session))
                 .await

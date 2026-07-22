@@ -62,7 +62,11 @@ impl FileTreeNode {
 
     pub fn file_icon(&self) -> &str {
         if self.is_dir {
-            if self.expanded { "📂" } else { "📁" }
+            if self.expanded {
+                "📂"
+            } else {
+                "📁"
+            }
         } else {
             match self.extension() {
                 "md" | "markdown" => "📝",
@@ -78,10 +82,7 @@ impl FileTreeNode {
     }
 
     pub fn extension(&self) -> &str {
-        self.path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
+        self.path.extension().and_then(|e| e.to_str()).unwrap_or("")
     }
 }
 
@@ -281,7 +282,13 @@ mod tests {
     use super::*;
 
     fn test_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("roco_ft_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let dir = std::env::temp_dir().join(format!(
+            "roco_ft_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&dir);
         // Clean any leftover files
         for entry in std::fs::read_dir(&dir).unwrap_or_else(|_| std::fs::read_dir("/").unwrap()) {
@@ -301,7 +308,11 @@ mod tests {
         let dir = test_dir();
         let node = FileTreeNode::new(dir.clone(), 0).unwrap();
         assert!(node.is_dir);
-        assert_eq!(node.children.len(), 3, "expected 3 children: hello.md, main.rs, sub/");
+        assert_eq!(
+            node.children.len(),
+            3,
+            "expected 3 children: hello.md, main.rs, sub/"
+        );
         // Should have hello.md, main.rs, and sub/
         let names: Vec<_> = node.children.iter().map(|c| c.name.as_str()).collect();
         assert!(names.contains(&"hello.md"));

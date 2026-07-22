@@ -48,7 +48,12 @@ pub fn is_running(name: &str, port: u16) -> bool {
         Ok(rt) => rt,
         Err(_) => return false,
     };
-    let healthy = rt.block_on(async { reqwest::get(&url).await.map(|r| r.status().is_success()).unwrap_or(false) });
+    let healthy = rt.block_on(async {
+        reqwest::get(&url)
+            .await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+    });
 
     if !healthy {
         let _ = std::fs::remove_file(&pid_file);
@@ -65,7 +70,10 @@ async fn is_running_async(name: &str, port: u16) -> bool {
     }
 
     let url = format!("http://127.0.0.1:{}/health", port);
-    let healthy = reqwest::get(&url).await.map(|r| r.status().is_success()).unwrap_or(false);
+    let healthy = reqwest::get(&url)
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false);
 
     if !healthy {
         let _ = std::fs::remove_file(&pid_file);
@@ -80,9 +88,7 @@ pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]
     // Check if already running. If called from inside a tokio runtime
     // (e.g. gateway daemon), use a dedicated thread to avoid nested block_on.
     let already_running = if tokio::runtime::Handle::try_current().is_ok() {
-        std::thread::scope(|s| {
-            s.spawn(|| is_running(subcmd, port)).join().unwrap_or(false)
-        })
+        std::thread::scope(|s| s.spawn(|| is_running(subcmd, port)).join().unwrap_or(false))
     } else {
         is_running(subcmd, port)
     };
@@ -304,13 +310,27 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
 
     // 1. Start and wait for inference server
     ensure_daemon(&exe, "server", INFERENCE_PORT, &["--detach"]);
-    rt.block_on(wait_for_healthy(INFERENCE_PORT, Duration::from_secs(60), "Inference server"))
-        .unwrap_or_else(|e| { eprintln!("Error: {e}"); std::process::exit(1); });
+    rt.block_on(wait_for_healthy(
+        INFERENCE_PORT,
+        Duration::from_secs(60),
+        "Inference server",
+    ))
+    .unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    });
 
     // 2. Start and wait for gateway
     ensure_daemon(&exe, "gateway", GATEWAY_PORT, &["--detach"]);
-    rt.block_on(wait_for_healthy(GATEWAY_PORT, Duration::from_secs(30), "Gateway"))
-        .unwrap_or_else(|e| { eprintln!("Error: {e}"); std::process::exit(1); });
+    rt.block_on(wait_for_healthy(
+        GATEWAY_PORT,
+        Duration::from_secs(30),
+        "Gateway",
+    ))
+    .unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    });
 
     Arc::new(RemoteBackend::new(format!(
         "http://127.0.0.1:{}",
@@ -348,31 +368,42 @@ impl roco_engine::ModelBackend for TokioBackend {
     fn complete(
         &self,
         req: roco_engine::CompletionRequest,
-    ) -> futures::future::BoxFuture<'_, Result<roco_engine::CompletionResponse, roco_engine::EngineError>>
-    {
+    ) -> futures::future::BoxFuture<
+        '_,
+        Result<roco_engine::CompletionResponse, roco_engine::EngineError>,
+    > {
         let inner = self.inner.clone();
         let rt_handle = self.rt.handle().clone();
         Box::pin(async move {
             // Spawn the actual work on the dedicated tokio runtime so reqwest
             // has a context. Then await the JoinHandle from the caller's
             // executor (which may be futures::executor::block_on).
-            rt_handle.spawn(async move { inner.complete(req).await })
+            rt_handle
+                .spawn(async move { inner.complete(req).await })
                 .await
                 .unwrap_or(Err(roco_engine::EngineError::Backend(
-                    "TokioBackend runtime shut down".into()
+                    "TokioBackend runtime shut down".into(),
                 )))
         })
     }
 
-    fn save_state(&self) -> futures::future::BoxFuture<'_, Result<Vec<u8>, roco_engine::EngineError>> {
+    fn save_state(
+        &self,
+    ) -> futures::future::BoxFuture<'_, Result<Vec<u8>, roco_engine::EngineError>> {
         self.inner.save_state()
     }
 
-    fn load_state(&self, state: Vec<u8>) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
+    fn load_state(
+        &self,
+        state: Vec<u8>,
+    ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         self.inner.load_state(state)
     }
 
-    fn feed_eos(&self, _session: Option<String>) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
+    fn feed_eos(
+        &self,
+        _session: Option<String>,
+    ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         Box::pin(async move { Ok(()) })
     }
 }

@@ -28,8 +28,7 @@ pub struct Timeline {
 impl AppWorkspace {
     /// Open (creating if missing) a workspace of `kind` under `root`.
     pub fn open(root: &PathBuf, name: &str, kind: WorkspaceKind) -> AppResult<Self> {
-        let core = CoreWorkspace::new(root.join(name), kind)
-            .map_err(|e| AppError::Workspace(e))?;
+        let core = CoreWorkspace::new(root.join(name), kind).map_err(|e| AppError::Workspace(e))?;
         let vc = VersionControl::new(root.join(name));
         Ok(Self {
             name: name.to_string(),
@@ -60,10 +59,7 @@ impl AppWorkspace {
 
     /// Take a timeline checkpoint (the `workspace_timeline_reset` op).
     pub fn checkpoint(&self, label: &str) -> AppResult<Timeline> {
-        let id = self
-            .vc
-            .snapshot(label)
-            .map_err(|e| AppError::Other(e))?;
+        let id = self.vc.snapshot(label).map_err(|e| AppError::Other(e))?;
         Ok(Timeline {
             id,
             label: label.to_string(),
@@ -75,8 +71,16 @@ impl AppWorkspace {
         // Read both snapshot manifests and produce a unified diff of paths.
         let ra = self.read_snapshot_files(&a.id)?;
         let rb = self.read_snapshot_files(&b.id)?;
-        let added: Vec<String> = rb.keys().filter(|p| ra.get(*p).is_none()).cloned().collect();
-        let removed: Vec<String> = ra.keys().filter(|p| rb.get(*p).is_none()).cloned().collect();
+        let added: Vec<String> = rb
+            .keys()
+            .filter(|p| ra.get(*p).is_none())
+            .cloned()
+            .collect();
+        let removed: Vec<String> = ra
+            .keys()
+            .filter(|p| rb.get(*p).is_none())
+            .cloned()
+            .collect();
         let mut out = String::new();
         for p in &added {
             out.push_str(&format!("+ {p}\n"));
@@ -91,7 +95,10 @@ impl AppWorkspace {
     }
 
     /// Read a snapshot's file map from disk.
-    fn read_snapshot_files(&self, id: &str) -> AppResult<std::collections::HashMap<String, String>> {
+    fn read_snapshot_files(
+        &self,
+        id: &str,
+    ) -> AppResult<std::collections::HashMap<String, String>> {
         let path = self
             .core
             .root()

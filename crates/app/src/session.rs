@@ -23,9 +23,8 @@ pub struct SessionHandle {
 impl SessionHandle {
     /// Open (creating if missing) a session under `root`.
     pub fn open(root: &PathBuf, id: &str) -> AppResult<Self> {
-        let core = Arc::new(
-            CoreSessionStore::new(root).map_err(|e| AppError::Session(e.0.clone()))?,
-        );
+        let core =
+            Arc::new(CoreSessionStore::new(root).map_err(|e| AppError::Session(e.0.clone()))?);
         let _ = core.create_root(id);
         let agent_store = Arc::new(AgentSessionStore::new(root.join("agent")));
         Ok(Self {

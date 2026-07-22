@@ -1,0 +1,21 @@
+[toolchain]
+# Pin to rustup's stable channel.
+#
+# Without this file, the Nix-installed nixpkgs rust-toolchain bin
+# (1.95.0) shadows `cargo-clippy` / `clippy-driver` while PATH-based
+# invocation of `cargo` / `rustc` resolves to the rustup proxy (1.96.0+).
+# The mixed versions produce unreliable E0514 ("compiled by an incompatible
+# version of rustc") errors when `cargo check` runs before `cargo clippy`,
+# because sccache caches rmeta from whichever rustc ran first.
+#
+# Pinning forces rustup to select a single toolchain for every cargo,
+# rustc, cargo-clippy, clippy-driver and rustfmt invocation in this repo,
+# regardless of PATH order or shell environment.
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
+
+# Keep toolchain upgrades deliberate. Bump this string manually when you
+# want to roll forward — every line of Cargo.lock changes on every
+# toolchain bump, so lazy auto-upgrades destabilise the build cache.
+# The current pinning is to whatever stable was at the time of last bump.

@@ -8,12 +8,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use roco_engine::{ModelBackend, CompletionRequest, CompletionResponse};
+use roco_engine::{CompletionRequest, CompletionResponse, ModelBackend};
 use roco_infer_client::RemoteBackend;
 use roco_workspace::WorkspaceKind;
 
 use crate::{
-    AppError, AppResult, SessionAgent, SessionHandle, AppWorkspace, Timeline, block_on, generate,
+    block_on, generate, AppError, AppResult, AppWorkspace, SessionAgent, SessionHandle, Timeline,
 };
 
 /// Default ports for the daemon chain. Re-exported from `daemon` so surfaces
@@ -161,7 +161,9 @@ impl AppContext {
 fn connect_backend() -> Arc<dyn ModelBackend> {
     // If a gateway is already running, connect to it directly.
     if crate::daemon::is_running("gateway", GATEWAY_PORT) {
-        return Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{GATEWAY_PORT}")));
+        return Arc::new(RemoteBackend::new(format!(
+            "http://127.0.0.1:{GATEWAY_PORT}"
+        )));
     }
     // Otherwise auto-start the daemon chain via the existing module.
     crate::daemon::ensure_sync_backend()

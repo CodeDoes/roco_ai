@@ -472,7 +472,8 @@ impl MarkdownEditor {
 
             if state.file_path.is_some() {
                 ui.separator();
-                if ui.button("💾 Save")
+                if ui
+                    .button("💾 Save")
                     .on_hover_text("Save to workspace file")
                     .clicked()
                 {
@@ -1118,12 +1119,12 @@ fn inline_markdown(s: &str) -> String {
                 // Check for **bold** or *italic*
                 if chars.peek() == Some(&'*') {
                     chars.next(); // skip second *
-                    // Read until **
+                                  // Read until **
                     let mut content = String::new();
                     while let Some(nc) = chars.next() {
                         if nc == '*' && chars.peek() == Some(&'*') {
                             chars.next(); // skip closing **
-                            // Wrap in bold markers (simplified: use unicode bold hints)
+                                          // Wrap in bold markers (simplified: use unicode bold hints)
                             content.insert(0, '\u{1f9b0}');
                             content.push('\u{1f9b0}');
                             result.push_str(&content);

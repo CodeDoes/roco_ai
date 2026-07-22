@@ -74,7 +74,9 @@ fn facade_exposes_generate_stream() {
     let b = TestBackend::new();
     let ctx = test_ctx(b.clone());
     let mut seen = Vec::new();
-    let res = ctx.generate_stream(CompletionRequest::default(), move |tok| seen.push(tok.to_string()));
+    let res = ctx.generate_stream(CompletionRequest::default(), move |tok| {
+        seen.push(tok.to_string())
+    });
     assert!(res.is_ok());
     assert!(b.calls.lock().unwrap().contains(&"complete".to_string()));
 }
@@ -128,5 +130,8 @@ fn facade_exposes_workspace_and_timeline() {
     .unwrap();
     let t2 = ctx.workspace_timeline_reset(&ws, "after-edit").unwrap();
     let diff = ctx.workspace_timeline_compare(&ws, &t1, &t2).unwrap();
-    assert!(diff.contains("draft.md"), "diff should mention the new file: {diff}");
+    assert!(
+        diff.contains("draft.md"),
+        "diff should mention the new file: {diff}"
+    );
 }

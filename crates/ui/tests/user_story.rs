@@ -50,9 +50,8 @@ fn user_story_complete_writing_session() {
     // ====================================================================
     // GIVEN a writer opens RoCo AI for the first time
     // ====================================================================
-    let mut chat = ChatWidgetState::new().with_greeting(
-        "Welcome to RoCo AI! Start by typing a message or loading a session.",
-    );
+    let mut chat = ChatWidgetState::new()
+        .with_greeting("Welcome to RoCo AI! Start by typing a message or loading a session.");
     let mut pacing = PacingWidgetState::new(PacingMode::Careful, 10); // 10 planned tasks
     let mut timeline = ChangeTimelineState::new();
     let backend = MockBackend::new("mock-storyteller", 0);
@@ -65,7 +64,11 @@ fn user_story_complete_writing_session() {
         MessageRole::System,
         "welcome is a system message"
     );
-    assert_eq!(pacing.mode, PacingMode::Careful, "default pacing is careful");
+    assert_eq!(
+        pacing.mode,
+        PacingMode::Careful,
+        "default pacing is careful"
+    );
     assert!(chat.input_text.is_empty(), "input starts empty");
     assert!(chat.attachments.is_empty(), "no attachments initially");
 
@@ -129,7 +132,10 @@ fn user_story_complete_writing_session() {
     // WHEN the writer reviews the AI output and accepts it
     // ====================================================================
     let last_asst = chat.last_assistant_message();
-    assert!(last_asst.is_some(), "there is an assistant message to review");
+    assert!(
+        last_asst.is_some(),
+        "there is an assistant message to review"
+    );
     assert!(!last_asst.unwrap().streaming, "response is complete");
 
     // Accept — in the real UI this is the Accept button
@@ -141,7 +147,11 @@ fn user_story_complete_writing_session() {
     // WHEN the writer changes pacing from Careful to Rolling
     // ====================================================================
     pacing.mode = PacingMode::Rolling;
-    assert_eq!(pacing.mode, PacingMode::Rolling, "pacing changed to rolling");
+    assert_eq!(
+        pacing.mode,
+        PacingMode::Rolling,
+        "pacing changed to rolling"
+    );
     let mode = pacing.to_interaction_mode();
     assert_eq!(
         mode,
@@ -151,7 +161,10 @@ fn user_story_complete_writing_session() {
     // Rolling pauses every 3 tasks — after 1 task it should not pause
     assert!(!pacing.should_pause(1), "rolling does not pause at task 1");
     assert!(!pacing.should_pause(2), "rolling does not pause at task 2");
-    assert!(pacing.should_pause(3), "rolling pauses at task 3 (batch boundary)");
+    assert!(
+        pacing.should_pause(3),
+        "rolling pauses at task 3 (batch boundary)"
+    );
 
     // ====================================================================
     // WHEN the writer sends a follow-up message
@@ -193,8 +206,7 @@ fn user_story_complete_writing_session() {
         "undo removed one user+assistant exchange"
     );
     assert_eq!(
-        chat.messages[2].content,
-        chat.messages[2].content,
+        chat.messages[2].content, chat.messages[2].content,
         "first AI response still present after undo"
     );
 
@@ -273,8 +285,7 @@ fn user_story_complete_writing_session() {
         "loaded session has 3 messages (welcome + user + ai)"
     );
     assert_eq!(
-        loaded_chat.messages[1].content,
-        "Write a short story about a robot who learns to paint",
+        loaded_chat.messages[1].content, "Write a short story about a robot who learns to paint",
         "loaded user message matches"
     );
 
@@ -464,7 +475,10 @@ fn user_story_session_persistence() {
 
     // THEN the browser shows the updated count
     browser.refresh();
-    assert_eq!(browser.sessions[0].message_count, 7, "updated to 7 messages");
+    assert_eq!(
+        browser.sessions[0].message_count, 7,
+        "updated to 7 messages"
+    );
 
     std::fs::remove_dir_all(&session_dir).ok();
 }
@@ -584,7 +598,8 @@ fn user_story_chat_with_capabilities() {
     assert!(chat.attachments.is_empty());
 
     // Remove a capability
-    chat.active_capabilities.retain(|c| *c != Capability::Critique);
+    chat.active_capabilities
+        .retain(|c| *c != Capability::Critique);
     assert_eq!(chat.active_capabilities.len(), 1);
     assert!(chat.active_capabilities.contains(&Capability::Generate));
 }
@@ -617,7 +632,11 @@ fn user_story_file_tree_navigation() {
     assert_eq!(md.file_icon(), "📝");
     assert_eq!(md.extension(), "md");
 
-    let toml = root.children.iter().find(|c| c.name == "config.toml").unwrap();
+    let toml = root
+        .children
+        .iter()
+        .find(|c| c.name == "config.toml")
+        .unwrap();
     assert_eq!(toml.file_icon(), "⚙️");
     assert_eq!(toml.extension(), "toml");
 
@@ -630,7 +649,10 @@ fn user_story_file_tree_navigation() {
     tree.refresh();
     let root = tree.root_node.as_ref().unwrap();
     let names: Vec<&str> = root.children.iter().map(|c| c.name.as_str()).collect();
-    assert!(names.contains(&"worldbuilding.md"), "new file appears after refresh");
+    assert!(
+        names.contains(&"worldbuilding.md"),
+        "new file appears after refresh"
+    );
 
     // THEN actions cover the expected contract
     let select = FileTreeAction::SelectFile(dir.join("story.md"));
@@ -749,7 +771,11 @@ fn user_story_wiki_browsing() {
     // WHEN they search by content (matches title + content)
     wiki.search_text = "prophecy".into();
     let results = wiki.filtered_pages();
-    assert_eq!(results.len(), 2, "prophecy appears in title 'The Prophecy' and in content of 'Timeline of Events'");
+    assert_eq!(
+        results.len(),
+        2,
+        "prophecy appears in title 'The Prophecy' and in content of 'Timeline of Events'"
+    );
 
     // WHEN they search with no matches
     wiki.search_text = "nonexistent".into();

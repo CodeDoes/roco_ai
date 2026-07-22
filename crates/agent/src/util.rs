@@ -10,6 +10,5 @@ use serde::de::DeserializeOwned;
 /// centralises the error message format so every call site doesn't repeat
 /// the same `map_err` boilerplate.
 pub fn parse_structured_response<T: DeserializeOwned>(text: &str) -> Result<T, String> {
-    serde_json::from_str::<T>(text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    serde_json::from_str::<T>(text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }

@@ -174,17 +174,13 @@ mod tests {
         render_markdown(&mut out, "T", &ch, Path::new("/tmp"));
         assert!(out.contains("# T\n\n---\n\n<!-- 03-CHAPTER_1.md -->\n\n# Hi\n\nOk.\n\n"));
     }
-        #[test]
+    #[test]
     fn html_escapes() {
         let mut out = String::new();
         let ch = vec![(1, "c".into(), "A & B < C > D \"E\"".into())];
         render_html(&mut out, "T", &ch, Path::new("/tmp"));
-        let expected = "<p>A &".to_string()
-            + "amp; B &"
-            + "lt; C &"
-            + "gt; D &"
-            + "quot;E&"
-            + "quot;</p>";
+        let expected =
+            "<p>A &".to_string() + "amp; B &" + "lt; C &" + "gt; D &" + "quot;E&" + "quot;</p>";
         assert!(
             out.contains(&expected),
             "expected escaped paragraph, got:\n{out}"

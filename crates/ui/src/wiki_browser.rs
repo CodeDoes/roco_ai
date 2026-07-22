@@ -95,8 +95,7 @@ impl WikiBrowserState {
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                p.title.to_lowercase().contains(&lower)
-                    || p.content.to_lowercase().contains(&lower)
+                p.title.to_lowercase().contains(&lower) || p.content.to_lowercase().contains(&lower)
             })
             .map(|(i, _)| i)
             .collect()
@@ -116,7 +115,11 @@ impl WikiBrowser {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Wiki").strong().size(14.0));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(format!("{} pages", state.pages.len())).size(10.0).color(ui.visuals().weak_text_color()));
+                    ui.label(
+                        RichText::new(format!("{} pages", state.pages.len()))
+                            .size(10.0)
+                            .color(ui.visuals().weak_text_color()),
+                    );
                 });
             });
 
@@ -128,7 +131,11 @@ impl WikiBrowser {
             ui.separator();
 
             if state.pages.is_empty() {
-                ui.label(RichText::new("No wiki pages yet.").size(12.0).color(ui.visuals().weak_text_color()));
+                ui.label(
+                    RichText::new("No wiki pages yet.")
+                        .size(12.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
                 return;
             }
 
@@ -170,8 +177,13 @@ impl WikiBrowser {
                         ui.separator();
                         ui.vertical(|ui| {
                             ui.label(RichText::new(&page.title).strong().size(16.0));
-                            let section_label = format!("{} {}", page.section.icon(), page.section.label());
-                            ui.label(RichText::new(section_label).size(11.0).color(ui.visuals().weak_text_color()));
+                            let section_label =
+                                format!("{} {}", page.section.icon(), page.section.label());
+                            ui.label(
+                                RichText::new(section_label)
+                                    .size(11.0)
+                                    .color(ui.visuals().weak_text_color()),
+                            );
                             ui.separator();
 
                             // Render markdown
@@ -181,12 +193,23 @@ impl WikiBrowser {
                                 .show(ui, |inner_ui| {
                                     // Basic markdown rendering (plain text with headers)
                                     for line in page.content.lines() {
-                                        if line.starts_with("# ") { inner_ui.heading(&line[2..]); }
-                                        else if line.starts_with("## ") { inner_ui.label(RichText::new(&line[3..]).size(18.0).strong()); }
-                                        else if line.starts_with("### ") { inner_ui.label(RichText::new(&line[4..]).size(16.0).strong()); }
-                                        else if line.starts_with("- ") || line.starts_with("* ") { inner_ui.label(format!("  • {}", &line[2..])); }
-                                        else if line.trim().is_empty() { inner_ui.add_space(4.0); }
-                                        else { inner_ui.label(line); }
+                                        if line.starts_with("# ") {
+                                            inner_ui.heading(&line[2..]);
+                                        } else if line.starts_with("## ") {
+                                            inner_ui.label(
+                                                RichText::new(&line[3..]).size(18.0).strong(),
+                                            );
+                                        } else if line.starts_with("### ") {
+                                            inner_ui.label(
+                                                RichText::new(&line[4..]).size(16.0).strong(),
+                                            );
+                                        } else if line.starts_with("- ") || line.starts_with("* ") {
+                                            inner_ui.label(format!("  • {}", &line[2..]));
+                                        } else if line.trim().is_empty() {
+                                            inner_ui.add_space(4.0);
+                                        } else {
+                                            inner_ui.label(line);
+                                        }
                                     }
                                 });
 
@@ -212,14 +235,21 @@ impl WikiBrowser {
                 if idx < state.pages.len() {
                     let page = &state.pages[idx];
                     let label = format!("{} {}", page.section.icon(), page.title);
-                    if ui.selectable_label(state.selected_index == Some(idx), &label).clicked() {
+                    if ui
+                        .selectable_label(state.selected_index == Some(idx), &label)
+                        .clicked()
+                    {
                         state.selected_index = Some(idx);
                         action = Some(WikiBrowserAction::SelectPage(idx));
                     }
                 }
             }
             if filtered.len() > 5 {
-                ui.label(RichText::new(format!("+{} more", filtered.len() - 5)).size(10.0).color(ui.visuals().weak_text_color()));
+                ui.label(
+                    RichText::new(format!("+{} more", filtered.len() - 5))
+                        .size(10.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
             }
         });
         action
@@ -279,9 +309,24 @@ mod tests {
     #[test]
     fn test_wiki_browser_filtered_pages() {
         let mut state = WikiBrowserState::new();
-        state.add_page(WikiPage { title: "King Arthur".into(), content: "The once and future king.".into(), section: WikiSection::Characters, path: None });
-        state.add_page(WikiPage { title: "Camelot".into(), content: "The legendary castle and court.".into(), section: WikiSection::Setting, path: None });
-        state.add_page(WikiPage { title: "Merlin".into(), content: "The wizard who guides Arthur.".into(), section: WikiSection::Characters, path: None });
+        state.add_page(WikiPage {
+            title: "King Arthur".into(),
+            content: "The once and future king.".into(),
+            section: WikiSection::Characters,
+            path: None,
+        });
+        state.add_page(WikiPage {
+            title: "Camelot".into(),
+            content: "The legendary castle and court.".into(),
+            section: WikiSection::Setting,
+            path: None,
+        });
+        state.add_page(WikiPage {
+            title: "Merlin".into(),
+            content: "The wizard who guides Arthur.".into(),
+            section: WikiSection::Characters,
+            path: None,
+        });
 
         // No filter
         assert_eq!(state.filtered_pages().len(), 3);

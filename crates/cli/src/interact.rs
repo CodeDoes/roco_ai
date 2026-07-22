@@ -18,8 +18,6 @@ use roco_session::store::SessionStore;
 
 use crate::rich_output as r;
 
-
-
 // ═════════════════════════════════════════════════════════════════════════════
 // Configuration
 // ═════════════════════════════════════════════════════════════════════════════
@@ -250,11 +248,7 @@ fn run_interactive(
             InteractionMode::GoHam => "auto",
         };
 
-        print!(
-            "\n{}{} > ",
-            r::Colors::DIM,
-            pacing_label,
-        );
+        print!("\n{}{} > ", r::Colors::DIM, pacing_label,);
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -279,7 +273,8 @@ fn run_interactive(
                 &mut interaction,
                 &session_path,
             )
-            .map_err(|e| anyhow::anyhow!("{e}"))? {
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            {
                 // Command signaled quit
                 break;
             }
@@ -399,11 +394,7 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
             InteractionMode::GoHam => "auto",
         };
 
-        print!(
-            "\n{}{} > ",
-            r::Colors::DIM,
-            pacing_label,
-        );
+        print!("\n{}{} > ", r::Colors::DIM, pacing_label,);
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -427,7 +418,8 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
                 &mut interaction,
                 &session_path,
             )
-            .map_err(|e| anyhow::anyhow!("{e}"))? {
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            {
                 break;
             }
             continue;

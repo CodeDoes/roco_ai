@@ -35,9 +35,9 @@ pub mod session;
 pub mod workspace;
 
 pub use context::AppContext;
+pub use roco_workspace::WorkspaceKind;
 pub use session::{SessionAgent, SessionHandle};
 pub use workspace::{AppWorkspace, Timeline};
-pub use roco_workspace::WorkspaceKind;
 
 /// Convenience result alias used by all surface-facing operations.
 pub type AppResult<T> = Result<T, AppError>;
@@ -107,6 +107,9 @@ pub(crate) fn block_on<F: std::future::Future>(fut: F) -> F::Output {
 
 /// Synchronous generation to completion (the `generate_poll_finish` op).
 /// Surfaces call this instead of `futures::executor::block_on(backend.complete(...))`.
-pub(crate) fn generate(req: CompletionRequest, backend: &dyn ModelBackend) -> AppResult<CompletionResponse> {
+pub(crate) fn generate(
+    req: CompletionRequest,
+    backend: &dyn ModelBackend,
+) -> AppResult<CompletionResponse> {
     block_on(backend.complete(req)).map_err(AppError::Engine)
 }

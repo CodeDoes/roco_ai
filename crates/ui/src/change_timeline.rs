@@ -133,7 +133,11 @@ impl ChangeTimeline {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("History").strong().size(14.0));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(format!("{} entries", state.entries.len())).size(10.0).color(ui.visuals().weak_text_color()));
+                    ui.label(
+                        RichText::new(format!("{} entries", state.entries.len()))
+                            .size(10.0)
+                            .color(ui.visuals().weak_text_color()),
+                    );
                 });
             });
 
@@ -141,10 +145,16 @@ impl ChangeTimeline {
             ui.horizontal(|ui| {
                 let can_undo = state.can_undo();
                 let can_redo = state.can_redo();
-                if ui.add_enabled(can_undo, egui::Button::new("↩ Undo")).clicked() {
+                if ui
+                    .add_enabled(can_undo, egui::Button::new("↩ Undo"))
+                    .clicked()
+                {
                     action = Some(TimelineAction::Undo);
                 }
-                if ui.add_enabled(can_redo, egui::Button::new("↪ Redo")).clicked() {
+                if ui
+                    .add_enabled(can_redo, egui::Button::new("↪ Redo"))
+                    .clicked()
+                {
                     action = Some(TimelineAction::Redo);
                 }
                 if ui.button("📸 Snapshot").clicked() {
@@ -155,12 +165,18 @@ impl ChangeTimeline {
             // Snapshot input
             if state.show_snapshot_input {
                 ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut state.snapshot_description)
-                        .hint_text("Snapshot description...")
-                        .desired_width(180.0));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut state.snapshot_description)
+                            .hint_text("Snapshot description...")
+                            .desired_width(180.0),
+                    );
                     if ui.button("Save").clicked() {
                         let desc = state.snapshot_description.trim().to_string();
-                        let label = if desc.is_empty() { "Manual snapshot".into() } else { desc };
+                        let label = if desc.is_empty() {
+                            "Manual snapshot".into()
+                        } else {
+                            desc
+                        };
                         action = Some(TimelineAction::CreateSnapshot(label));
                         state.snapshot_description.clear();
                         state.show_snapshot_input = false;
@@ -172,7 +188,11 @@ impl ChangeTimeline {
 
             // Timeline entries
             if state.entries.is_empty() {
-                ui.label(RichText::new("No history yet.").size(12.0).color(ui.visuals().weak_text_color()));
+                ui.label(
+                    RichText::new("No history yet.")
+                        .size(12.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
                 return;
             }
 
@@ -189,7 +209,11 @@ impl ChangeTimeline {
                     let line_x = ui.min_rect().left() + timeline_left;
                     let line_top = ui.min_rect().top();
                     let line_bottom = ui.min_rect().top() + total_height;
-                    painter.vline(line_x, line_top..=line_bottom, egui::Stroke::new(1.5, ui.visuals().weak_text_color()));
+                    painter.vline(
+                        line_x,
+                        line_top..=line_bottom,
+                        egui::Stroke::new(1.5, ui.visuals().weak_text_color()),
+                    );
 
                     for (i, entry) in state.entries.iter().enumerate() {
                         let selected = state.selected_index == Some(i);
@@ -218,7 +242,10 @@ impl ChangeTimeline {
                                     } else {
                                         entry.kind.color()
                                     };
-                                    let (dot_response, dot_painter) = ui.allocate_painter(Vec2::new(12.0, 12.0), egui::Sense::click());
+                                    let (dot_response, dot_painter) = ui.allocate_painter(
+                                        Vec2::new(12.0, 12.0),
+                                        egui::Sense::click(),
+                                    );
                                     let dot_center = dot_response.rect.center();
                                     dot_painter.circle_filled(dot_center, 5.0, dot_color);
                                     ui.add_space(8.0);
@@ -226,20 +253,34 @@ impl ChangeTimeline {
                                     // Icon + label
                                     ui.label(RichText::new(entry.kind.icon()).size(14.0));
                                     ui.vertical(|ui| {
-                                        ui.label(RichText::new(&entry.description).size(12.0).strong().color(
-                                            if is_current(i, state.current_position) {
-                                                Color32::from_rgb(255, 200, 50)
-                                            } else {
-                                                ui.visuals().text_color()
-                                            }
-                                        ));
-                                        ui.label(RichText::new(format!("{} — {}", entry.kind.label(), entry.timestamp))
-                                            .size(10.0).color(ui.visuals().weak_text_color()));
+                                        ui.label(
+                                            RichText::new(&entry.description)
+                                                .size(12.0)
+                                                .strong()
+                                                .color(if is_current(i, state.current_position) {
+                                                    Color32::from_rgb(255, 200, 50)
+                                                } else {
+                                                    ui.visuals().text_color()
+                                                }),
+                                        );
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{} — {}",
+                                                entry.kind.label(),
+                                                entry.timestamp
+                                            ))
+                                            .size(10.0)
+                                            .color(ui.visuals().weak_text_color()),
+                                        );
                                     });
                                 });
                             })
                             .response
-                            .on_hover_text(format!("{}: {}", entry.kind.label(), entry.description));
+                            .on_hover_text(format!(
+                                "{}: {}",
+                                entry.kind.label(),
+                                entry.description
+                            ));
 
                         if response.clicked() {
                             state.selected_index = Some(i);
@@ -268,13 +309,29 @@ impl ChangeTimeline {
     pub fn show_compact(ui: &mut Ui, state: &mut ChangeTimelineState) -> Option<TimelineAction> {
         let mut action = None;
         ui.horizontal(|ui| {
-            if ui.add_enabled(state.can_undo(), egui::Button::new("↩")).on_hover_text("Undo").clicked() {
+            if ui
+                .add_enabled(state.can_undo(), egui::Button::new("↩"))
+                .on_hover_text("Undo")
+                .clicked()
+            {
                 action = Some(TimelineAction::Undo);
             }
-            if ui.add_enabled(state.can_redo(), egui::Button::new("↪")).on_hover_text("Redo").clicked() {
+            if ui
+                .add_enabled(state.can_redo(), egui::Button::new("↪"))
+                .on_hover_text("Redo")
+                .clicked()
+            {
                 action = Some(TimelineAction::Redo);
             }
-            ui.label(RichText::new(format!("{}/{}", state.current_position, state.entries.len())).size(11.0).color(ui.visuals().weak_text_color()));
+            ui.label(
+                RichText::new(format!(
+                    "{}/{}",
+                    state.current_position,
+                    state.entries.len()
+                ))
+                .size(11.0)
+                .color(ui.visuals().weak_text_color()),
+            );
         });
         action
     }
@@ -283,7 +340,9 @@ impl ChangeTimeline {
 fn is_current(i: usize, current: usize) -> bool {
     // The current position points to the NEXT entry to be added
     // So entry at index `current - 1` is the most recent one
-    if current == 0 { return false; }
+    if current == 0 {
+        return false;
+    }
     i == current - 1
 }
 
@@ -335,8 +394,11 @@ mod tests {
     fn test_change_timeline_state_clear() {
         let mut state = ChangeTimelineState::new();
         state.add_entry(TimelineEntry {
-            id: "s1".into(), description: "Test".into(), kind: TimelineEntryKind::Action,
-            timestamp: "12:00".into(), is_current: false,
+            id: "s1".into(),
+            description: "Test".into(),
+            kind: TimelineEntryKind::Action,
+            timestamp: "12:00".into(),
+            is_current: false,
         });
         state.clear();
         assert!(state.entries.is_empty());
@@ -371,15 +433,21 @@ mod tests {
         assert!(!state.can_redo());
 
         state.add_entry(TimelineEntry {
-            id: "a1".into(), description: "Action 1".into(), kind: TimelineEntryKind::Action,
-            timestamp: "12:00".into(), is_current: false,
+            id: "a1".into(),
+            description: "Action 1".into(),
+            kind: TimelineEntryKind::Action,
+            timestamp: "12:00".into(),
+            is_current: false,
         });
         assert!(state.can_undo());
         assert!(!state.can_redo());
 
         state.add_entry(TimelineEntry {
-            id: "a2".into(), description: "Action 2".into(), kind: TimelineEntryKind::Action,
-            timestamp: "12:01".into(), is_current: false,
+            id: "a2".into(),
+            description: "Action 2".into(),
+            kind: TimelineEntryKind::Action,
+            timestamp: "12:01".into(),
+            is_current: false,
         });
         assert!(state.can_undo());
         assert!(!state.can_redo());

@@ -1,0 +1,14 @@
+# RoCo AI rustfmt configuration
+#
+# Stable edition settings that match the existing style across crates.
+# Generated 2026-07-22 along with the repository-wide `cargo fmt --all`
+# baseline commit — keeps the `run_tests.sh` Step 5 format-gate green.
+
+edition = "2021"
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+reorder_imports = true
+imports_granularity = "Crate"
+match_arm_trailing_comma = "Vertical"
+use_small_heuristics = "Default"

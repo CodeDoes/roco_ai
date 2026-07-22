@@ -135,11 +135,25 @@ pub fn panel(title: &str, content: &str) {
     let border = "─".repeat(width);
 
     println!("{}┌{}┐{}", Colors::DIM, border, Colors::RESET);
-    println!("{}│ {}{}{}{}│", Colors::DIM, Colors::RESET, Colors::BOLD, title, Colors::RESET);
+    println!(
+        "{}│ {}{}{}{}│",
+        Colors::DIM,
+        Colors::RESET,
+        Colors::BOLD,
+        title,
+        Colors::RESET
+    );
 
     for line in content.lines() {
         let padding = width.saturating_sub(line.len() + 2);
-        println!("{}│ {}{}{}{}│", Colors::DIM, Colors::RESET, line, " ".repeat(padding), Colors::RESET);
+        println!(
+            "{}│ {}{}{}{}│",
+            Colors::DIM,
+            Colors::RESET,
+            line,
+            " ".repeat(padding),
+            Colors::RESET
+        );
     }
 
     println!("{}└{}┘{}", Colors::DIM, border, Colors::RESET);
@@ -164,21 +178,35 @@ pub fn table(headers: &[&str], rows: &[Vec<&str>]) {
     // Print header
     print!("{}┌", Colors::DIM);
     for (i, width) in widths.iter().enumerate() {
-        print!("{}{}", "─".repeat(width + 2), if i < widths.len() - 1 { "┬" } else { "┐" });
+        print!(
+            "{}{}",
+            "─".repeat(width + 2),
+            if i < widths.len() - 1 { "┬" } else { "┐" }
+        );
     }
     println!("{}", Colors::RESET);
 
     print!("{}│", Colors::DIM);
     for (i, header) in headers.iter().enumerate() {
         let padding = widths[i].saturating_sub(header.len());
-        print!(" {}{}{}{} │", Colors::BOLD, header, Colors::RESET, " ".repeat(padding));
+        print!(
+            " {}{}{}{} │",
+            Colors::BOLD,
+            header,
+            Colors::RESET,
+            " ".repeat(padding)
+        );
     }
     println!("{}", Colors::RESET);
 
     // Print separator
     print!("{}├", Colors::DIM);
     for (i, width) in widths.iter().enumerate() {
-        print!("{}{}", "─".repeat(width + 2), if i < widths.len() - 1 { "┼" } else { "┤" });
+        print!(
+            "{}{}",
+            "─".repeat(width + 2),
+            if i < widths.len() - 1 { "┼" } else { "┤" }
+        );
     }
     println!("{}", Colors::RESET);
 
@@ -186,7 +214,11 @@ pub fn table(headers: &[&str], rows: &[Vec<&str>]) {
     for row in rows {
         print!("{}│", Colors::DIM);
         for (i, cell) in row.iter().enumerate() {
-            let padding = if i < widths.len() { widths[i].saturating_sub(cell.len()) } else { 0 };
+            let padding = if i < widths.len() {
+                widths[i].saturating_sub(cell.len())
+            } else {
+                0
+            };
             print!(" {}{} │", cell, " ".repeat(padding));
         }
         println!("{}", Colors::RESET);
@@ -195,7 +227,11 @@ pub fn table(headers: &[&str], rows: &[Vec<&str>]) {
     // Print footer
     print!("{}└", Colors::DIM);
     for (i, width) in widths.iter().enumerate() {
-        print!("{}{}", "─".repeat(width + 2), if i < widths.len() - 1 { "┴" } else { "┘" });
+        print!(
+            "{}{}",
+            "─".repeat(width + 2),
+            if i < widths.len() - 1 { "┴" } else { "┘" }
+        );
     }
     println!("{}", Colors::RESET);
 }

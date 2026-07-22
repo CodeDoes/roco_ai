@@ -118,13 +118,14 @@ fn main() {
         "server" => cmd_server(&extra),
         "gateway" => cmd_gateway(&extra),
         "gui" => cmd_gui(&extra),
-        "stop" => { crate::daemon::stop_all(); },
+        "stop" => {
+            crate::daemon::stop_all();
+        }
         "story" => cmd_story(&extra),
         "interact" => cmd_interact(&extra),
         _ => help(sub),
     }
 }
-
 
 fn cmd_gui(_extra: &[&str]) {
     use crate::daemon::{self, GATEWAY_PORT};

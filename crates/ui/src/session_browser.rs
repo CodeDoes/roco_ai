@@ -88,10 +88,7 @@ impl SessionBrowserState {
             let path = entry.path();
             if let Ok(json) = std::fs::read_to_string(&path) {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json) {
-                    let messages = value["messages"]
-                        .as_array()
-                        .map(|a| a.len())
-                        .unwrap_or(0);
+                    let messages = value["messages"].as_array().map(|a| a.len()).unwrap_or(0);
                     let pacing = value["pacing"].as_str().unwrap_or("?").to_string();
                     let created = value["created_at"].as_str().unwrap_or("?").to_string();
                     let updated = value["updated_at"].as_str().unwrap_or("?").to_string();
@@ -99,18 +96,16 @@ impl SessionBrowserState {
                         .file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    let last_prompt = value["messages"]
-                        .as_array()
-                        .and_then(|msgs| {
-                            msgs.iter()
-                                .rev()
-                                .find(|m| m["role"].as_str() == Some("user"))
-                                .and_then(|m| {
-                                    m["content"]
-                                        .as_str()
-                                        .map(|s| s.chars().take(80).collect::<String>())
-                                })
-                        });
+                    let last_prompt = value["messages"].as_array().and_then(|msgs| {
+                        msgs.iter()
+                            .rev()
+                            .find(|m| m["role"].as_str() == Some("user"))
+                            .and_then(|m| {
+                                m["content"]
+                                    .as_str()
+                                    .map(|s| s.chars().take(80).collect::<String>())
+                            })
+                    });
                     self.sessions.push(SessionEntry {
                         id,
                         pacing,
@@ -136,8 +131,7 @@ impl SessionBrowserState {
                 .filter(|s| {
                     s.id.to_lowercase().contains(&lower)
                         || s.pacing.to_lowercase().contains(&lower)
-                        || s
-                            .last_prompt
+                        || s.last_prompt
                             .as_deref()
                             .unwrap_or("")
                             .to_lowercase()
@@ -181,9 +175,16 @@ impl SessionBrowser {
             // Session list — collect indices first to avoid borrow issues
             let filtered_indices: Vec<usize> = {
                 let filtered = state.filtered_sessions();
-                filtered.iter().map(|entry| {
-                    state.sessions.iter().position(|s| s.id == entry.id).unwrap_or(0)
-                }).collect()
+                filtered
+                    .iter()
+                    .map(|entry| {
+                        state
+                            .sessions
+                            .iter()
+                            .position(|s| s.id == entry.id)
+                            .unwrap_or(0)
+                    })
+                    .collect()
             };
             if filtered_indices.is_empty() {
                 ui.label(
@@ -223,14 +224,13 @@ impl SessionBrowser {
                                     ui.label("💬");
                                     ui.vertical(|ui| {
                                         ui.label(
-                                            RichText::new(&entry.id)
-                                                .size(12.0)
-                                                .strong()
-                                                .color(if selected {
+                                            RichText::new(&entry.id).size(12.0).strong().color(
+                                                if selected {
                                                     ui.visuals().selection.stroke.color
                                                 } else {
                                                     ui.visuals().text_color()
-                                                }),
+                                                },
+                                            ),
                                         );
                                         ui.horizontal(|ui| {
                                             let pacing_color = match entry.pacing.as_str() {
@@ -345,7 +345,13 @@ mod tests {
 
     fn test_dir() -> PathBuf {
         // Use test name via backtrace — fallback to unique timestamp
-        let dir = std::env::temp_dir().join(format!("roco_sb_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let dir = std::env::temp_dir().join(format!(
+            "roco_sb_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&dir);
         dir
     }
@@ -380,8 +386,24 @@ mod tests {
         assert_eq!(state.sessions.len(), 2);
         assert!(state.sessions.iter().any(|s| s.id == "test1"));
         assert!(state.sessions.iter().any(|s| s.id == "test2"));
-        assert_eq!(state.sessions.iter().find(|s| s.id == "test1").unwrap().pacing, "careful");
-        assert_eq!(state.sessions.iter().find(|s| s.id == "test2").unwrap().message_count, 4);
+        assert_eq!(
+            state
+                .sessions
+                .iter()
+                .find(|s| s.id == "test1")
+                .unwrap()
+                .pacing,
+            "careful"
+        );
+        assert_eq!(
+            state
+                .sessions
+                .iter()
+                .find(|s| s.id == "test2")
+                .unwrap()
+                .message_count,
+            4
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -125,10 +125,7 @@ impl LinkGraphState {
         // Place near center with slight random offset
         let angle = self.nodes.len() as f32 * 1.256;
         let dist = 80.0 + self.nodes.len() as f32 * 20.0;
-        let pos = Pos2::new(
-            400.0 + angle.cos() * dist,
-            300.0 + angle.sin() * dist,
-        );
+        let pos = Pos2::new(400.0 + angle.cos() * dist, 300.0 + angle.sin() * dist);
         self.nodes.push(GraphNode {
             id: id.to_string(),
             label: label.to_string(),
@@ -209,7 +206,9 @@ impl LinkGraphState {
     }
 
     pub fn selected_node(&self) -> Option<&GraphNode> {
-        self.selected_node.as_ref().and_then(|id| self.nodes.iter().find(|n| n.id == *id))
+        self.selected_node
+            .as_ref()
+            .and_then(|id| self.nodes.iter().find(|n| n.id == *id))
     }
 }
 
@@ -394,9 +393,20 @@ impl LinkGraph {
         let mut action = None;
         ui.vertical(|ui| {
             ui.label(RichText::new("Links").strong().size(12.0));
-            ui.label(RichText::new(format!("{} nodes, {} edges", state.nodes.len(), state.edges.len())).size(10.0).color(ui.visuals().weak_text_color()));
+            ui.label(
+                RichText::new(format!(
+                    "{} nodes, {} edges",
+                    state.nodes.len(),
+                    state.edges.len()
+                ))
+                .size(10.0)
+                .color(ui.visuals().weak_text_color()),
+            );
             for node in &state.nodes {
-                let selected = state.selected_node.as_ref().map_or(false, |s| s == &node.id);
+                let selected = state
+                    .selected_node
+                    .as_ref()
+                    .map_or(false, |s| s == &node.id);
                 let label = format!("{} {}", node.kind.icon(), node.label);
                 if ui.selectable_label(selected, &label).clicked() {
                     state.selected_node = Some(node.id.clone());
@@ -415,8 +425,12 @@ mod tests {
     #[test]
     fn test_node_kind_variants() {
         for kind in &[
-            NodeKind::Character, NodeKind::Location, NodeKind::PlotThread,
-            NodeKind::Event, NodeKind::Item, NodeKind::Theme,
+            NodeKind::Character,
+            NodeKind::Location,
+            NodeKind::PlotThread,
+            NodeKind::Event,
+            NodeKind::Item,
+            NodeKind::Theme,
         ] {
             assert!(!kind.label().is_empty());
             assert!(!kind.icon().is_empty());
@@ -530,8 +544,12 @@ mod tests {
     #[test]
     fn test_node_kind_default_colors() {
         for kind in &[
-            NodeKind::Character, NodeKind::Location, NodeKind::PlotThread,
-            NodeKind::Event, NodeKind::Item, NodeKind::Theme,
+            NodeKind::Character,
+            NodeKind::Location,
+            NodeKind::PlotThread,
+            NodeKind::Event,
+            NodeKind::Item,
+            NodeKind::Theme,
         ] {
             let c = kind.default_color();
             assert!(c.r() > 0 || c.g() > 0 || c.b() > 0);
