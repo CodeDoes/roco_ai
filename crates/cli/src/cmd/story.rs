@@ -76,7 +76,7 @@ fn strip_thinking(text: &str) -> String {
         if in_think && i + 1 < chars.len() && chars[i] == '\u{1f4ad}' && chars[i + 1] == ' ' {
             in_think = false;
             i += 2; // 💭 + space
-            // Also skip anything that looks like "response" after it
+                    // Also skip anything that looks like "response" after it
             if i + 8 < chars.len()
                 && chars[i] == 'r'
                 && chars[i + 1] == 'e'
@@ -145,7 +145,12 @@ fn fix_paragraphs(text: &str) -> String {
             let next = lines[i + 1].trim();
             if next.is_empty() {
                 false // handled above
-            } else if line.ends_with('.') || line.ends_with('!') || line.ends_with('?') || line.ends_with('"') || line.ends_with('”') || line.ends_with('—')
+            } else if line.ends_with('.')
+                || line.ends_with('!')
+                || line.ends_with('?')
+                || line.ends_with('"')
+                || line.ends_with('”')
+                || line.ends_with('—')
             {
                 // If next line starts with a capital letter and this line
                 // looks complete, it's likely a new paragraph
@@ -513,16 +518,14 @@ fn publish_to_stories_dir(
         .join(".roco")
         .join("stories");
 
-    std::fs::create_dir_all(&stories_dir)
-        .map_err(|e| format!("create stories dir: {e}"))?;
+    std::fs::create_dir_all(&stories_dir).map_err(|e| format!("create stories dir: {e}"))?;
 
     let word_count = story_text.split_whitespace().count();
     let fm = front_matter(title, genre, tone, word_count);
     let full_content = format!("{fm}{story_text}");
 
     let path = stories_dir.join(format!("{slug}.md"));
-    std::fs::write(&path, &full_content)
-        .map_err(|e| format!("write story file: {e}"))?;
+    std::fs::write(&path, &full_content).map_err(|e| format!("write story file: {e}"))?;
 
     Ok(path)
 }

@@ -667,4 +667,153 @@ mod tests {
             let _ = std::fs::remove_file(&p);
         });
     }
+
+    // ── Workspace lifecycle tests ────────────────────────────────────
+
+    #[test]
+    fn start_in_existing_workspace() {
+        // Create a workspace, then "start in" it by opening from_existing
+        let original = Workspace::temp(WorkspaceKind::Agent).unwrap();
+        let name = "my-story-workspace";
+        let original = original.with_name(name);
+
+        // Write a story file into it
+        std::fs::write(original.root().join("01-OUTLINE.md"), "# My Story Outline").unwrap();
+
+        // Now "start" by opening it with a different Workspace instance
+        let restarted = Workspace::from_existing(original.root(), WorkspaceKind::Agent)
+            .unwrap()
+            .with_name(name);
+
+        assert_eq!(restarted.name(), name);
+        assert_eq!(restarted.kind(), WorkspaceKind::Agent);
+        assert!(restarted.root().exists());
+
+        // Verify the story file is accessible
+        let outline = std::fs::read_to_string(restarted.root().join("01-OUTLINE.md")).unwrap();
+        assert!(outline.contains("My Story Outline"));
+
+        let _ = std::fs::remove_dir_all(original.root());
+    }
+
+    #[test]
+    fn make_temp_workspace_with_name() {
+        // Create a temp workspace with a human-readable name (slug)
+        let slug = "my-test-story";
+        let ws = Workspace::temp(WorkspaceKind::Eval)
+            .unwrap()
+            .with_name(slug);
+
+        // Name is set (slug is human-readable, not necessarily the dir name)
+        assert_eq!(ws.name(), slug);
+        assert_eq!(ws.kind(), WorkspaceKind::Eval);
+        assert!(ws.root().starts_with(std::env::temp_dir()));
+        assert!(ws.root().exists());
+
+        // Write a story file to confirm it's usable
+        std::fs::write(
+            ws.root().join("chapter_1.md"),
+            "# Chapter 1\n\nIt was a dark and stormy night...",
+        )
+        .unwrap();
+        assert!(ws.resolve("chapter_1.md").unwrap().exists());
+
+        let _ = std::fs::remove_dir_all(ws.root());
+    }
+
+    #[test]
+    fn make_workspace_with_unique_name_and_slug() {
+        // Create a persistent-style workspace with a unique name and optional slug
+        let base = std::env::temp_dir().join(format!("roco-unique-{}", std::process::id()));
+        let unique_name = format!(
+            "story-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let slug = "ghost-story";
+
+        let ws = Workspace::new(base.join(&unique_name), WorkspaceKind::Agent)
+            .unwrap()
+            .with_name(slug);
+
+        assert_eq!(ws.name(), slug);
+        assert!(ws.root().exists());
+        assert!(ws.root().to_string_lossy().contains(&unique_name));
+
+        // Verify the directory is actually at the unique path
+        assert!(std::fs::read_dir(ws.root()).is_ok());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn many_stories_in_one_workspace() {
+        // A workspace can hold multiple story files (different stories)
+        let ws = Workspace::temp(WorkspaceKind::Agent).unwrap();
+
+        // Write multiple story files simulating different stories in same workspace
+        let stories = vec![
+            (
+                "stories/the_lighthouse.md",
+                "# The Lighthouse\n\nA tale of the sea...",
+            ),
+            ("stories/the_dragon.md", "# The Dragon\n\nA tale of fire..."),
+            (
+                "stories/the_robot.md",
+                "# The Robot\n\nA tale of circuits...",
+            ),
+        ];
+
+        for (path, content) in &stories {
+            let full_path = ws.root().join(path);
+            if let Some(parent) = full_path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&full_path, content).unwrap();
+        }
+
+        // Verify all stories are accessible
+        for (path, content) in &stories {
+            let resolved = ws.resolve(path).unwrap();
+            assert!(resolved.exists(), "story file {} should exist", path);
+            let read_content = std::fs::read_to_string(&resolved).unwrap();
+            assert_eq!(read_content, *content);
+        }
+
+        // Also verify that the workspace can hold outline + chapter files alongside stories
+        let pipeline_files = vec![
+            "01-OUTLINE.md",
+            "02-WIKI.md",
+            "03-CHAPTER_1.md",
+            "03-CHAPTER_2.md",
+            "04-VALIDATION.md",
+            "05-SYNOPSIS.md",
+            "06-STORY.md",
+        ];
+
+        for fname in &pipeline_files {
+            let content = format!("# {}", fname.replace(".md", ""));
+            let resolved = ws.resolve(fname).unwrap();
+            std::fs::write(&resolved, &content).unwrap();
+            assert!(resolved.exists());
+        }
+
+        // Confirm all files still resolve and are within the single workspace root
+        let mut file_count = 0;
+        for entry in walkdir::WalkDir::new(ws.root()) {
+            if entry.is_ok() {
+                file_count += 1;
+            }
+        }
+        // stories/ dir (3 files) + 7 pipeline files + stories/ dir entry + .snapshots/ maybe + ws root
+        assert!(
+            file_count >= 10,
+            "expected at least 10 files in workspace, got {}",
+            file_count
+        );
+
+        let _ = std::fs::remove_dir_all(ws.root());
+    }
 }

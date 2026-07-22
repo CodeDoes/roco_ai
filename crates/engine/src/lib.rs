@@ -7,7 +7,9 @@
 pub mod backend;
 pub mod cases;
 pub mod eval;
+pub mod story_evals;
 pub mod types;
+pub mod util;
 
 pub use backend::*;
 pub use cases::*;
