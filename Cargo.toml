@@ -38,6 +38,7 @@ clap = { version = "4", features = ["derive"] }
 parking_lot = "0.12"
 futures-channel = "0.3"
 futures-util = "0.3"
+toml = "0.8"
 
 [patch.crates-io]
 web-rwkv = { path = "vendor/web-rwkv" }

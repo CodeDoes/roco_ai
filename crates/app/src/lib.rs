@@ -23,11 +23,13 @@
 use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 use roco_workspace::WorkspaceError;
 
+pub mod config;
 pub mod context;
 pub mod daemon;
 pub mod session;
 pub mod workspace;
 
+pub use config::RoCoConfig;
 pub use context::AppContext;
 pub use roco_workspace::WorkspaceKind;
 pub use session::{SessionAgent, SessionHandle};

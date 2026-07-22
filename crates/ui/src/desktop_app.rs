@@ -311,7 +311,7 @@ impl RocoDesktopApp {
                     self.auto_save();
                 } else {
                     self.chat_state.add_message(ChatMessage::system(
-                        "Model not loaded. Set RWKV_MODEL or restart with a backend.".to_string(),
+                        "Model not loaded. Configure model path in .roco/config.toml or set RWKV_MODEL.".to_string(),
                     ));
                 }
             }
@@ -946,7 +946,7 @@ impl eframe::App for RocoDesktopApp {
             // Model not loaded warning
             if !self.model_loaded {
                 ui.label(RichText::new(
-                    "\u{26a0} Model not loaded. The model loads automatically when RWKV_MODEL is set.\n\
+                    "\u{26a0} Model not loaded. Configure in .roco/config.toml or set RWKV_MODEL.\n\
                      You can still browse sessions or use the editor offline."
                 ).size(14.0).color(egui::Color32::YELLOW));
                 ui.add_space(8.0);

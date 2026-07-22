@@ -2,49 +2,69 @@
 
 > Quick lookup for CLI, web, and desktop commands.
 
-## CLI (`roco` binary / `start.sh`)
+## Quick Start
 
-### Story Writing
+```bash
+# Natural language mode (default) — just start chatting
+roco
+roco "write a story about a lighthouse keeper"
+
+# Or use the helper script
+./start.sh
+./start.sh "a detective in space"
+
+# Model path: auto-detected in models/ directory, or set in config:
+#   .roco/config.toml    →   [model] path = "..."
+#   $ROCO_CONFIG         →   path to config file
+#   $RWKV_MODEL          →   env var (overrides config)
+```
+
+## CLI (`roco` binary)
+
+### Default Mode — Natural Language Chat
+
+Running `roco` without a subcommand starts **interactive chat mode** — just type naturally, get AI responses, change pacing, resume sessions.
 
 | Command | What it does |
 |---|---|
-| `start.sh` | Interactive story writer (recommended for beginners) |
-| `start.sh "premise"` | Interactive writer with a starting premise |
-| `RWKV_MODEL=... cargo run --release --example story_human -p roco-cli` | Direct CLI invocation |
-| `RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli --auto` | Auto-mode (runs to completion) |
-| `RWKV_MODEL=... cargo run --release --example story_collaborative -p roco-cli` | Conversational variant |
-| `RWKV_MODEL=... cargo run --release --example story_full -p roco-cli` | Full settings demo |
+| `roco` | Start interactive chat (natural language, the default) |
+| `roco <prompt>` | Chat with a starting prompt |
+| `roco interact [--pace MODE]` | Same as default, with explicit pacing control |
+| `roco interact --resume <session>` | Resume a previous session |
+| `roco interact --list-sessions` | List saved sessions |
 
-### Resume a Story
+### Structured Pipeline (Optional)
 
-```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
-  --resume .roco/workspaces/story_1234567890
-```
+The `story` subcommand runs a formal pipeline (outline → wiki → chapters → validation → synopsis → publish). Use it when you want a structured short story.
 
-### Resume with Existing Text
+| Command | Purpose |
+|---|---|
+| `roco story <prompt> [--strategy S] [--max-tokens T]` | Generate a structured short story |
+| `roco export <story-dir> [--format md\|html\|txt] [--output PATH]` | Bundle a finished workspace into one file |
 
-```bash
-RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
-  --from-file my_story.md
-```
-
-### Subcommands (roco binary)
+### Other Subcommands
 
 | Subcommand | Purpose |
 |---|---|
+| `roco gui` | Start the desktop GUI (auto-starts gateway) |
+| `roco server [--story] [--detach] [--port]` | Run local HTTP API (editor / plugin hosts) |
+| `roco gateway [--target URL] [--rate-limit N]` | Run inference gateway (proxy/cache) |
+| `roco stop` | Stop background inference + gateway |
 | `roco eval` | Run evaluation suite; saves `.snapshot.json` |
 | `roco bless` | Update `oracle:` fields with current snapshot |
 | `roco rwkv` | Smoke-test RWKV backend |
 | `roco grammar` | Grammar-constrained decode smoke test |
 | `roco gpu-check` | Show Vulkan device + model status |
-| `roco server [--story] [--detach] [--port]` | Run local HTTP API (editor / plugin hosts) |
-| `roco gateway [--target URL] [--rate-limit N]` | Run inference gateway (proxy/cache) |
-| `coco gui` | Start the desktop GUI (auto-starts gateway) |
-| `coco stop` | Stop background inference + gateway |
-| `coco story <prompt>` | Run the structured short-story pipeline (outline → wiki → chapters → publication) |
-| `coco export <story-dir> [--format md\|html\|txt] [--output PATH]` | Bundle a finished `.roco/workspaces/story_*` directory into one Markdown / HTML / plain-text file |
-| `coco interact [--interactive] [--prompt P] [--resume S] [--pace MODE]` | Conversational CLI with pacing control, session resume |
+
+## Examples (Development)
+
+```bash
+# Run the human-centered story writing example
+cargo run --release --example story_human -p roco-cli
+
+# Run the story engine example (auto-mode)
+cargo run --release --example story_engine -p roco-cli --auto
+```
 
 ## Web Apps (`apps/`)
 
@@ -58,7 +78,7 @@ RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
 
 ```bash
 # Start the Rust API server (required for chat/studio)
-RWKV_MODEL=... cargo run --release -p roco-server
+roco server
 
 # In another terminal, start the web UI
 cd apps/chat && npm install && npm run dev
@@ -87,4 +107,4 @@ cd apps/chat && npm install && npm run dev
 | Run desktop binary (when available) | `cargo run --release -p roco-ui --bin roco-desktop` |
 | View desktop docs | `cargo doc -p roco-ui --open` |
 
-> Note: The desktop GUI is the planned primary surface (see `roadmap/README.md`). It uses `egui` for immediate-mode rendering.
+> Note: The desktop GUI is the planned primary surface (see `roadmap/README.md`). It uses `egui` for immediate-mode rendering. Model path is read from config or `RWKV_MODEL` env var.

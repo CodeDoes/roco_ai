@@ -35,9 +35,17 @@ wget -O models/rwkv7-2.9b.st https://example.com/rwkv7-2.9b.st
 cargo build --release
 ```
 
-### 4. Run the story writer
+### 4. Run RoCo
 ```bash
-RWKV_MODEL=models/rwkv7-2.9b.st cargo run --release --example story_human -p roco-cli
+# Natural language chat (default)
+cargo run --release --bin roco -p roco-cli
+
+# Or with a starting prompt
+cargo run --release --bin roco -p roco-cli "write a story about a fallen knight"
+
+# Model auto-detects from models/ directory, or set config:
+#   .roco/config.toml  →  [model] path = "..."
+#   or set RWKV_MODEL env var
 ```
 
 ## Detailed Installation
@@ -117,7 +125,8 @@ cargo build --release -p roco-server
 
 ### 2. Run the server
 ```bash
-RWKV_MODEL=models/rwkv7-2.9b.st cargo run --release -p roco-server
+# Model auto-detected or read from config
+cargo run --release --bin roco -p roco-cli server
 ```
 
 The server will start at http://localhost:3000
@@ -148,14 +157,40 @@ cargo build --release
 
 ## Configuration
 
+### Config File (Recommended)
+
+Create a `config.toml` in `.roco/` (next to this project):
+```toml
+[model]
+path = "models/rwkv7-2.9b.st"
+vocab = "assets/vocab/rwkv_vocab_v20230424.json"
+
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[gateway]
+host = "127.0.0.1"
+port = 8000
+rate_limit = 60
+```
+
+Config search order (first found wins):
+1. `$ROCO_CONFIG` — explicit config file path
+2. `.roco/config.toml` in current directory
+3. `~/.config/roco/config.toml`
+4. `~/.roco/config.toml`
+
 ### Environment Variables
+
+Environment variables always beat config file values.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RWKV_MODEL` | Path to model file | Auto-detect from `models/` |
 | `RWKV_QUANT` | Quantization mode | Auto (NF4 for large models) |
 | `RWKV_ADAPTER` | GPU adapter | First Vulkan adapter |
-| `RWKV_VOCAB` | Vocabulary file | Auto-detect |
+| `RWKV_VOCAB` | Vocabulary file | Auto-detect from `assets/` |
 
 ### Model Placement
 
@@ -167,7 +202,7 @@ models/
 └── rwkv7-0.1b.st
 ```
 
-The system will auto-detect the model to use based on available VRAM.
+The system will auto-detect the model to use based on available VRAM. If no config and no env var is set, it scans `models/` for `rwkv7*.st` files.
 
 ## Troubleshooting
 

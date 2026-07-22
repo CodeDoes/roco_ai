@@ -97,8 +97,15 @@ fn default_detach_path(subcmd: &str, port: u16, ext: &str) -> PathBuf {
 }
 
 fn main() {
+    // ── Load config before anything else ───────────────────────────────────
+    // This sets RWKV_MODEL / RWKV_VOCAB from config file (if any) so that
+    // every downstream path (server, interact, story, gui) picks them up
+    // without requiring the user to set env vars manually.
+    let cfg = roco_app::RoCoConfig::load();
+    cfg.apply_to_environment();
+
     let args: Vec<String> = std::env::args().collect();
-    let sub = args.get(1).map(|s| s.as_str()).unwrap_or("help");
+    let sub = args.get(1).map(|s| s.as_str()).unwrap_or("interact");
     let extra: Vec<&str> = args.iter().skip(2).map(|s| s.as_str()).collect();
 
     match sub {
@@ -131,7 +138,15 @@ fn main() {
                 parse_opt("--output", &extra),
             );
         }
-        _ => help(sub),
+        // Unknown subcommand → treat as interact prompt (natural language)
+        // e.g. `roco write a story about a cat` starts interact with that prompt.
+        "help" | "--help" | "-h" => help(None),
+        _ => {
+            // First arg becomes the interact prompt; rest are extra flags.
+            let mut args_with_prompt = vec![sub];
+            args_with_prompt.extend(extra.iter().copied());
+            cmd_interact(&args_with_prompt);
+        }
     }
 }
 
@@ -578,41 +593,45 @@ fn cmd_gpu_check(extra: &[&str]) {
     }
 }
 
-fn help(sub: &str) {
-    eprintln!("Usage: roco <subcommand> [args]\n");
-    eprintln!("  eval [--output PATH]              Run evals, save snapshot");
-    eprintln!("  bless [--snapshot PATH]            Bless snapshot as new oracle");
-    eprintln!("  rwkv                              Smoke-test the RWKV backend");
-    eprintln!("  grammar                           Grammar-constrained decode");
-    eprintln!("  gpu-check [--json|-j]              Show Vulkan + model info (--json for machine-readable)");
-    eprintln!("  server [--host ADDR] [--port PORT] [--story] [--detach|-d] Run the local HTTP server; --story adds story API");
+fn help(sub: Option<&str>) {
+    eprintln!("RoCo AI — Collaborative Writing Assistant\n");
+    eprintln!("Usage:");
+    eprintln!("  roco                                 Start interactive chat (natural language)");
+    eprintln!("  roco <prompt>                        Chat with a starting prompt");
+    eprintln!("  roco <subcommand> [args]             Run a specific command\n");
+    eprintln!("Subcommands:");
+    eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
     eprintln!(
-        "                                  [--log-file PATH] [--pid-file PATH]  detach options"
+        "                                  Interactive CLI with pacing control, session resume (default)"
     );
-    eprintln!("  server --stdio-lsp [--inference-url URL]        Run the editor LSP client (no model load; talks to the");
+    eprintln!("  interact --list-sessions           List saved sessions");
+    eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story (formal pipeline)");
+    eprintln!("  gui                               Start the desktop GUI application");
     eprintln!(
-        "                                  inference API server at ROCO_API_URL / --inference-url)"
+        "  server [--host ADDR] [--port PORT] [--story] [--detach|-d] Run the local HTTP server"
     );
     eprintln!(
         "  gateway [--host ADDR] [--port PORT] [--target URL] [--rate-limit L] Run the API gateway"
     );
-    eprintln!(
-        "                                  [--detach|-d] [--log-file PATH] [--pid-file PATH]"
-    );
-    eprintln!("  gui                               Start the desktop GUI application");
-    eprintln!("                                  (auto-starts gateway on :8000, which auto-starts inference on :8080)");
     eprintln!("  stop                              Stop background inference + gateway");
-    eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Generate a structured short story");
-    eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
-    eprintln!(
-        "                                  Interactive CLI with pacing control, session resume"
-    );
-    eprintln!("  interact --list-sessions         List saved sessions");
     eprintln!("  export <story-dir> [--format md|html|txt] [--output PATH]");
-    eprintln!(
-        "                                  Bundle a finished `.roco/workspaces/story_*` dir into one markdown / html / txt file"
-    );
-    std::process::exit(if sub == "help" { 0 } else { 1 });
+    eprintln!("  eval [--output PATH]              Run evals, save snapshot");
+    eprintln!("  bless [--snapshot PATH]            Bless snapshot as new oracle");
+    eprintln!("  rwkv                              Smoke-test the RWKV backend");
+    eprintln!("  grammar                           Grammar-constrained decode");
+    eprintln!("  gpu-check [--json|-j]              Show Vulkan + model info\n");
+    eprintln!("Config:");
+    eprintln!("  Model path: set RWKV_MODEL env var, or create a config file:");
+    eprintln!("    .roco/config.toml  |  $ROCO_CONFIG  |  ~/.config/roco/config.toml");
+    eprintln!("  Example config.toml:");
+    eprintln!("    [model]");
+    eprintln!("    path = \"/path/to/model.st\"");
+    eprintln!("    vocab = \"/path/to/vocab.json\"\n");
+    eprintln!("  The model auto-detects in models/ directory if neither is set.");
+    std::process::exit(match sub {
+        Some("help") | Some("--help") | Some("-h") => 0,
+        _ => 0,
+    });
 }
 
 fn parse_opt<'a>(name: &str, args: &'a [&str]) -> Option<&'a str> {
