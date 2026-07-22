@@ -191,3 +191,59 @@ cargo test --workspace  # sanity
   on toolchain ≥ 1.95. The grammar crate is frozen so we don't fix this
   from here — clippy `${RED}` run as informational in `run_tests.sh`
   Step 2 instead.
+
+---
+
+## 11. "The function exists, tests pass, but `coco subcommand` says help"
+
+**Symptom:** `coco export ./my-story` (or any subcommand) returns
+`Usage: roco <subcommand> [args]` even though the file is in
+`crates/cli/src/cmd/export.rs` and tests pass.
+
+**Cause:** `bin/roco.rs` declares `#[path = "../cmd/export.rs"] mod cmd_export;`
+*and* tests work — but there's no matching `"export" => cmd_export::run(...)` arm
+in `main()`'s `match sub { ... }` block. The function is reachable only
+from tests, not from the CLI.
+
+**Fix:** In `crates/cli/src/bin/roco.rs`'s main match, add:
+
+```rust
+"export" => cmd_export::run(
+    extra.first().copied().unwrap_or("."),
+    parse_opt("--format", &extra),
+    parse_opt("--output", &extra),
+),
+```
+
+…and add the matching `eprintln!` lines in `help(sub)` so users see it
+in `coco <garbage>` output. Same pattern repeats for `eval`/`bless`/
+`gpu-check`/`server`/`gateway`/`story`/`interact` — each has a
+function in `bin/roco.rs` itself plus a duplicate in `crates/cli/src/cmd/*.rs`.
+The `cmd/` files are part of an ongoing manual migration tracked under
+`EDIT_GUIDE.md` "Caution Zone". Don't dissolve the duplicates without
+an explicit decision; just wire the missing dispatch arms.
+
+---
+
+## 12. "I uninstalled Nix but `cargo` still picks the wrong toolchain"
+
+**Symptom (inverse of #1):** Run `cargo` from rustup, get rustc echoed
+back as Nix-rustc 1.95.0 even though `rustup default` is stable 1.96.
+
+**Cause:** `RUSTC_WRAPPER=sccache` from the dev shell, combined with a
+stale sccache cache stored under ~/.cache (or wherever sccache is
+configured). The cache *itself* records the rustc version that compiled
+each rmeta; a re-run after a rustc *downgrade* reproaches sccache for
+rmeta built with the older rustc which then mismatches the current cargo.
+
+**Fix:**
+
+```bash
+# Wipe sccache without nuking config:
+sccache --stop-server || true
+rm -rf ~/.cache/sccache   # or wherever SCCACHE_DIR points
+cargo clean                # force rebuild against current rustc
+```
+
+Then `rustup run stable cargo --version` should report current-stable and
+the E0514 cascade goes away.
