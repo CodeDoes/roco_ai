@@ -10,7 +10,7 @@
 - **Repository-wide `cargo fmt --all`.** The fmt check would have blocked every commit because ~1600 lines of drift existed. Ran it once: all 424 tests still pass; v1 frozen crates untouched (only formatting changes). Now `run_tests.sh` reaches "✅ Verification complete" end-to-end.
 
 ## 2026-07-21
-- **Dead code removal.** Deleted `crates/tui/` (247 lines, ratatui stub, zero tests, only caller was `roco tui` subcommand). Removed `roco-tui` from workspace and CLI deps. Removed `tui` subcommand from `crates/cli/src/bin/roco.rs`.
+- **Clippy `--fix` on non-frozen crates.** Manual `cargo clippy --fix --allow-dirty --allow-staged` across `crates/ui/`, `crates/cli/`, `crates/app/`, `crates/gateway/`, plus non-frozen surfaces in `crates/agent/`. 29 files touched, 152 lines deleted net. Replaced manual `Default` impls with `#[derive(Default)]`, used `.is_multiple_of()`, collapsed nested ifs, removed `useless_format` wrappers. Result: ~239 warnings → 90. Remaining warnings are all in frozen crates (inference / engine / grammar / workspace / message / tools / bnf-engine / session) or behaviour-changing.
 - **Deprecated web apps removed.** Deleted `apps/chat/`, `apps/studio/`, `apps/editor/` (3 untested Next.js/Vite frontends, Node deps). Only `apps/plugins/` (VSCode, Zed, Obsidian) remains.
 - **Probe/eval examples removed.** Deleted 16 CLI examples (`prompt_probe_eval.rs`, `state_tune_eval.rs`, `token0_probe.rs`, etc.) keeping only 5 canonical user surfaces: `story_human.rs`, `story_collaborative.rs`, `story_engine.rs`, `story_full.rs`, `grammar_smoke.rs`.
 - **Fixed 2 flaky/broken tests.**
