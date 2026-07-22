@@ -123,6 +123,14 @@ fn main() {
         }
         "story" => cmd_story(&extra),
         "interact" => cmd_interact(&extra),
+        "export" => {
+            // `roco export <story-dir> [--format md|html|txt] [--output PATH]`
+            cmd_export::run(
+                extra.first().copied().unwrap_or("."),
+                parse_opt("--format", &extra),
+                parse_opt("--output", &extra),
+            );
+        }
         _ => help(sub),
     }
 }
@@ -600,6 +608,10 @@ fn help(sub: &str) {
         "                                  Interactive CLI with pacing control, session resume"
     );
     eprintln!("  interact --list-sessions         List saved sessions");
+    eprintln!("  export <story-dir> [--format md|html|txt] [--output PATH]");
+    eprintln!(
+        "                                  Bundle a finished `.roco/workspaces/story_*` dir into one markdown / html / txt file"
+    );
     std::process::exit(if sub == "help" { 0 } else { 1 });
 }
 
