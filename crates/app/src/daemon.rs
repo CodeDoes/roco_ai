@@ -3,6 +3,13 @@
 //! `roco gui` → auto-starts Gateway (if not running)
 //! Gateway → auto-starts Inference Server (if not running)
 //! All CLI commands use `ensure_backend()` instead of loading models directly.
+//!
+//! # Feature gate
+//!
+//! The `remote` feature (default on) enables the HTTP client stack. Disable
+//! it via `--no-default-features` to skip compiling reqwest/rustls when
+//! editing agent/engine code. Without it, health checks always report
+//! "not running" and backend resolution panics with a helpful message.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -32,6 +39,7 @@ fn log_path(name: &str, port: u16) -> PathBuf {
 
 /// Check if a daemon is running via health endpoint (synchronous, spawns its
 /// own runtime if needed).
+#[cfg(feature = "remote")]
 pub fn is_running(name: &str, port: u16) -> bool {
     let pid_file = pid_path(name);
     if !pid_file.exists() {
@@ -61,7 +69,12 @@ pub fn is_running(name: &str, port: u16) -> bool {
     true
 }
 
-
+/// Stub for non-remote builds: cannot make HTTP health checks, so report
+/// daemon as not running (callers will try to start it and get a helpful error).
+#[cfg(not(feature = "remote"))]
+pub fn is_running(_name: &str, _port: u16) -> bool {
+    false
+}
 
 /// Locate the `roco-inferd` binary (sibling of current exe, then PATH).
 fn find_inferd(current_exe: &PathBuf) -> Option<PathBuf> {
@@ -211,7 +224,8 @@ pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]
     }
 }
 
-/// Wait for a daemon to become healthy
+/// Wait for a daemon to become healthy (requires `remote` feature).
+#[cfg(feature = "remote")]
 pub async fn wait_for_healthy(port: u16, timeout: Duration, label: &str) -> Result<(), String> {
     let start = std::time::Instant::now();
     let url = format!("http://127.0.0.1:{}/health", port);
@@ -231,6 +245,16 @@ pub async fn wait_for_healthy(port: u16, timeout: Duration, label: &str) -> Resu
         "{} did not become healthy within {:.0}s",
         label,
         timeout.as_secs_f64()
+    ))
+}
+
+/// Stub for non-remote builds.
+#[cfg(not(feature = "remote"))]
+pub async fn wait_for_healthy(_port: u16, _timeout: Duration, label: &str) -> Result<(), String> {
+    Err(format!(
+        "{}: enable the `remote` feature to wait for daemon health. \
+         Rebuild with: cargo build --features remote",
+        label
     ))
 }
 
@@ -346,6 +370,7 @@ pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate
 ///
 /// Subsequent calls in the same or new processes connect instantly because
 /// the daemons stay alive.
+#[cfg(feature = "remote")]
 pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     use roco_infer_client::RemoteBackend;
 
@@ -397,7 +422,16 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     )))
 }
 
-/// Backend that wraps RemoteBackend with a dedicated tokio runtime, so it
+/// Stub for non-remote builds: panics with a message to enable the feature.
+#[cfg(not(feature = "remote"))]
+pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
+    panic!(
+        "enable the `remote` feature to connect to an inference server. \
+         Rebuild with: cargo build --features remote"
+    )
+}
+
+/// Backend that wraps a remote backend with a dedicated tokio runtime, so it
 /// works with synchronous callers (like interact.rs which uses
 /// `futures::executor::block_on`).
 pub struct TokioBackend {
@@ -434,9 +468,6 @@ impl roco_engine::ModelBackend for TokioBackend {
         let inner = self.inner.clone();
         let rt_handle = self.rt.handle().clone();
         Box::pin(async move {
-            // Spawn the actual work on the dedicated tokio runtime so reqwest
-            // has a context. Then await the JoinHandle from the caller's
-            // executor (which may be futures::executor::block_on).
             rt_handle
                 .spawn(async move { inner.complete(req).await })
                 .await

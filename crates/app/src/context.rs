@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use roco_engine::{CompletionRequest, CompletionResponse, ModelBackend};
-use roco_infer_client::RemoteBackend;
 use roco_workspace::WorkspaceKind;
 
 use crate::{
@@ -50,14 +49,23 @@ impl AppContext {
 
     /// Connect to a remote inference URL directly (no daemon management).
     /// Used by the LSP client and by `gui` when pointing at an external server.
+    #[cfg(feature = "remote")]
     pub fn connect_remote(url: &str) -> Self {
-        let backend: Arc<dyn ModelBackend> = Arc::new(RemoteBackend::new(url.to_string()));
+        let backend: Arc<dyn ModelBackend> = Arc::new(roco_infer_client::RemoteBackend::new(url.to_string()));
         let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
             backend,
             session_root: base.join("sessions"),
             workspace_root: base.join("workspaces"),
         }
+    }
+
+    #[cfg(not(feature = "remote"))]
+    pub fn connect_remote(_url: &str) -> Self {
+        panic!(
+            "enable the `remote` feature to connect to a remote inference server. \
+             Rebuild with: cargo build --features remote"
+        )
     }
 
     // ── session ──────────────────────────────────────────────────────────
@@ -158,13 +166,22 @@ impl AppContext {
 
 /// Internal: resolve and connect the backend. Mirrors the daemon logic that
 /// used to live in `crates/cli/src/daemon.rs` but is now the single source.
+#[cfg(feature = "remote")]
 fn connect_backend() -> Arc<dyn ModelBackend> {
     // If a gateway is already running, connect to it directly.
     if crate::daemon::is_running("gateway", GATEWAY_PORT) {
-        return Arc::new(RemoteBackend::new(format!(
+        return Arc::new(roco_infer_client::RemoteBackend::new(format!(
             "http://127.0.0.1:{GATEWAY_PORT}"
         )));
     }
     // Otherwise auto-start the daemon chain via the existing module.
     crate::daemon::ensure_sync_backend()
+}
+
+#[cfg(not(feature = "remote"))]
+fn connect_backend() -> Arc<dyn ModelBackend> {
+    panic!(
+        "enable the `remote` feature to connect to an inference server. \
+         Rebuild with: cargo build --features remote"
+    )
 }

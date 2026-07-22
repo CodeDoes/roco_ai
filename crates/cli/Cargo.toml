@@ -9,11 +9,14 @@ path = "src/bin/roco.rs"
 
 [features]
 default = []
-# Desktop GUI (egui). Off by default.
-desktop = ["dep:eframe", "dep:roco_ui"]
-# HTTP server / gateway / story façade. Off by default — use `roco-inferd` for
-# model serving; enable this only when working on the HTTP surface.
-net = ["dep:roco-server", "dep:roco-gateway", "dep:axum"]
+# Remote inference client (reqwest + rustls). On by default via dep defaults.
+# Disable with --no-default-features for faster compile when editing
+# agent/engine code without running the CLI.
+remote = ["roco-infer-client/remote", "roco-app/remote"]
+# Desktop GUI (egui). Implies remote.
+desktop = ["dep:eframe", "dep:roco_ui", "remote"]
+# HTTP server / gateway / story façade. Implies remote.
+net = ["dep:roco-server", "dep:roco-gateway", "dep:axum", "remote"]
 
 [dependencies]
 roco-engine = { path = "../engine" }
@@ -22,8 +25,8 @@ roco-message = { path = "../message" }
 roco-agent = { path = "../agent" }
 roco-tools = { path = "../tools" }
 roco-workspace = { path = "../workspace" }
-roco-infer-client = { path = "../infer-client" }
-roco-app = { path = "../app", package = "roco-app" }
+roco-infer-client = { path = "../infer-client", default-features = false }
+roco-app = { path = "../app", package = "roco-app", default-features = false }
 roco-session = { path = "../session" }
 # Optional surfaces — not in the fast default path.
 roco-server = { path = "../server", optional = true }

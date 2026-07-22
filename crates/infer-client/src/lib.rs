@@ -7,32 +7,43 @@
 //! REPL) talks to it through this client instead of loading its own model.
 //!
 //! The wire protocol is the server's OpenAI-compatible `POST /v1/completions`
-//! endpoint. Requests are the serializable subset of [`CompletionRequest`]
-//! (`on_token` / `bnf_mask` are skipped by `#[serde(skip)]`). When a request
-//! carries an `on_token` callback the client sets `stream: true` and consumes
-//! the SSE stream, invoking the callback with each emitted delta.
+//! endpoint.
 //!
-//! The endpoint is OpenAI-compatible, so this same client can target any
-//! OpenAI-style `/v1/completions` server by pointing `base_url` at it. Extra
-//! request headers (e.g. auth forwarding) are supported via `extra_headers`.
+//! # Feature gate
+//!
+//! The `remote` feature (default on) enables the HTTP client stack via
+//! `reqwest + rustls`. Disable it to skip compiling the TLS stack when
+//! working on agent/engine code:
+//!
+//! ```bash
+//! cargo check -p roco-cli --no-default-features
+//! ```
 
 use std::collections::HashMap;
 
-use base64::Engine;
 use futures::future::BoxFuture;
-use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage};
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
+#[cfg(feature = "remote")]
+use roco_engine::TokenUsage;
 
 /// Default base URL for the singleton inference API server.
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8080";
 
 /// A [`ModelBackend`] that forwards to a remote inference API server over HTTP.
+///
+/// When the `remote` feature is disabled, this type is still available but
+/// all methods return an error pointing to the feature flag.
 pub struct RemoteBackend {
+    #[cfg(feature = "remote")]
     base_url: String,
+    #[cfg(feature = "remote")]
     client: reqwest::Client,
+    #[cfg(feature = "remote")]
     extra_headers: HashMap<String, String>,
     name: String,
 }
 
+#[cfg(feature = "remote")]
 impl RemoteBackend {
     /// Build a client from an explicit base URL.
     pub fn new(base_url: impl Into<String>) -> Self {
@@ -72,28 +83,41 @@ impl RemoteBackend {
     }
 }
 
+#[cfg(not(feature = "remote"))]
+impl RemoteBackend {
+    /// Stub — panics because the `remote` feature is disabled.
+    pub fn new(_base_url: impl Into<String>) -> Self {
+        Self { name: "remote".to_string() }
+    }
+
+    /// Stub — panics because the `remote` feature is disabled.
+    pub fn with_headers(
+        _base_url: impl Into<String>,
+        _extra_headers: HashMap<String, String>,
+    ) -> Self {
+        Self { name: "remote".to_string() }
+    }
+
+    /// Stub — panics because the `remote` feature is disabled.
+    pub fn from_env() -> Self {
+        Self { name: "remote".to_string() }
+    }
+}
+
+#[cfg(feature = "remote")]
 impl ModelBackend for RemoteBackend {
     fn name(&self) -> &str {
         &self.name
     }
 
     fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
+        use base64::Engine;
+
         let url = format!("{}/vocab", self.base_url);
         let client = self.client.clone();
         let extra_headers = self.extra_headers.clone();
-        // Synchronous fetch (vocab is needed before building a grammar mask).
-        //
-        // We cannot call `Handle::block_on` from inside an existing tokio
-        // runtime: the awaited HTTP work gets scheduled on the same reactor
-        // we just blocked, so `block_on` deadlocks the caller until the
-        // awaited future times out. (Stuck this for years if you call
-        // `RemoteBackend::vocab_bytes` from inside `#[tokio::main]`.) To
-        // avoid both the no-runtime (returning None) and the in-runtime
-        // (deadlock) paths, run the HTTP fetch on a dedicated blocking
-        // thread that owns its own single-threaded runtime. This is safe
-        // whether or not the caller is already inside a tokio runtime —
-        // the blocking thread just blocks; it doesn't tie up the caller's
-        // executor.
+        // Synchronous fetch — run HTTP on a dedicated blocking thread
+        // to avoid deadlock when called from inside a tokio runtime.
         std::thread::scope(|s| {
             let handle = s.spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
@@ -135,8 +159,31 @@ impl ModelBackend for RemoteBackend {
     }
 }
 
-/// Serialized request shape sent to the remote `/v1/completions` endpoint.
-/// It is the OpenAI-compatible subset the server's route accepts.
+#[cfg(not(feature = "remote"))]
+impl ModelBackend for RemoteBackend {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
+        None
+    }
+
+    fn complete(
+        &self,
+        _req: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+        Box::pin(async {
+            Err(EngineError::Backend(
+                "RemoteBackend: enable the `remote` feature to connect to an inference server. \
+                 Rebuild with default features or: cargo build --features remote"
+                    .to_string(),
+            ))
+        })
+    }
+}
+
+#[cfg(feature = "remote")]
 #[derive(serde::Serialize)]
 struct WireRequest {
     prompt: String,
@@ -159,24 +206,26 @@ struct WireRequest {
     preserve_state: Option<bool>,
 }
 
-/// Run a completion against the remote inference API server.
+#[cfg(feature = "remote")]
 async fn remote_complete(
     client: &reqwest::Client,
     base_url: &str,
     extra_headers: &HashMap<String, String>,
     req: CompletionRequest,
 ) -> Result<CompletionResponse, EngineError> {
+    use futures::StreamExt;
+
     let stream = req.on_token.is_some();
     let wire = WireRequest {
-        prompt: req.prompt.clone(),
-        system: req.system.clone(),
+        prompt: req.prompt,
+        system: req.system,
         temperature: Some(req.temperature),
         max_tokens: Some(req.max_tokens),
         thinking: if req.thinking { Some(true) } else { None },
-        grammar: req.grammar.clone(),
+        grammar: req.grammar,
         stream,
-        prefill: req.prefill.clone(),
-        session: req.session.clone(),
+        prefill: req.prefill,
+        session: req.session,
         preserve_state: if req.preserve_state { Some(true) } else { None },
     };
 
@@ -206,14 +255,12 @@ async fn remote_complete(
     }
 
     if stream {
-        // SSE stream: accumulate deltas, invoke on_token for each text chunk.
         let mut stream = resp.bytes_stream();
         let mut full = String::new();
         let mut prompt_tokens = 0usize;
         let mut completion_tokens = 0usize;
         let on_token = req.on_token;
 
-        use futures::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk
                 .map_err(|e| EngineError::Backend(format!("inference API stream error: {e}")))?;
@@ -231,7 +278,6 @@ async fn remote_complete(
                     Ok(v) => v,
                     Err(_) => continue,
                 };
-                // OpenAI-style delta: choices[0].text
                 if let Some(delta) = value
                     .get("choices")
                     .and_then(|c| c.get(0))
@@ -246,7 +292,6 @@ async fn remote_complete(
                         }
                     }
                 }
-                // Usage, if the server sends it on a closing event.
                 if let Some(u) = value.get("usage") {
                     if let Some(p) = u.get("prompt_tokens").and_then(|v| v.as_u64()) {
                         prompt_tokens = p as usize;
@@ -272,7 +317,6 @@ async fn remote_complete(
         });
     }
 
-    // Non-streaming: parse the OpenAI-compatible response envelope.
     let value: serde_json::Value = resp
         .json()
         .await
@@ -308,6 +352,7 @@ async fn remote_complete(
 }
 
 #[cfg(test)]
+#[cfg(feature = "remote")]
 mod tests {
     use super::*;
 

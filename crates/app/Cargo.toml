@@ -3,12 +3,18 @@ name = "roco-app"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["remote"]
+# HTTP client stack for talking to roco-inferd / gateway. Disable for faster
+# compile when only editing agent/engine code.
+remote = ["roco-infer-client/remote", "dep:reqwest"]
+
 [dependencies]
 roco-engine = { path = "../engine" }
 roco-session = { path = "../session" }
 roco-workspace = { path = "../workspace" }
 roco-message = { path = "../message" }
-roco-infer-client = { path = "../infer-client" }
+roco-infer-client = { path = "../infer-client", default-features = false }
 
 tokio = { workspace = true }
 futures = { workspace = true }
@@ -16,5 +22,5 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, optional = true }
 toml = { workspace = true }
