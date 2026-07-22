@@ -93,11 +93,12 @@ fn install_desktop_file() {
          Type=Application\n\
          Name=RoCo Pet\n\
          Comment=Conversational desktop pet companion\n\
-         Exec={exe} pet --hide\n\
+         Exec={} pet --hide\n\
          Icon=face-smile\n\
          Terminal=false\n\
          Categories=Utility;\n\
-         StartupNotify=false\n"
+         StartupNotify=false\n",
+        exe.display()
     );
 
     // Create directories
@@ -113,7 +114,10 @@ fn install_desktop_file() {
     // Write auto-start symlink (copy)
     match std::fs::write(&autostart_path, &desktop_content) {
         Ok(()) => r::success(&format!("Auto-start: {}", autostart_path.display())),
-        Err(e) => r::error(&format!("Failed to write {}: {e}", autostart_path.display())),
+        Err(e) => r::error(&format!(
+            "Failed to write {}: {e}",
+            autostart_path.display()
+        )),
     }
 
     r::info("Pet will now appear in GNOME application menu and start on login.");
@@ -183,6 +187,7 @@ fn need_desktop_feature() {
 }
 
 #[cfg(not(feature = "desktop"))]
+#[allow(dead_code)]
 fn run_pet_desktop(_extra: &[&str]) {
     need_desktop_feature();
 }
@@ -224,14 +229,15 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
     // ── Connect to backend if running, don't start it ────────────────
     // The pet should never start the inference daemon (that uses 6GB RAM).
     // It only talks to an already-running gateway.
-    let backend: Option<Arc<dyn ModelBackend>> = try_connect_existing_backend();
+    // Pet never starts the inference daemon — only talks to a running gateway.
+    let backend: Option<Arc<dyn ModelBackend>> = None;
 
     // ── Pet app ──────────────────────────────────────────────────────
     struct PetApp {
         pet: DesktopPet,
         backend: Option<Arc<dyn ModelBackend>>,
         tray: Option<tray_icon::TrayIcon>,
-        tray_event_receiver: Option<std::sync::maven::Receiver<tray_icon::TrayIconEvent>>,
+        _menu_event_receiver: Option<tray_icon::menu::MenuEventReceiver>,
         visible: bool,
     }
 
@@ -276,18 +282,18 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
         }
 
         fn poll_tray_events(&mut self, ctx: &egui::Context) {
-            let Some(ref rx) = self.tray_event_receiver else { return };
-            while let Ok(event) = rx.try_recv() {
-                match event {
-                    tray_icon::TrayIconEvent::MenuItemClick(id) => {
-                        let id_str = id.id.0.as_str();
-                        match id_str {
-                            "show" => self.show_from_tray(ctx),
-                            "hide" => self.hide_to_tray(ctx),
-                            "quit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-                            _ => {}
-                        }
-                    }
+            // Drain events by cloning the receiver to avoid borrow conflict
+            let events: Vec<tray_icon::menu::MenuEvent> = self
+                ._menu_event_receiver
+                .as_ref()
+                .map(|rx| rx.try_iter().collect())
+                .unwrap_or_default();
+            for event in events {
+                let id_str = event.id.as_ref().to_string();
+                match id_str.as_str() {
+                    "show" => self.show_from_tray(ctx),
+                    "hide" => self.hide_to_tray(ctx),
+                    "quit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
                     _ => {}
                 }
             }
@@ -333,7 +339,11 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
             match futures::executor::block_on(backend_clone.complete(request)) {
                 Ok(resp) => {
                     let text = resp.text.trim().to_string();
-                    if text.is_empty() { None } else { Some(text) }
+                    if text.is_empty() {
+                        None
+                    } else {
+                        Some(text)
+                    }
                 }
                 Err(e) => {
                     eprintln!("Pet backend error: {e}");
@@ -345,12 +355,14 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
     } else {
         pet.set_status("No backend — echo mode");
         pet.on_message(|msg, _| {
-            Some(format!("🐱 You said: {msg}\n(Start the backend with `./dev.sh` for real conversation!)"))
+            Some(format!(
+                "🐱 You said: {msg}\n(Start the backend with `./dev.sh` for real conversation!)"
+            ))
         });
     }
 
     // ── Build tray icon ──────────────────────────────────────────────
-    let (tray, tray_rx) = build_tray_icon();
+    let tray = build_tray_icon();
 
     // ── Window options ───────────────────────────────────────────────
     let mut options = pet_native_options(egui::Vec2::new(260.0, 400.0));
@@ -369,7 +381,7 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
                 pet,
                 backend,
                 tray,
-                tray_event_receiver: tray_rx,
+                _menu_event_receiver: Some(tray_icon::menu::MenuEvent::receiver().clone()),
                 visible: !start_hidden,
             }))
         }),
@@ -388,19 +400,26 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
 /// Build the system tray icon with a menu (Show Pet, Hide Pet, Quit).
 /// Returns (TrayIcon, receiver for events).
 #[cfg(feature = "desktop")]
-fn build_tray_icon() -> (Option<tray_icon::TrayIcon>, Option<std::sync::mpsc::Receiver<tray_icon::TrayIconEvent>>) {
-    use tray_icon::menu::{Menu, MenuItem};
+fn build_tray_icon() -> Option<tray_icon::TrayIcon> {
+    use tray_icon::menu::{Menu, MenuItemBuilder};
     use tray_icon::TrayIconBuilder;
 
-    let mut menu = Menu::new();
-    let show_item = MenuItem::new("Show Pet", true, None);
-    let hide_item = MenuItem::new("Hide Pet", true, None);
-    let quit_item = MenuItem::new("Quit", true, None);
-
-    // Set IDs for event matching
-    show_item.set_id("show");
-    hide_item.set_id("hide");
-    quit_item.set_id("quit");
+    let menu = Menu::new();
+    let show_item = MenuItemBuilder::new()
+        .id("show".into())
+        .text("Show Pet")
+        .enabled(true)
+        .build();
+    let hide_item = MenuItemBuilder::new()
+        .id("hide".into())
+        .text("Hide Pet")
+        .enabled(true)
+        .build();
+    let quit_item = MenuItemBuilder::new()
+        .id("quit".into())
+        .text("Quit")
+        .enabled(true)
+        .build();
 
     let _ = menu.append_items(&[&show_item, &hide_item, &quit_item]);
 
@@ -408,23 +427,14 @@ fn build_tray_icon() -> (Option<tray_icon::TrayIcon>, Option<std::sync::mpsc::Re
     let icon_data = create_pet_icon_rgba();
     let icon = tray_icon::Icon::from_rgba(icon_data, 32, 32).ok();
 
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    let mut builder = TrayIconBuilder::new()
+    let builder = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip("RoCo Pet — Click to chat")
         .with_icon(icon.unwrap_or_else(|| {
             tray_icon::Icon::from_rgba(vec![0u8; 32 * 32 * 4], 32, 32).unwrap()
         }));
 
-    // Set up event handler
-    builder = builder.on_menu_event(move |event| {
-        let _ = tx.send(event);
-    });
-
-    let tray = builder.build().ok();
-
-    (tray, Some(rx))
+    builder.build().ok()
 }
 
 /// Create a simple RGBA icon for the pet (32x32 smiley face).
@@ -447,7 +457,7 @@ fn create_pet_icon_rgba() -> Vec<u8> {
             if dist < 1.0 {
                 pixels[i + 0] = 255; // R
                 pixels[i + 1] = 200; // G
-                pixels[i + 2] = 50;  // B
+                pixels[i + 2] = 50; // B
                 pixels[i + 3] = 255; // A
 
                 // Eyes
@@ -466,7 +476,10 @@ fn create_pet_icon_rgba() -> Vec<u8> {
 
                 // Mouth (smile)
                 let mouth_y = cy + 3.0;
-                if (y as f64 - mouth_y).abs() < 1.5 && (x as f64 - cx).abs() > 3.0 && (x as f64 - cx).abs() < 8.0 {
+                if (y as f64 - mouth_y).abs() < 1.5
+                    && (x as f64 - cx).abs() > 3.0
+                    && (x as f64 - cx).abs() < 8.0
+                {
                     pixels[i + 0] = 0;
                     pixels[i + 1] = 0;
                     pixels[i + 2] = 0;

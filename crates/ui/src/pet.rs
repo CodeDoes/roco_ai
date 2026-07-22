@@ -104,7 +104,7 @@ impl DesktopPet {
     /// Frame tick — call this each frame from your app's update().
     /// Returns true if the close button was clicked.
     pub fn tick(&mut self, ctx: &egui::Context) -> bool {
-        let mut closed = false;
+        let closed = false;
 
         // Auto-send pending message on first tick
         if let Some(msg) = self.pending_message.take() {

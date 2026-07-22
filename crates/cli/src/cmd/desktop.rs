@@ -9,6 +9,16 @@ pub fn cmd_gui(_extra: &[&str]) {
     use roco_ui::RocoDesktopApp;
     use std::sync::Arc;
 
+    // Keep a Tokio runtime alive for the entire GUI session so that reqwest
+    // (via RemoteBackend) can make HTTP calls without panicking on
+    // "there is no reactor running".
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .expect("Failed to build Tokio runtime");
+    let _guard = rt.enter();
+
     let exe = std::env::current_exe().expect("failed to get current exe path");
 
     println!(
@@ -20,10 +30,6 @@ pub fn cmd_gui(_extra: &[&str]) {
 
     if !already_running {
         println!("Gateway starting...");
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to build Tokio runtime");
         rt.block_on(async {
             match daemon::wait_for_healthy(
                 daemon::GATEWAY_PORT,
