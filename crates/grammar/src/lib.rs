@@ -20,4 +20,7 @@ pub use bnf::gbnf_to_kbnf;
 pub use grammar_library::StoryGrammar;
 pub use json_schema::{schema_to_gbnf, GbnfError};
 pub use schema::Schema;
-pub use strategies::{StrategyKind, StrategySelector};
+pub use strategies::{
+    evaluate_all_strategies, LooseJsonStrategy, OutputParser, OutputStrategy, RawGbnfStrategy,
+    SchemaStrategy, StateTunedStrategy, StrategyEvalResult, StrategyKind, StrategySelector,
+};

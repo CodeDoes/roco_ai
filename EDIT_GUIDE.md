@@ -70,38 +70,31 @@ cat EDIT_GUIDE.md | grep -A 2 "File / Module"
 
 # 2. Make your change
 
-# 3. Per-crate quick test (compile + test only the touched crate)
-scripts/run_quick_tests.sh roco-agent
-
-# 4. Before commit: full workspace check
+# 3. Verify the workspace builds
 run_tests.sh
 
-# 5. Verify no clippy warnings (workspace-wide gate)
+# 4. Verify no clippy warnings
 cargo clippy --workspace --all-targets -- --deny warnings
 
-# 6. Write progress
+# 5. Write progress
 # Append one line to roadmap/progress.md
 ```
-
-## Compile Zones (Per-Crate Build Targets)
-
-Different crates have different fan-out. Build only the relevant slice during your edit loop:
-
-| Loop | Command | Speed (typical) |
-|---|---|---|
-| Editing `agent/*` (logic-only) | `cargo check -p roco-agent` | ~0.6s incremental |
-| Editing `app/*` | `cargo check -p roco-app` | ~0.6s incremental |
-| Editing `cli/src/*.rs` (logic) | `cargo check -p roco-cli` (default features) | ~19s cold / incremental |
-| Editing `cli` with server | `cargo check -p roco-cli --features net` | adds reqwest/rustls |
-| Editing `cli` + GUI | `cargo check -p roco-cli --features desktop` | adds eframe |
-| Editing `ui/*` | `cargo check -p roco-ui` | adds egui/eframe |
-| Editing `inferd/*` | `cargo check -p roco-inferd` | adds wgpu/web-rwkv |
-
-The CLI default features exclude reqwest/rustls/ring, so everyday CLI compiles stay around 19s. Re-enable with `--features remote` (auto-implied by `desktop`/`net`).
-
-**rust-analyzer is pre-configured** in `.vscode/settings.json` to use `cargo check --no-default-features -p roco-cli` so it doesn't pull the heavy GPU/egui crates.
 
 ## Example Error Pattern — do not change without tests
 `crates/cli/examples/*.rs` call `Result<_, String>` APIs. Do NOT use `anyhow::Result<()>` in `main()`: `?` cannot coerce `String` in this repo's anyhow version.
 Use `fn main() -> Result<(), Box<dyn std::error::Error>>` in example binaries, and verify with `cargo check -p roco-cli --examples`.
+
+## Compile / recompile zones
+
+| Zone | Paths | Edit tip |
+|---|---|---|
+| Leaf-safe | `crates/cli/src/cmd/*.rs`, `interact.rs`, most of `agent/` | `cargo check -p roco-cli` or `-p roco-agent` |
+| Fan-out | `crates/engine/`, `crates/grammar/` | touches rebuild many crates — keep API stable |
+| GPU-only | `crates/inference/`, `crates/inferd/` | not on default `cargo check` path |
+| Desktop | `crates/ui/`, `--features desktop` | opt-in |
+
+Defaults: **incremental ON**, mold ON, sccache **off** for edit loops.
+See `docs/COMPILE_MENTAL_MODEL.md` and `./scripts/bench_recompile.sh`.
+
+rust-analyzer: `.vscode/settings.json` + `rust-analyzer.toml` set `check.workspace = false`.
 

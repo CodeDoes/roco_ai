@@ -18,7 +18,7 @@ use crate::types::{CompletionRequest, TokenUsage};
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct EvalCase {
+pub struct EvalCase {
     pub name: String,
     pub description: String,
     pub system: String,
@@ -52,7 +52,7 @@ pub(crate) struct EvalCase {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum EvalCategory {
+pub enum EvalCategory {
     Smoke,
     Instruction,
     Coherence,
@@ -87,14 +87,14 @@ impl std::fmt::Display for EvalCategory {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct CheckResult {
+pub struct CheckResult {
     pub name: String,
     pub passed: bool,
     pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct EvalResult {
+pub struct EvalResult {
     pub name: String,
     pub description: String,
     pub category: EvalCategory,
@@ -114,7 +114,7 @@ pub(crate) struct EvalResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct EvalReport {
+pub struct EvalReport {
     pub suite_name: String,
     pub backend_name: String,
     pub total: usize,
@@ -127,7 +127,7 @@ pub(crate) struct EvalReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct CategoryBreakdown {
+pub struct CategoryBreakdown {
     pub category: String,
     pub total: usize,
     pub passed: usize,
@@ -155,7 +155,7 @@ impl EvalReport {
 /// Build a BNF mask from a GBNF grammar string, using the backend's
 /// vocabulary bytes.
 ///
-pub(crate) async fn run_eval<B: ModelBackend + Send + Sync>(
+pub async fn run_eval<B: ModelBackend + Send + Sync>(
     backend: &B,
     case: EvalCase,
     trace_path: Option<&std::path::Path>,
@@ -413,7 +413,7 @@ pub(crate) async fn run_eval<B: ModelBackend + Send + Sync>(
     }
 }
 
-pub(crate) async fn run_suite<B: ModelBackend + Send + Sync>(
+pub async fn run_suite<B: ModelBackend + Send + Sync>(
     suite_name: &str,
     backend: &B,
     cases: Vec<EvalCase>,
@@ -473,7 +473,7 @@ pub(crate) async fn run_suite<B: ModelBackend + Send + Sync>(
 }
 
 /// Named recurrent-state session the few-shot FIM examples are baked into.
-pub(crate) const FIM_SESSION: &str = "roco_fim";
+pub const FIM_SESSION: &str = "roco_fim";
 
 /// Few-shot examples demonstrating the BEFORE/AFTER/INSERT bridge task.
 ///
@@ -493,7 +493,7 @@ pub(crate) const FIM_SESSION: &str = "roco_fim";
 /// (Zed's Zeta-2 FIM uses literal `<[fim-*]>` sentinels; RWKV-g1h
 /// has no such tokens in its vocab, so we use a natural BEFORE/AFTER/INSERT
 /// bridge instead.)
-pub(crate) const FIM_FEW_SHOT: &[(&str, &str)] = &[
+pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
     (
         "BEFORE: The knight drew his sword and stepped forward.\nAFTER: the dragon took to the air, wings blotting out the sun.\nINSERT:",
         "He raised the blade, bracing for the clash.",
@@ -519,9 +519,7 @@ pub(crate) const FIM_FEW_SHOT: &[(&str, &str)] = &[
 /// The system instruction is included only on the first user turn (the actor
 /// drops the `system` field for session/preserve_state calls), so the task
 /// persona and the few-shot both live in the recurrent state.
-pub(crate) async fn bake_fim_session<B: ModelBackend + Send + Sync>(
-    backend: &B,
-) -> Result<(), String> {
+pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(backend: &B) -> Result<(), String> {
     // Build full multi-shot prompt in one pass. We assemble the few-shot
     // as a single user/assistant transcript so the recurrent state carries
     // the persona + format in one shot, instead of a 6-call replay that
@@ -552,7 +550,7 @@ pub(crate) async fn bake_fim_session<B: ModelBackend + Send + Sync>(
     Ok(())
 }
 
-pub(crate) fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) {
+pub fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) {
     let parent = trace_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
@@ -608,7 +606,7 @@ pub(crate) fn write_sidecars(report: &EvalReport, trace_path: &std::path::Path) 
     println!("Oracles:          {}", oracle_path.display());
 }
 
-pub(crate) fn write_report(
+pub fn write_report(
     path: impl AsRef<std::path::Path>,
     report: &EvalReport,
 ) -> Result<(), std::io::Error> {
@@ -619,7 +617,7 @@ pub(crate) fn write_report(
     std::fs::write(path, json)
 }
 
-pub(crate) fn write_mismatches(
+pub fn write_mismatches(
     report: &EvalReport,
     path: impl AsRef<std::path::Path>,
 ) -> Result<(), std::io::Error> {
@@ -651,7 +649,7 @@ pub(crate) fn write_mismatches(
     std::fs::write(path, body)
 }
 
-pub(crate) fn print_report(report: &EvalReport) {
+pub fn print_report(report: &EvalReport) {
     println!();
     println!("═══════════════════════════════════════════════════");
     println!("  Eval Report: {}", report.suite_name);

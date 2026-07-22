@@ -1,0 +1,11 @@
+# Leaf-friendly defaults: don't typecheck the whole workspace on every keystroke.
+[check]
+workspace = false
+command = "check"
+
+[cargo]
+allFeatures = false
+features = []
+
+[files]
+excludeDirs = ["target", "target-dyn", "vendor"]

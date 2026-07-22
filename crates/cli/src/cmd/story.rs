@@ -187,7 +187,9 @@ fn sanitize_story_dirname(s: &str) -> String {
 }
 
 fn create_story_workspace(prompt: &str) -> Result<Workspace, anyhow::Error> {
-    let base = std::env::current_dir()?.join(".roco").join("workspaces");
+    let base = std::env::current_dir()?
+        .join(".roco")
+        .join("workspaces");
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -207,12 +209,16 @@ fn create_story_workspace(prompt: &str) -> Result<Workspace, anyhow::Error> {
 // ── Command entry point ───────────────────────────────────────────────────
 
 pub fn cmd_story(extra: &[&str]) {
-    let prompt = extra.first().cloned().unwrap_or(
-        "Write a short story about a lighthouse keeper who discovers a message in a bottle.",
-    );
+    let prompt = extra
+        .first()
+        .cloned()
+        .unwrap_or(
+            "Write a short story about a lighthouse keeper who discovers a message in a bottle.",
+        );
 
     let strategy_str = parse_opt("--strategy", extra).unwrap_or("loose");
-    let strategy_kind = StrategyKind::parse(strategy_str).unwrap_or(StrategyKind::LooseJson);
+    let strategy_kind =
+        StrategyKind::parse(strategy_str).unwrap_or(StrategyKind::LooseJson);
 
     let max_tok_str = parse_opt("--max-tokens", extra).unwrap_or("600");
     let max_tokens = max_tok_str.parse::<usize>().unwrap_or(600);

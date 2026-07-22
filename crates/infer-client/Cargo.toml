@@ -6,12 +6,6 @@ edition.workspace = true
 [lib]
 name = "roco_infer_client"
 
-[features]
-default = ["remote"]
-# HTTP client stack (reqwest + rustls). Disable for faster compile when
-# only editing agent/engine/app code and not running the CLI.
-remote = ["dep:reqwest"]
-
 [dependencies]
 roco-engine = { path = "../engine" }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
@@ -20,5 +14,5 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 futures.workspace = true
+reqwest = { workspace = true, features = ["stream"] }
 base64 = "0.22"
-reqwest = { workspace = true, features = ["stream"], optional = true }

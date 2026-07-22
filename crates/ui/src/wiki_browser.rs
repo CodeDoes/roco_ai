@@ -186,9 +186,13 @@ impl WikiBrowser {
                                         if let Some(rest) = line.strip_prefix("# ") {
                                             inner_ui.heading(rest);
                                         } else if let Some(rest) = line.strip_prefix("## ") {
-                                            inner_ui.label(RichText::new(rest).size(18.0).strong());
+                                            inner_ui.label(
+                                                RichText::new(rest).size(18.0).strong(),
+                                            );
                                         } else if let Some(rest) = line.strip_prefix("### ") {
-                                            inner_ui.label(RichText::new(rest).size(16.0).strong());
+                                            inner_ui.label(
+                                                RichText::new(rest).size(16.0).strong(),
+                                            );
                                         } else if line.starts_with("- ") || line.starts_with("* ") {
                                             inner_ui.label(format!("  • {}", &line[2..]));
                                         } else if line.trim().is_empty() {

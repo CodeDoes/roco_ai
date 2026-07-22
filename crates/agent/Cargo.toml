@@ -7,5 +7,19 @@ edition.workspace = true
 name = "roco_agent"
 
 [dependencies]
-roco-agent-core = { path = "../agent-core" }
-roco-agent-story = { path = "../agent-story" }
+roco-engine = { path = "../engine" }
+roco-message = { path = "../message" }
+roco-tools = { path = "../tools" }
+roco-session = { path = "../session" }
+roco-workspace = { path = "../workspace" }
+roco-grammar = { path = "../grammar" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
