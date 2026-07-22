@@ -38,6 +38,13 @@ RWKV_MODEL=... cargo run --release --example story_human -p roco-cli \
 | `roco rwkv` | Smoke-test RWKV backend |
 | `roco grammar` | Grammar-constrained decode smoke test |
 | `roco gpu-check` | Show Vulkan device + model status |
+| `roco server [--story] [--detach] [--port]` | Run local HTTP API (editor / plugin hosts) |
+| `roco gateway [--target URL] [--rate-limit N]` | Run inference gateway (proxy/cache) |
+| `coco gui` | Start the desktop GUI (auto-starts gateway) |
+| `coco stop` | Stop background inference + gateway |
+| `coco story <prompt>` | Run the structured short-story pipeline (outline → wiki → chapters → publication) |
+| `coco export <story-dir> [--format md\|html\|txt] [--output PATH]` | Bundle a finished `.roco/workspaces/story_*` directory into one Markdown / HTML / plain-text file |
+| `coco interact [--interactive] [--prompt P] [--resume S] [--pace MODE]` | Conversational CLI with pacing control, session resume |
 
 ## Web Apps (`apps/`)
 
