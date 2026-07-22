@@ -6,6 +6,7 @@
 
 pub mod desktop;
 pub mod eval;
+pub mod export;
 pub mod gpu;
 pub mod interact;
 pub mod server;

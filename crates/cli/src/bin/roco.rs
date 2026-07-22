@@ -37,6 +37,9 @@ mod rich_output;
 #[path = "../daemon.rs"]
 mod daemon;
 
+#[path = "../cmd/export.rs"]
+mod cmd_export;
+
 /// Spawn a detached child process for `roco server` or `roco gateway`.
 /// The parent redirects stdio to a log file, writes a PID file, and exits.
 fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path) {
