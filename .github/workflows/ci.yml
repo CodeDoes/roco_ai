@@ -1,0 +1,101 @@
+# RoCo AI — CI checks
+#
+# Build matrix mirrors the local compilation graph. Each job compiles only
+# what it needs — no single PR pays for `--workspace --all-features`.
+#
+# Matrix:
+#   check-default   — no GPU/egui, fast default path (~15–20s)
+#   check-remote    — includes reqwest/rustls
+#   check-desktop   — includes egui/eframe
+#   check-inferd    — includes wgpu/web-rwkv (GPU daemon)
+#   test-core       — per-crate tests (agent-core, agent-story, engine)
+#   clippy          — workspace-wide lint
+#   fmt             — formatting check
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
+jobs:
+  check-default:
+    name: "check (default)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps (mold + clang for .cargo/config.toml)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+      - name: "cargo check — default CLI"
+        run: cargo check -p roco-cli
+
+  check-remote:
+    name: "check (remote)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+      - name: "cargo check — remote features"
+        run: cargo check -p roco-cli --features remote
+
+  check-desktop:
+    name: "check (desktop)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps (egui: libgl, libxcb, …)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1-mesa-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev mold clang
+      - name: "cargo check — desktop feature"
+        run: cargo check -p roco-cli --features desktop
+
+  check-inferd:
+    name: "check (inferd)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps (wgpu + mold + clang)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1-mesa-dev mold clang
+      - name: "cargo check — inference daemon"
+        run: cargo check -p roco-inferd
+
+  test-core:
+    name: "test (core)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+      - name: "cargo test — agent-core + agent-story + engine"
+        run: cargo test -p roco-agent-core -p roco-agent-story -p roco-engine --no-fail-fast
+
+  clippy:
+    name: "clippy"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+      - name: "cargo clippy — deny warnings"
+        run: cargo clippy --workspace --all-targets -- --deny warnings
+
+  fmt:
+    name: "fmt"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: "cargo fmt — check"
+        run: cargo fmt --all -- --check
