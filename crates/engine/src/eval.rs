@@ -61,6 +61,7 @@ pub enum EvalCategory {
     Format,
     Context,
     Fim,
+    Validation,
 }
 
 impl std::fmt::Display for EvalCategory {
@@ -77,6 +78,7 @@ impl std::fmt::Display for EvalCategory {
                 Self::Format => "format",
                 Self::Context => "context",
                 Self::Fim => "fim",
+                Self::Validation => "validation",
             }
         )
     }

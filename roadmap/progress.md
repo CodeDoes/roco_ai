@@ -152,3 +152,14 @@
 - Confirmed `./start.sh` auto-resolves the local `.st` model and launches `story_human`. Verified `cargo test -p roco_ui` passes (unit + user-story tests).
 
 - Documented example error rule in EDIT_GUIDE.md + AGENTS.md C: use `Result<_, Box<dyn std::error::Error>>` for example binaries, not `anyhow::Result<()>`.
+
+## 2026-07-22 (validation)
+- **Created `crates/validation/` — multi-layer story validation framework.**
+  - `classic.rs` — programmatic checks: paragraph spacing, word count targets (per-chapter/per-paragraph/per-section), sentence repetition detection (exact + 5-gram phrase overlap), spelling baselined against 450+ common English words, grammar heuristics (capitalization, matching quotes, double spaces, repeated punctuation), thinking contamination detection, cross-chapter repetition check. 12 unit tests.
+  - `inference.rs` — model-as-judge: critique chapter for overall quality/coherence/engagement (0-10 scores), evaluate instruction following against outline, generate natural language feedback. Grammar-constrained JSON output via `roco-grammar` Schema/GBNF. 6 unit tests.
+  - `outline.rs` — validates outline structure (title/genre/tone presence, chapter count range, sequential numbering, duplicate titles, summary detail, placeholder detection, plot arc completeness), derives word count targets from chapter summaries, inference-backed plot coherence/character motivation/narrative arc checks. 11 unit tests.
+  - `wiki.rs` — validates world-building: inter-wiki link validity (matching sections), duplicate tag detection, minimum word counts per character/setting section, required structure sections, cross-chapter consistency (characters in chapters vs wiki, unused characters, missing entries). 10 unit tests.
+  - `lib.rs` — `ValidationEngine` orchestrator, `ValidationReport` with severity-graded pass/fail, `WordCountTargets::from_natural_language()` parsing ("2000 words per chapter"), `validate_from_natural_language()` dispatch. 7 unit tests.
+  - **42 unit tests total** across all modules, all passing.
+  - Added to workspace members in `Cargo.toml`.
+  - `run_tests.sh` green (check, clippy, test compilation, examples, fmt).

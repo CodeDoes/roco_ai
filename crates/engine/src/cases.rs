@@ -3,7 +3,7 @@
 use crate::eval::{EvalCase, EvalCategory};
 
 pub fn default_eval_suite() -> Vec<EvalCase> {
-    vec![
+    let mut suite = vec![
         EvalCase {
             name: "smoke_basic_reply".into(),
             description: "Simple Q&A reply produces a one-word answer".into(),
@@ -202,7 +202,9 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
             oracle: Some("Apples\nBananas\nCherries".into()),
             category: EvalCategory::Format,
         },
-    ]
+    ];
+    suite.extend(validation_eval_cases());
+    suite
 }
 
 pub fn throughput_eval_cases() -> Vec<EvalCase> {
@@ -572,6 +574,181 @@ pub fn fim_eval_cases() -> Vec<EvalCase> {
             vec!["<fim".into(), "BEFORE:".into(), "AFTER:".into(), "INSERT:".into()],
             10,
             None,
+        ),
+    ]
+}
+
+// ------------------------------------------------------------------------------
+// Validation eval cases
+//
+// Model-backed benchmarks for chapter/story validation. Each case reuses
+// the EXACT system prompts and prompt structures defined in the validation
+// crate (crates/validation/src/), NOT custom instructions. Only the input
+// data (chapters, outlines, wiki text) and expected hints differ per case.
+//
+// These are *evals*, not unit tests -- they require a real model backend.
+// ---------------------------------------------------------------------------
+
+pub fn validation_eval_cases() -> Vec<EvalCase> {
+    use crate::eval::{EvalCase, EvalCategory};
+
+    // Prefills match the validation crate exactly:
+    let crit_prefill = Some("{\n\"overall_score\"".into());
+    let follow_prefill = Some("{\n\"follows_instructions\"".into());
+    let plot_prefill = Some("{\n\"plot_coherent\"".into());
+
+    let mk = |name: &str,
+              description: &str,
+              system: &str,
+              prompt: &str,
+              hints: Vec<&str>,
+              forbidden: Vec<&str>,
+              min_chars: usize,
+              max_tok: usize,
+              prefill: Option<String>| {
+        EvalCase {
+            name: name.to_string(),
+            description: description.to_string(),
+            system: system.to_string(),
+            prompt: prompt.to_string(),
+            expected_hints: hints.into_iter().map(|s| s.to_string()).collect(),
+            forbidden_strings: forbidden.into_iter().map(|s| s.to_string()).collect(),
+            max_tokens: max_tok,
+            temperature: 0.0,
+            min_output_chars: min_chars,
+            grammar: None,
+            prefill,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Validation,
+        }
+    };
+
+    // Prompts from validation/src/inference.rs
+    let crit_system = "You are an expert literary critic and editor. Be fair but thorough.\n        Evaluate chapters on these dimensions:\n        1. Overall quality -- prose, flow, readability (0-10)\n        2. Coherence -- logical progression, no contradictions (0-10)\n        3. Engagement -- hooks, tension, reader interest (0-10)\n\n        Output valid JSON only. Do NOT include thinking or reasoning in your output.";
+
+    let follow_system = "You are a quality assurance evaluator. Determine if a chapter         follows its outline instructions. Output valid JSON only.";
+
+    let feedback_system = "You are a helpful writing assistant. Provide constructive feedback         on the chapter. Be specific and actionable.";
+
+    // Prompts from validation/src/outline.rs
+    let outline_crit_system = "You are an expert story editor. Evaluate this outline for         plot coherence, character motivation, and narrative logic.         Output valid JSON only.";
+
+    // Prompts from validation/src/wiki.rs
+    let wiki_system = "You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.";
+
+    vec![
+        // === 1. INFERENCE-BACKED CRITIQUE (critique_chapter from inference.rs) ===
+        mk(
+            "val_critique_overall_quality",
+            "Model rates overall quality of a well-written chapter",
+            crit_system,
+            "Critique this chapter for quality.\n\nChapter 1:\nThe knight drew his sword                 and stepped forward. The dragon's eyes glowed in the darkness.\n\n                Evaluate across all dimensions and provide:\n                - overall_score (0-10)\n                - coherence_score (0-10)\n                - engagement_score (0-10)\n                - brief_suggestion (string, what to improve)\n                - engagement_suggestion (string, how to improve engagement)\n\n                Output valid JSON matching the schema.",
+            vec!["overall_score", "coherence_score", "engagement_score"],
+            vec![],
+            50, 300, crit_prefill.clone(),
+        ),
+        mk(
+            "val_critique_coherence_fail",
+            "Model detects low coherence in a contradictory chapter",
+            crit_system,
+            "Critique this chapter for quality.\n\nChapter 1:\nIt was a dark and stormy                 night. The sun shone brightly through the windows.\n\n                Evaluate across all dimensions and provide:\n                - overall_score (0-10)\n                - coherence_score (0-10)\n                - engagement_score (0-10)\n                - brief_suggestion (string, what to improve)\n                - engagement_suggestion (string, how to improve engagement)\n\n                Output valid JSON matching the schema.",
+            vec!["coherence_score"],
+            vec![],
+            60, 300, crit_prefill.clone(),
+        ),
+
+        // === 2. INSTRUCTION FOLLOWING (evaluate_against_instructions) ===
+        mk(
+            "val_instruction_following_matched",
+            "Model confirms a chapter matches its outline instruction",
+            follow_system,
+            "Determine if this chapter follows the original instructions.\n\n                Outline/Instructions:\nThe hero discovers a hidden cave and finds an ancient artifact.\n\n                Chapter 1:\nMarcus stumbled upon a cave behind the waterfall. Inside,                 glowing runes lined the walls. On a pedestal lay a crystal sword.\n\n                Does this chapter follow the instructions? Output:\n                - follows_instructions (boolean)\n                - detail (string, brief explanation)\n                - suggestion (string or null, how to fix)\n\n                Output valid JSON only.",
+            vec!["true"],
+            vec![],
+            30, 200, follow_prefill.clone(),
+        ),
+        mk(
+            "val_instruction_following_deviated",
+            "Model detects a chapter that diverges from its outline",
+            follow_system,
+            "Determine if this chapter follows the original instructions.\n\n                Outline/Instructions:\nWrite a chapter where the hero fights a dragon.\n\n                Chapter 1:\nMarcus sat in the tavern drinking ale. He talked with the                 bartender about the weather. Then he went home and slept.\n\n                Does this chapter follow the instructions? Output:\n                - follows_instructions (boolean)\n                - detail (string, brief explanation)\n                - suggestion (string or null, how to fix)\n\n                Output valid JSON only.",
+            vec!["false"],
+            vec!["true"],
+            40, 200, follow_prefill.clone(),
+        ),
+
+        // === 3. NATURAL LANGUAGE FEEDBACK (generate_feedback from inference.rs) ===
+        mk(
+            "val_natural_feedback",
+            "Model generates multi-paragraph constructive feedback",
+            feedback_system,
+            "Review this chapter and provide natural language feedback.\n\n                Original instructions: Write an opening chapter that establishes mood.\n\n                Chapter 1:\nThe door creaked open. Inside, the room was dark and dusty.                 A single candle flickered on the desk.\n\n                Provide feedback covering:\n                1. What works well\n                2. What could be improved\n                3. Specific suggestions\n\n                Be concise -- 2-3 paragraphs.",
+            vec!["works", "improve", "suggestion"],
+            vec!["I cannot", "unable to"],
+            150, 400, None,
+        ),
+
+        // === 4. OUTLINE VALIDATION (validate_with_inference from outline.rs) ===
+        mk(
+            "val_outline_inference_ok",
+            "Model evaluates a well-structured outline positively",
+            outline_crit_system,
+            "Evaluate this story outline:\n\nTitle: The Crystal Sword\nGenre: Fantasy\n                Tone: Heroic\n\nChapter 1: The Discovery - Marcus finds a hidden cave.\n                Chapter 2: The Awakening - The sword's power awakens.\n                Chapter 3: The Battle - Marcus faces the dark lord.\n\n                Provide:\n                - plot_coherent (boolean): Does the plot make logical sense?\n                - character_motivation_clear (boolean): Are character goals clear?\n                - has_narrative_arc (boolean): Is there a clear beginning/middle/end?\n                - detail (string): Brief evaluation\n                - suggestion (string or null): How to improve\n\n                Output valid JSON only.",
+            vec!["plot_coherent", "has_narrative_arc"],
+            vec![],
+            60, 300, plot_prefill.clone(),
+        ),
+        mk(
+            "val_outline_inference_missing_sections",
+            "Model flags issues in an outline missing title/genre/tone",
+            outline_crit_system,
+            "Evaluate this story outline:\n\nChapter A: Stuff happens\n                Chapter B: More stuff\nChapter C: End\n\n                Provide:\n                - plot_coherent (boolean): Does the plot make logical sense?\n                - character_motivation_clear (boolean): Are character goals clear?\n                - has_narrative_arc (boolean): Is there a clear beginning/middle/end?\n                - detail (string): Brief evaluation\n                - suggestion (string or null): How to improve\n\n                Output valid JSON only.",
+            vec!["detail", "suggestion"],
+            vec![],
+            40, 300, plot_prefill.clone(),
+        ),
+
+        // === 5. WIKI/WORLDBUILDING VALIDATION (validate_with_inference from wiki.rs) ===
+        mk(
+            "val_wiki_inference",
+            "Model evaluates wiki consistency and detail",
+            wiki_system,
+            "Evaluate this world-building / wiki:\n\n## Characters\n### Marcus - A brave knight\n                ### Elara - A wise mage\n\n## Setting\n### Oakhaven - A peaceful village\n                ### Dark Forest - A dangerous place\n\nStory excerpts:\n                A knight named Marcus ventured into the Dark Forest.\n---\n                Elara the mage cast a protection spell over Oakhaven.\n\n                Evaluate consistency, detail, and relevance.",
+            vec!["consistent", "character", "setting"],
+            vec!["I cannot", "unable to"],
+            60, 300, None,
+        ),
+
+        // === 6. NATURAL LANGUAGE DISPATCH (validate_from_natural_language from lib.rs) ===
+        mk(
+            "val_natural_parse_validate_chapter",
+            "Model identifies chapter, word count, and typo check from NL request",
+            "You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.",
+            "REQUEST: Check that chapter 3 has at least 500 words and no typos.",
+            vec!["chapter 3", "500", "word", "typo"],
+            vec![],
+            40, 150, None,
+        ),
+        mk(
+            "val_natural_parse_outline",
+            "Model identifies outline validation request",
+            "You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.",
+            "REQUEST: Validate the story outline -- check that all chapters have                 summaries and the plot has a complete arc.",
+            vec!["outline", "summary", "arc"],
+            vec![],
+            40, 150, None,
+        ),
+        mk(
+            "val_natural_parse_goals",
+            "Model extracts validation goals from a writing prompt",
+            "You are a goal extractor. Parse the following writing prompt and                 extract: the story premise, explicit constraints, and what success                 criteria (word counts, style, format) should be validated.                 Respond with a structured list.",
+            "PROMPT: Write a horror story about a haunted house, 3 chapters, each                 at least 2000 words. Use first person narration.",
+            vec!["horror", "haunted", "2000", "first person"],
+            vec![],
+            60, 250, None,
         ),
     ]
 }

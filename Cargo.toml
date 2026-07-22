@@ -17,6 +17,7 @@ members = [
     "crates/inferd",
     "crates/ui",
     "crates/app",
+    "crates/validation",
 ]
 # Fast default path: NO wgpu/web-rwkv (inference/inferd) and NO egui (ui).
 # Local GPU daemon:  cargo build -p roco-inferd
