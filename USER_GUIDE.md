@@ -118,3 +118,14 @@ A: Use `story_collaborative` (`RWKV_MODEL=... cargo run --release --example stor
 
 **Q: How do I export my story?**  
 A: The completed story is `06-STORY.md` in your workspace folder. Copy it anywhere. You can also read individual chapters (`03-CHAPTER_*.md`).
+
+For a single bundled file (handy for sharing or printing), use the `coco export` subcommand:
+
+```bash
+coco export .roco/workspaces/story_<id> --format md    # one Markdown file
+coco export .roco/workspaces/story_<id> --format html  # browser-printer-friendly HTML
+coco export .roco/workspaces/story_<id> --format txt   # plain text
+coco export .roco/workspaces/story_<id> --output my_book.md   # custom path
+```
+
+The default output path is `EXPORT.{md,html,txt}` inside the story directory. The bundle concatenates the chapters in numeric order and appends the outline.
