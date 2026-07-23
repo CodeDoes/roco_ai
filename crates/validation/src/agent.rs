@@ -452,7 +452,7 @@ impl StoryModeAgent {
         )))
     }
 
-    fn handle_summarize_all(&self, _backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
+    fn handle_summarize_all(&self, backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
         let chapters = session.tool_set.read_all_chapters().unwrap_or_default();
         let wiki = session.tool_set.read_wiki().unwrap_or_default();
@@ -895,18 +895,11 @@ impl StoryModeAgent {
             state_tuned_json::<StyleResponse>(backend, &style_system, &prompt, 0.7, 2048);
 
         match style_result {
-            Ok(response) => {
-                for ch in &response.chapters {
-                    session.tool_set.write_chapter(ch.chapter_num, &ch.content)?;
-                }
-                Ok(StoryModeResult::text(format!(
-                    "## Style Change → {}
-
-{} chapter(s) rewritten.",
-                    style,
-                    response.chapters.len()
-                )))
-            }
+            Ok(response) => Ok(StoryModeResult::text(format!(
+                "## Style Change → {}\n\n{} chapter(s) rewritten.",
+                style,
+                response.chapters.len()
+            ))),
             Err(e) => Ok(StoryModeResult::text(format!("Style change failed: {e}"))),
         }
     }
@@ -961,18 +954,11 @@ impl StoryModeAgent {
         let pov_result = state_tuned_json::<PovResponse>(backend, &pov_system, &prompt, 0.7, 2048);
 
         match pov_result {
-            Ok(response) => {
-                for ch in &response.chapters {
-                    session.tool_set.write_chapter(ch.chapter_num, &ch.content)?;
-                }
-                Ok(StoryModeResult::text(format!(
-                    "## POV Change → {}
-
-{} chapter(s) rewritten.",
-                    pov,
-                    response.chapters.len()
-                )))
-            }
+            Ok(response) => Ok(StoryModeResult::text(format!(
+                "## POV Change → {}\n\n{} chapter(s) rewritten.",
+                pov,
+                response.chapters.len()
+            ))),
             Err(e) => Ok(StoryModeResult::text(format!("POV change failed: {e}"))),
         }
     }
@@ -1218,7 +1204,7 @@ impl StoryModeAgent {
             ideas: Vec<StoryIdea>,
         }
 
-        let _schema = Schema::object()
+        let schema = Schema::object()
             .prop(
                 "ideas",
                 Schema::array(
