@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn test_manager_history() {
-        let mut manager = StorySessionManager::new();
+        let manager = StorySessionManager::new();
         assert!(manager.list_stories().is_empty());
     }
 

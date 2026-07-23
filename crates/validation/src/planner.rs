@@ -262,7 +262,7 @@ fn parse_chapter_heading(line: &str) -> Option<(usize, String)> {
     // After the number, expect ':' or '-' then title
     let after_num = &rest[num_str.len()..];
     let title = after_num
-        .trim_start_matches(|c: char| c == ':' || c == '-' || c == ' ')
+        .trim_start_matches([':', '-', ' '])
         .to_string();
 
     Some((number, title))

@@ -274,8 +274,6 @@ impl ChapterValidator {
             passed: ss_ok,
             severity: if single_sentence_paras.is_empty() {
                 ValidationSeverity::Info
-            } else if ss_ok {
-                ValidationSeverity::Warning
             } else {
                 ValidationSeverity::Warning
             },
@@ -303,7 +301,7 @@ impl ChapterValidator {
 
         // Check 1: Repeated sentences
         let sentences: Vec<String> = text
-            .split(|c: char| c == '.' || c == '!' || c == '?')
+            .split(['.', '!', '?'])
             .map(|s| s.trim().to_lowercase())
             .filter(|s| s.len() > 10) // ignore very short fragments
             .collect();
@@ -680,7 +678,7 @@ fn count_sentences(text: &str) -> usize {
         return 0;
     }
     trimmed
-        .split(|c: char| c == '.' || c == '!' || c == '?')
+        .split(['.', '!', '?'])
         .filter(|s| !s.trim().is_empty())
         .count()
 }
@@ -714,7 +712,7 @@ fn is_likely_typo(word: &str) -> bool {
         return false;
     }
     // Skip proper nouns (capitalized in middle of text - rough heuristic)
-    if word.chars().next().map_or(false, |c| c.is_uppercase()) && word.len() > 2 {
+    if word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 2 {
         return false;
     }
     // Check for repeated characters that might be typos (e.g., "teh" for "the")

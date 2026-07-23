@@ -227,7 +227,7 @@ impl IntentClassifier {
     ) -> Result<ClassifiedIntent, String> {
         let input = input.trim();
         // Split into command and the rest (everything after the first space)
-        let space_pos = input.find(|c: char| c == ' ' || c == '\t');
+        let space_pos = input.find([' ', '\t']);
         let cmd = match space_pos {
             Some(pos) => input[..pos].to_lowercase(),
             None => input.to_lowercase(),
@@ -335,7 +335,7 @@ impl IntentClassifier {
                 Ok(ClassifiedIntent {
                     intent: StoryIntent::ExpandPremise(prompt),
                     confidence: 1.0,
-                    explanation: format!("Slash command /brainstorm with prompt"),
+                    explanation: "Slash command /brainstorm with prompt".to_string(),
                 })
             }
             "/switch" => {

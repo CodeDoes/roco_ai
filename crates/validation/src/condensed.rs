@@ -14,7 +14,6 @@
 //! always available. Inference-backed fields (plot points, tone, themes)
 //! are generated lazily and cached per session.
 
-use std::collections::{HashMap, HashSet};
 
 /// Condensed representation of a single chapter.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -357,7 +356,7 @@ A wise wizard.
 ### Mystic Valley
 A beautiful valley surrounded by mountains.
 "#;
-        let cw = CondensedWiki::from_md(&md);
+        let cw = CondensedWiki::from_md(md);
         assert_eq!(cw.characters.len(), 2);
         assert_eq!(cw.settings.len(), 1);
         assert_eq!(cw.entry_count, 3);
@@ -373,7 +372,7 @@ A brave adventurer.
 ### Bob
 A wise wizard.
 "#;
-        let cw = CondensedWiki::from_md(&md);
+        let cw = CondensedWiki::from_md(md);
         let results = cw.search("brave");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Alice");

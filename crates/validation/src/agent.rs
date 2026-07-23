@@ -32,25 +32,18 @@
 //! | `brainstorm` | brainstorm, expand_premise | Story idea generation |
 //! | `justChatting` | chat | Default fallback — no tools, just talk |
 
-use std::collections::HashMap;
-use std::path::PathBuf;
 
 use roco_agent::mechanistic::{MechanisticAgent, RepairConfig};
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_grammar::Schema;
-use roco_workspace::{Workspace, WorkspaceKind};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use crate::classic::ChapterValidator;
 use crate::condensed::{CondensedChapter, CondensedWiki};
 use crate::inference::Critic;
 use crate::intent::{IntentClassifier, StoryIntent};
-use crate::outline::OutlineValidator;
 use crate::planner::{ModificationPlan, OutlineDiff};
 use crate::session::{StorySession, StorySessionManager};
-use crate::summarizer::{StorySummarizer, StorySummary};
-use crate::tool_set::StoryToolSet;
-use crate::wiki::WikiValidator;
+use crate::summarizer::StorySummarizer;
 use crate::{ValidationEngine, WordCountTargets};
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -61,7 +54,7 @@ use crate::{ValidationEngine, WordCountTargets};
 /// manages story sessions, tools, and validators.
 pub struct StoryModeAgent {
     /// The underlying mechanistic agent with story-mode handlers.
-    agent: MechanisticAgent,
+    _agent: MechanisticAgent,
     /// Session manager (persisted across CLI invocations).
     session_manager: StorySessionManager,
     /// Intent classifier (wraps slash-command bypass).
@@ -69,7 +62,7 @@ pub struct StoryModeAgent {
     /// Shared validation engine.
     validation_engine: ValidationEngine,
     /// Confidence threshold for story-mode detection.
-    story_threshold: f32,
+    _story_threshold: f32,
     /// Whether to emit verbose traces.
     verbose: bool,
 }
@@ -93,11 +86,11 @@ impl StoryModeAgent {
         Self::register_routes(&mut agent);
 
         Self {
-            agent,
+            _agent: agent,
             session_manager: StorySessionManager::new(),
             classifier: IntentClassifier::default(),
             validation_engine: ValidationEngine::default(),
-            story_threshold: 0.5,
+            _story_threshold: 0.5,
             verbose: false,
         }
     }
@@ -219,7 +212,7 @@ impl StoryModeAgent {
         &mut self,
         backend: &dyn ModelBackend,
         intent: &StoryIntent,
-        original_input: &str,
+        _original_input: &str,
     ) -> Result<StoryModeResult, String> {
         match intent {
             // ── Validation ──
@@ -469,7 +462,7 @@ impl StoryModeAgent {
         let genre = extract_genre_from_outline(&outline);
 
         let summarizer = StorySummarizer::new(None);
-        let summary = summarizer.summarize_story(&chapters, &wiki, &outline, &title, &genre);
+        let summary = summarizer.summarize_story(&chapters, &wiki, &outline, title, genre);
 
         Ok(StoryModeResult::text(format!(
             "## {}\n\n**Genre:** {}  \n**Chapters:** {}  \n**Total words:** {}  \n**Characters:** {}\n\n**Synopsis:**\n{}\n\n**Arc:** {}  \n**Last updated:** {}",
@@ -498,7 +491,7 @@ impl StoryModeAgent {
         let genre = extract_genre_from_outline(&outline);
 
         let summarizer = StorySummarizer::new(None);
-        let mut summary = summarizer.summarize_story(&chapters, &wiki, &outline, &title, &genre);
+        let mut summary = summarizer.summarize_story(&chapters, &wiki, &outline, title, genre);
 
         // Try to get a model-generated synopsis
         let symptoms_prompt = format!(
@@ -700,7 +693,7 @@ impl StoryModeAgent {
         }
 
         let schema = Schema::object().prop("content", Schema::string()).build();
-        let grammar = schema.to_gbnf("EditResponse").ok();
+        let _grammar = schema.to_gbnf("EditResponse").ok();
 
         // State-tuned: no grammar constraint for content generation
         let edit_system = "You are a fiction editor. Output valid JSON only. \
@@ -713,6 +706,7 @@ impl StoryModeAgent {
             Ok(edit) => {
                 // Show diff
                 let diff_summary = simple_diff(&chapter_text, &edit.content);
+                session.tool_set.write_chapter(num, &edit.content)?;
                 Ok(StoryModeResult::text(format!(
                     "## Chapter {num} — Edited\n\n**Instruction:** {description}\n\n{diff_summary}\n\n---\n\nContent saved to workspace.\n\nTo revert, use the `.backup/` directory."
                 )))
@@ -757,7 +751,7 @@ impl StoryModeAgent {
             .prop("changes_made", Schema::array(Schema::string()))
             .build();
 
-        let grammar = schema.to_gbnf("ReviseResponse").ok();
+        let _grammar = schema.to_gbnf("ReviseResponse").ok();
 
         // State-tuned: no grammar constraint for content revision
         let revise_system = "You are a fiction revision assistant. Output valid JSON only. \
@@ -773,7 +767,7 @@ impl StoryModeAgent {
                 } else {
                     revise.changes_made.join("\n- ")
                 };
-
+                session.tool_set.write_chapter(num, &revise.content)?;
                 Ok(StoryModeResult::text(format!(
                     "## Chapter {num} — Revised\n\n**Direction:** {}\n\n**Changes made:**\n- {}\n\n---\n\nContent saved to workspace.",
                     direction, changes
@@ -1276,7 +1270,7 @@ impl StoryModeAgent {
             themes: Vec<String>,
         }
 
-        let schema = Schema::object()
+        let _schema = Schema::object()
             .prop("title", Schema::string())
             .prop("genre", Schema::string())
             .prop("tone", Schema::string())

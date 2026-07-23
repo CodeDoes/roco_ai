@@ -66,7 +66,7 @@ impl StoryToolSet {
     // ═════════════════════════════════════════════════════════════════
 
     /// Resolve a file path relative to the workspace root.
-    fn resolve(&self, path: &str) -> PathBuf {
+    fn _resolve(&self, path: &str) -> PathBuf {
         let mut resolved = self.workspace_path.join(path);
         // Normalize to prevent directory traversal
         if let Ok(normalized) = resolved.canonicalize() {
@@ -111,7 +111,7 @@ impl StoryToolSet {
                 format!("chapter_{}.md", num),
                 format!("03-CHAPTER_{}.md", num),
             ] {
-                let path = chapters_dir.join(&name);
+                let path = chapters_dir.join(name);
                 if path.exists() {
                     return path;
                 }
@@ -124,7 +124,7 @@ impl StoryToolSet {
             format!("03-CHAPTER_{}.md", num),
             format!("{:02}-chapter.md", num),
         ] {
-            let path = self.workspace_path.join(&name);
+            let path = self.workspace_path.join(name);
             if path.exists() {
                 return path;
             }
