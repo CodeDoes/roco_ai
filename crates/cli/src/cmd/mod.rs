@@ -10,6 +10,7 @@ pub mod interact;
 pub mod pet;
 pub mod router;
 pub mod story;
+pub mod story_mode;
 
 #[cfg(feature = "desktop")]
 pub mod desktop;

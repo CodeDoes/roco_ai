@@ -26,9 +26,17 @@
 //! into a `ValidationReport`. Natural language summaries are generated from
 //! the report.
 
+pub mod agent;
+pub mod brainstorm;
 pub mod classic;
+pub mod condensed;
 pub mod inference;
+pub mod intent;
 pub mod outline;
+pub mod planner;
+pub mod session;
+pub mod summarizer;
+pub mod tool_set;
 pub mod wiki;
 
 use std::collections::HashMap;

@@ -153,6 +153,33 @@
 
 - Documented example error rule in EDIT_GUIDE.md + AGENTS.md C: use `Result<_, Box<dyn std::error::Error>>` for example binaries, not `anyhow::Result<()>`.
 
+## 2026-07-22 (story-mode)
+- **Story Mode & Story Validator implementation (Phase 2+3).** Created 9 new modules in `crates/validation/src/`:
+  - `condensed.rs` — Chapter & wiki condensed data forms with wiki cross-referencing
+  - `summarizer.rs` — Story summarization with model-generated synopsis + arc status
+  - `planner.rs` — Outline diff detection (chapter add/remove/rename/summary/metadata changes) + `ModificationPlan` generation
+  - `intent.rs` — `StoryIntent` enum (25+ variants) + model-first classifier with slash-command bypass (`/validate`, `/summarize`, `/diff`, etc.)
+  - `tool_set.rs` — `StoryToolSet` with grep/find/read/write/edit operations + automatic timestamped backups in `.backup/`
+  - `session.rs` — `StorySession`, `StorySessionManager` with JSON persistence to `~/.roco/story_sessions.json`
+  - `brainstorm.rs` — `StoryIdeaGenerator` using state-tuned prompting for creative idea generation
+  - `agent.rs` — `StoryModeAgent` wrapping the MechanisticAgent pattern: routes for validate/summarize/condense/find/edit/rewrite/outline/mode/brainstorm, all handlers use state-tuned JSON (no BNF grammar for content generation, grammar reserved for structured data extraction)
+  - `lib.rs` exports all new modules; `Cargo.toml` added deps for `roco-agent`, `roco-workspace`, `dirs-next`, `tempfile`
+
+  CLI integration (`crates/cli/src/`):
+  - `cmd/story_mode.rs` — `roco story-mode` / `roco sm` interactive REPL and one-shot command runner
+  - `bin/roco.rs` — wired as `"story-mode" | "sm"` subcommand with `--story STORY` flag
+  - `cmd/mod.rs` — exports `story_mode` module
+  - `Cargo.toml` — added `roco-validation` dependency
+
+  Key design decisions implemented:
+  - **Model-first classification:** every NL input goes through the model (via MechanisticAgent) for intent+parameter extraction; slash commands are the only bypass
+  - **State-tuned (no grammar) for content gen:** editing, revising, brainstorming use prefill + `clean_json_output` without BNF constraint
+  - **Grammar-constrained for structure:** intent classification uses BNF grammar; outline diffs, modification plans use grammar
+  - **Backup before write:** every `write_chapter`, `write_wiki`, `write_outline`, `edit_chapter`, `edit_wiki` creates a timestamped backup in `.backup/`
+  - **Backward compatible:** all existing commands (`roco interact`, `roco story`, etc.) untouched
+
+  97 validation tests pass (4 new test modules: condensed, summarizer, planner, intent, tool_set, session, brainstorm, agent). `cargo check --workspace` clean.
+
 ## 2026-07-22 (validation)
 - **Created `crates/validation/` — multi-layer story validation framework.**
   - `classic.rs` — programmatic checks: paragraph spacing, word count targets (per-chapter/per-paragraph/per-section), sentence repetition detection (exact + 5-gram phrase overlap), spelling baselined against 450+ common English words, grammar heuristics (capitalization, matching quotes, double spaces, repeated punctuation), thinking contamination detection, cross-chapter repetition check. 12 unit tests.

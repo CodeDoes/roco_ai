@@ -52,6 +52,8 @@ pub fn help(_sub: Option<&str>) {
     eprintln!("                                  Interactive CLI with pacing (default)");
     eprintln!("  interact --list-sessions           List saved sessions");
     eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Structured short story");
+  eprintln!("  story-mode [--story STORY] [command]  Interactive story writing assistant");
+  eprintln!("  sm         Alias for story-mode");
     eprintln!("  game [scenario]                 Adventure game mode (interactive fiction)");
     eprintln!("  html [--port PORT]                Live HTML canvas — agent responds in HTML, served via local web server");
     eprintln!("  code <question> [--lang LANG]   AI coding assistant");

@@ -66,6 +66,18 @@ fn main() {
         "stop" => {
             roco_cli::daemon::stop_all();
         }
+        "story-mode" | "sm" => {
+            let story_name = parse_opt("--story", &extra);
+            let command = extra.first().copied();
+            match command {
+                Some(cmd) if !cmd.starts_with("--") => {
+                    cmd::story_mode::run_story_command(story_name, cmd);
+                }
+                _ => {
+                    cmd::story_mode::run_story_mode(story_name);
+                }
+            }
+        }
         "story" => cmd::story::cmd_story(&extra),
         "game" => cmd::game::cmd_game(&extra),
         "html" => cmd::html::cmd_html(&extra),

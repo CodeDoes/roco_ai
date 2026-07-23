@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+roco-agent = { path = "../agent" }
 roco-engine = { path = "../engine" }
 roco-grammar = { path = "../grammar" }
+roco-workspace = { path = "../workspace" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
+dirs-next = "2.0"
+tempfile = "3.10"

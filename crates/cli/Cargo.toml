@@ -29,6 +29,7 @@ roco-workspace = { path = "../workspace" }
 roco-infer-client = { path = "../infer-client" }
 roco-app = { path = "../app", package = "roco-app" }
 roco-session = { path = "../session" }
+roco-validation = { path = "../validation" }
 # Optional surfaces — not in the fast default path.
 roco-server = { path = "../server", optional = true }
 roco-gateway = { path = "../gateway", optional = true }
