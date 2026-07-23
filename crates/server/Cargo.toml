@@ -10,6 +10,7 @@ name = "roco_server"
 roco-engine = { path = "../engine" }
 roco-session = { path = "../session" }
 roco-message = { path = "../message" }
+roco-protocol = { path = "../protocol" }
 tokio = { workspace = true, features = [
     "macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time",
 ] }
@@ -24,3 +25,6 @@ base64 = "0.22"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["v4"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+
+[dev-dependencies]
+tower = { version = "0.5", default-features = false, features = ["util"] }

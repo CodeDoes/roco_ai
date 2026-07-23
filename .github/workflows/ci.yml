@@ -44,8 +44,8 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install system deps
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: "cargo check — remote features"
-        run: cargo check -p roco-cli --features remote
+      - name: "cargo check — net features"
+        run: cargo check -p roco-cli --features net
 
   check-desktop:
     name: "check (desktop)"

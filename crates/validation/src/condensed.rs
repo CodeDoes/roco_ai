@@ -144,7 +144,11 @@ impl WikiEntry {
     /// Word count of the description field.
     pub fn word_count(&self) -> usize {
         self.description.split_whitespace().count()
-            + self.key_traits.iter().map(|t| t.split_whitespace().count()).sum::<usize>()
+            + self
+                .key_traits
+                .iter()
+                .map(|t| t.split_whitespace().count())
+                .sum::<usize>()
     }
 }
 
@@ -252,7 +256,11 @@ impl CondensedWiki {
             .map(|e| e.word_count())
             .sum::<usize>()
             + this.settings.iter().map(|e| e.word_count()).sum::<usize>()
-            + this.lore_items.iter().map(|e| e.word_count()).sum::<usize>();
+            + this
+                .lore_items
+                .iter()
+                .map(|e| e.word_count())
+                .sum::<usize>();
 
         this
     }

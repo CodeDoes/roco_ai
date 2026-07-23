@@ -9,6 +9,8 @@ members = [
     "crates/tools",
     "crates/workspace",
     "crates/agent",
+    "crates/agent-core",
+    "crates/agent-story",
     "crates/chat-common",
     "crates/cli",
     "crates/server",
@@ -17,6 +19,7 @@ members = [
     "crates/inferd",
     "crates/ui",
     "crates/app",
+    "crates/protocol",
     "crates/validation",
 ]
 # Fast default path: NO wgpu/web-rwkv (inference/inferd) and NO egui (ui).

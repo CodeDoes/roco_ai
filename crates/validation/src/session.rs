@@ -196,9 +196,7 @@ impl StorySessionManager {
     fn load_history(path: &Path) -> Vec<(String, u64)> {
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(path) {
-                if let Ok(sessions) =
-                    serde_json::from_str::<Vec<PersistentSession>>(&content)
-                {
+                if let Ok(sessions) = serde_json::from_str::<Vec<PersistentSession>>(&content) {
                     let mut history: Vec<(String, u64)> = sessions
                         .into_iter()
                         .map(|s| (s.story_name, s.last_active))
@@ -284,8 +282,7 @@ impl StorySessionManager {
         let session = StorySession::new(name.to_string(), PathBuf::from(&workspace_path))?;
 
         // Update history: move this story to front
-        self.session_history
-            .retain(|(n, _)| n != name);
+        self.session_history.retain(|(n, _)| n != name);
         self.session_history
             .insert(0, (name.to_string(), session.last_active));
 
@@ -340,7 +337,11 @@ impl StorySessionManager {
 
     /// List all known story names (from history).
     pub fn list_stories(&self) -> Vec<String> {
-        let mut stories: Vec<String> = self.session_history.iter().map(|(n, _)| n.clone()).collect();
+        let mut stories: Vec<String> = self
+            .session_history
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect();
         stories.sort();
         stories.dedup();
         stories

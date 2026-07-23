@@ -105,69 +105,83 @@ impl StoryModeAgent {
     /// Register all story-mode routes and their handlers.
     fn register_routes(agent: &mut MechanisticAgent) {
         // Validate route
-        agent.add_route("validate", vec![
-            ("compose", "validate_chapter"),
-            ("compose", "validate_outline"),
-            ("compose", "validate_wiki"),
-            ("compose", "validate_all"),
-        ]);
+        agent.add_route(
+            "validate",
+            vec![
+                ("compose", "validate_chapter"),
+                ("compose", "validate_outline"),
+                ("compose", "validate_wiki"),
+                ("compose", "validate_all"),
+            ],
+        );
 
         // Summarize route
-        agent.add_route("summarize", vec![
-            ("compose", "summarize_chapter"),
-            ("compose", "summarize_all"),
-            ("compose", "summarize_story"),
-        ]);
+        agent.add_route(
+            "summarize",
+            vec![
+                ("compose", "summarize_chapter"),
+                ("compose", "summarize_all"),
+                ("compose", "summarize_story"),
+            ],
+        );
 
         // Condense route
-        agent.add_route("condense", vec![
-            ("compose", "condense_chapter"),
-            ("compose", "condense_wiki"),
-        ]);
+        agent.add_route(
+            "condense",
+            vec![
+                ("compose", "condense_chapter"),
+                ("compose", "condense_wiki"),
+            ],
+        );
 
         // Find route
-        agent.add_route("find", vec![
-            ("compose", "find_info"),
-        ]);
+        agent.add_route("find", vec![("compose", "find_info")]);
 
         // Edit route
-        agent.add_route("edit", vec![
-            ("compose", "edit_chapter"),
-            ("compose", "revise_chapter"),
-        ]);
+        agent.add_route(
+            "edit",
+            vec![("compose", "edit_chapter"), ("compose", "revise_chapter")],
+        );
 
         // Rewrite route (global operations)
-        agent.add_route("rewrite", vec![
-            ("compose", "change_name"),
-            ("compose", "change_style"),
-            ("compose", "change_pov"),
-        ]);
+        agent.add_route(
+            "rewrite",
+            vec![
+                ("compose", "change_name"),
+                ("compose", "change_style"),
+                ("compose", "change_pov"),
+            ],
+        );
 
         // Outline route
-        agent.add_route("outline", vec![
-            ("compose", "outline_diff"),
-            ("compose", "plan_modification"),
-            ("compose", "sync_outline"),
-        ]);
+        agent.add_route(
+            "outline",
+            vec![
+                ("compose", "outline_diff"),
+                ("compose", "plan_modification"),
+                ("compose", "sync_outline"),
+            ],
+        );
 
         // Mode route
-        agent.add_route("mode", vec![
-            ("compose", "lock_story"),
-            ("compose", "switch_story"),
-            ("compose", "unlock_story"),
-            ("compose", "status"),
-        ]);
+        agent.add_route(
+            "mode",
+            vec![
+                ("compose", "lock_story"),
+                ("compose", "switch_story"),
+                ("compose", "unlock_story"),
+                ("compose", "status"),
+            ],
+        );
 
         // Brainstorm route
-        agent.add_route("brainstorm", vec![
-            ("compose", "brainstorm"),
-            ("compose", "expand_premise"),
-        ]);
+        agent.add_route(
+            "brainstorm",
+            vec![("compose", "brainstorm"), ("compose", "expand_premise")],
+        );
 
         // Default fallback
-        agent.add_route("justChatting", vec![
-            ("compose", "chat"),
-        ]);
+        agent.add_route("justChatting", vec![("compose", "chat")]);
     }
 
     /// Run story mode with the given user input.
@@ -187,12 +201,15 @@ impl StoryModeAgent {
         let trimmed = input.trim();
 
         // ── Classification (slash commands bypass model internally) ──
-        let classified = self.classifier.classify(
-            backend,
-            trimmed,
-            &self.session_manager.list_stories(),
-            self.session_manager.active_session_name(),
-        ).map_err(|e| format!("Classification failed: {e}"))?;
+        let classified = self
+            .classifier
+            .classify(
+                backend,
+                trimmed,
+                &self.session_manager.list_stories(),
+                self.session_manager.active_session_name(),
+            )
+            .map_err(|e| format!("Classification failed: {e}"))?;
 
         self.execute_intent(backend, &classified.intent, input)
     }
@@ -211,7 +228,9 @@ impl StoryModeAgent {
             StoryIntent::ValidateOutline => self.handle_validate_outline(backend),
             StoryIntent::ValidateWiki => self.handle_validate_wiki(backend),
             StoryIntent::ValidateAll => self.handle_validate_all(backend),
-            StoryIntent::EvaluateChapterAgainstPrevious(num) => self.handle_evaluate_continuity(backend, *num),
+            StoryIntent::EvaluateChapterAgainstPrevious(num) => {
+                self.handle_evaluate_continuity(backend, *num)
+            }
 
             // ── Summarization ──
             StoryIntent::SummarizeChapter(num) => self.handle_summarize_chapter(backend, *num),
@@ -224,11 +243,17 @@ impl StoryModeAgent {
             StoryIntent::FindInfo { query } => self.handle_find_info(query),
 
             // ── Editing ──
-            StoryIntent::EditChapter { num, description } => self.handle_edit_chapter(backend, *num, description),
-            StoryIntent::ReviseChapter { num, direction } => self.handle_revise_chapter(backend, *num, direction),
+            StoryIntent::EditChapter { num, description } => {
+                self.handle_edit_chapter(backend, *num, description)
+            }
+            StoryIntent::ReviseChapter { num, direction } => {
+                self.handle_revise_chapter(backend, *num, direction)
+            }
 
             // ── Rewriting ──
-            StoryIntent::ChangeCharacterName { old, new } => self.handle_change_name(backend, old, new),
+            StoryIntent::ChangeCharacterName { old, new } => {
+                self.handle_change_name(backend, old, new)
+            }
             StoryIntent::ChangeStyle(style) => self.handle_change_style(backend, style),
             StoryIntent::ChangePOV(pov) => self.handle_change_pov(backend, pov),
 
@@ -255,9 +280,9 @@ impl StoryModeAgent {
     // ═══════════════════════════════════════════════════════════════════
 
     fn require_session(&self) -> Result<&StorySession, String> {
-        self.session_manager
-            .active_session()
-            .ok_or_else(|| "No active story session. Use 'let's work on [story]' first.".to_string())
+        self.session_manager.active_session().ok_or_else(|| {
+            "No active story session. Use 'let's work on [story]' first.".to_string()
+        })
     }
 
     fn handle_validate_chapter(
@@ -266,7 +291,10 @@ impl StoryModeAgent {
         num: usize,
     ) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let chapter_text = session.tool_set.read_chapter(num).map_err(|e| format!("Read error: {e}"))?;
+        let chapter_text = session
+            .tool_set
+            .read_chapter(num)
+            .map_err(|e| format!("Read error: {e}"))?;
         let outline = session.tool_set.read_outline().unwrap_or_default();
 
         let report = self.validation_engine.validate_chapter(
@@ -277,7 +305,10 @@ impl StoryModeAgent {
             &WordCountTargets::default(),
         );
 
-        Ok(StoryModeResult::validation(report, format!("Chapter {num}")))
+        Ok(StoryModeResult::validation(
+            report,
+            format!("Chapter {num}"),
+        ))
     }
 
     fn handle_validate_outline(
@@ -285,28 +316,32 @@ impl StoryModeAgent {
         backend: &dyn ModelBackend,
     ) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let outline = session.tool_set.read_outline().map_err(|e| format!("Read error: {e}"))?;
+        let outline = session
+            .tool_set
+            .read_outline()
+            .map_err(|e| format!("Read error: {e}"))?;
 
-        let report = self.validation_engine.validate_outline(Some(backend), &outline);
+        let report = self
+            .validation_engine
+            .validate_outline(Some(backend), &outline);
         Ok(StoryModeResult::validation(report, "Outline".to_string()))
     }
 
-    fn handle_validate_wiki(
-        &self,
-        backend: &dyn ModelBackend,
-    ) -> Result<StoryModeResult, String> {
+    fn handle_validate_wiki(&self, backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let wiki = session.tool_set.read_wiki().map_err(|e| format!("Read error: {e}"))?;
+        let wiki = session
+            .tool_set
+            .read_wiki()
+            .map_err(|e| format!("Read error: {e}"))?;
         let chapters = session.tool_set.read_all_chapters().unwrap_or_default();
 
-        let report = self.validation_engine.validate_wiki(Some(backend), &wiki, &chapters);
+        let report = self
+            .validation_engine
+            .validate_wiki(Some(backend), &wiki, &chapters);
         Ok(StoryModeResult::validation(report, "Wiki".to_string()))
     }
 
-    fn handle_validate_all(
-        &self,
-        backend: &dyn ModelBackend,
-    ) -> Result<StoryModeResult, String> {
+    fn handle_validate_all(&self, backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
         let outline = session.tool_set.read_outline().unwrap_or_default();
         let wiki = session.tool_set.read_wiki().unwrap_or_default();
@@ -329,7 +364,10 @@ impl StoryModeAgent {
         num: usize,
     ) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let current = session.tool_set.read_chapter(num).map_err(|e| format!("Read error: {e}"))?;
+        let current = session
+            .tool_set
+            .read_chapter(num)
+            .map_err(|e| format!("Read error: {e}"))?;
         let previous = if num > 1 {
             session.tool_set.read_chapter(num - 1).unwrap_or_default()
         } else {
@@ -348,11 +386,15 @@ impl StoryModeAgent {
                 previous
             }
         );
-        let checks = critic.critique_chapter(backend, &current, num, &continuity_context)
+        let checks = critic
+            .critique_chapter(backend, &current, num, &continuity_context)
             .map_err(|e| format!("Critique failed: {e}"))?;
 
         let report = crate::ValidationReport::from_checks(checks);
-        Ok(StoryModeResult::validation(report, format!("Chapter {num} continuity")))
+        Ok(StoryModeResult::validation(
+            report,
+            format!("Chapter {num} continuity"),
+        ))
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -365,15 +407,25 @@ impl StoryModeAgent {
         num: usize,
     ) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let chapter_text = session.tool_set.read_chapter(num).map_err(|e| format!("Read error: {e}"))?;
+        let chapter_text = session
+            .tool_set
+            .read_chapter(num)
+            .map_err(|e| format!("Read error: {e}"))?;
 
         // Extract title from first line
-        let title = chapter_text.lines().next().unwrap_or("").trim_start_matches('#').trim().to_string();
+        let title = chapter_text
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim_start_matches('#')
+            .trim()
+            .to_string();
 
         let condensed = CondensedChapter::from_text(num, &title, &chapter_text);
 
         // Try inference-backed summarization for the 2-sentence summary
-        let system = "You are a literary summarizer. Output valid JSON only. No thinking, no reasoning.";
+        let system =
+            "You are a literary summarizer. Output valid JSON only. No thinking, no reasoning.";
         let prompt = format!(
             "Summarize this chapter in 2 sentences. Output JSON with a single field 'summary'.\n\nChapter:\n{}",
             if chapter_text.len() > 2000 {
@@ -385,18 +437,17 @@ impl StoryModeAgent {
         );
 
         #[derive(Deserialize)]
-        struct SummaryResponse { summary: String }
+        struct SummaryResponse {
+            summary: String,
+        }
 
         // State-tuned: no grammar, prefill + clean_json_output for structured output
-        let summary_result = state_tuned_json::<SummaryResponse>(
-            backend,
-            system,
-            &prompt,
-            0.3,
-            200,
-        );
+        let summary_result =
+            state_tuned_json::<SummaryResponse>(backend, system, &prompt, 0.3, 200);
 
-        let summary_2 = summary_result.map(|r| r.summary).unwrap_or_else(|e| format!("Summary unavailable: {e}"));
+        let summary_2 = summary_result
+            .map(|r| r.summary)
+            .unwrap_or_else(|e| format!("Summary unavailable: {e}"));
 
         Ok(StoryModeResult::text(format!(
             "## Chapter {num}: {}\n\n**Words:** {}\n\n**Summary:** {}\n\n**Characters mentioned:** {}\n\n**Settings mentioned:** {}",
@@ -408,10 +459,7 @@ impl StoryModeAgent {
         )))
     }
 
-    fn handle_summarize_all(
-        &self,
-        backend: &dyn ModelBackend,
-    ) -> Result<StoryModeResult, String> {
+    fn handle_summarize_all(&self, backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
         let chapters = session.tool_set.read_all_chapters().unwrap_or_default();
         let wiki = session.tool_set.read_wiki().unwrap_or_default();
@@ -455,8 +503,14 @@ impl StoryModeAgent {
         // Try to get a model-generated synopsis
         let symptoms_prompt = format!(
             "Write a 3-5 paragraph synopsis of this story based on these chapter summaries:\n{}",
-            chapters.iter().enumerate()
-                .map(|(i, c)| format!("Chapter {}: {}...", i+1, c.chars().take(200).collect::<String>()))
+            chapters
+                .iter()
+                .enumerate()
+                .map(|(i, c)| format!(
+                    "Chapter {}: {}...",
+                    i + 1,
+                    c.chars().take(200).collect::<String>()
+                ))
                 .collect::<Vec<_>>()
                 .join("\n\n")
         );
@@ -475,15 +529,18 @@ impl StoryModeAgent {
         let grammar = schema.to_gbnf("Synopsis").ok();
 
         let result: Result<SynopsisResponse, String> = {
-            let text = futures::executor::block_on(backend.complete(CompletionRequest {
-                system: "You are a literary summarizer. Output valid JSON only. No thinking.".to_string(),
-                prompt: symptoms_prompt,
-                grammar,
-                temperature: 0.5,
-                max_tokens: 500,
-                prefill: Some("{\n".into()),
-                ..Default::default()
-            }))
+            let text = futures::executor::block_on(
+                backend.complete(CompletionRequest {
+                    system: "You are a literary summarizer. Output valid JSON only. No thinking."
+                        .to_string(),
+                    prompt: symptoms_prompt,
+                    grammar,
+                    temperature: 0.5,
+                    max_tokens: 500,
+                    prefill: Some("{\n".into()),
+                    ..Default::default()
+                }),
+            )
             .map_err(|e| format!("model error: {e}"))?
             .text;
 
@@ -515,10 +572,19 @@ impl StoryModeAgent {
 
     fn handle_condense_chapter(&self, num: usize) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let chapter_text = session.tool_set.read_chapter(num).map_err(|e| format!("Read error: {e}"))?;
+        let chapter_text = session
+            .tool_set
+            .read_chapter(num)
+            .map_err(|e| format!("Read error: {e}"))?;
         let wiki = session.tool_set.read_wiki().unwrap_or_default();
 
-        let title = chapter_text.lines().next().unwrap_or("").trim_start_matches('#').trim().to_string();
+        let title = chapter_text
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim_start_matches('#')
+            .trim()
+            .to_string();
         let condensed_wiki = CondensedWiki::from_md(&wiki);
 
         let condensed = CondensedChapter::from_text_with_wiki(
@@ -534,7 +600,10 @@ impl StoryModeAgent {
 
     fn handle_condense_wiki(&self) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let wiki = session.tool_set.read_wiki().map_err(|e| format!("Read error: {e}"))?;
+        let wiki = session
+            .tool_set
+            .read_wiki()
+            .map_err(|e| format!("Read error: {e}"))?;
         let condensed = CondensedWiki::from_md(&wiki);
         Ok(StoryModeResult::json(condensed))
     }
@@ -559,7 +628,12 @@ impl StoryModeAgent {
         if !wiki_results.is_empty() {
             output.push_str("### Wiki entries\n\n");
             for entry in &wiki_results {
-                output.push_str(&format!("- **{}** ({}) — {}\n", entry.name, entry.kind, entry.description.chars().take(100).collect::<String>()));
+                output.push_str(&format!(
+                    "- **{}** ({}) — {}\n",
+                    entry.name,
+                    entry.kind,
+                    entry.description.chars().take(100).collect::<String>()
+                ));
             }
             output.push('\n');
         } else {
@@ -567,12 +641,23 @@ impl StoryModeAgent {
         }
 
         if !chapter_matches.is_empty() {
-            output.push_str(&format!("### Chapter matches ({} total)\n\n", chapter_matches.len()));
+            output.push_str(&format!(
+                "### Chapter matches ({} total)\n\n",
+                chapter_matches.len()
+            ));
             for m in chapter_matches.iter().take(20) {
-                output.push_str(&format!("- {}: line {} — \"{}\"\n", m.file, m.line_number, m.line.chars().take(80).collect::<String>()));
+                output.push_str(&format!(
+                    "- {}: line {} — \"{}\"\n",
+                    m.file,
+                    m.line_number,
+                    m.line.chars().take(80).collect::<String>()
+                ));
             }
             if chapter_matches.len() > 20 {
-                output.push_str(&format!("  ... and {} more matches\n", chapter_matches.len() - 20));
+                output.push_str(&format!(
+                    "  ... and {} more matches\n",
+                    chapter_matches.len() - 20
+                ));
             }
         } else {
             output.push_str("No chapter matches found.");
@@ -592,7 +677,10 @@ impl StoryModeAgent {
         description: &str,
     ) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let chapter_text = session.tool_set.read_chapter(num).map_err(|e| format!("Read error: {e}"))?;
+        let chapter_text = session
+            .tool_set
+            .read_chapter(num)
+            .map_err(|e| format!("Read error: {e}"))?;
 
         // Use model to generate revised chapter based on description
         let prompt = format!(
@@ -607,7 +695,9 @@ impl StoryModeAgent {
         );
 
         #[derive(Deserialize)]
-        struct EditResponse { content: String }
+        struct EditResponse {
+            content: String,
+        }
 
         let schema = Schema::object().prop("content", Schema::string()).build();
         let grammar = schema.to_gbnf("EditResponse").ok();
@@ -616,13 +706,8 @@ impl StoryModeAgent {
         let edit_system = "You are a fiction editor. Output valid JSON only. \
                          Preserve the chapter's structure but apply the requested changes. \
                          No thinking, no reasoning, only JSON.";
-        let edit_result = state_tuned_json::<EditResponse>(
-            backend,
-            edit_system,
-            &prompt,
-            0.6,
-            1024,
-        );
+        let edit_result =
+            state_tuned_json::<EditResponse>(backend, edit_system, &prompt, 0.6, 1024);
 
         match edit_result {
             Ok(edit) => {
@@ -645,7 +730,10 @@ impl StoryModeAgent {
         direction: &str,
     ) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let chapter_text = session.tool_set.read_chapter(num).map_err(|e| format!("Read error: {e}"))?;
+        let chapter_text = session
+            .tool_set
+            .read_chapter(num)
+            .map_err(|e| format!("Read error: {e}"))?;
 
         let prompt = format!(
             "Revise this chapter to be more {}. Write a revised version.\n\nChapter:\n{}",
@@ -659,7 +747,10 @@ impl StoryModeAgent {
         );
 
         #[derive(Deserialize)]
-        struct ReviseResponse { content: String, changes_made: Vec<String> }
+        struct ReviseResponse {
+            content: String,
+            changes_made: Vec<String>,
+        }
 
         let schema = Schema::object()
             .prop("content", Schema::string())
@@ -672,13 +763,8 @@ impl StoryModeAgent {
         let revise_system = "You are a fiction revision assistant. Output valid JSON only. \
                          Revise the chapter according to the direction provided. \
                          No thinking, no commentary. Only JSON.";
-        let revise_result = state_tuned_json::<ReviseResponse>(
-            backend,
-            revise_system,
-            &prompt,
-            0.7,
-            1024,
-        );
+        let revise_result =
+            state_tuned_json::<ReviseResponse>(backend, revise_system, &prompt, 0.7, 1024);
 
         match revise_result {
             Ok(revise) => {
@@ -724,12 +810,21 @@ impl StoryModeAgent {
         }
 
         // Show matches and confirm
-        let mut output = format!("## Rename \"{old}\" → \"{new}\"\n\nFound {total_matches} occurrence(s):\n\n");
+        let mut output =
+            format!("## Rename \"{old}\" → \"{new}\"\n\nFound {total_matches} occurrence(s):\n\n");
 
         if !chapter_matches.is_empty() {
-            output.push_str(&format!("### Chapters ({} matches)\n\n", chapter_matches.len()));
+            output.push_str(&format!(
+                "### Chapters ({} matches)\n\n",
+                chapter_matches.len()
+            ));
             for m in chapter_matches.iter().take(10) {
-                output.push_str(&format!("- {}: line {} — \"{}\"\n", m.file, m.line_number, m.line.chars().take(60).collect::<String>()));
+                output.push_str(&format!(
+                    "- {}: line {} — \"{}\"\n",
+                    m.file,
+                    m.line_number,
+                    m.line.chars().take(60).collect::<String>()
+                ));
             }
             if chapter_matches.len() > 10 {
                 output.push_str(&format!("  ... and {} more\n", chapter_matches.len() - 10));
@@ -740,7 +835,12 @@ impl StoryModeAgent {
         if !wiki_matches.is_empty() {
             output.push_str(&format!("### Wiki ({} matches)\n\n", wiki_matches.len()));
             for m in wiki_matches.iter().take(5) {
-                output.push_str(&format!("- {}: line {} — \"{}\"\n", m.file, m.line_number, m.line.chars().take(60).collect::<String>()));
+                output.push_str(&format!(
+                    "- {}: line {} — \"{}\"\n",
+                    m.file,
+                    m.line_number,
+                    m.line.chars().take(60).collect::<String>()
+                ));
             }
             output.push('\n');
         }
@@ -763,8 +863,16 @@ impl StoryModeAgent {
         }
 
         // Rewrite all chapters with the new style via model
-        let chapter_preview: String = chapters.iter().enumerate()
-            .map(|(i, c)| format!("Chapter {}: {}...", i+1, c.chars().take(200).collect::<String>()))
+        let chapter_preview: String = chapters
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                format!(
+                    "Chapter {}: {}...",
+                    i + 1,
+                    c.chars().take(200).collect::<String>()
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n\n");
 
@@ -775,31 +883,30 @@ impl StoryModeAgent {
         );
 
         #[derive(Deserialize)]
-        struct StyleResponse { chapters: Vec<StyleChapter> }
+        struct StyleResponse {
+            chapters: Vec<StyleChapter>,
+        }
         #[derive(Deserialize)]
-        struct StyleChapter { chapter_num: usize, content: String }
+        struct StyleChapter {
+            chapter_num: usize,
+            content: String,
+        }
 
         // State-tuned: no grammar constraint for style rewrite
-        let style_system = format!("You are a fiction writer that writes in {} style. Output valid JSON only.", style);
-        let style_result = state_tuned_json::<StyleResponse>(
-            backend,
-            &style_system,
-            &prompt,
-            0.7,
-            2048,
+        let style_system = format!(
+            "You are a fiction writer that writes in {} style. Output valid JSON only.",
+            style
         );
+        let style_result =
+            state_tuned_json::<StyleResponse>(backend, &style_system, &prompt, 0.7, 2048);
 
         match style_result {
-            Ok(response) => {
-                Ok(StoryModeResult::text(format!(
-                    "## Style Change → {}\n\n{} chapter(s) rewritten.",
-                    style,
-                    response.chapters.len()
-                )))
-            }
-            Err(e) => Ok(StoryModeResult::text(format!(
-                "Style change failed: {e}"
+            Ok(response) => Ok(StoryModeResult::text(format!(
+                "## Style Change → {}\n\n{} chapter(s) rewritten.",
+                style,
+                response.chapters.len()
             ))),
+            Err(e) => Ok(StoryModeResult::text(format!("Style change failed: {e}"))),
         }
     }
 
@@ -816,8 +923,16 @@ impl StoryModeAgent {
             return Ok(StoryModeResult::text("No chapters to rewrite.".to_string()));
         }
 
-        let chapter_preview: String = chapters.iter().enumerate()
-            .map(|(i, c)| format!("Chapter {}: {}...", i+1, c.chars().take(200).collect::<String>()))
+        let chapter_preview: String = chapters
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                format!(
+                    "Chapter {}: {}...",
+                    i + 1,
+                    c.chars().take(200).collect::<String>()
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n\n");
 
@@ -828,31 +943,29 @@ impl StoryModeAgent {
         );
 
         #[derive(Deserialize)]
-        struct PovResponse { chapters: Vec<PovChapter> }
+        struct PovResponse {
+            chapters: Vec<PovChapter>,
+        }
         #[derive(Deserialize)]
-        struct PovChapter { chapter_num: usize, content: String }
+        struct PovChapter {
+            chapter_num: usize,
+            content: String,
+        }
 
         // State-tuned: no grammar constraint for POV rewrite
-        let pov_system = format!("You rewrite stories in {} POV. Output valid JSON only.", pov);
-        let pov_result = state_tuned_json::<PovResponse>(
-            backend,
-            &pov_system,
-            &prompt,
-            0.7,
-            2048,
+        let pov_system = format!(
+            "You rewrite stories in {} POV. Output valid JSON only.",
+            pov
         );
+        let pov_result = state_tuned_json::<PovResponse>(backend, &pov_system, &prompt, 0.7, 2048);
 
         match pov_result {
-            Ok(response) => {
-                Ok(StoryModeResult::text(format!(
-                    "## POV Change → {}\n\n{} chapter(s) rewritten.",
-                    pov,
-                    response.chapters.len()
-                )))
-            }
-            Err(e) => Ok(StoryModeResult::text(format!(
-                "POV change failed: {e}"
+            Ok(response) => Ok(StoryModeResult::text(format!(
+                "## POV Change → {}\n\n{} chapter(s) rewritten.",
+                pov,
+                response.chapters.len()
             ))),
+            Err(e) => Ok(StoryModeResult::text(format!("POV change failed: {e}"))),
         }
     }
 
@@ -862,7 +975,10 @@ impl StoryModeAgent {
 
     fn handle_outline_diff(&self) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let current_outline = session.tool_set.read_outline().map_err(|e| format!("Read error: {e}"))?;
+        let current_outline = session
+            .tool_set
+            .read_outline()
+            .map_err(|e| format!("Read error: {e}"))?;
 
         let diff = match &session.outline_snapshot {
             Some(snapshot) => OutlineDiff::compute(snapshot, &current_outline),
@@ -872,7 +988,9 @@ impl StoryModeAgent {
         };
 
         if diff.changes.is_empty() {
-            return Ok(StoryModeResult::text("✅ No changes to the outline since last check.".to_string()));
+            return Ok(StoryModeResult::text(
+                "✅ No changes to the outline since last check.".to_string(),
+            ));
         }
 
         let mut output = String::from("## Outline Changes\n\n");
@@ -885,7 +1003,11 @@ impl StoryModeAgent {
                 ChapterRemoved { number, title } => {
                     output.push_str(&format!("❌ **Chapter {number}: {title}** — removed\n"));
                 }
-                ChapterRenamed { number, old_title, new_title } => {
+                ChapterRenamed {
+                    number,
+                    old_title,
+                    new_title,
+                } => {
                     output.push_str(&format!("✏️ **Chapter {number}** — renamed from \"{old_title}\" to \"{new_title}\"\n"));
                 }
                 ChapterSummaryChanged { number, .. } => {
@@ -909,31 +1031,52 @@ impl StoryModeAgent {
         backend: &dyn ModelBackend,
     ) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
-        let current_outline = session.tool_set.read_outline().map_err(|e| format!("Read error: {e}"))?;
+        let current_outline = session
+            .tool_set
+            .read_outline()
+            .map_err(|e| format!("Read error: {e}"))?;
         let chapter_count = session.tool_set.count_chapters();
 
         let diff = match &session.outline_snapshot {
             Some(snapshot) => OutlineDiff::compute(snapshot, &current_outline),
-            None => return Ok(StoryModeResult::text(
-                "No outline snapshot available. Run `/status` first to save a baseline.".to_string()
-            )),
+            None => {
+                return Ok(StoryModeResult::text(
+                    "No outline snapshot available. Run `/status` first to save a baseline."
+                        .to_string(),
+                ))
+            }
         };
 
         if diff.changes.is_empty() {
-            return Ok(StoryModeResult::text("✅ No changes to plan for.".to_string()));
+            return Ok(StoryModeResult::text(
+                "✅ No changes to plan for.".to_string(),
+            ));
         }
 
         match ModificationPlan::generate(backend, &diff, chapter_count) {
             Ok(plan) => {
                 let mut output = String::from("## Modification Plan\n\n");
                 output.push_str(&format!("**Effort:** {}  \n", plan.estimated_effort));
-                output.push_str(&format!("**Preserves continuity:** {}  \n\n", plan.preserves_continuity));
+                output.push_str(&format!(
+                    "**Preserves continuity:** {}  \n\n",
+                    plan.preserves_continuity
+                ));
                 output.push_str("### Changes required\n\n");
                 for change in &plan.changes_required {
                     output.push_str(&format!("- {change}\n"));
                 }
-                output.push_str(&format!("\n### Approach\n\n{}\n", plan.recommended_approach));
-                output.push_str(&format!("\n### Affected chapters\n\n{}", plan.affected_chapters.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ")));
+                output.push_str(&format!(
+                    "\n### Approach\n\n{}\n",
+                    plan.recommended_approach
+                ));
+                output.push_str(&format!(
+                    "\n### Affected chapters\n\n{}",
+                    plan.affected_chapters
+                        .iter()
+                        .map(|n| n.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
                 Ok(StoryModeResult::text(output))
             }
             Err(e) => Ok(StoryModeResult::text(format!(
@@ -942,10 +1085,7 @@ impl StoryModeAgent {
         }
     }
 
-    fn handle_sync_outline(
-        &self,
-        _backend: &dyn ModelBackend,
-    ) -> Result<StoryModeResult, String> {
+    fn handle_sync_outline(&self, _backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
         Ok(StoryModeResult::text(
             "Outline sync not yet implemented. This will regenerate the outline from chapter content.".to_string()
         ))
@@ -958,7 +1098,10 @@ impl StoryModeAgent {
     fn handle_lock_story(&mut self, name: &str) -> Result<StoryModeResult, String> {
         self.session_manager.lock(name)?;
 
-        let session = self.session_manager.active_session().ok_or("Failed to lock story")?;
+        let session = self
+            .session_manager
+            .active_session()
+            .ok_or("Failed to lock story")?;
         let chapter_count = session.tool_set.count_chapters();
         let word_count = session.total_word_count();
 
@@ -970,7 +1113,10 @@ impl StoryModeAgent {
     fn handle_switch_story(&mut self, name: &str) -> Result<StoryModeResult, String> {
         self.session_manager.switch(name)?;
 
-        let session = self.session_manager.active_session().ok_or("Failed to switch story")?;
+        let session = self
+            .session_manager
+            .active_session()
+            .ok_or("Failed to switch story")?;
         let chapter_count = session.tool_set.count_chapters();
         let word_count = session.total_word_count();
 
@@ -990,13 +1136,16 @@ impl StoryModeAgent {
                 )))
             }
             None => Ok(StoryModeResult::text(
-                "No previous story found. Use 'let's work on [story]' to start.".to_string()
+                "No previous story found. Use 'let's work on [story]' to start.".to_string(),
             )),
         }
     }
 
     fn handle_unlock_story(&mut self) -> Result<StoryModeResult, String> {
-        let name = self.session_manager.active_session_name().map(|s| s.to_string());
+        let name = self
+            .session_manager
+            .active_session_name()
+            .map(|s| s.to_string());
         self.session_manager.unlock();
         match name {
             Some(n) => Ok(StoryModeResult::text(format!(
@@ -1043,10 +1192,7 @@ impl StoryModeAgent {
     // Brainstorm handlers
     // ═══════════════════════════════════════════════════════════════════
 
-    fn handle_brainstorm(
-        &self,
-        backend: &dyn ModelBackend,
-    ) -> Result<StoryModeResult, String> {
+    fn handle_brainstorm(&self, backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
         let prompt = "Generate three creative story ideas. Output a JSON array of objects with 'title', 'genre', 'tone', 'premise', 'protagonist', 'central_conflict', 'themes'.";
 
         #[derive(Deserialize)]
@@ -1060,31 +1206,31 @@ impl StoryModeAgent {
             themes: Vec<String>,
         }
         #[derive(Deserialize)]
-        struct BrainstormResponse { ideas: Vec<StoryIdea> }
+        struct BrainstormResponse {
+            ideas: Vec<StoryIdea>,
+        }
 
         let schema = Schema::object()
-            .prop("ideas", Schema::array(
-                Schema::object()
-                    .prop("title", Schema::string())
-                    .prop("genre", Schema::string())
-                    .prop("tone", Schema::string())
-                    .prop("premise", Schema::string())
-                    .prop("protagonist", Schema::string())
-                    .prop("central_conflict", Schema::string())
-                    .prop("themes", Schema::array(Schema::string()))
-                    .build()
-            ))
+            .prop(
+                "ideas",
+                Schema::array(
+                    Schema::object()
+                        .prop("title", Schema::string())
+                        .prop("genre", Schema::string())
+                        .prop("tone", Schema::string())
+                        .prop("premise", Schema::string())
+                        .prop("protagonist", Schema::string())
+                        .prop("central_conflict", Schema::string())
+                        .prop("themes", Schema::array(Schema::string()))
+                        .build(),
+                ),
+            )
             .build();
 
         // State-tuned: no grammar constraint for creative generation
         let brainstorm_system = "You are a creative writing assistant. Generate creative story ideas. Output valid JSON only. No thinking.";
-        let result: Result<BrainstormResponse, String> = state_tuned_json(
-            backend,
-            brainstorm_system,
-            prompt,
-            0.8,
-            800,
-        );
+        let result: Result<BrainstormResponse, String> =
+            state_tuned_json(backend, brainstorm_system, prompt, 0.8, 800);
 
         match result {
             Ok(response) => {
@@ -1105,9 +1251,7 @@ impl StoryModeAgent {
                 output.push_str("Want me to expand any of these into a full outline?");
                 Ok(StoryModeResult::text(output))
             }
-            Err(e) => Ok(StoryModeResult::text(format!(
-                "Brainstorming failed: {e}"
-            ))),
+            Err(e) => Ok(StoryModeResult::text(format!("Brainstorming failed: {e}"))),
         }
     }
 
@@ -1144,14 +1288,10 @@ impl StoryModeAgent {
             .build();
 
         // State-tuned: no grammar constraint for premise expansion
-        let expand_system = "You expand story premises into detailed outlines. Output valid JSON only.";
-        let result: Result<ExpandedIdea, String> = state_tuned_json(
-            backend,
-            expand_system,
-            &prompt,
-            0.6,
-            800,
-        );
+        let expand_system =
+            "You expand story premises into detailed outlines. Output valid JSON only.";
+        let result: Result<ExpandedIdea, String> =
+            state_tuned_json(backend, expand_system, &prompt, 0.6, 800);
 
         match result {
             Ok(idea) => {
@@ -1171,9 +1311,7 @@ impl StoryModeAgent {
                 output.push_str("\nWant me to save this as a new story workspace?");
                 Ok(StoryModeResult::text(output))
             }
-            Err(e) => Ok(StoryModeResult::text(format!(
-                "Expansion failed: {e}"
-            ))),
+            Err(e) => Ok(StoryModeResult::text(format!("Expansion failed: {e}"))),
         }
     }
 
@@ -1250,7 +1388,10 @@ impl StoryModeResult {
             Self::Text(t) => t.clone(),
             Self::Validation(report, scope) => {
                 let mut output = format!("## Validation Report — {scope}\n\n");
-                output.push_str(&format!("**Passed:** {}  \n", if report.passed { "✅ Yes" } else { "❌ No" }));
+                output.push_str(&format!(
+                    "**Passed:** {}  \n",
+                    if report.passed { "✅ Yes" } else { "❌ No" }
+                ));
                 output.push_str(&format!("**Summary:** {}  \n\n", report.summary));
 
                 if report.checks.is_empty() {
@@ -1258,7 +1399,9 @@ impl StoryModeResult {
                 } else {
                     output.push_str("### Checks\n\n");
                     for check in &report.checks {
-                        let icon = if check.passed { "✅" } else {
+                        let icon = if check.passed {
+                            "✅"
+                        } else {
                             match check.severity {
                                 crate::ValidationSeverity::Info => "ℹ️",
                                 crate::ValidationSeverity::Warning => "⚠️",
@@ -1277,7 +1420,9 @@ impl StoryModeResult {
 
                 output
             }
-            Self::Json(value) => serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("JSON error: {e}")),
+            Self::Json(value) => {
+                serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("JSON error: {e}"))
+            }
             Self::Error(e) => format!("Error: {e}"),
         }
     }

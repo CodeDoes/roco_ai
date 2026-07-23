@@ -146,7 +146,12 @@ impl StorySummarizer {
             .enumerate()
             .map(|(i, text)| {
                 let words: Vec<&str> = text.split_whitespace().collect();
-                let preview: String = words.iter().take(100).cloned().collect::<Vec<_>>().join(" ");
+                let preview: String = words
+                    .iter()
+                    .take(100)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 format!("Chapter {}: {preview}...", i + 1)
             })
             .collect();
@@ -171,17 +176,19 @@ impl StorySummarizer {
             .to_gbnf("SynopsisResponse")
             .ok();
 
-        let completion_result = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: "You are a literary summarizer. Output valid JSON only. \
+        let completion_result = futures::executor::block_on(
+            backend.complete(CompletionRequest {
+                system: "You are a literary summarizer. Output valid JSON only. \
                      Do NOT include thinking, reasoning, or meta-commentary."
-                .to_string(),
-            prompt,
-            grammar,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            prefill: Some("{\n".into()),
-            ..Default::default()
-        }));
+                    .to_string(),
+                prompt,
+                grammar,
+                temperature: self.temperature,
+                max_tokens: self.max_tokens,
+                prefill: Some("{\n".into()),
+                ..Default::default()
+            }),
+        );
 
         let result: Result<SynopsisResponse, String> = match completion_result {
             Ok(response) => {
@@ -246,7 +253,8 @@ mod tests {
         let outline = "A story about adventure.";
 
         let summarizer = StorySummarizer::new(None);
-        let summary = summarizer.summarize_story(&chapters, wiki, outline, "Adventure Story", "fantasy");
+        let summary =
+            summarizer.summarize_story(&chapters, wiki, outline, "Adventure Story", "fantasy");
 
         assert_eq!(summary.title, "Adventure Story");
         assert_eq!(summary.genre, "fantasy");
@@ -258,7 +266,8 @@ mod tests {
 
     #[test]
     fn test_character_name_extraction() {
-        let wiki = "## Characters\n### Alice\nBrave hero\n### Bob\nWise mentor\n### Charlie\nSidekick\n";
+        let wiki =
+            "## Characters\n### Alice\nBrave hero\n### Bob\nWise mentor\n### Charlie\nSidekick\n";
         let summarizer = StorySummarizer::new(None);
         let names = summarizer.extract_character_names(wiki);
         assert_eq!(names.len(), 3);
@@ -280,6 +289,10 @@ mod tests {
     fn test_synopsis_schema_is_valid() {
         let schema = StorySummary::synopsis_schema();
         let gbnf = schema.to_gbnf("SynopsisResponse");
-        assert!(gbnf.is_ok(), "Schema should convert to GBNF: {:?}", gbnf.err());
+        assert!(
+            gbnf.is_ok(),
+            "Schema should convert to GBNF: {:?}",
+            gbnf.err()
+        );
     }
 }

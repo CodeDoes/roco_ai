@@ -1,0 +1,13 @@
+{
+  "model": "rwkv-7",
+  "prompt": "Once upon a time",
+  "system": "You are a storyteller.",
+  "temperature": 0.8,
+  "max_tokens": 200,
+  "stream": false,
+  "thinking": true,
+  "grammar": "story",
+  "prefill": "In a land far away",
+  "session": "story-session-1",
+  "preserve_state": true
+}

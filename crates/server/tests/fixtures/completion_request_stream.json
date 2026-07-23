@@ -1,0 +1,6 @@
+{
+  "prompt": "Tell me a story",
+  "system": "You are a storyteller.",
+  "stream": true,
+  "max_tokens": 100
+}
