@@ -9,3 +9,6 @@ pub mod router;
 
 pub use gateway::Gateway;
 pub use router::Router;
+
+#[cfg(test)]
+mod tests;

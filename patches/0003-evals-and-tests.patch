@@ -1,0 +1,5 @@
+--- a/evals/run.sh
++++ b/evals/run.sh
+... existing ...
++++ b/evals/session_eval.sh / workspace_eval.sh / validation_eval.sh / grammar_eval.sh
++

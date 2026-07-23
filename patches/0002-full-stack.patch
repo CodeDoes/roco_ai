@@ -1,0 +1,13 @@
+--- /dev/null
++++ b/crates/app/src/local_agent/full_stack.rs
+@@ -0,0 +1,80 @@
++//! FULL STACK (mocked) — integrated loop: agent -> framework -> mock backend -> verify -> rollback.
++use super::*;
++pub struct StackRunner;
++impl StackRunner {
++    pub fn run_all(input: &str) -> StackResult { ... }
++    pub fn run_with_sandbox_and_verifier(input: &str) -> (String, bool, u32) { ... }
++}
++#[derive(Debug, Clone)]
++pub struct StackResult { pub output: String, pub success: bool, pub attempts: u32, pub rollback_history: Vec<State> }
++

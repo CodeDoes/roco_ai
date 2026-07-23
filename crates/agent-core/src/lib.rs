@@ -45,3 +45,6 @@ pub use scheduler::{ScheduleTool, ScheduledOutcome, ScheduledTask, Scheduler};
 pub use sessions::{SessionSearchTool, SessionStore, SessionTranscript, SessionTurn};
 pub use subtask::{Subtask, SubtaskOutput};
 pub use tool_selector::select_relevant;
+
+#[cfg(test)]
+mod tests;
