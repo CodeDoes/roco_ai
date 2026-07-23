@@ -28,3 +28,6 @@ pub use story_persistence::{StoryPersistence, StoryState, StorySummary};
 pub use writing_assistant::{
     CrossReference, DiffAnalysis, WritingAnalysis, WritingAssistant, WritingSuggestion,
 };
+
+#[cfg(test)]
+mod tests;

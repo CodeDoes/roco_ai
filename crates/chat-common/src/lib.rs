@@ -8,3 +8,6 @@ pub mod display;
 
 pub use conversation::{Conversation, ConversationId, ConversationTurn};
 pub use display::{DisplaySettings, OutputFormat};
+
+#[cfg(test)]
+mod tests;

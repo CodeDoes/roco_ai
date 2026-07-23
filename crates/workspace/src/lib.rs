@@ -19,3 +19,6 @@ pub use workspace::Workspace;
 pub use workspace::WorkspaceKind;
 
 pub use version::{ReversibleAction, Snapshot, SnapshotSummary, VersionControl};
+
+#[cfg(test)]
+mod tests;

@@ -674,3 +674,7 @@ mod tests {
         assert_eq!(by_scope.get("chapter:2").unwrap().len(), 1);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/mod.rs"]
+mod tests_file;

@@ -24,3 +24,6 @@ pub use strategies::{
     evaluate_all_strategies, LooseJsonStrategy, OutputParser, OutputStrategy, RawGbnfStrategy,
     SchemaStrategy, StateTunedStrategy, StrategyEvalResult, StrategyKind, StrategySelector,
 };
+
+#[cfg(test)]
+mod tests;

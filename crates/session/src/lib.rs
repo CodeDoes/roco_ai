@@ -50,3 +50,6 @@ pub mod types;
 pub use pool::{LruSessionPool, SessionPool};
 pub use store::{SessionError, SessionHandle, SessionStore};
 pub use types::*;
+
+#[cfg(test)]
+mod tests;

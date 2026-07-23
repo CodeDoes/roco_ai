@@ -14,3 +14,6 @@ pub use parse::*;
 pub use registry::ToolRegistry;
 pub use tool::Tool;
 pub use tool::ToolError;
+
+#[cfg(test)]
+mod tests;
