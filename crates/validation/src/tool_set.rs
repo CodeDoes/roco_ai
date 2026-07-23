@@ -66,7 +66,7 @@ impl StoryToolSet {
     // ═════════════════════════════════════════════════════════════════
 
     /// Resolve a file path relative to the workspace root.
-    fn resolve(&self, path: &str) -> PathBuf {
+    fn _resolve(&self, path: &str) -> PathBuf {
         let mut resolved = self.workspace_path.join(path);
         // Normalize to prevent directory traversal
         if let Ok(normalized) = resolved.canonicalize() {
@@ -111,7 +111,7 @@ impl StoryToolSet {
                 format!("chapter_{}.md", num),
                 format!("03-CHAPTER_{}.md", num),
             ] {
-                let path = chapters_dir.join(&name);
+                let path = chapters_dir.join(name);
                 if path.exists() {
                     return path;
                 }
@@ -124,13 +124,15 @@ impl StoryToolSet {
             format!("03-CHAPTER_{}.md", num),
             format!("{:02}-chapter.md", num),
         ] {
-            let path = self.workspace_path.join(&name);
+            let path = self.workspace_path.join(name);
             if path.exists() {
                 return path;
             }
         }
         // Fallback: construct default path
-        self.workspace_path.join("chapters").join(format!("{:02}-chapter.md", num))
+        self.workspace_path
+            .join("chapters")
+            .join(format!("{:02}-chapter.md", num))
     }
 
     /// Get the backup directory path.
@@ -154,8 +156,7 @@ impl StoryToolSet {
             .unwrap_or_default()
             .as_secs();
 
-        let rel_path = path.strip_prefix(&self.workspace_path)
-            .unwrap_or(path);
+        let rel_path = path.strip_prefix(&self.workspace_path).unwrap_or(path);
 
         let backup_name = format!(
             "{}_{}_{}",
@@ -174,7 +175,8 @@ impl StoryToolSet {
     /// List available backups for a file.
     pub fn list_backups(&self, file_path: &Path) -> Result<Vec<PathBuf>, String> {
         let backup_dir = self.backup_dir();
-        let rel_path = file_path.strip_prefix(&self.workspace_path)
+        let rel_path = file_path
+            .strip_prefix(&self.workspace_path)
             .unwrap_or(file_path);
 
         let prefix = format!("_{}_", rel_path.to_string_lossy().replace('/', "_"));
@@ -195,10 +197,12 @@ impl StoryToolSet {
     /// Restore the most recent backup for a file.
     pub fn restore_latest_backup(&self, file_path: &Path) -> Result<(), String> {
         let backups = self.list_backups(file_path)?;
-        let latest = backups.last().ok_or_else(|| "No backups found".to_string())?;
+        let latest = backups
+            .last()
+            .ok_or_else(|| "No backups found".to_string())?;
 
-        let content = std::fs::read_to_string(latest)
-            .map_err(|e| format!("Failed to read backup: {e}"))?;
+        let content =
+            std::fs::read_to_string(latest).map_err(|e| format!("Failed to read backup: {e}"))?;
 
         std::fs::write(file_path, &content)
             .map_err(|e| format!("Failed to restore backup: {e}"))?;
@@ -214,8 +218,7 @@ impl StoryToolSet {
     pub fn read_wiki(&self) -> Result<String, String> {
         let path = self.wiki_path();
         if path.exists() {
-            std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read wiki: {e}"))
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read wiki: {e}"))
         } else {
             Ok(String::new())
         }
@@ -225,8 +228,7 @@ impl StoryToolSet {
     pub fn read_chapter(&self, num: usize) -> Result<String, String> {
         let path = self.chapter_path(num);
         if path.exists() {
-            std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read chapter {num}: {e}"))
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read chapter {num}: {e}"))
         } else {
             Err(format!("Chapter {num} not found at {:?}", path))
         }
@@ -249,8 +251,7 @@ impl StoryToolSet {
     pub fn read_outline(&self) -> Result<String, String> {
         let path = self.outline_path();
         if path.exists() {
-            std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read outline: {e}"))
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read outline: {e}"))
         } else {
             Ok(String::new())
         }
@@ -342,7 +343,11 @@ impl StoryToolSet {
         for i in 1..=self.count_chapters() {
             let path = self.chapter_path(i);
             if path.exists() {
-                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let file_name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     // Skip if already found from chapters dir
                     if results.iter().any(|r| r.file == file_name) {
@@ -373,10 +378,14 @@ impl StoryToolSet {
 
         let low_pattern = pattern.to_lowercase();
         let mut results = Vec::new();
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read wiki: {e}"))?;
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read wiki: {e}"))?;
 
-        let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let file_name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         for (i, line) in content.lines().enumerate() {
             if line.to_lowercase().contains(&low_pattern) {
                 results.push(GrepMatch {
@@ -398,7 +407,11 @@ impl StoryToolSet {
         // Also grep outline
         if let Ok(outline) = self.read_outline() {
             let path = self.outline_path();
-            let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let file_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let low_pattern = pattern.to_lowercase();
             for (i, line) in outline.lines().enumerate() {
                 if line.to_lowercase().contains(&low_pattern) {
@@ -427,24 +440,21 @@ impl StoryToolSet {
                 .map_err(|e| format!("Failed to create parent directory: {e}"))?;
         }
         self.backup_file(&path)?;
-        std::fs::write(&path, content)
-            .map_err(|e| format!("Failed to write chapter {num}: {e}"))
+        std::fs::write(&path, content).map_err(|e| format!("Failed to write chapter {num}: {e}"))
     }
 
     /// Write content to the wiki file (creates backup beforehand).
     pub fn write_wiki(&self, content: &str) -> Result<(), String> {
         let path = self.wiki_path();
         self.backup_file(&path)?;
-        std::fs::write(&path, content)
-            .map_err(|e| format!("Failed to write wiki: {e}"))
+        std::fs::write(&path, content).map_err(|e| format!("Failed to write wiki: {e}"))
     }
 
     /// Write content to the outline file (creates backup beforehand).
     pub fn write_outline(&self, content: &str) -> Result<(), String> {
         let path = self.outline_path();
         self.backup_file(&path)?;
-        std::fs::write(&path, content)
-            .map_err(|e| format!("Failed to write outline: {e}"))
+        std::fs::write(&path, content).map_err(|e| format!("Failed to write outline: {e}"))
     }
 
     /// Find and replace text in a specific chapter.
@@ -472,8 +482,8 @@ impl StoryToolSet {
             return Ok(0);
         }
 
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read wiki: {e}"))?;
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read wiki: {e}"))?;
 
         let new_content = content.replace(old, new);
         let replacements = content.matches(old).count();
@@ -499,7 +509,8 @@ impl StoryToolSet {
                 Ok(replacements) => {
                     if replacements > 0 {
                         results.push(EditResult {
-                            file: self.chapter_path(i)
+                            file: self
+                                .chapter_path(i)
                                 .file_name()
                                 .unwrap_or_default()
                                 .to_string_lossy()
@@ -531,7 +542,8 @@ impl StoryToolSet {
             Ok(replacements) => {
                 if replacements > 0 {
                     results.push(EditResult {
-                        file: self.wiki_path()
+                        file: self
+                            .wiki_path()
                             .file_name()
                             .unwrap_or_default()
                             .to_string_lossy()
@@ -571,10 +583,22 @@ mod tests {
 
         // Create a minimal story structure
         fs::create_dir_all(path.join("chapters")).unwrap();
-        fs::write(path.join("outline.md"), "Title: Test Story\nGenre: Fantasy\n\n## Chapter 1: Intro\nSummary here.\n").unwrap();
+        fs::write(
+            path.join("outline.md"),
+            "Title: Test Story\nGenre: Fantasy\n\n## Chapter 1: Intro\nSummary here.\n",
+        )
+        .unwrap();
         fs::write(path.join("wiki.md"), "## Characters\n### Alice\nA hero.\n").unwrap();
-        fs::write(path.join("chapters/01-chapter.md"), "Chapter one content. Alice wakes up.\n").unwrap();
-        fs::write(path.join("chapters/02-chapter.md"), "Chapter two content. Alice explores.\n").unwrap();
+        fs::write(
+            path.join("chapters/01-chapter.md"),
+            "Chapter one content. Alice wakes up.\n",
+        )
+        .unwrap();
+        fs::write(
+            path.join("chapters/02-chapter.md"),
+            "Chapter two content. Alice explores.\n",
+        )
+        .unwrap();
 
         let tool_set = StoryToolSet::new(&path);
         (dir, tool_set)

@@ -87,7 +87,7 @@ impl WikiValidator {
         let mut missing_from_wiki: HashSet<String> = HashSet::new();
         let mut wiki_chars_mentioned: HashSet<String> = HashSet::new();
 
-        for (_i, chapter) in chapters.iter().enumerate() {
+        for chapter in chapters.iter() {
             let lower_ch = chapter.to_lowercase();
 
             for char_name in &wiki_characters {
@@ -100,7 +100,7 @@ impl WikiValidator {
             for word in chapter.split_whitespace() {
                 let cleaned: String = word.chars().filter(|c| c.is_alphabetic()).collect();
                 if cleaned.len() >= 3
-                    && cleaned.chars().next().map_or(false, |c| c.is_uppercase())
+                    && cleaned.chars().next().is_some_and(|c| c.is_uppercase())
                     && !cleaned.chars().skip(1).any(|c| c.is_uppercase())
                     && !wiki_characters
                         .iter()
@@ -749,8 +749,6 @@ mod tests {
     fn test_extract_settings() {
         // Settings without ### subsections return empty; this is expected behavior
         let _settings = extract_settings(sample_wiki());
-        // Just verify the function runs without panic
-        assert!(true);
     }
 
     #[test]

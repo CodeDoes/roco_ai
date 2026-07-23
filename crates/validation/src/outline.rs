@@ -250,7 +250,7 @@ impl OutlineValidator {
         // Title
         let has_title = lower.contains("title")
             || lower.starts_with("# ")
-            || text.lines().next().map_or(false, |l| !l.is_empty());
+            || text.lines().next().is_some_and(|l| !l.is_empty());
         checks.push(ValidationCheck {
             name: "outline_title".into(),
             passed: has_title,
@@ -637,7 +637,7 @@ fn chapters_from_text(text: &str) -> Vec<OutlineChapter> {
         let trimmed = line.trim();
 
         // Match "## Chapter N: Title" or "## Chapter N" patterns
-        if trimmed.starts_with("## ") {
+        if let Some(rest) = trimmed.strip_prefix("## ") {
             // Save previous chapter if any
             if let Some(num) = current_number.take() {
                 chapters.push(OutlineChapter {
@@ -647,7 +647,6 @@ fn chapters_from_text(text: &str) -> Vec<OutlineChapter> {
                 });
             }
 
-            let rest = &trimmed[3..];
             if let Some(chapter_info) = parse_chapter_heading(rest) {
                 current_number = Some(chapter_info.0);
                 current_title = chapter_info.1;

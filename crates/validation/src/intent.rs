@@ -74,20 +74,11 @@ pub enum StoryIntent {
 
     // ── Editing / revision ──────────────────────────────────────────────
     /// Edit a chapter with a description of what to change.
-    EditChapter {
-        num: usize,
-        description: String,
-    },
+    EditChapter { num: usize, description: String },
     /// Revise a chapter in a given direction.
-    ReviseChapter {
-        num: usize,
-        direction: String,
-    },
+    ReviseChapter { num: usize, direction: String },
     /// Change a character's name throughout the story.
-    ChangeCharacterName {
-        old: String,
-        new: String,
-    },
+    ChangeCharacterName { old: String, new: String },
     /// Change the writing style.
     ChangeStyle(String),
     /// Change the point of view.
@@ -236,7 +227,7 @@ impl IntentClassifier {
     ) -> Result<ClassifiedIntent, String> {
         let input = input.trim();
         // Split into command and the rest (everything after the first space)
-        let space_pos = input.find(|c: char| c == ' ' || c == '\t');
+        let space_pos = input.find([' ', '\t']);
         let cmd = match space_pos {
             Some(pos) => input[..pos].to_lowercase(),
             None => input.to_lowercase(),
@@ -344,7 +335,7 @@ impl IntentClassifier {
                 Ok(ClassifiedIntent {
                     intent: StoryIntent::ExpandPremise(prompt),
                     confidence: 1.0,
-                    explanation: format!("Slash command /brainstorm with prompt"),
+                    explanation: "Slash command /brainstorm with prompt".to_string(),
                 })
             }
             "/switch" => {
@@ -385,7 +376,9 @@ impl IntentClassifier {
                 confidence: 1.0,
                 explanation: "Slash command /help (returning status)".into(),
             }),
-            _ => Err(format!("Unknown slash command: {cmd}. Try /help for available commands.")),
+            _ => Err(format!(
+                "Unknown slash command: {cmd}. Try /help for available commands."
+            )),
         }
     }
 
@@ -470,17 +463,19 @@ impl IntentClassifier {
             .prop("explanation", Schema::string())
             .build();
 
-        let text = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: "You classify user intent for a story-writing assistant. \
+        let text = futures::executor::block_on(
+            backend.complete(CompletionRequest {
+                system: "You classify user intent for a story-writing assistant. \
                      Output valid JSON only. No thinking, no reasoning. Only JSON."
-                .to_string(),
-            prompt,
-            grammar: schema.to_gbnf("Classification").ok(),
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            prefill: Some("{\n".into()),
-            ..Default::default()
-        }))
+                    .to_string(),
+                prompt,
+                grammar: schema.to_gbnf("Classification").ok(),
+                temperature: self.temperature,
+                max_tokens: self.max_tokens,
+                prefill: Some("{\n".into()),
+                ..Default::default()
+            }),
+        )
         .map_err(|e| format!("classifier model error: {e}"))?
         .text;
 
@@ -654,10 +649,14 @@ mod tests {
         let result = classifier.parse_slash_command("/validate 3", &[]).unwrap();
         assert_eq!(result.intent, StoryIntent::ValidateChapter(3));
 
-        let result = classifier.parse_slash_command("/validate outline", &[]).unwrap();
+        let result = classifier
+            .parse_slash_command("/validate outline", &[])
+            .unwrap();
         assert_eq!(result.intent, StoryIntent::ValidateOutline);
 
-        let result = classifier.parse_slash_command("/validate wiki", &[]).unwrap();
+        let result = classifier
+            .parse_slash_command("/validate wiki", &[])
+            .unwrap();
         assert_eq!(result.intent, StoryIntent::ValidateWiki);
     }
 
@@ -670,7 +669,9 @@ mod tests {
         let result = classifier.parse_slash_command("/s 2", &[]).unwrap();
         assert_eq!(result.intent, StoryIntent::SummarizeChapter(2));
 
-        let result = classifier.parse_slash_command("/summarize all", &[]).unwrap();
+        let result = classifier
+            .parse_slash_command("/summarize all", &[])
+            .unwrap();
         assert_eq!(result.intent, StoryIntent::SummarizeAllChapters);
     }
 
@@ -707,10 +708,17 @@ mod tests {
         let classifier = IntentClassifier::default();
         let stories = &["fantasy".to_string(), "sci-fi".to_string()];
 
-        let result = classifier.parse_slash_command("/switch sci-fi", stories).unwrap();
-        assert_eq!(result.intent, StoryIntent::SwitchStory("sci-fi".to_string()));
+        let result = classifier
+            .parse_slash_command("/switch sci-fi", stories)
+            .unwrap();
+        assert_eq!(
+            result.intent,
+            StoryIntent::SwitchStory("sci-fi".to_string())
+        );
 
-        let result = classifier.parse_slash_command("/lock fantasy", stories).unwrap();
+        let result = classifier
+            .parse_slash_command("/lock fantasy", stories)
+            .unwrap();
         assert_eq!(result.intent, StoryIntent::LockStory("fantasy".to_string()));
 
         let result = classifier.parse_slash_command("/unlock", stories).unwrap();

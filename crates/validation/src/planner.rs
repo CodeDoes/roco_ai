@@ -174,7 +174,9 @@ impl OutlineDiff {
             detail_parts.push(format!("{renamed} chapter(s) renamed"));
         }
         if summary_changed > 0 {
-            detail_parts.push(format!("{summary_changed} chapter summary/summaries changed"));
+            detail_parts.push(format!(
+                "{summary_changed} chapter summary/summaries changed"
+            ));
         }
 
         let detail = detail_parts.join(", ");
@@ -227,7 +229,7 @@ fn parse_outline_chapters(text: &str) -> Vec<ChapterInfo> {
             current_number = Some(cap.0);
             current_title = cap.1;
             current_summary_lines.clear();
-        } else if current_number.is_some() && !trimmed.is_empty() && !trimmed.starts_with('#'){
+        } else if current_number.is_some() && !trimmed.is_empty() && !trimmed.starts_with('#') {
             current_summary_lines.push(trimmed);
         }
     }
@@ -260,7 +262,7 @@ fn parse_chapter_heading(line: &str) -> Option<(usize, String)> {
     // After the number, expect ':' or '-' then title
     let after_num = &rest[num_str.len()..];
     let title = after_num
-        .trim_start_matches(|c: char| c == ':' || c == '-' || c == ' ')
+        .trim_start_matches([':', '-', ' '])
         .to_string();
 
     Some((number, title))
@@ -342,17 +344,19 @@ impl ModificationPlan {
         let schema = Self::schema();
         let grammar = schema.to_gbnf("ModificationPlan").ok();
 
-        let text = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: "You are a story planning assistant. Output valid JSON only. \
+        let text = futures::executor::block_on(
+            backend.complete(CompletionRequest {
+                system: "You are a story planning assistant. Output valid JSON only. \
                      No thinking, no reasoning, only JSON."
-                .to_string(),
-            prompt,
-            grammar,
-            temperature: 0.4,
-            max_tokens: 400,
-            prefill: Some("{\n".into()),
-            ..Default::default()
-        }))
+                    .to_string(),
+                prompt,
+                grammar,
+                temperature: 0.4,
+                max_tokens: 400,
+                prefill: Some("{\n".into()),
+                ..Default::default()
+            }),
+        )
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
@@ -399,9 +403,13 @@ mod tests {
     #[test]
     fn test_outline_detect_chapter_rename() {
         let old = "## Chapter 1: Intro\nFirst chapter.\n## Chapter 2: Middle\nSecond chapter.\n";
-        let new = "## Chapter 1: Introduction\nFirst chapter.\n## Chapter 2: Middle\nSecond chapter.\n";
+        let new =
+            "## Chapter 1: Introduction\nFirst chapter.\n## Chapter 2: Middle\nSecond chapter.\n";
         let diff = OutlineDiff::compute(old, new);
-        assert!(diff.changes.iter().any(|c| matches!(c, OutlineChange::ChapterRenamed { .. })));
+        assert!(diff
+            .changes
+            .iter()
+            .any(|c| matches!(c, OutlineChange::ChapterRenamed { .. })));
     }
 
     #[test]
@@ -409,7 +417,10 @@ mod tests {
         let old = "## Chapter 1: Intro\nFirst chapter.\n";
         let new = "## Chapter 1: Intro\nFirst chapter.\n## Chapter 2: New\nNew chapter.\n";
         let diff = OutlineDiff::compute(old, new);
-        assert!(diff.changes.iter().any(|c| matches!(c, OutlineChange::ChapterAdded { .. })));
+        assert!(diff
+            .changes
+            .iter()
+            .any(|c| matches!(c, OutlineChange::ChapterAdded { .. })));
     }
 
     #[test]
@@ -417,7 +428,10 @@ mod tests {
         let old = "## Chapter 1: Intro\nFirst chapter.\n## Chapter 2: Middle\nSecond chapter.\n";
         let new = "## Chapter 1: Intro\nFirst chapter.\n";
         let diff = OutlineDiff::compute(old, new);
-        assert!(diff.changes.iter().any(|c| matches!(c, OutlineChange::ChapterRemoved { .. })));
+        assert!(diff
+            .changes
+            .iter()
+            .any(|c| matches!(c, OutlineChange::ChapterRemoved { .. })));
     }
 
     #[test]
@@ -425,7 +439,9 @@ mod tests {
         let old = "Title: Old Title\nGenre: Fantasy\n## Chapter 1: Intro\nFirst chapter.\n";
         let new = "Title: New Title\nGenre: Fantasy\n## Chapter 1: Intro\nFirst chapter.\n";
         let diff = OutlineDiff::compute(old, new);
-        assert!(diff.changes.iter().any(|c| matches!(c, OutlineChange::MetadataChanged { field, .. } if field == "title")));
+        assert!(diff.changes.iter().any(
+            |c| matches!(c, OutlineChange::MetadataChanged { field, .. } if field == "title")
+        ));
     }
 
     #[test]
@@ -433,7 +449,10 @@ mod tests {
         let old = "## Chapter 1: Intro\nFirst chapter summary.\n## Chapter 2: Middle\nSecond chapter summary.\n";
         let new = "## Chapter 1: Intro\nUpdated first chapter summary.\n## Chapter 2: Middle\nSecond chapter summary.\n";
         let diff = OutlineDiff::compute(old, new);
-        assert!(diff.changes.iter().any(|c| matches!(c, OutlineChange::ChapterSummaryChanged { .. })));
+        assert!(diff
+            .changes
+            .iter()
+            .any(|c| matches!(c, OutlineChange::ChapterSummaryChanged { .. })));
     }
 
     #[test]

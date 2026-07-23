@@ -10,6 +10,7 @@
 //!   1. ValidationReport, ValidationSeverity, ValidationCheck (lines 20-90)
 //!   2. ValidationEngine — orchestrator (lines 90-200)
 //!   3. Sub-modules: classic, inference, outline, wiki
+//!
 //! ════════════════════════════════════════════════════════════════════════════
 //!
 //! # Architecture
@@ -294,6 +295,7 @@ fn parse_number_after(text: &str, keyword: &str) -> Option<usize> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Orchestrates all validators and produces a unified report.
+#[derive(Default)]
 pub struct ValidationEngine {
     /// Classic (programmatic) validator
     pub classic: classic::ChapterValidator,
@@ -305,16 +307,6 @@ pub struct ValidationEngine {
     pub wiki: wiki::WikiValidator,
 }
 
-impl Default for ValidationEngine {
-    fn default() -> Self {
-        Self {
-            classic: classic::ChapterValidator::default(),
-            inference: inference::Critic::default(),
-            outline: outline::OutlineValidator::default(),
-            wiki: wiki::WikiValidator::default(),
-        }
-    }
-}
 
 impl ValidationEngine {
     /// Create a new validation engine with custom config.
