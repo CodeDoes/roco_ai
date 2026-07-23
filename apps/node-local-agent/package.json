@@ -1,0 +1,16 @@
+{
+  "name": "node-local-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Node.js TypeScript Port of the Local Agent Scaffold Framework",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "node --import tsx --test src/tests/**/*.test.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.7.1"
+  }
+}
