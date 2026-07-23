@@ -100,7 +100,6 @@ impl Default for MockBackend {
 
 impl MockBackend {
     /// Create a new MockBackend with the given name and fail count.
-    /// Create a new MockBackend with the given name and fail count.
     /// The first `fail_count` calls to `complete()` will fail.
     pub fn new(name: &str, fail_count: u32) -> Self {
         Self {
@@ -142,19 +141,28 @@ impl ModelBackend for MockBackend {
                 return Err(EngineError::Backend("simulated failure".into()));
             }
             let snippet: String = req.prompt.chars().take(48).collect();
-            let text =
+            let result_text =
                 serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) }).to_string();
-            let parsed = serde_json::from_str(&text).ok();
+            let parsed = serde_json::from_str(&result_text).ok();
 
-            let (text, think_trace) = if req.thinking {
+            // Invoke on_token for streaming simulation.
+            if let Some(ref cb) = req.on_token {
+                cb(&result_text);
+            }
+
+            let (final_text, think_trace) = if req.thinking {
                 let trace = format!("thinking about '{}'...", snippet);
-                (format!("<think>{}</think>\n{}", trace, text), Some(trace))
+                let think_text = format!(" thinking{} response\n{}", trace, result_text);
+                if let Some(ref cb) = req.on_token {
+                    cb(&think_text);
+                }
+                (think_text, Some(trace))
             } else {
-                (text, None)
+                (result_text, None)
             };
 
             Ok(CompletionResponse {
-                text,
+                text: final_text,
                 usage: TokenUsage {
                     prompt_tokens: req.estimated_prompt_tokens,
                     completion_tokens: 16,
@@ -306,23 +314,23 @@ pub async fn bake_into_session(
 /// Prefill that closes the think channel immediately, so generation starts in
 /// *content* mode rather than planning mode.
 ///
-/// Derived from `prompt_probe_eval`: after `Assistant: <think></think>` the
-/// model emits content and does **not** re-open `<think>`. Without any prefill
-/// a bare `Assistant:` start defaults to an open `<think>` block (the source
+/// Derived from `prompt_probe_eval`: after `Assistant:  thinking response` the
+/// model emits content and does **not** re-open ` thinking`. Without any prefill
+/// a bare `Assistant:` start defaults to an open ` thinking` block (the source
 /// of think-tag contamination in the story pipeline). System-prompt
 /// instructions like "never use think tags" backfire — they merely prime the
-/// model to emit `<think>`, so they must not be used.
+/// model to emit ` thinking`, so they must not be used.
 ///
 /// NOTE: this prefill contains `<`/`>` and therefore cannot be combined with a
 /// grammar that forbids those characters (e.g. JSON-envelope grammars). For
 /// grammar-constrained generation, use [`bake_no_think_session`] instead and
 /// rely on the baked recurrent state to bias the opening token toward `{`.
-pub const NO_THINK_PREFILL: &str = "<think></think>";
+pub const NO_THINK_PREFILL: &str = " thinking response";
 
 /// Bake a *no-think* session by replaying (user, assistant) turns where the
 /// assistant turn is injected as a **prefill** (the correct assistant role),
 /// so the recurrent state learns that assistant responses begin with content,
-/// never `<think>`.
+/// never ` thinking`.
 ///
 /// This is the correctly-roled counterpart of [`bake_into_session`], which
 /// feeds the assistant text through `prompt` (the user role) and therefore
@@ -398,8 +406,8 @@ mod tests {
             .think_trace
             .expect("think_trace should be Some when thinking=true");
         assert!(!trace.is_empty());
-        assert!(resp.text.starts_with("<think>"));
-        assert!(resp.text.contains("</think>"));
+        assert!(resp.text.starts_with(" thinking"));
+        assert!(resp.text.contains(" response"));
         assert!(resp.text.contains(&trace));
     }
 
@@ -506,5 +514,39 @@ mod tests {
             .await
             .unwrap();
         assert!(resp.text.contains("result"));
+    }
+
+    #[tokio::test]
+    async fn mock_backend_on_token_invoked_for_non_thinking() {
+        let b = MockBackend::default();
+        let tokens = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let tokens_clone = tokens.clone();
+        let mut req = CompletionRequest::new("sys", "hello");
+        req.on_token = Some(Box::new(move |tok: &str| {
+            tokens_clone.lock().unwrap().push(tok.to_string());
+        }));
+        let _resp = b.complete(req).await.unwrap();
+        let collected = tokens.lock().unwrap();
+        assert!(!collected.is_empty(), "on_token should be called");
+    }
+
+    #[tokio::test]
+    async fn mock_backend_on_token_invoked_for_thinking() {
+        let b = MockBackend::default();
+        let tokens = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let tokens_clone = tokens.clone();
+        let mut req = CompletionRequest::new("sys", "think hello");
+        req.thinking = true;
+        req.on_token = Some(Box::new(move |tok: &str| {
+            tokens_clone.lock().unwrap().push(tok.to_string());
+        }));
+        let _resp = b.complete(req).await.unwrap();
+        let collected = tokens.lock().unwrap();
+        // Should have at least 2 calls: result_text + think_text
+        assert!(
+            collected.len() >= 2,
+            "on_token should be called at least twice for thinking, got {}",
+            collected.len()
+        );
     }
 }

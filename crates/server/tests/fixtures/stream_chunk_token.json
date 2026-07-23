@@ -1,0 +1,13 @@
+{
+  "id": "cmpl-stream-001",
+  "object": "text_completion",
+  "created": 1700000000,
+  "model": "rwkv-7",
+  "choices": [
+    {
+      "text": "Once ",
+      "index": 0,
+      "finish_reason": null
+    }
+  ]
+}

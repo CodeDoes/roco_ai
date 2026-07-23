@@ -900,7 +900,9 @@ impl StoryModeAgent {
                     session.tool_set.write_chapter(ch.chapter_num, &ch.content)?;
                 }
                 Ok(StoryModeResult::text(format!(
-                    "## Style Change → {}\n\n{} chapter(s) rewritten.",
+                    "## Style Change → {}
+
+{} chapter(s) rewritten.",
                     style,
                     response.chapters.len()
                 )))
@@ -964,7 +966,9 @@ impl StoryModeAgent {
                     session.tool_set.write_chapter(ch.chapter_num, &ch.content)?;
                 }
                 Ok(StoryModeResult::text(format!(
-                    "## POV Change → {}\n\n{} chapter(s) rewritten.",
+                    "## POV Change → {}
+
+{} chapter(s) rewritten.",
                     pov,
                     response.chapters.len()
                 )))

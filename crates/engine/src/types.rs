@@ -37,6 +37,7 @@ impl TokenUsage {
 /// A completion request to a model backend.
 #[derive(Serialize, Deserialize)]
 pub struct CompletionRequest {
+    #[serde(default)]
     pub system: String,
     pub prompt: String,
     /// Text appended after "Assistant: " so the model sees it as its own
@@ -44,11 +45,16 @@ pub struct CompletionRequest {
     pub prefill: Option<String>,
     pub output_schema: Option<String>,
     pub grammar: Option<String>,
+    #[serde(default = "default_temperature")]
     pub temperature: f32,
     pub top_a: Option<f32>,
+    #[serde(default = "default_max_tokens")]
     pub max_tokens: usize,
+    #[serde(default)]
     pub estimated_prompt_tokens: usize,
+    #[serde(default)]
     pub thinking: bool,
+    #[serde(default)]
     pub preserve_state: bool,
     #[serde(skip)]
     pub on_token: OnToken,
@@ -64,6 +70,14 @@ pub struct CompletionRequest {
     /// downstream crates that depend on `web-rwkv`.
     #[serde(skip)]
     pub bnf_mask: Option<Box<dyn BnfMask>>,
+}
+
+fn default_temperature() -> f32 {
+    0.2
+}
+
+fn default_max_tokens() -> usize {
+    512
 }
 
 impl Clone for CompletionRequest {
@@ -196,5 +210,15 @@ mod tests {
         assert_eq!(req.prompt, "user message");
         assert_eq!(req.temperature, 0.2);
         assert_eq!(req.max_tokens, 512);
+    }
+
+    #[test]
+    fn completion_request_deserialize_minimal() {
+        let json = r#"{"system": "test", "prompt": "hello", "temperature": 0.5, "max_tokens": 10}"#;
+        let req: CompletionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.prompt, "hello");
+        assert_eq!(req.temperature, 0.5);
+        assert_eq!(req.max_tokens, 10);
+        assert_eq!(req.system, "test");
     }
 }

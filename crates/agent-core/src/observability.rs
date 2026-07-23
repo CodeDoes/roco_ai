@@ -120,7 +120,11 @@ pub struct Event {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCallRecord {
     pub call_id: String,
+    pub request_id: Option<String>,
+    pub session_id: Option<String>,
     pub timestamp: u64,
+    /// Pipeline phase (e.g. "classify", "think", "derive", "validate", "generate").
+    pub phase: String,
     pub system_prompt: String,
     pub user_prompt: String,
     pub grammar: Option<String>,
@@ -130,6 +134,16 @@ pub struct ModelCallRecord {
     pub output_parsed: Option<String>,
     pub latency_ms: u64,
     pub tokens_generated: usize,
+    /// Prompt token count reported by the backend.
+    pub prompt_tokens: usize,
+    /// Completion token count reported by the backend.
+    pub completion_tokens: usize,
+    /// Finish reason ("stop", "length", "timeout", "cancelled", "error").
+    pub finish_reason: Option<String>,
+    /// Retry count for this call (0 = first attempt).
+    pub retry_count: u32,
+    /// Stable error code for machine parsing, when `success` is false.
+    pub error_code: Option<String>,
     pub success: bool,
     pub error: Option<String>,
 }
@@ -149,6 +163,9 @@ pub struct DecisionRecord {
     pub alternatives: Vec<String>,
     pub chosen: String,
     pub confidence: f32,
+    pub retry_count: u32,
+    /// Stable error code for machine parsing, if the decision was forced by error.
+    pub error_code: Option<String>,
     pub context: HashMap<String, String>,
 }
 
@@ -178,6 +195,10 @@ pub struct ActionRecord {
     pub payload: String,
     pub reversible: bool,
     pub undo_payload: Option<String>,
+    /// ID of the tool call that produced this action.
+    pub tool_call_id: Option<String>,
+    /// Approval outcome ("approved", "rejected", "pending", "auto-granted").
+    pub approval_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +251,31 @@ pub struct QualityIssue {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// Checkpoint Recording
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Snapshot of workspace state before and after a mutation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckpointRecord {
+    pub checkpoint_id: String,
+    pub timestamp: u64,
+    pub workspace_id: String,
+    pub phase: String,
+    /// Files present before the mutation.
+    pub files_before: Vec<String>,
+    /// Files present after the mutation.
+    pub files_after: Vec<String>,
+    /// Files that were added.
+    pub files_added: Vec<String>,
+    /// Files that were modified.
+    pub files_modified: Vec<String>,
+    /// Files that were deleted.
+    pub files_deleted: Vec<String>,
+    /// Associated trace or span id.
+    pub span_id: Option<String>,
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Observability System
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -245,6 +291,8 @@ pub struct ObservabilitySystem {
     actions: Mutex<Vec<ActionRecord>>,
     /// All quality assessments
     quality_assessments: Mutex<Vec<QualityRecord>>,
+    /// All checkpoints
+    checkpoints: Mutex<Vec<CheckpointRecord>>,
     /// Output directory for logs
     output_dir: PathBuf,
 }
@@ -259,6 +307,7 @@ impl ObservabilitySystem {
             decisions: Mutex::new(Vec::new()),
             actions: Mutex::new(Vec::new()),
             quality_assessments: Mutex::new(Vec::new()),
+            checkpoints: Mutex::new(Vec::new()),
             output_dir,
         }
     }
@@ -350,6 +399,11 @@ impl ObservabilitySystem {
         self.quality_assessments.lock().unwrap().push(record);
     }
 
+    /// Record a workspace checkpoint.
+    pub fn record_checkpoint(&self, record: CheckpointRecord) {
+        self.checkpoints.lock().unwrap().push(record);
+    }
+
     /// Get all model calls
     pub fn model_calls(&self) -> Vec<ModelCallRecord> {
         self.model_calls.lock().unwrap().clone()
@@ -368,6 +422,11 @@ impl ObservabilitySystem {
     /// Get all quality assessments
     pub fn quality_assessments(&self) -> Vec<QualityRecord> {
         self.quality_assessments.lock().unwrap().clone()
+    }
+
+    /// Get all checkpoints.
+    pub fn checkpoints(&self) -> Vec<CheckpointRecord> {
+        self.checkpoints.lock().unwrap().clone()
     }
 
     /// Flush all logs to disk
@@ -431,6 +490,71 @@ impl ObservabilitySystem {
                 }
             }
         }
+
+        // Save checkpoints
+        {
+            let cps = self.checkpoints.lock().unwrap();
+            if !cps.is_empty() {
+                let path = self
+                    .output_dir
+                    .join(format!("checkpoints_{}.json", timestamp));
+                if let Ok(json) = serde_json::to_string_pretty(&*cps) {
+                    std::fs::write(path, json).ok();
+                }
+            }
+        }
+    }
+
+    /// Export a diagnostic snapshot (prompts and manuscript **redacted**).
+    ///
+    /// Secret-like values (API keys, file paths containing "secret" or "key")
+    /// are replaced with `[REDACTED]`. Returns the path to the exported file.
+    pub fn export_diagnostic(&self) -> std::io::Result<PathBuf> {
+        let timestamp = now();
+        let path = self
+            .output_dir
+            .join(format!("diagnostic_{}.json", timestamp));
+
+        let model_calls_redacted: Vec<serde_json::Value> = self
+            .model_calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|mc| {
+                let mut v = serde_json::to_value(mc).unwrap_or_default();
+                // Redact prompts and output — they contain manuscript content.
+                if let Some(obj) = v.as_object_mut() {
+                    obj.insert("system_prompt".into(), "[REDACTED]".into());
+                    obj.insert("user_prompt".into(), "[REDACTED]".into());
+                    obj.insert("output".into(), "[REDACTED]".into());
+                    // Also redact any field whose name hints at secrets.
+                    for key in obj.keys().cloned().collect::<Vec<_>>() {
+                        let lower = key.to_lowercase();
+                        if lower.contains("secret")
+                            || lower.contains("key")
+                            || lower.contains("token")
+                        {
+                            obj.insert(key, "[REDACTED]".into());
+                        }
+                    }
+                }
+                v
+            })
+            .collect();
+
+        let diagnostic = serde_json::json!({
+            "exported_at": timestamp,
+            "summary": self.summary(),
+            "model_calls": model_calls_redacted,
+            "decisions": self.decisions(),
+            "actions": self.actions(),
+            "quality_assessments": self.quality_assessments(),
+            "checkpoints": self.checkpoints(),
+        });
+
+        let json = serde_json::to_string_pretty(&diagnostic)?;
+        std::fs::write(&path, json)?;
+        Ok(path)
     }
 
     /// Generate a summary report
@@ -504,7 +628,10 @@ mod tests {
         // Record model call
         obs.record_model_call(ModelCallRecord {
             call_id: "test".into(),
+            request_id: Some("req-1".into()),
+            session_id: Some("sess-1".into()),
             timestamp: now(),
+            phase: "generate".into(),
             system_prompt: "test".into(),
             user_prompt: "test".into(),
             grammar: None,
@@ -514,12 +641,31 @@ mod tests {
             output_parsed: None,
             latency_ms: 100,
             tokens_generated: 50,
+            prompt_tokens: 10,
+            completion_tokens: 50,
+            finish_reason: Some("stop".into()),
+            retry_count: 0,
+            error_code: None,
             success: true,
             error: None,
         });
 
         // End span
         obs.end_span(&span_id, SpanStatus::Ok);
+
+        // Record a checkpoint
+        obs.record_checkpoint(CheckpointRecord {
+            checkpoint_id: "cp-1".into(),
+            timestamp: now(),
+            workspace_id: "test-ws".into(),
+            phase: "generate".into(),
+            files_before: vec!["outline.md".into()],
+            files_after: vec!["outline.md".into(), "chapters/01-chapter.md".into()],
+            files_added: vec!["chapters/01-chapter.md".into()],
+            files_modified: vec![],
+            files_deleted: vec![],
+            span_id: Some(span_id.0.clone()),
+        });
 
         // End trace
         obs.end_trace();
@@ -528,6 +674,18 @@ mod tests {
         let summary = obs.summary();
         assert_eq!(summary.total_model_calls, 1);
         assert_eq!(summary.success_rate, 1.0);
+
+        // Check checkpoints
+        let cps = obs.checkpoints();
+        assert_eq!(cps.len(), 1);
+        assert_eq!(cps[0].workspace_id, "test-ws");
+
+        // Diagnostic export — redacts secrets
+        let diag_path = obs.export_diagnostic().unwrap();
+        let diag_content = std::fs::read_to_string(&diag_path).unwrap();
+        assert!(diag_content.contains("[REDACTED]"));
+        assert!(diag_content.contains("exported_at"));
+        let _ = std::fs::remove_file(&diag_path);
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&temp_dir);

@@ -4371,6 +4371,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "roco-agent-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "roco-engine",
+ "roco-grammar",
+ "roco-message",
+ "roco-session",
+ "roco-tools",
+ "roco-workspace",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "roco-agent-story"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "roco-agent-core",
+ "roco-engine",
+ "roco-grammar",
+ "roco-workspace",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "roco-app"
 version = "0.1.0"
 dependencies = [
@@ -4555,6 +4591,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "roco-protocol"
+version = "0.1.0"
+dependencies = [
+ "roco-engine",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "roco-server"
 version = "0.1.0"
 dependencies = [
@@ -4565,11 +4610,13 @@ dependencies = [
  "reqwest",
  "roco-engine",
  "roco-message",
+ "roco-protocol",
  "roco-session",
  "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
+ "tower",
  "tower-http 0.5.2",
  "tracing",
  "uuid",
