@@ -128,3 +128,174 @@ fn fix_paragraphs(text: &str) -> String {
     let cleaned = cleaned.trim().to_string();
     cleaned.replace("\n\n\n", "\n\n")
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// State Tune Session Infrastructure
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Named sessions for state-tuned model calls. Each session corresponds to a
+// task type (outline, chapter, critique, etc.). On first use, the system
+// prompt + few-shot examples are baked into the session via
+// `bake_no_think_session`. Subsequent calls resume from the baked session
+// without re-sending the system prompt.
+//
+// See [`STATE_TUNE_EXAMPLES.md`](https://github.com/roco-ai/roco/blob/main/STATE_TUNE_EXAMPLES.md)
+// for the full catalog of baked sessions.
+
+use crate::backend::bake_no_think_session;
+use crate::types::CompletionRequest;
+use crate::ModelBackend;
+use serde::de::DeserializeOwned;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Named sessions — one per task type
+// ═════════════════════════════════════════════════════════════════════════════
+
+pub const OUTLINE_SESSION: &str = "roco_outline";
+pub const CHAPTER_SESSION: &str = "roco_chapter";
+pub const CONTINUE_SESSION: &str = "roco_continue";
+pub const CRITIQUE_SESSION: &str = "roco_critique";
+pub const EVAL_SESSION: &str = "roco_eval";
+pub const WRITING_ANALYSIS_SESSION: &str = "roco_writing_analysis";
+pub const FIM_SESSION: &str = "fim_session";
+pub const CHAT_SESSION: &str = "roco_chat";
+pub const INTENT_SESSION: &str = "roco_intent";
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Baked session tracker — forces each session to be baked at most once per
+// process lifetime. Uses a global static set so lazy bakes are thread-safe.
+// ═════════════════════════════════════════════════════════════════════════════
+
+use std::sync::LazyLock;
+use std::sync::Mutex;
+
+static BAKED_SESSIONS: LazyLock<Mutex<std::collections::HashSet<&'static str>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+
+/// Check (and atomically claim) whether a session has been baked in this
+/// process lifetime. Returns `true` if this is the **first** claim.
+pub fn claim_bake(session: &'static str) -> bool {
+    BAKED_SESSIONS.lock().unwrap().insert(session)
+}
+
+/// Reset all baked-session flags (used in tests or after a backend reload).
+pub fn reset_baked_sessions() {
+    BAKED_SESSIONS.lock().unwrap().clear();
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Lazy bake — call this before the first session-based generation
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Bake a system prompt + few-shot examples into a named session, but only
+/// on the first call (tracked by `BAKED_SESSIONS`). Subsequent calls are
+/// no-ops. Must be called from a tokio runtime context.
+pub fn lazy_bake(
+    backend: &dyn ModelBackend,
+    session: &'static str,
+    system: &str,
+    examples: &[(&str, &str)],
+) -> Result<(), String> {
+    if claim_bake(session) {
+        futures::executor::block_on(bake_no_think_session(
+            backend, session, system, examples,
+        ))
+        .map_err(|e| format!("state-tune bake failed for {session}: {e}"))
+    } else {
+        Ok(())
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Session-based generation — resume from a baked session
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Generate text from a baked session. The system prompt was absorbed during
+/// `lazy_bake`; only `prompt` is sent.
+pub fn session_complete(
+    backend: &dyn ModelBackend,
+    session: &str,
+    prompt: &str,
+    grammar: Option<&str>,
+    temperature: f32,
+    max_tokens: usize,
+    prefill: Option<&str>,
+) -> Result<String, String> {
+    futures::executor::block_on(backend.complete(CompletionRequest {
+        system: String::new(),
+        prompt: prompt.to_string(),
+        grammar: grammar.map(String::from),
+        temperature,
+        max_tokens,
+        prefill: prefill.map(String::from),
+        session: Some(session.to_string()),
+        preserve_state: true,
+        ..Default::default()
+    }))
+    .map_err(|e| format!("model error in session {session}: {e}"))
+    .map(|r| r.text)
+}
+
+/// Like `session_complete` but deserializes the response as JSON.
+pub fn session_structured<T>(
+    backend: &dyn ModelBackend,
+    session: &str,
+    prompt: &str,
+    grammar: &str,
+    temperature: f32,
+    max_tokens: usize,
+) -> Result<T, String>
+where
+    T: DeserializeOwned,
+{
+    let text = session_complete(
+        backend, session, prompt, Some(grammar), temperature, max_tokens, None,
+    )?;
+    serde_json::from_str::<T>(&text)
+        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Direct (no-session) helpers — for one-off calls without baking
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// One-off model call with system + prompt + grammar. No session.
+pub fn model_complete(
+    backend: &dyn ModelBackend,
+    system: &str,
+    prompt: &str,
+    grammar: Option<&str>,
+    temperature: f32,
+    max_tokens: usize,
+    prefill: Option<&str>,
+) -> Result<String, String> {
+    futures::executor::block_on(backend.complete(CompletionRequest {
+        system: system.to_string(),
+        prompt: prompt.to_string(),
+        grammar: grammar.map(String::from),
+        temperature,
+        max_tokens,
+        prefill: prefill.map(String::from),
+        ..Default::default()
+    }))
+    .map_err(|e| format!("model error: {e}"))
+    .map(|r| r.text)
+}
+
+/// One-off model call with JSON deserialization. No session.
+pub fn structured_complete<T>(
+    backend: &dyn ModelBackend,
+    system: &str,
+    prompt: &str,
+    grammar: &str,
+    temperature: f32,
+    max_tokens: usize,
+) -> Result<T, String>
+where
+    T: DeserializeOwned,
+{
+    let text =
+        model_complete(backend, system, prompt, Some(grammar), temperature, max_tokens, None)?;
+    serde_json::from_str::<T>(&text)
+        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+}

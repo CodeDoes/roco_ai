@@ -5,15 +5,15 @@
 //! via channels.
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tracing::info;
 
 use crate::actor::{ActorMessage, BlendReq, CompleteReq, RwkvActor};
-use tokio::sync::oneshot;
 
 /// Thread-safe handle to the RWKV inference actor.
 pub struct RwkvBackend {
@@ -36,8 +36,11 @@ impl RwkvBackend {
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
         let (tx, rx) = mpsc::channel::<ActorMessage>(4);
-        let (ready_tx, ready_rx) =
-            tokio::sync::oneshot::channel::<std::result::Result<(), String>>();
+        // Use std::sync::mpsc (not tokio::sync::oneshot) for the ready
+        // signal so the main thread can block with a timeout without needing
+        // a tokio runtime. This avoids the cross-executor fragility of
+        // futures::executor::block_on driving a tokio oneshot.
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
 
         let actor_thread = std::thread::Builder::new()
             .name("rwkv-actor".into())
@@ -65,13 +68,34 @@ impl RwkvBackend {
             })
             .expect("failed to spawn rwkv actor thread");
 
-        futures::executor::block_on(async {
-            match ready_rx.await {
-                Ok(Ok(())) => Ok::<_, anyhow::Error>(()),
-                Ok(Err(msg)) => Err(anyhow::anyhow!("RWKV backend init failed: {msg}")),
-                Err(_) => Err(anyhow::anyhow!("RWKV actor thread died before init")),
+        // Block with a timeout so a hanging GPU init doesn't freeze the
+        // process forever. Default 120s, overridable via RWKV_BACKEND_TIMEOUT.
+        let timeout_secs: u64 = std::env::var("RWKV_BACKEND_TIMEOUT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(120);
+        let timeout = Duration::from_secs(timeout_secs);
+        match ready_rx.recv_timeout(timeout) {
+            Ok(Ok(())) => {}
+            Ok(Err(msg)) => {
+                anyhow::bail!("RWKV backend init failed: {msg}");
             }
-        })?;
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                anyhow::bail!(
+                    "RWKV backend init timed out after {timeout_secs}s. \
+                     The model file may be too large, the GPU may be busy, \
+                     or Vulkan drivers may be missing. \
+                     Set RWKV_BACKEND_TIMEOUT for a longer wait, \
+                     or check GPU setup with: roco gpu-check"
+                );
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!(
+                    "RWKV actor thread died before initialization completed. \
+                     Check the logs above for panic details."
+                );
+            }
+        }
 
         Ok(Self {
             tx: Some(tx),

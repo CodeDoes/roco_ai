@@ -7,8 +7,23 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use web_rwkv::runtime::model::{ModelInfo, Quant};
+
+/// Default root for all model caches.
+fn default_cache_root() -> PathBuf {
+    if let Ok(dir) = env::var("RWKV_CACHE_DIR") {
+        return PathBuf::from(dir);
+    }
+    // Persistent location: ~/.cache/roco/ (not /tmp/ — /tmp/ is wiped on reboot)
+    if let Ok(home) = env::var("HOME") {
+        PathBuf::from(home).join(".cache").join("roco")
+    } else {
+        // Fallback (no HOME set)
+        PathBuf::from("/tmp/roco-cache")
+    }
+}
 
 /// Compute the pipeline cache path for a model file.
 pub fn get_pipeline_cache_path(model_path: &str) -> PathBuf {
@@ -17,7 +32,7 @@ pub fn get_pipeline_cache_path(model_path: &str) -> PathBuf {
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
     let root = env::var("RWKV_PIPELINE_CACHE_DIR")
-        .unwrap_or_else(|_| "/tmp/roco-pipeline-cache".to_string());
+        .unwrap_or_else(|_| default_cache_root().join("pipeline-cache").to_string_lossy().to_string());
     PathBuf::from(root).join(format!("{:016x}.bin", hash))
 }
 
@@ -28,7 +43,7 @@ pub fn get_quant_cache_dir(model_path: &str) -> PathBuf {
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
     let root =
-        env::var("RWKV_QUANT_CACHE_DIR").unwrap_or_else(|_| "/tmp/roco-quant-cache".to_string());
+        env::var("RWKV_QUANT_CACHE_DIR").unwrap_or_else(|_| default_cache_root().join("quant-cache").to_string_lossy().to_string());
     PathBuf::from(root).join(format!("{:016x}", hash))
 }
 
@@ -201,6 +216,122 @@ pub fn extract_layer_from_name(name: &str) -> Option<usize> {
     None
 }
 
+// ---------------------------------------------------------------------------
+// Cache index — tracks which tensors are cached on disk.
+// ---------------------------------------------------------------------------
+
+/// A tensor entry in the cache index.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedTensorInfo {
+    /// Tensor name (e.g. "blocks.0.att.key.weight")
+    pub name: String,
+    /// Data type ("F16", "F32", etc.)
+    pub dtype: String,
+    /// Shape
+    pub shape: Vec<usize>,
+    /// Whether this tensor is cached as quantized (true) or raw (false)
+    pub quantized: bool,
+    /// md5 hex of the original tensor bytes for integrity check
+    pub md5: Option<String>,
+}
+
+/// The cache index JSON — saved after a successful first load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheIndex {
+    /// Model file name (for display)
+    pub model_name: String,
+    /// All tensors that are cached on disk
+    pub tensors: Vec<CachedTensorInfo>,
+    /// Model metadata snapshot
+    pub num_layer: usize,
+    pub num_emb: usize,
+    pub num_hidden: usize,
+    pub num_vocab: usize,
+    pub num_head: usize,
+    pub model_version: String,
+}
+
+impl CacheIndex {
+    /// Check if the cache index exists and is valid.
+    pub fn load(quant_cache_dir: &std::path::Path) -> Option<Self> {
+        let path = quant_cache_dir.join("cache_index.json");
+        let data = std::fs::read_to_string(&path).ok()?;
+        serde_json::from_str(&data).ok()
+    }
+
+    /// Save the cache index to disk.
+    pub fn save(&self, quant_cache_dir: &std::path::Path) {
+        let path = quant_cache_dir.join("cache_index.json");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        match serde_json::to_string_pretty(self) {
+            Ok(json) => {
+                match std::fs::write(&path, &json) {
+                    Ok(()) => info!(path = ?path, "saved cache index"),
+                    Err(e) => warn!(path = ?path, error = %e, "failed to save cache index"),
+                }
+            }
+            Err(e) => warn!(error = %e, "failed to serialize cache index"),
+        }
+    }
+
+    /// Check if all tensors listed in the index actually exist on disk.
+    pub fn is_complete(&self, quant_cache_dir: &std::path::Path) -> bool {
+        for t in &self.tensors {
+            let safe = t.name.replace(['.', '/', '\\', ':'], "_");
+            if t.quantized {
+                // Quantized matrices have _q.bin and _m.bin (and _scale.bin for NF4)
+                let q_path = quant_cache_dir.join(format!("{safe}_q.bin"));
+                if !q_path.exists() {
+                    warn!(tensor = %t.name, "missing quantized tensor cache file");
+                    return false;
+                }
+            } else {
+                // Raw (vector) cache has _vec.bin
+                let vec_path = quant_cache_dir.join(format!("{safe}_vec.bin"));
+                if !vec_path.exists() {
+                    warn!(tensor = %t.name, "missing vector cache file");
+                    return false;
+                }
+            }
+        }
+        info!(
+            "cache index complete: {} tensors cached in {:?}",
+            self.tensors.len(),
+            quant_cache_dir
+        );
+        true
+    }
+}
+
+/// Check if a complete model cache exists for the given model path.
+/// Returns `Some(CacheIndex)` if cache is complete, `None` otherwise.
+pub fn check_model_cache(model_path: &str) -> Option<CacheIndex> {
+    let quant_cache_dir = get_quant_cache_dir(model_path);
+    if !quant_cache_dir.exists() {
+        return None;
+    }
+    let index = CacheIndex::load(&quant_cache_dir)?;
+    if index.is_complete(&quant_cache_dir) {
+        Some(index)
+    } else {
+        None
+    }
+}
+
+/// Compute md5 of a byte slice.
+pub fn compute_md5(data: &[u8]) -> Option<String> {
+    use md5::{Md5, Digest};
+    use std::fmt::Write;
+    let result = Md5::digest(data);
+    let mut hex = String::with_capacity(32);
+    for b in result {
+        write!(hex, "{:02x}", b).ok();
+    }
+    Some(hex)
+}
+
 /// Resolve the default model path when `RWKV_MODEL` is unset.
 pub fn default_model_path() -> anyhow::Result<PathBuf> {
     let dir = std::env::current_dir().unwrap_or_default();
@@ -239,13 +370,18 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if !name.starts_with("rwkv7") || !name.ends_with(".st") {
+            if !name.ends_with(".st") {
                 continue;
             }
-            let score = if name.contains("-converted") { 90 } else { 100 };
-            if score == 0 {
-                continue;
-            }
+            let lower = name.to_lowercase();
+            // Score: prefer RWKV-7 models over generic .st files
+            let score = if lower.contains("rwkv") && lower.contains("7") {
+                if lower.contains("-converted") { 90 } else { 100 }
+            } else if lower.contains("rwkv") {
+                80
+            } else {
+                10
+            };
             match &best {
                 Some((s, _)) if *s >= score => {}
                 _ => best = Some((score, path)),
@@ -273,8 +409,8 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
                 }
             }
             anyhow::bail!(
-                "no rwkv7 .st file found in any of {:?}.\nModels on disk:\n{listing}\n\
-                 Hint: convert a GGUF to SafeTensors first (scripts/convert_gguf_to_st.py), \
+                "no .st model file found in any of {:?}.\nFiles on disk:\n{listing}\n\
+                 Hint: place a RWKV-7 .st file in the models/ directory, \
                  or set $RWKV_MODEL explicitly.",
                 search_dirs
             )

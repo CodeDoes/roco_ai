@@ -607,7 +607,7 @@ async fn backend_call(
 }
 
 /// BNF grammar that constrains model output to a valid Intent JSON.
-const INTENT_GRAMMAR: &str = r#"
+pub const INTENT_GRAMMAR: &str = r#"
 root  ::= "{" space "\"route\"" space ":" space string space "," space "\"confidence\"" space ":" space number space "," space "\"goal\"" space ":" space string space "}"
 string ::= "\"" ( [ -~] )* "\""
 number ::= [0-9] "." [0-9] [0-9]?

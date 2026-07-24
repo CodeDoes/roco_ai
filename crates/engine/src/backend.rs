@@ -269,6 +269,24 @@ pub async fn bake_persona(
 /// The first example's user turn folds in `system`; every subsequent turn
 /// relies on the accumulated state. After baking, mark the session as `baked`
 /// so later user turns don't re-send the system prompt or the examples.
+///
+/// # State Tune Example — Pirate Persona
+///
+/// See [`STATE_TUNE_EXAMPLES.md`](https://github.com/roco-ai/roco/blob/main/STATE_TUNE_EXAMPLES.md#1-engine-bake_into_session--persona-baking)
+/// for the full catalog.
+///
+/// ```rust
+/// # use roco_engine::{bake_into_session, MockBackend};
+/// # tokio_test::block_on(async {
+/// let backend = MockBackend::new("pirate", 0);
+/// let session = "pirate_persona";
+/// let examples = vec![
+///     ("How do I open a locked chest?", "Use the key, matey!"),
+///     ("Where is the treasure?", "Follow the North Star, ye fool!"),
+/// ];
+/// bake_into_session(&backend, session, "You are a terse pirate.", &examples).await.unwrap();
+/// # });
+/// ```
 pub async fn bake_into_session(
     backend: &dyn ModelBackend,
     session: &str,
@@ -336,6 +354,24 @@ pub const NO_THINK_PREFILL: &str = " thinking response";
 /// feeds the assistant text through `prompt` (the user role) and therefore
 /// leaves the baked state expecting another *user* turn — probe experiments
 /// showed that mistake makes the model emit spurious `User:` turns.
+///
+/// # State Tune Example — Math Tutor
+///
+/// See [`STATE_TUNE_EXAMPLES.md`](https://github.com/roco-ai/roco/blob/main/STATE_TUNE_EXAMPLES.md#2-engine-bake_no_think_session--clean-assistant-start)
+/// for the full catalog.
+///
+/// ```rust
+/// # use roco_engine::{bake_no_think_session, MockBackend};
+/// # tokio_test::block_on(async {
+/// let backend = MockBackend::new("tutor", 0);
+/// let session = "math_tutor";
+/// let examples = vec![
+///     ("What is 2+2?", "The answer is 4."),
+///     ("What is 3+5?", "The sum is 8."),
+/// ];
+/// bake_no_think_session(&backend, session, "You are a math tutor.", &examples).await.unwrap();
+/// # });
+/// ```
 pub async fn bake_no_think_session(
     backend: &dyn ModelBackend,
     session: &str,

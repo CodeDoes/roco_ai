@@ -28,7 +28,7 @@
 
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::structured_complete;
+use crate::util::{lazy_bake, session_structured, OUTLINE_SESSION, CHAPTER_SESSION, CONTINUE_SESSION};
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Serialize};
 
@@ -355,8 +355,9 @@ impl StoryEngine {
         backend: &dyn ModelBackend,
         premise: &str,
     ) -> Result<(), String> {
-        let expansion: OutlineExpansion = structured_complete(
+        let expansion: OutlineExpansion = state_tuned_complete(
             backend,
+            OUTLINE_SESSION,
             "You are a story outliner. Create a compelling story structure. Output valid JSON only.",
             &format!(
                 "Outline a story based on this premise:\n{premise}\n\n\
@@ -393,8 +394,9 @@ impl StoryEngine {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let expansion: OutlineExpansion = structured_complete(
+        let expansion: OutlineExpansion = state_tuned_complete(
             backend,
+            OUTLINE_SESSION,
             "You are a story outliner. Continue the story arc. Output valid JSON only.",
             &format!(
                 "Current outline:\n{current_outline}\n\n\
@@ -439,8 +441,9 @@ impl StoryEngine {
         // Build context from plot state and recent chapters
         let context = self.build_context();
 
-        let chapter: ChapterOutput = structured_complete(
+        let chapter: ChapterOutput = state_tuned_complete(
             backend,
+            CHAPTER_SESSION,
             "You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.",
             &format!(
                 "Write Chapter {}: {}\n\n\
@@ -493,8 +496,9 @@ impl StoryEngine {
         let existing = &self.chapters[chapter_num - 1];
         let context = self.build_context();
 
-        let continuation: ChapterOutput = structured_complete(
+        let continuation: ChapterOutput = state_tuned_complete(
             backend,
+            CONTINUE_SESSION,
             "You are a fiction writer. Continue the story naturally. Output valid JSON only.",
             &format!(
                 "Continue this chapter:\n\n{existing}\n\n\
@@ -526,8 +530,9 @@ impl StoryEngine {
         backend: &dyn ModelBackend,
         chapter_text: &str,
     ) -> Result<(), String> {
-        let new_state: PlotState = structured_complete(
+        let new_state: PlotState = state_tuned_complete(
             backend,
+            CHAPTER_SESSION,
             "You are a story analyst. Extract the current plot state. Output valid JSON only.",
             &format!(
                 "Analyze this chapter and extract the current plot state:\n\n\
@@ -739,8 +744,9 @@ impl StoryEngine {
             }
         }
 
-        let chapter: ChapterOutput = structured_complete(
+        let chapter: ChapterOutput = state_tuned_complete(
             backend,
+            CHAPTER_SESSION,
             "You are a fiction writer revising a chapter. Improve based on feedback. Output valid JSON only.",
             &format!(
                 "Revise this chapter based on the feedback.\n\n\
@@ -851,6 +857,24 @@ fn create_story_workspace() -> Result<Workspace, String> {
 
     Workspace::from_existing(dir, WorkspaceKind::Agent)
         .map_err(|e| format!("failed to init workspace: {e}"))
+}
+
+/// State-tuned model call with grammar constraint and deserialize output.
+/// Lazily bakes the session on first use, then resumes from it.
+fn state_tuned_complete<T>(
+    backend: &dyn ModelBackend,
+    session: &'static str,
+    system: &str,
+    prompt: &str,
+    grammar: &str,
+    temperature: f32,
+    max_tokens: usize,
+) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    lazy_bake(backend, session, system, &[])?;
+    session_structured(backend, session, prompt, grammar, temperature, max_tokens)
 }
 
 #[cfg(test)]

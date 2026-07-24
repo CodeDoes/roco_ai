@@ -15,7 +15,7 @@
 
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::structured_complete;
+use crate::util::{lazy_bake, session_structured, CRITIQUE_SESSION};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -232,8 +232,9 @@ impl QualityAnalyzer {
         chapter_num: usize,
         plot_context: &str,
     ) -> Result<StoryCritique, String> {
-        let critique: StoryCritique = structured_complete(
+        let critique: StoryCritique = state_tuned_complete(
             backend,
+            CRITIQUE_SESSION,
             &self.critique_system_prompt(),
             &format!(
                 "Critique this chapter for quality.\n\n\
@@ -264,8 +265,9 @@ impl QualityAnalyzer {
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        let critique: StoryCritique = structured_complete(
+        let critique: StoryCritique = state_tuned_complete(
             backend,
+            CRITIQUE_SESSION,
             &self.critique_system_prompt(),
             &format!(
                 "Critique this complete story for quality.\n\n\
@@ -327,6 +329,24 @@ impl QualityAnalyzer {
              Output valid JSON only."
         )
     }
+}
+
+/// State-tuned model call with grammar constraint and deserialize output.
+/// Lazily bakes the session on first use, then resumes from it.
+fn state_tuned_complete<T>(
+    backend: &dyn ModelBackend,
+    session: &'static str,
+    system: &str,
+    prompt: &str,
+    grammar: &str,
+    temperature: f32,
+    max_tokens: usize,
+) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    lazy_bake(backend, session, system, &[])?;
+    session_structured(backend, session, prompt, grammar, temperature, max_tokens)
 }
 
 #[cfg(test)]

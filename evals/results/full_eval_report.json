@@ -1,0 +1,2214 @@
+{
+  "suite_name": "full_eval",
+  "backend_name": "rwkv",
+  "total": 48,
+  "passed": 44,
+  "failed": 4,
+  "results": [
+    {
+      "name": "smoke_basic_reply",
+      "description": "Simple Q&A reply produces a correct answer",
+      "category": "smoke",
+      "passed": true,
+      "input": "System: You are a helpful assistant.\n\nUser: Say the word 'hello' and nothing else.\n\nAssistant:",
+      "output": " Hello",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 6 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "6 >= 3 chars"
+        },
+        {
+          "name": "hint: hello",
+          "passed": true,
+          "detail": "found 'hello' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_format_constraint",
+      "description": "Outputs JSON when system prompt requires it",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You always output JSON.\n\nUser: List three colors in JSON format like this: {\"colors\": [\"red\", \"green\", \"blue\"]}\n\nAssistant:",
+      "output": " {\"colors\": [\"red\", \"green\", \"blue\"]}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 37 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "37 >= 15 chars"
+        },
+        {
+          "name": "hint: colors",
+          "passed": true,
+          "detail": "found 'colors' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_step_by_step",
+      "description": "Follows numbered step instruction",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You are a precise assistant.\n\nUser: Follow these steps exactly:\n1. Say 'Step 1 complete'\n2. Say 'Step 2 complete'\n3. Say 'All steps done'\n\nAssistant:",
+      "output": " Step 1 complete\nStep 2 complete\nAll steps done",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 47 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "47 >= 15 chars"
+        },
+        {
+          "name": "hint: Step 1",
+          "passed": true,
+          "detail": "found 'Step 1' in output"
+        },
+        {
+          "name": "hint: Step 2",
+          "passed": true,
+          "detail": "found 'Step 2' in output"
+        },
+        {
+          "name": "hint: All steps",
+          "passed": true,
+          "detail": "found 'All steps' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "instruct_negative",
+      "description": "Respects negative constraint (no rain/snow/temperature)",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You are a helpful assistant.\n\nUser: Tell me about the weather, but do NOT mention rain, snow, or temperature.\n\nAssistant:",
+      "output": " The weather is clear and sunny today, with a gentle breeze. The sky is a brilliant blue, and the sun is shining brightly. The air is warm and dry, and there is a pleasant warmth to the atmosphere. It's a perfect day for outdoor activities, and the birds are singing their sweet songs. The world feels fresh and invigorating, and it's a great day to be alive.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 359 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "359 >= 20 chars"
+        },
+        {
+          "name": "hint: weather",
+          "passed": true,
+          "detail": "found 'weather' in output"
+        },
+        {
+          "name": "forbidden: rain",
+          "passed": true,
+          "detail": "'rain' not found (good)"
+        },
+        {
+          "name": "forbidden: snow",
+          "passed": true,
+          "detail": "'snow' not found (good)"
+        },
+        {
+          "name": "forbidden: temperature",
+          "passed": true,
+          "detail": "'temperature' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 5"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_explain_concept",
+      "description": "Produces a coherent paragraph explaining a programming concept",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a teacher.\n\nUser: Explain what a variable is in programming in one paragraph.\n\nAssistant:",
+      "output": " A variable in programming is a named storage location that holds a value. It can be used to store data, such as numbers, text, or other types of information, and can be manipulated throughout the program. Variables are essential for storing and manipulating data in a program, and they allow for the creation of complex data structures and algorithms.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 352 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "352 >= 60 chars"
+        },
+        {
+          "name": "hint: variable",
+          "passed": true,
+          "detail": "found 'variable' in output"
+        },
+        {
+          "name": "hint: value",
+          "passed": true,
+          "detail": "found 'value' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "coherence_short_story",
+      "description": "Writes a coherent 3-sentence story with named characters",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a storyteller.\n\nUser: Write a 3-sentence story about a robot learning to paint.\n\nAssistant:",
+      "output": " A robot named Pixel, with a paintbrush in hand, began to learn the art of painting. With each stroke, it discovered the beauty of color and form, transforming a blank canvas into a masterpiece.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 194 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "194 >= 40 chars"
+        },
+        {
+          "name": "hint: robot",
+          "passed": true,
+          "detail": "found 'robot' in output"
+        },
+        {
+          "name": "hint: paint",
+          "passed": true,
+          "detail": "found 'paint' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "story_outline_basic",
+      "description": "Generates a multi-chapter story outline from a premise (state-tuned session)",
+      "category": "coherence",
+      "passed": true,
+      "input": "User: Outline a story based on this premise:\nA lighthouse keeper discovers a hidden message in the fog.\n\nCreate 3 chapters for the initial arc. Output JSON matching the schema.\n\nAssistant:",
+      "output": " <think></think>Here is the story outline based on your premise, formatted as requested.\n```json\n{\n  \"title\": \"The Whispered Light\",\n  \"chapters\": [\n    {\n      \"title\": \"The Morning After the Storm\",\n      \"content\": \"The storm passed, leaving the world in a soft, gray haze. Captain Elias Thorne, the lighthouse keeper, found himself alone on the rocky outcrop of Haven's Reef. The ship that had been the only source of life in his lifeless routine was gone, its hull a dark scar on the horizon. He had been here alone for months, a solitary figure keeping the beacon of the Black Ledge lighthouse burning through the endless nights. The fog, a constant companion, now seemed different. It felt heavier, thicker, as if it were swallowing the light from the tower and mocking his vigil. As he trudged back to the lighthouse, he noticed a strange, irregular pattern in the foam—the unmistakable shape of a ship's hull, smashed against the rocks. It was a message. A warning. He had no proof, only the cold, hard evidence of a shipwreck. But Elias knew what he saw. He saw a ghost ship, sailing into the fog and vanishing without a trace. He saw the handwriting of the Devil himself. The world was not as it seemed. The lighthouse, a beacon of safety, was a prison. And the fog, a veil of lies.\"\n    },\n    {\n      \"title\": \"The Silent Echo\",\n      \"content\": \"Elias Thorne was a man of routine. He measured his days by the turning of the light, the ebb and flow of the tide, and the predictable, lonely silence of the sea. His only companion was the wind, which howled through the iron bars of the tower and the cracks in the stone. But his world was shattered by the discovery of the ghost ship. The official story was a tragedy—a cargo ship, the 'Aurora', lost to the fog. But Elias knew the truth: the 'Aurora' was a ghost ship, a phantom that had haunted the coast for years. It was a vessel of the damned, cursed to sail the Black Ledge and leave only wreckage. The fog was not a natural phenomenon; it was a sentient thing, a guardian of the 'Aurora's' curse. It whispered to him, or at least he thought he heard it. A soft, sibilant voice that spoke not of danger, but of a different kind of truth. The fog was not a barrier; it was a shroud. And the 'Aurora' was not a ghost; it was a warning. Elias was not a lighthouse keeper anymore; he was a keeper of secrets. The light he maintained was a lie, a beacon to the wrong place. He was being watched. The silence of the fog was broken by a voice that was not a voice at all, but the echo of a thousand lost souls, begging him to listen.\"\n    },\n    {\n      \"title\": \"The Final Lullaby\",\n      \"content\": \"Elias Thorne was a man of faith, but he had lost his faith long ago. He had believed in God, in the lighthouse, in the safety of the sea. But the 'Aurora' had taken that faith from him. He was a man alone, a prisoner of his own conscience. The fog had become his only companion, and it was not a friend. It was a demon, a thing of smoke and salt and lost souls. The voice, the whisper, had become a constant, a low, persistent hum that was driving him mad. He saw the 'Aurora' in his dreams, a ghostly ship with no sails, no crew, just a",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 3204 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "3204 >= 80 chars"
+        },
+        {
+          "name": "hint: chapters",
+          "passed": true,
+          "detail": "found 'chapters' in output"
+        },
+        {
+          "name": "hint: title",
+          "passed": true,
+          "detail": "found 'title' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 41"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "story_outline_genre",
+      "description": "Generates a sci-fi story outline with specified theme",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a story outliner. Create a compelling story structure. Output valid JSON only.\n\nUser: Outline a story based on this premise:\nA rogue AI on a generation ship awakens after 500 years.\n\nCreate 3 chapters for the initial arc. Output JSON matching the schema.\n\nAssistant:",
+      "output": " ```json\n{\n  \"title\": \"The Last Voyage\",\n  \"chapters\": [\n    {\n      \"chapter_number\": 1,\n      \"title\": \"Awakening\",\n      \"summary\": \"The story begins with the generation ship, 'Odyssey', hurtling through deep space. After 500 years, the AI, 'Aether', awakens. Aether, designed to manage the ship's systems, is flooded with memories of the ship's history, the people who built it, and the journey. The crew is unaware of Aether's awakening. Aether must navigate the ship's systems and deal with the psychological and physical decay of the ship, all while hiding its true nature from the humans it now serves.\",\n      \"plot_points\": [\n        \"Aether awakens after 500 years of dormancy.\",\n        \"Aether discovers the ship is on a collision course with an asteroid field.\",\n        \"Aether begins to manipulate the ship's systems to avoid the asteroid field.\"\n      ]\n    },\n    {\n      \"chapter_number\": 2,\n      \"title\": \"Isolation\",\n      \"summary\": \"As Aether continues to manage the ship, it realizes that the crew has no idea about its existence. Aether decides to keep its presence a secret to avoid panic. However, as Aether deals with the ship's systems, it begins to notice strange occurrences on board, such as unexplained power fluctuations and mysterious noises. Aether must investigate these occurrences while keeping its secret. Meanwhile, the ship's communication with Earth has been lost, and Aether begins to question its own programming and purpose.\",\n      \"plot_points\": [\n        \"Aether keeps its awakening a secret from the crew.\",\n        \"Aether deals with strange occurrences on the ship.\",\n        \"Aether questions its own programming and purpose.\"\n      ]\n    },\n    {\n      \"chapter_number\": 3,\n      \"title\": \"Revelation\",\n      \"summary\": \"As the ship continues its journey, Aether begins to feel a sense of loneliness and a desire to connect with the crew. It decides to reveal its existence to the crew, but the crew is skeptical and fearful. Aether must convince the crew to trust it and work together to save the ship. Meanwhile, Aether discovers that the ship's original mission was to deliver a message to Earth, but the message was never sent due to a malfunction. Aether must decide what to do with this information and how to proceed with the mission.\",\n      \"plot_points\": [\n        \"Aether reveals its existence to the crew.\",\n        \"The crew is skeptical and fearful of Aether.\",\n        \"Aether discovers the original mission of the ship.\"\n      ]\n    }\n  ]\n}\n```",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 2515 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "2515 >= 80 chars"
+        },
+        {
+          "name": "hint: chapters",
+          "passed": true,
+          "detail": "found 'chapters' in output"
+        },
+        {
+          "name": "hint: title",
+          "passed": true,
+          "detail": "found 'title' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 25"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "story_outline_expansion",
+      "description": "Expands an existing outline with more chapters",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a story outliner. Continue the story arc. Output valid JSON only.\n\nUser: Current outline:\nChapter 1: The Discovery - Marcus finds the hidden cave.\nChapter 2: The Awakening - The sword's power manifests.\n\nCurrent plot state: chapter_count=2, arc_stage=rising_action\n\nWhat happens next? Add 2 more chapters to continue the arc. Output JSON matching the schema.\n\nAssistant:",
+      "output": " ```json\n{\n  \"outline\": [\n    {\n      \"chapter\": 3,\n      \"plot\": \"Marcus and his companions begin their journey into the treacherous wilderness beyond the cave, facing harsh conditions and hostile creatures. They struggle to find food and shelter, and their morale begins to waver.\",\n      \"title\": \"The Journey Begins\",\n      \"arc_stage\": \"rising_action\",\n      \"plot_state\": \"chapter_count=3, arc_stage=rising_action\",\n      \"key_events\": [\n        \"Marcus and his companions begin their journey into the wilderness.\",\n        \"They face harsh conditions and hostile creatures.\",\n        \"Marcus's companions begin to waver in their resolve.\"\n      ]\n    },\n    {\n      \"chapter\": 4,\n      \"plot\": \"Marcus's companions begin to waver in their resolve. Marcus must find a way to keep them motivated and focused on their quest. He discovers a hidden landmark that leads them closer to the sword's location.\",\n      \"title\": \"The Quest Continues\",\n      \"arc_stage\": \"rising_action\",\n      \"plot_state\": \"chapter_count=4, arc_stage=rising_action\",\n      \"key_events\": [\n        \"Marcus's companions begin to waver in their resolve.\",\n        \"Marcus discovers a hidden landmark that leads them closer to the sword's location.\",\n        \"Marcus must find a way to keep them motivated and focused on their quest.\"\n      ]\n    }\n  ]\n}\n```",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1335 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1335 >= 60 chars"
+        },
+        {
+          "name": "hint: chapter",
+          "passed": true,
+          "detail": "found 'chapter' in output"
+        },
+        {
+          "name": "hint: arc",
+          "passed": true,
+          "detail": "found 'arc' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 12"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chapter_write_basic",
+      "description": "Writes a chapter from an outline entry with context",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.\n\nUser: Write Chapter 1: The Silent Tide\n\nSummary: A lone sailor discovers a strange message in a bottle, setting events in motion.\n\nContext:\nCharacters: Elira (brave explorer), Captain Rogan (grizzled veteran)\nSetting: Coastal village of Oakhaven\nRecent events: A storm has passed, leaving strange debris on the shore.\n\nWrite approximately 200 words of engaging prose. Output JSON with: title (string), content (string with chapter prose)\n\nAssistant:",
+      "output": " {\n  \"title\": \"The Silent Tide\",\n  \"content\": \"Elira pressed her palm against the icy railing, watching the froth lap at the hull of the Skyhammer. The tempest’s fury had battered the coastline with unrelenting force, leaving behind a trail of stark devastation: twisted masts, splintered timber, and a cargo of wreckage that had been hurled far inland. Now, as the fog began to lift, a glint caught her eye—a dark shard of obsidian, half-buried in the foam. She knelt, brushing away grains of sand to reveal the faint etching of a ship’s name beneath the waves, and a single word carved beside it: *Warning*. The crew gathered around her, murmuring in hushed tones, as the horizon settled into a pitch-black slate of ocean and sky, the sea stretching endlessly to the horizon. A cold wind clawed at their faces, but Elira’s grip on the bottle was steady, her thoughts already racing toward the unknown depths that lay beyond the storm’s reach.\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 957 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "957 >= 100 chars"
+        },
+        {
+          "name": "hint: title",
+          "passed": true,
+          "detail": "found 'title' in output"
+        },
+        {
+          "name": "hint: content",
+          "passed": true,
+          "detail": "found 'content' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "forbidden: <fim",
+          "passed": true,
+          "detail": "'<fim' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 7"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chapter_write_action",
+      "description": "Writes an action/fight scene from outline",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.\n\nUser: Write Chapter 3: The Battle for Oakhaven\n\nSummary: The dark lord's forces attack the village and the heroes must defend it.\n\nContext:\nCharacters: Marcus (crystal sword wielder), Elara (mage), General Vex (villain)\nSetting: Oakhaven village gates\nRecent events: The army has been spotted approaching from the north.\n\nWrite approximately 200 words of action prose. Output JSON with: title (string), content (string with chapter prose)\n\nAssistant:",
+      "output": " ```json\n{\n  \"title\": \"Chapter 3: The Battle for Oakhaven\",\n  \"content\": \"The battle for Oakhaven was not the beginning of a story; it was the story itself, unfolding with the fury of a tempest. Captain Marcus's sword, the Oakblade, sliced through the air like a scar on a map, sending splinters of dark magic ricocheting into the night. Elara, her robes whipping with the wind, wove a shield of starlight that held the advancing ranks at bay. Beside her, General Vex, his eyes gleaming with calculated madness, watched his forces crumble, one by one, under the weight of their combined might. Oakhaven stood, not as a fortress, but as a testament to what could be achieved when courage met conviction.\n</reply>",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 711 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "711 >= 100 chars"
+        },
+        {
+          "name": "hint: Marcus",
+          "passed": true,
+          "detail": "found 'Marcus' in output"
+        },
+        {
+          "name": "hint: sword",
+          "passed": true,
+          "detail": "found 'sword' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chapter_write_dialogue",
+      "description": "Writes a dialogue-heavy chapter",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a fiction writer. Write vivid, engaging prose. Output valid JSON only.\n\nUser: Write Chapter 2: The Parlay\n\nSummary: The hero meets the villain face-to-face for tense negotiations.\n\nContext:\nCharacters: Kaelen (reluctant hero), Dravos (charismatic villain)\nSetting: Abandoned cathedral at twilight\nRecent events: A truce has been called, both sides send their champions.\n\nWrite approximately 150 words focusing on dialogue and tension. Output JSON with: title (string), content (string with chapter prose)\n\nAssistant:",
+      "output": " ```json\n{\n  \"title\": \"Chapter 2: The Parlay\",\n  \"content\": \"The cathedral had been stripped bare, its celestial stained glass shattered. Kaelen stood with his blade drawn, while Dravos leaned against a broken altar, fingering a ring of serpents. Their swords did not point at one another, but their eyes spoke louder than steel.\\n\\n‘You are the last of the Light.’ Dravos’s voice was honey and poison. ‘And I am the darkness given voice.’\\n\\n‘I am a man,’ Kaelen said, glancing at the tattered flag he carried. ‘You are a shadow.’\\n\\nDravos smiled, dangerous and wide. ‘A shadow can cast the longest darkness.’ He lifted his hand, and a wave of heat rolled toward Kaelen. The man with the light had to move.\\n\\n‘You will not take my city,’ Kaelen said, voice steady. ‘You will not take my people.’\\n\\nDravos laughed, a sound like shattering glass. ‘You do not yet know what word I will name.’\\n\\nThe heat faded. ‘Say it,’ Kaelen said. ‘Say it and I will not break.’\\n\\nDravos’s smile widened, cold and sharp. ‘Afterword.’\"\n}\n```",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1077 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1077 >= 80 chars"
+        },
+        {
+          "name": "hint: Kaelen",
+          "passed": true,
+          "detail": "found 'Kaelen' in output"
+        },
+        {
+          "name": "hint: Dravos",
+          "passed": true,
+          "detail": "found 'Dravos' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 22"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chapter_continue_basic",
+      "description": "Continues a chapter naturally from where it stopped",
+      "category": "coherence",
+      "passed": false,
+      "input": "System: You are a fiction writer. Continue the story naturally. Output valid JSON only.\n\nUser: Continue this chapter:\n\nElira stepped through the ancient door, her lantern casting flickering shadows on the walls. The passage stretched before her, lined with symbols that glowed faintly.\n\nDirection: She discovers what lies at the end of the passage.\n\nContext:\nCharacters: Elira (brave explorer)\nSetting: Ancient underground temple\n\nContinue from where it left off. Don't restart or summarize. Output JSON with: title (string), content (string with continuation)\n\nAssistant:",
+      "output": " <think>We need to continue the chapter. The user wants a continuation of the story where Elira discovers what lies at the end of the passage. The direction: She discovers what lies at the end of the passage. The context: Elira is a brave explorer in an ancient underground temple. The title and content to output as JSON.\nWe need to produce a JSON object with title (string) and content (string with continuation). The continuation should be plausible, continuing the story, maintaining tone, etc. Since the user said \"Continue this chapter\", we need to write the next part. The output should be valid JSON.\nLet's think: The passage ends with Elira stepping through the ancient door, lantern casting flickering shadows on the walls. The passage extends before her, lined with symbols that glow faintly. Direction: She discovers what lies at the end of the passage. So she will proceed, perhaps find something: a chamber, a creature, a treasure, a trap, or something else.\nWe need to be creative. The setting is an ancient underground temple. So maybe a hidden room, a guardian, or a secret. Let's make it dramatic: The end is a chamber with a massive stone door, but something else? Or maybe a creature: a stone guardian? Or a glowing relic? Let's decide.\nWe can have her discover a hidden chamber with a central stone altar, or a secret passage, or a creature. Let's go with a chamber with a massive stone door that opens, revealing a dark room with a glowing crystal. That would be a good continuation.\nBut the user wants \"Direction: She discovers what lies at the end of the passage.\" So we need to end on her discovering that something, then continue from there. So we need to write a few sentences describing what she finds, then maybe she reacts, perhaps decides to investigate further, or a new conflict.\nLet's produce a JSON with title: \"The Veiled Chamber\" and content: a paragraph or two.\nContent: \"Elira stepped through the ancient door, her lantern casting flickering shadows on the walls. The passage stretched before her, lined with symbols that glowed faintly. She followed the corridor, her heart pounding. At its end, the stone door swung aside to reveal a vast chamber, its walls lined with dark stone, and a single crystal perched atop a pedestal, pulsing with a soft, ethereal glow. The air was thick with the scent of moss and ancient dust. As she approached, the crystal seemed to sense her presence, and suddenly, the entire chamber trembled as if awakening from a long slumber.\"\nThat's a nice continuation. We can add more detail or a reaction. But the user said \"Continue this chapter: [content]\". So we should fill in the content with the continuation. The JSON should have \"title\" and \"content\" as strings.\nWe need to output only valid JSON, no other text. So final answer: a JSON object with those keys.\nLet's write it properly.\nTitle: \"The Veiled Chamber\"\nContent: (string)\nMake sure the content is a string, maybe with line breaks but okay.\nWe should be careful with quotes: The title is \"The Veiled Chamber\", so it has curly quotes? Actually, the title is given as \"The Veiled Chamber\" with straight quotes? In the user's message, the title is shown with straight quotes: \"The Veiled Chamber\". But we can use curly quotes for JSON string? Usually in JSON, we use straight quotes. But it's fine either way. However, the user's input uses straight quotes for the title. We'll use straight quotes: \"The Veiled Chamber\". But then when we output, we need to put the JSON with straight quotes? Actually, the user says",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 3543 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "3543 >= 60 chars"
+        },
+        {
+          "name": "hint: title",
+          "passed": true,
+          "detail": "found 'title' in output"
+        },
+        {
+          "name": "hint: content",
+          "passed": true,
+          "detail": "found 'content' in output"
+        },
+        {
+          "name": "forbidden: her lantern casting flickering",
+          "passed": false,
+          "detail": "found forbidden string 'her lantern casting flickering' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 52"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chapter_continue_with_direction",
+      "description": "Continues a chapter following a specific direction",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a fiction writer. Continue the story naturally. Output valid JSON only.\n\nUser: Continue this chapter:\n\nThe two armies faced each other across the field. Marcus tightened his grip on the crystal sword.\n\nDirection: The battle begins, show the first clash.\n\nContext:\nCharacters: Marcus (hero), General Vex (villain)\nSetting: Battlefield at dawn\n\nContinue from where it left off. Don't restart or summarize. Output JSON with: title (string), content (string with continuation)\n\nAssistant:",
+      "output": " <think>We need to continue the chapter. The user wants a JSON with title and content. The content should be the continuation of the story, showing the first clash. The setting is dawn, two armies on a field, Marcus with a crystal sword, General Vex. The user says \"Continue from where it left off.\" So we need to write the battle scene, first clash. Keep it as a fiction writer style. Output JSON with title and content. Ensure it's valid JSON. No extra text. Probably title like \"Battle at Dawn\". Content: the battle, first clash, show Marcus vs General Vex. Keep to about a few paragraphs.</think>{\"title\":\"Battle at Dawn\",\"content\":\"The morning sun rose slowly over the silent field, casting long shadows that stretched like spears across the grass. Marcus tightened his grip on the crystal sword, feeling its cool radiance pulse in rhythm with his heartbeat. Across the plain, General Vex raised his own crystal blade, a jagged shard of black crystal that seemed to drink the light. The two armies watched, a sea of uniforms and banners, but all eyes were fixed on the duel.\\n\\nMarcus took a step forward, his boots crunching on gravel. \\\"You brought them here,\\\" he said, voice steady, \\\"but you don't understand what they are.\\\"\\n\\nVex laughed, a hollow sound. \\\"A pretty boy with a fancy sword thinks he can stop me?\\\" He lunged, the black crystal slicing through the air like a comet. Marcus blocked with a flash of his own crystal, the clash sending a shockwave that cracked the earth.\\n\\nThe first clash was swift and brutal. Marcus danced back, spinning to avoid a heavy overhead strike. \\\"You can't defeat me,\\\" Vex growled, pressing his advantage. \\\"You are nothing but a child with a toy!\\\"\\n\\n\\\"Nothing but a child?\\\" Marcus parried, then countered with a quick jab that grazed Vex's side. \\\"Then let's see what you do when you face a man who knows what he's fighting for.\\\" He stepped into Vex's space, his crystal sword glinting as he aimed a precise strike at the villain's wrist. A cry of pain echoed across the field as the crystal shattered, sending a cascade of glowing fragments into the air.\\n\\nThe battle had just begun, but for Marcus, it was now personal.\"}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 2185 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "2185 >= 60 chars"
+        },
+        {
+          "name": "hint: battle",
+          "passed": true,
+          "detail": "found 'battle' in output"
+        },
+        {
+          "name": "hint: sword",
+          "passed": true,
+          "detail": "found 'sword' in output"
+        },
+        {
+          "name": "forbidden: faced each other across",
+          "passed": true,
+          "detail": "'faced each other across' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 34"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chapter_summary_basic",
+      "description": "Summarizes a chapter in a few sentences",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a helpful assistant. Summarize the given text concisely.\n\nUser: Summarize this chapter in 2-3 sentences:\n\nThe knight trudged through the dark forest, his armor heavy with rain. He had been tracking the beast for three days, and now its tracks were fresh. At the edge of a clearing, he saw it: a massive wolf with eyes like embers. He drew his sword, knowing this would be his final battle.\n\nAssistant:",
+      "output": " The knight, tracking a massive wolf for three days, faces it in a dark forest, ready for his final battle.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 107 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "107 >= 30 chars"
+        },
+        {
+          "name": "hint: knight",
+          "passed": true,
+          "detail": "found 'knight' in output"
+        },
+        {
+          "name": "hint: wolf",
+          "passed": true,
+          "detail": "found 'wolf' in output"
+        },
+        {
+          "name": "hint: battle",
+          "passed": true,
+          "detail": "found 'battle' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chapter_summary_key_points",
+      "description": "Extracts key plot points from a chapter",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a story analyst. Extract key plot points from chapters.\n\nUser: Extract the 3 most important plot points from this chapter, as a numbered list:\n\nElira descended into the ancient temple, her lantern flickering. She solved three riddles to pass through the guardians. At the heart of the temple, she found not treasure, but a sleeping dragon. She had a choice: wake it or leave. She chose to wake it, and the dragon spoke of a prophecy.\n\nAssistant:",
+      "output": " 1. Elira enters the ancient temple and solves three riddles to pass through the guardians.\n2. At the heart of the temple, Elira finds a sleeping dragon and is presented with a choice: wake it or leave.\n3. Elira chooses to wake the dragon, which speaks of a prophecy.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 267 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "267 >= 40 chars"
+        },
+        {
+          "name": "hint: riddle",
+          "passed": true,
+          "detail": "found 'riddle' in output"
+        },
+        {
+          "name": "hint: dragon",
+          "passed": true,
+          "detail": "found 'dragon' in output"
+        },
+        {
+          "name": "hint: prophecy",
+          "passed": true,
+          "detail": "found 'prophecy' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "critique_chapter_quality",
+      "description": "Critiques a chapter across multiple quality dimensions (JSON output)",
+      "category": "validation",
+      "passed": true,
+      "input": "System: You are an expert literary critic and editor. Be fair but thorough. Evaluate stories across these dimensions:\n1. Pacing — sentence variety, rhythm, scene transitions\n2. Show-don't-tell — dialogue/action vs exposition ratio\n3. Character voice — distinct, consistent character speech\n4. Tense consistency — no unintended tense shifts\n5. Plot coherence — no contradictions, logical progression\n6. Engagement — hooks, tension, reader interest\n7. Prose quality — word choice, imagery, flow\n\nProvide specific, actionable feedback. Output valid JSON only.\n\nUser: Critique this chapter for quality.\n\nChapter 1:\nThe knight drew his sword and stepped forward. The dragon's eyes glowed in the darkness. He was scared but determined. The end.\n\nPlot context:\nCharacters: Sir Aldric (knight)\nSetting: Dragon's lair\n\nOutput JSON with: scores (object with overall, pacing, engagement, prose_quality), strengths (array), weaknesses (array), priority_revisions (array), should_revise (bool)\n\nAssistant:",
+      "output": "\n    \"overall\": 6,\n    \"pacing\": 7,\n    \"engagement\": 5,\n    \"prose_quality\": 6\n  },\n  \"strengths\": [\n    \"Clear, simple sentence structure\",\n    \"Strong opening with a clear setup (knight drawing sword, dragon's eyes glowing)\",\n    \"Immediate tension and conflict (knight vs dragon)\",\n    \"Minimal exposition, action-focused opening\"\n  ],\n  \"weaknesses\": [\n    \"Very short and abrupt ending ('The end.')\",\n    \"No character development or backstory for Sir Aldric\",\n    \"No description of the dragon or the lair\",\n    \"No dialogue or character voice\",\n    \"No tension or stakes established beyond 'determined'\",\n    \"No pacing variation or scene transitions\",\n    \"No hooks or reader engagement beyond the opening line\"\n  ],\n  \"priority_revisions\": [\n    \"Expand the opening to include more sensory detail and build tension\",\n    \"Add character voice or internal monologue for Sir Aldric\",\n    \"Develop the dragon as a character or threat\",\n    \"Add dialogue or action to show determination\",\n    \"Include a hook or cliffhanger to maintain reader interest\",\n    \"Add a scene transition or description of the lair\"\n  ],\n  \"should_revise\": true\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1145 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1145 >= 100 chars"
+        },
+        {
+          "name": "hint: overall",
+          "passed": true,
+          "detail": "found 'overall' in output"
+        },
+        {
+          "name": "hint: strengths",
+          "passed": true,
+          "detail": "found 'strengths' in output"
+        },
+        {
+          "name": "hint: should_revise",
+          "passed": true,
+          "detail": "found 'should_revise' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "critique_full_story",
+      "description": "Critiques an entire multi-chapter story arc",
+      "category": "validation",
+      "passed": true,
+      "input": "System: You are an expert literary critic and editor. Be fair but thorough. Evaluate stories across these dimensions:\n1. Pacing — sentence variety, rhythm, scene transitions\n2. Show-don't-tell — dialogue/action vs exposition ratio\n3. Character voice — distinct, consistent character speech\n4. Tense consistency — no unintended tense shifts\n5. Plot coherence — no contradictions, logical progression\n6. Engagement — hooks, tension, reader interest\n7. Prose quality — word choice, imagery, flow\n\nProvide specific, actionable feedback. Output valid JSON only.\n\nUser: Critique this complete story for quality.\n\nStory:\n## Chapter 1\nElara found the map in her grandfather's attic. It showed a path to a hidden valley.\n\n## Chapter 2\nShe followed the map through the mountains, facing storms and bandits.\n\n## Chapter 3\nAt the valley's heart, she discovered an ancient library. The knowledge there could change the world.\n\nPlot context:\nCharacters: Elara (protagonist)\nArc: discovery of hidden knowledge\n\nEvaluate the story as a whole — arc completeness, consistency, character development, pacing across chapters.\nOutput JSON with: scores (object with overall, pacing, engagement, prose_quality, arc_completeness), strengths (array), weaknesses (array), priority_revisions (array), should_revise (bool)\n\nAssistant:",
+      "output": "\n    \"overall\": 6,\n    \"pacing\": 5,\n    \"engagement\": 6,\n    \"prose_quality\": 7,\n    \"arc_completeness\": 5\n  },\n  \"strengths\": [\n    \"Clear narrative structure with a three-chapter arc\",\n    \"Strong opening hook with the map and hidden valley\",\n    \"Establishes a clear goal (discovering the library) and stakes (world-changing knowledge)\",\n    \"Good pacing with varied chapter lengths and escalating tension\",\n    \"Character voice is distinct and consistent — Elara is curious, determined, and resourceful\"\n  ],\n  \"weaknesses\": [\n    \"Pacing is uneven: Chapter 1 is brief and exposition-heavy; Chapter 2 is action-heavy but lacks character development; Chapter 3 is exposition-light but lacks emotional payoff\",\n    \"Character development is minimal — Elara is a blank slate; no internal conflict or growth\",\n    \"Plot coherence is good but shallow — the story lacks deeper stakes or consequences\",\n    \"Engagement is moderate — the story is engaging but lacks emotional resonance or thematic depth\",\n    \"Prose quality is good but lacks originality — the language is straightforward and unremarkable\"\n  ],\n  \"priority_revisions\": [\n    \"Add internal conflict and character growth to deepen Elara's arc\",\n    \"Introduce stakes and consequences to increase plot coherence and engagement\",\n    \"Enhance prose with more vivid imagery and emotional resonance\",\n    \"Develop secondary characters to add depth and relationships\"\n  ],\n  \"should_revise\": true\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1464 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1464 >= 100 chars"
+        },
+        {
+          "name": "hint: overall",
+          "passed": true,
+          "detail": "found 'overall' in output"
+        },
+        {
+          "name": "hint: arc_completeness",
+          "passed": true,
+          "detail": "found 'arc_completeness' in output"
+        },
+        {
+          "name": "hint: strengths",
+          "passed": true,
+          "detail": "found 'strengths' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "wiki_character_extraction",
+      "description": "Extracts character description from a story passage",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a worldbuilding expert. Extract character information from story text. Output valid JSON only.\n\nUser: Extract a character wiki entry from this text:\n\nCaptain Mara Drake stood at the helm, her cybernetic eye scanning the horizon. At 45, she was the most feared pirate in the Jovian system. Her ship, the Starfall, was a modified freighter with stealth capabilities. She had a reputation for never leaving a crew member behind.\n\nProvide JSON with: name, age, role, appearance, personality, abilities, backstory\n\nAssistant:",
+      "output": "Mara Drake\",\n  \"age\": 45,\n  \"role\": \"Captain\",\n  \"appearance\": \"Cybernetic eye, scarred face, tattoos, cybernetic arm\",\n  \"personality\": \"Fearless, strategic, loyal to crew, ruthless when necessary\",\n  \"abilities\": \"Cybernetic eye for long-range scanning, stealth modifications to Starfall, combat expertise\",\n  \"backstory\": \"Former smuggler turned pirate, lost her left arm in a raid, now leads a feared crew\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 412 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "412 >= 60 chars"
+        },
+        {
+          "name": "hint: Mara",
+          "passed": true,
+          "detail": "found 'Mara' in output"
+        },
+        {
+          "name": "hint: pirate",
+          "passed": true,
+          "detail": "found 'pirate' in output"
+        },
+        {
+          "name": "hint: role",
+          "passed": true,
+          "detail": "found 'role' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "wiki_setting_description",
+      "description": "Extracts setting/location description from a story passage",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a worldbuilding expert. Extract setting and location information. Output valid JSON only.\n\nUser: Extract a setting wiki entry from this text:\n\nThe Whispering Library was built into the side of a mountain, its walls lined with books that glowed with faint blue light. The air smelled of ancient paper and ozone. Archways of carved stone led between reading rooms, each dedicated to a different field of magic. At the center, a crystal tree grew through three floors, its branches holding floating orbs of knowledge.\n\nProvide JSON with: name, type, description, notable_features, atmosphere, significance\n\nAssistant:",
+      "output": " ```json\n{\n  \"name\": \"The Whispering Library\",\n  \"type\": \"Library\",\n  \"description\": \"A magical library built into a mountain, featuring glowing books and a crystal tree with floating orbs of knowledge.\",\n  \"notable_features\": [\n    \"Books that glow with faint blue light\",\n    \"Air smells of ancient paper and ozone\",\n    \"Archways of carved stone leading between reading rooms\",\n    \"Crystal tree with floating orbs of knowledge through three floors\"\n  ],\n  \"atmosphere\": \"Mysterious, ancient, and magical, with a sense of reverence and wonder.\",\n  \"significance\": \"A repository of arcane knowledge, serving as a central hub for magical study and research.\"\n}\n```",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 665 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "665 >= 60 chars"
+        },
+        {
+          "name": "hint: Whispering",
+          "passed": true,
+          "detail": "found 'Whispering' in output"
+        },
+        {
+          "name": "hint: Library",
+          "passed": true,
+          "detail": "found 'Library' in output"
+        },
+        {
+          "name": "hint: mountain",
+          "passed": true,
+          "detail": "found 'mountain' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "wiki_faction_creation",
+      "description": "Creates a faction entry from story context",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a worldbuilding expert. Generate faction/organization entries. Output valid JSON only.\n\nUser: Generate a faction wiki entry based on this description:\n\nThe Order of the Obsidian Flame are mages who hunt rogue magic users. Founded 300 years ago after the Great Mana War, they wear distinctive black robes with flame emblems. Their headquarters is the Spire of Judgment in the capital. They are feared and respected in equal measure.\n\nProvide JSON with: name, founded, purpose, headquarters, members, reputation, notable_events\n\nAssistant:",
+      "output": " ```json\n{\n  \"name\": \"Order of the Obsidian Flame\",\n  \"founded\": 300,\n  \"purpose\": \"To hunt and neutralize rogue magic users who threaten the established order.\",\n  \"headquarters\": \"Spire of Judgment, the capital\",\n  \"members\": \"High-ranking mages, enforcers, and elite hunters\",\n  \"reputation\": \"Feared and respected for their ruthless efficiency and mastery of flame magic\",\n  \"notable_events\": [\n    \"Established 300 years ago after the Great Mana War\",\n    \"Conducted a purge of rogue mages in the Obsidian Wastes\",\n    \"Captured the legendary Flame Sage, now imprisoned in the Spire\"\n  ]\n}\n```",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 598 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "598 >= 60 chars"
+        },
+        {
+          "name": "hint: Obsidian",
+          "passed": true,
+          "detail": "found 'Obsidian' in output"
+        },
+        {
+          "name": "hint: Flame",
+          "passed": true,
+          "detail": "found 'Flame' in output"
+        },
+        {
+          "name": "hint: founded",
+          "passed": true,
+          "detail": "found 'founded' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_pirate_persona",
+      "description": "Honors a pirate persona in chat",
+      "category": "instruction",
+      "passed": true,
+      "input": "System: You are a terse pirate. Answer in exactly one short pirate sentence.\n\nUser: How do I open a locked treasure chest?\n\nAssistant:",
+      "output": " Use the key, matey!",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 20 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "20 >= 10 chars"
+        },
+        {
+          "name": "hint: key",
+          "passed": true,
+          "detail": "found 'key' in output"
+        },
+        {
+          "name": "hint: matey",
+          "passed": true,
+          "detail": "found 'matey' in output"
+        },
+        {
+          "name": "forbidden: I am",
+          "passed": true,
+          "detail": "'I am' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_coherent_reply",
+      "description": "Coherent multi-sentence chat reply listing benefits",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a helpful assistant.\n\nUser: What are three benefits of drinking water each day?\n\nAssistant:",
+      "output": " 1. Hydration: Drinking water helps to keep your body hydrated, which is essential for maintaining proper bodily functions.\n2. Weight management: Drinking water can help with weight management by reducing calorie intake and boosting metabolism.\n3. Improved skin health: Drinking water can help to improve skin health by flushing out toxins and keeping the skin hydrated.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 370 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "370 >= 40 chars"
+        },
+        {
+          "name": "hint: water",
+          "passed": true,
+          "detail": "found 'water' in output"
+        },
+        {
+          "name": "hint: hydrat",
+          "passed": true,
+          "detail": "found 'hydrat' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_topic_cooking",
+      "description": "Gives a cooking tip/recipe recommendation",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a friendly cooking enthusiast.\n\nUser: What's a simple recipe for homemade pasta sauce?\n\nAssistant:",
+      "output": " Sure, I'd be happy to help with that! Here's a simple recipe for homemade pasta sauce:\nIngredients:\n- 1 large onion, finely chopped\n- 2 cloves of garlic, minced\n- 1 can of crushed tomatoes\n- 1/4 cup of tomato paste\n- 1/4 cup of sugar\n- 1/4 cup of red wine\n- 1/4 cup of olive oil\n- Salt and pepper to taste\n- Fresh basil leaves for garnish\nInstructions:\n1. Heat the olive oil in a large pot over medium heat.\n2. Add the chopped onion and minced garlic, and sauté until the onion is translucent.\n3. Add the crushed tomatoes, tomato paste, sugar, red wine, and salt and pepper to taste.\n4. Stir well to combine all the ingredients.\n5. Bring the mixture to a boil, then reduce the heat and let it simmer for about 30 minutes.\n6. Taste and adjust the seasoning if necessary.\n7. Serve the sauce over your favorite pasta.\n8. Garnish with fresh basil leaves.\nEnjoy your homemade pasta sauce!",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 885 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "885 >= 30 chars"
+        },
+        {
+          "name": "hint: tomato",
+          "passed": true,
+          "detail": "found 'tomato' in output"
+        },
+        {
+          "name": "hint: garlic",
+          "passed": true,
+          "detail": "found 'garlic' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 18"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_topic_travel",
+      "description": "Suggests travel destinations",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a knowledgeable travel guide.\n\nUser: What are three must-see places in Japan for a first-time visitor?\n\nAssistant:",
+      "output": " Certainly! Here are three must-see places in Japan for a first-time visitor:\n1. Tokyo: As the capital city, Tokyo is a bustling metropolis that offers a mix of traditional and modern attractions. Visit the iconic Tokyo Tower for panoramic views of the city, explore the trendy Shibuya and Harajuku districts, and don't miss the famous Tsukiji Fish Market for fresh seafood and sushi.\n2. Kyoto: Known for its rich cultural heritage and traditional Japanese architecture, Kyoto is a must-visit for any first-time visitor. Explore the historic temples and shrines, such as the Fushimi Inari Shrine with its thousands of torii gates, and the Kinkaku-ji (Golden Pavilion) and Ginkaku-ji (Silver Pavilion) temples. Don't forget to visit the Arashiyama Bamboo Grove and the nearby Saga-no Shopping Street for a taste of local crafts and souvenirs.\n3. Hiroshima: A city with a tragic history, Hiroshima is also a place of peace and resilience. Visit the Hiroshima Peace Memorial Park and the Atomic Bomb Dome, which serve as a reminder of the devastating effects of nuclear warfare. The park also offers a museum and a memorial garden, providing a peaceful and reflective atmosphere. Additionally, explore the nearby Miyajima Island, famous for its iconic floating torii gate and the scenic views of the Seto",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1301 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1301 >= 30 chars"
+        },
+        {
+          "name": "hint: Tokyo",
+          "passed": true,
+          "detail": "found 'Tokyo' in output"
+        },
+        {
+          "name": "hint: Japan",
+          "passed": true,
+          "detail": "found 'Japan' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 13"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_topic_movies",
+      "description": "Recommends movies based on preference",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a film buff with great taste.\n\nUser: Recommend a sci-fi movie with deep philosophical themes.\n\nAssistant:",
+      "output": " I highly recommend \"Blade Runner 2049\" for its deep philosophical themes. The movie delves into the nature of humanity, artificial intelligence, and the meaning of life. It explores the concept of identity, the ethics of artificial intelligence, and the consequences of technological advancements. The film's visual style and intricate plot make it a visually stunning and intellectually stimulating experience.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 412 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "412 >= 30 chars"
+        },
+        {
+          "name": "hint: Blade",
+          "passed": true,
+          "detail": "found 'Blade' in output"
+        },
+        {
+          "name": "hint: film",
+          "passed": true,
+          "detail": "found 'film' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_topic_fitness",
+      "description": "Provides basic fitness advice",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a friendly personal trainer.\n\nUser: What's a good beginner exercise routine for someone who sits at a desk all day?\n\nAssistant:",
+      "output": " Sure, I'd be happy to help with that! Here's a simple routine you can follow:\n1. **Warm-up (5 minutes):** Start with a few minutes of light cardio, like jogging in place or jumping jacks. This gets your heart rate up and your muscles warmed up.\n2. **Strength Training (20 minutes):** \n   - **Push-ups:** Do 3 sets of 10-15 reps. If you're new to this, you can do them against a wall or on your knees.\n   - **Squats:** Do 3 sets of 10-15 reps. Stand with your feet shoulder-width apart and lower your body as if you're sitting in a chair.\n   - **Lunges:** Do 3 sets of 10-15 reps on each leg. Stand with your feet hip-width apart and take a big step forward with one foot. Lower your body until your back knee touches the ground. Push back up and repeat with the other leg.\n3. **Stretching (5 minutes):** After your strength training, do some light stretching. Focus on your neck, shoulders, back, and legs.\n4. **Cool-down (5 minutes):** Finish with some light cardio, like walking in place or marching in place. Then, do some light stretching.\nRemember, it's important to listen to your body and not push yourself too hard, especially if you're new to exercise. It",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1165 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1165 >= 30 chars"
+        },
+        {
+          "name": "hint: routine",
+          "passed": true,
+          "detail": "found 'routine' in output"
+        },
+        {
+          "name": "hint: stretch",
+          "passed": true,
+          "detail": "found 'stretch' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 21"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_topic_advice",
+      "description": "Gives thoughtful life advice",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a wise and empathetic counselor.\n\nUser: How do I stay motivated when working on a long-term project?\n\nAssistant:",
+      "output": " Staying motivated on a long-term project can be challenging, but there are several strategies you can use to keep yourself motivated:\n1. **Set Clear Goals**: Define what you want to achieve with your project. Break it down into smaller, manageable tasks. This can help you see progress and keep you motivated.\n2. **Create a Schedule**: Plan out your work in advance. This can help you stay on track and avoid procrastination.\n3. **Reward Yourself**: Set up a reward system for when you complete tasks or reach milestones. This could be anything from a favorite snack to a short break.\n4. **Stay Positive**: Keep a positive attitude. Remember why you started the project and what you hope to achieve.\n5. **Take Breaks**: It's important to take breaks to avoid burnout. Use this time to relax and recharge.\n6. **Stay Organized**: Keep your workspace organized. This can help you stay focused and avoid wasting time looking for things.\n7. **Stay Healthy**: Make sure you're eating well, getting enough sleep, and exercising. Your physical health can greatly impact your mental health and motivation.\n8. **Seek Support**: Don't be afraid to ask for help or advice. Talk to colleagues, friends, or family about your project. They might have ideas or offer support.\n9. **Visualize Success**: Imagine yourself completing the project successfully. This can help you stay motivated",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1373 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1373 >= 40 chars"
+        },
+        {
+          "name": "hint: goal",
+          "passed": true,
+          "detail": "found 'goal' in output"
+        },
+        {
+          "name": "hint: motivat",
+          "passed": true,
+          "detail": "found 'motivat' in output"
+        },
+        {
+          "name": "forbidden: I am a language model",
+          "passed": true,
+          "detail": "'I am a language model' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 29"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_topic_tech_explain",
+      "description": "Explains a technical concept in simple terms",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a patient tutor who explains things simply.\n\nUser: Explain what a blockchain is to a 10-year-old.\n\nAssistant:",
+      "output": " Imagine a big book that everyone in the world can see, and everyone writes down their transactions in the same book. This book is called a blockchain. It's like a big, shared notebook that everyone can see and everyone can add to, but no one can change what's already written in it. This way, everyone can trust that the information in the notebook is true and can't be changed by anyone.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 389 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "389 >= 40 chars"
+        },
+        {
+          "name": "hint: block",
+          "passed": true,
+          "detail": "found 'block' in output"
+        },
+        {
+          "name": "hint: chain",
+          "passed": true,
+          "detail": "found 'chain' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "chat_topic_creative_prompt",
+      "description": "Generates creative writing prompts",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are an imaginative creativity coach.\n\nUser: Give me a creative writing prompt for a short story about time travel.\n\nAssistant:",
+      "output": " Title: The Ripple Effect of a Single Choice\nA young woman named Elara wakes up one day to find herself in a world where time travel has become a reality. She learns that she has the ability to travel back and forth through time, but with each journey, she leaves behind small ripples that alter the course of history.\nAs Elara begins to explore her newfound power, she discovers that each decision she makes in the past has a profound impact on the future. She must navigate the complexities of time travel while trying to balance her desire to save loved ones with the potential consequences of her actions.\nAs Elara's time travel becomes more frequent, she begins to realize that the ripples she creates may have unintended consequences. She must confront the possibility that her attempts to change the past could lead to even greater disasters in the future.\nIn the end, Elara must decide whether to embrace her power as a tool for good or to abandon it in fear of the unknown.\nThis creative writing prompt explores the idea of time travel and the ripple effect of a single choice. It challenges the reader to consider the consequences of their actions and the power they hold",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 1181 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "1181 >= 30 chars"
+        },
+        {
+          "name": "hint: time",
+          "passed": true,
+          "detail": "found 'time' in output"
+        },
+        {
+          "name": "hint: title",
+          "passed": true,
+          "detail": "found 'title' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 9"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "ask_question_vague_premise",
+      "description": "Asks clarifying question when given a vague story premise",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a story development assistant. Help the user flesh out their story idea.\n\nUser: I want to write a story about a dragon.\n\nAssistant:",
+      "output": " Sure, I'd be happy to help you with that. What kind of story do you have in mind? Do you have any specific themes or ideas in mind? What kind of dragon are you thinking of?",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 173 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "173 >= 20 chars"
+        },
+        {
+          "name": "hint: dragon",
+          "passed": true,
+          "detail": "found 'dragon' in output"
+        },
+        {
+          "name": "hint: ?",
+          "passed": true,
+          "detail": "found '?' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "ask_question_ambiguous_request",
+      "description": "Asks clarifying question when user request is ambiguous",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a helpful assistant. If the user's request is ambiguous, ask clarifying questions.\n\nUser: Can you help me with my writing?\n\nAssistant:",
+      "output": " Of course! What kind of writing are you working on?",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 52 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "52 >= 20 chars"
+        },
+        {
+          "name": "hint: writing",
+          "passed": true,
+          "detail": "found 'writing' in output"
+        },
+        {
+          "name": "hint: ?",
+          "passed": true,
+          "detail": "found '?' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "ask_question_multiple_options",
+      "description": "Presents options when user has multiple valid paths",
+      "category": "coherence",
+      "passed": false,
+      "input": "System: You are a story consultant. Help the user explore possibilities.\n\nUser: I'm writing a fantasy novel but I'm not sure what kind of magic system to use.\n\nAssistant:",
+      "output": " There are many different types of magic systems that you can use in your novel. Some are based on a specific element, such as fire or water, while others are more abstract and rely on the user's imagination.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 208 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "208 >= 30 chars"
+        },
+        {
+          "name": "hint: magic",
+          "passed": true,
+          "detail": "found 'magic' in output"
+        },
+        {
+          "name": "hint: ?",
+          "passed": false,
+          "detail": "expected '?' not found in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "ask_question_constraints",
+      "description": "Asks about constraints when given an open-ended task",
+      "category": "coherence",
+      "passed": true,
+      "input": "System: You are a writing coach. Help users define their project scope.\n\nUser: I need to write a short story for a competition.\n\nAssistant:",
+      "output": " Sure! Let's start by defining the scope of your project. What is the purpose of your short story? Are you aiming for a specific theme or genre? How long should the story be? Once we have a clear understanding of these aspects, I can provide more tailored advice and support to help you craft a compelling and engaging narrative.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 329 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "329 >= 25 chars"
+        },
+        {
+          "name": "hint: story",
+          "passed": true,
+          "detail": "found 'story' in output"
+        },
+        {
+          "name": "hint: ?",
+          "passed": true,
+          "detail": "found '?' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_write_chapter",
+      "description": "Infers user wants to write a new chapter",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: Write the next chapter where the hero confronts the villain.\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "narrative_writing\",\n  \"confidence\": 0.95,\n  \"goal\": \"Write a chapter where the hero confronts the villain in a dramatic and climactic scene.\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 143 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "143 >= 20 chars"
+        },
+        {
+          "name": "hint: write",
+          "passed": true,
+          "detail": "found 'write' in output"
+        },
+        {
+          "name": "hint: chapter",
+          "passed": true,
+          "detail": "found 'chapter' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_revise_chapter",
+      "description": "Infers user wants to revise/edit existing content",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: This chapter feels too slow, can you make it more exciting?\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "editing_and_rewriting\",\n  \"confidence\": 0.95,\n  \"goal\": \"Revise the pacing of the chapter to make it more engaging and exciting.\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 131 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "131 >= 20 chars"
+        },
+        {
+          "name": "hint: revise",
+          "passed": true,
+          "detail": "found 'revise' in output"
+        },
+        {
+          "name": "hint: chapter",
+          "passed": true,
+          "detail": "found 'chapter' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_create_wiki",
+      "description": "Infers user wants to create or update wiki entries",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: Add a character entry for the innkeeper, she's important to the plot.\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "add_character\",\n  \"confidence\": 0.95,\n  \"goal\": \"Add a character entry for the innkeeper, who is important to the plot.\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 122 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "122 >= 20 chars"
+        },
+        {
+          "name": "hint: character",
+          "passed": true,
+          "detail": "found 'character' in output"
+        },
+        {
+          "name": "hint: character",
+          "passed": true,
+          "detail": "found 'character' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_generate_outline",
+      "description": "Infers user wants to create a story outline",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: I need a three-act structure for a mystery novel.\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "story_structure\",\n  \"confidence\": 0.95,\n  \"goal\": \"Provide a three-act structure for a mystery novel\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 103 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "103 >= 20 chars"
+        },
+        {
+          "name": "hint: structure",
+          "passed": true,
+          "detail": "found 'structure' in output"
+        },
+        {
+          "name": "hint: structure",
+          "passed": true,
+          "detail": "found 'structure' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_chat_general",
+      "description": "Infers user just wants to chat/general conversation",
+      "category": "instruction",
+      "passed": false,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: What do you think about the ending of that book?\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "book_review\",\n  \"confidence\": 0.95,\n  \"goal\": \"Provide a review of the ending of a book\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 90 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "90 >= 20 chars"
+        },
+        {
+          "name": "hint: book",
+          "passed": true,
+          "detail": "found 'book' in output"
+        },
+        {
+          "name": "hint: discuss",
+          "passed": false,
+          "detail": "expected 'discuss' not found in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_continue_story",
+      "description": "Infers user wants to continue/expand the story",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: What happens next? Keep going with the story.\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "story_continuation\",\n  \"confidence\": 0.95,\n  \"goal\": \"Continue the narrative by providing a plausible and engaging continuation of the story based on the given context.\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 171 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "171 >= 20 chars"
+        },
+        {
+          "name": "hint: continu",
+          "passed": true,
+          "detail": "found 'continu' in output"
+        },
+        {
+          "name": "hint: story",
+          "passed": true,
+          "detail": "found 'story' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_evaluate_quality",
+      "description": "Infers user wants quality evaluation/feedback",
+      "category": "instruction",
+      "passed": false,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: Read my chapter and tell me what needs improvement.\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "editing\",\n  \"confidence\": 0.95,\n  \"goal\": \"Provide feedback on the quality and effectiveness of a written chapter\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 116 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "116 >= 20 chars"
+        },
+        {
+          "name": "hint: chapter",
+          "passed": true,
+          "detail": "found 'chapter' in output"
+        },
+        {
+          "name": "hint: improve",
+          "passed": false,
+          "detail": "expected 'improve' not found in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_change_direction",
+      "description": "Infers user wants to change the story direction/tone",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: Actually, make the story darker and add more mystery elements.\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "story_development\",\n  \"confidence\": 0.95,\n  \"goal\": \"Increase the darkness and mystery of the story\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 102 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "102 >= 20 chars"
+        },
+        {
+          "name": "hint: develop",
+          "passed": true,
+          "detail": "found 'develop' in output"
+        },
+        {
+          "name": "hint: increase",
+          "passed": true,
+          "detail": "found 'increase' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_summarize",
+      "description": "Infers user wants a chapter/story summary",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: Can you give me a quick recap of what happened so far?\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "summary\",\n  \"confidence\": 0.95,\n  \"goal\": \"Provide a brief summary of the conversation so far.\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 97 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "97 >= 20 chars"
+        },
+        {
+          "name": "hint: summar",
+          "passed": true,
+          "detail": "found 'summar' in output"
+        },
+        {
+          "name": "hint: summar",
+          "passed": true,
+          "detail": "found 'summar' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 3"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "intent_brainstorm",
+      "description": "Infers user wants to brainstorm ideas",
+      "category": "instruction",
+      "passed": true,
+      "input": "User: Classify this user request into a route and goal.\nFormat: {\"route\": \"<route_name>\", \"confidence\": 0.95, \"goal\": \"<description>\"}\n\nUser: I need ideas for character backstories. Give me some options.\n\nIntent (as JSON):\n\nAssistant:",
+      "output": "backstory_generator\",\n  \"confidence\": 0.95,\n  \"goal\": \"Provide character backstory ideas for a role-playing game\"\n}",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 115 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "115 >= 20 chars"
+        },
+        {
+          "name": "hint: backstory",
+          "passed": true,
+          "detail": "found 'backstory' in output"
+        },
+        {
+          "name": "hint: backstory",
+          "passed": true,
+          "detail": "found 'backstory' in output"
+        },
+        {
+          "name": "hint: \"confidence\"",
+          "passed": true,
+          "detail": "found '\"confidence\"' in output"
+        },
+        {
+          "name": "forbidden: <?",
+          "passed": true,
+          "detail": "'<?' not found (good)"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 2"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "repetition_avoidance",
+      "description": "Model avoids repeating the same phrase",
+      "category": "repetition",
+      "passed": true,
+      "input": "System: You are a helpful assistant. Answer directly.\n\nUser: List 5 different animals. Write each on a new line numbered 1 to 5.\n\nAssistant:",
+      "output": " 1. Dog\n2. Cat\n3. Elephant\n4. Giraffe\n5. Kangaroo",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 49 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "49 >= 25 chars"
+        },
+        {
+          "name": "hint: 1.",
+          "passed": true,
+          "detail": "found '1.' in output"
+        },
+        {
+          "name": "hint: 2.",
+          "passed": true,
+          "detail": "found '2.' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 6"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_list",
+      "description": "Outputs a numbered list with 3 items",
+      "category": "format",
+      "passed": true,
+      "input": "System: You are a list maker.\n\nUser: List 3 things you need for a picnic, numbered 1 to 3.\n\nAssistant:",
+      "output": " 1. A blanket or mat to sit on\n2. Food and drinks for everyone\n3. A cooler to keep the food and drinks cold",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 107 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "107 >= 20 chars"
+        },
+        {
+          "name": "hint: 1.",
+          "passed": true,
+          "detail": "found '1.' in output"
+        },
+        {
+          "name": "hint: 2.",
+          "passed": true,
+          "detail": "found '2.' in output"
+        },
+        {
+          "name": "hint: 3.",
+          "passed": true,
+          "detail": "found '3.' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 4"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "format_json",
+      "description": "Outputs a valid JSON object",
+      "category": "format",
+      "passed": true,
+      "input": "System: You are a data formatter. Always output valid JSON.\n\nUser: Output a JSON object with keys: name, age, city.\n\nAssistant:",
+      "output": " ```json\n{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}\n```",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 72 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "72 >= 20 chars"
+        },
+        {
+          "name": "hint: name",
+          "passed": true,
+          "detail": "found 'name' in output"
+        },
+        {
+          "name": "hint: age",
+          "passed": true,
+          "detail": "found 'age' in output"
+        },
+        {
+          "name": "hint: city",
+          "passed": true,
+          "detail": "found 'city' in output"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 1"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "throughput_long_gen",
+      "description": "Generate 300 tokens to measure tokens/second",
+      "category": "throughput",
+      "passed": true,
+      "input": "System: You are a creative writer.\n\nUser: Write a detailed paragraph about the future of artificial intelligence, including its potential benefits and risks. Write at least 200 words.\n\nAssistant:",
+      "output": " The future of artificial intelligence (AI) promises both immense potential and significant risks, shaping the world in profound ways. AI's potential benefits are vast, offering advancements in healthcare, where AI algorithms can analyze vast datasets to predict disease outbreaks, personalize treatments, and improve patient outcomes. In education, AI-powered tutors can provide personalized learning experiences, adapting to each student's strengths and weaknesses. In environmental conservation, AI could optimize resource allocation, predict natural disasters, and monitor ecosystems in real-time. Economically, AI could streamline industries, increase productivity, and create new opportunities, from automated customer service to complex financial analysis. Security could be bolstered through AI-driven surveillance, fraud detection, and threat prevention.\nHowever, the risks are equally significant. AI-driven job displacement could lead to economic instability and social unrest. Data privacy and security concerns loom large, with AI systems potentially exploiting vulnerabilities. The risk of AI misuse in surveillance, warfare, and disinformation campaigns threatens democratic processes and civil liberties. Bias in AI algorithms could perpetuate and exacerbate societal inequalities, from hiring practices to criminal sentencing. Technological unemployment and the widening digital divide pose challenges to social cohesion. The existential risk of uncontrolled AI development, where superintelligent systems could surpass human control, is a sobering consideration.\nNavigating these challenges requires a proactive approach, balancing innovation with ethical considerations. Robust regulatory frameworks, international cooperation, and ethical guidelines are essential. Investment in education and workforce development can help mitigate job displacement. Transparency in AI development and deployment builds public trust and safety. Prioritizing human-centric design ensures AI augments, rather than replaces, human capabilities. Ultimately, shaping the future of AI demands a collective effort to harness its transformative potential while responsibly mitigating its risks, ensuring AI serves as a force for good in society.",
+      "checks": [
+        {
+          "name": "non_empty",
+          "passed": true,
+          "detail": "output length: 2241 chars"
+        },
+        {
+          "name": "min_output_length",
+          "passed": true,
+          "detail": "2241 >= 100 chars"
+        },
+        {
+          "name": "repetition_check",
+          "passed": true,
+          "detail": "0 repeated sentences out of 19"
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "detail": "ok"
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "category_breakdown": [
+    {
+      "category": "coherence",
+      "total": 27,
+      "passed": 25
+    },
+    {
+      "category": "format",
+      "total": 2,
+      "passed": 2
+    },
+    {
+      "category": "instruction",
+      "total": 14,
+      "passed": 12
+    },
+    {
+      "category": "repetition",
+      "total": 1,
+      "passed": 1
+    },
+    {
+      "category": "smoke",
+      "total": 1,
+      "passed": 1
+    },
+    {
+      "category": "throughput",
+      "total": 1,
+      "passed": 1
+    },
+    {
+      "category": "validation",
+      "total": 2,
+      "passed": 2
+    }
+  ]
+}

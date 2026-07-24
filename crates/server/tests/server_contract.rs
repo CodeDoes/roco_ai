@@ -284,7 +284,7 @@ async fn streaming_sse_can_be_parsed_chunk_by_chunk() {
     assert!(saw_stop, "Expected a final 'stop' chunk");
 
     // Verify token chunk shape matches fixture
-    let fixture = load_fixture("stream_chunk_token.json");
+    let _fixture = load_fixture("stream_chunk_token.json");
     // Parse the first non-stop chunk and verify shape
     for line in body_str.lines() {
         if let Some(data) = line.strip_prefix("data: ") {

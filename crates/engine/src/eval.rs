@@ -521,6 +521,11 @@ pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
 /// The system instruction is included only on the first user turn (the actor
 /// drops the `system` field for session/preserve_state calls), so the task
 /// persona and the few-shot both live in the recurrent state.
+///
+/// # State Tune Example
+///
+/// See [`STATE_TUNE_EXAMPLES.md`](https://github.com/roco-ai/roco/blob/main/STATE_TUNE_EXAMPLES.md#3-eval-bake_fim_session--fill-in-the-middle)
+/// for the full catalog with example pairs.
 pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(backend: &B) -> Result<(), String> {
     // Build full multi-shot prompt in one pass. We assemble the few-shot
     // as a single user/assistant transcript so the recurrent state carries

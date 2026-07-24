@@ -11,7 +11,7 @@
 
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::structured_complete;
+use crate::util::{lazy_bake, session_structured, WRITING_ANALYSIS_SESSION};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -202,8 +202,9 @@ impl WritingAssistant {
         backend: &dyn ModelBackend,
         text: &str,
     ) -> Result<WritingAnalysis, String> {
-        let analysis: WritingAnalysis = structured_complete(
+        let analysis: WritingAnalysis = state_tuned_complete(
             backend,
+            WRITING_ANALYSIS_SESSION,
             "You are a writing analyst. Analyze the text and extract key elements. Output valid JSON only.",
             &format!(
                 "Analyze this text:\n\n{text}\n\n\
@@ -237,8 +238,9 @@ impl WritingAssistant {
         let mut suggestions = Vec::new();
 
         for _ in 0..num_suggestions {
-            let suggestion: WritingSuggestion = structured_complete(
-                backend,
+            let suggestion: WritingSuggestion = state_tuned_complete(
+            backend,
+                WRITING_ANALYSIS_SESSION,
                 "You are a creative writing assistant. Suggest a continuation of the text. Output valid JSON only.",
                 &format!(
                     "Continue this text naturally:\n\n{text}\n\n\
@@ -269,8 +271,9 @@ impl WritingAssistant {
         let mut suggestions = Vec::new();
 
         for _ in 0..num_suggestions {
-            let suggestion: WritingSuggestion = structured_complete(
-                backend,
+            let suggestion: WritingSuggestion = state_tuned_complete(
+            backend,
+                WRITING_ANALYSIS_SESSION,
                 "You are a creative writing assistant. Fill in the missing text between two passages. Output valid JSON only.",
                 &format!(
                     "Fill in the text between these two passages:\n\n\
@@ -299,8 +302,9 @@ impl WritingAssistant {
         old_text: &str,
         new_text: &str,
     ) -> Result<DiffAnalysis, String> {
-        let analysis: DiffAnalysis = structured_complete(
+        let analysis: DiffAnalysis = state_tuned_complete(
             backend,
+            WRITING_ANALYSIS_SESSION,
             "You are a writing analyst. Analyze the changes between two versions of text. Output valid JSON only.",
             &format!(
                 "Analyze the changes between these two versions:\n\n\
@@ -327,8 +331,9 @@ impl WritingAssistant {
         text: &str,
         existing_content: &str,
     ) -> Result<CrossReference, String> {
-        let xref: CrossReference = structured_complete(
+        let xref: CrossReference = state_tuned_complete(
             backend,
+            WRITING_ANALYSIS_SESSION,
             "You are a writing analyst. Find connections between the new text and existing content. Output valid JSON only.",
             &format!(
                 "Find connections between this new text and existing content:\n\n\
@@ -379,6 +384,24 @@ impl CrossReference {
     pub fn grammar() -> String {
         schema_to_gbnf("root", Self::schema().to_json()).expect("CrossReference schema is valid")
     }
+}
+
+/// State-tuned model call with grammar constraint and deserialize output.
+/// Lazily bakes the session on first use, then resumes from it.
+fn state_tuned_complete<T>(
+    backend: &dyn ModelBackend,
+    session: &'static str,
+    system: &str,
+    prompt: &str,
+    grammar: &str,
+    temperature: f32,
+    max_tokens: usize,
+) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    lazy_bake(backend, session, system, &[])?;
+    session_structured(backend, session, prompt, grammar, temperature, max_tokens)
 }
 
 #[cfg(test)]

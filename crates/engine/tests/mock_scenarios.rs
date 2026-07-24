@@ -9,11 +9,10 @@
 
 use futures::future::BoxFuture;
 use roco_engine::{
-    CompletionRequest, CompletionResponse, EngineError, MockBackend, ModelBackend, TokenUsage,
+    CompletionRequest, CompletionResponse, EngineError, MockBackend, ModelBackend,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 // ── Helper ─────────────────────────────────────────────────────────────────
 
