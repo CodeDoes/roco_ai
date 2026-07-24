@@ -4431,6 +4431,7 @@ dependencies = [
  "image",
  "roco-agent",
  "roco-app",
+ "roco-bnf-engine",
  "roco-engine",
  "roco-gateway",
  "roco-grammar",

@@ -58,6 +58,17 @@ pub trait ModelBackend: Send + Sync {
     fn feed_eos(&self, _session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
         Box::pin(async move { Ok(()) })
     }
+
+    /// Bake a state-tuned session: process a system prompt + few-shot examples
+    /// with `preserve_state=true`, then return the session ID for reuse.
+    /// The caller should then resume from this session with `session` set.
+    /// Returns the session ID on success.
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)], // (user_prompt, assistant_response)
+    ) -> BoxFuture<'a, Result<String, EngineError>>;
 }
 
 /// Deterministic backend for tests / pre-model development.
@@ -216,6 +227,18 @@ impl ModelBackend for MockBackend {
 
     fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
         Box::pin(async move { Ok(()) })
+    }
+
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> BoxFuture<'a, Result<String, EngineError>> {
+        Box::pin(async move {
+            let _ = (session_id, system, few_shots);
+            Err(EngineError::Backend("state baking not supported".into()))
+        })
     }
 }
 
@@ -469,6 +492,16 @@ mod tests {
                 _req: CompletionRequest,
             ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
                 Box::pin(async move { Err(EngineError::Backend("unimplemented".into())) })
+            }
+            fn bake_state<'a>(
+                &'a self,
+                _session_id: &'a str,
+                _system: &'a str,
+                _few_shots: &'a [(&'a str, &'a str)],
+            ) -> BoxFuture<'a, Result<String, EngineError>> {
+                Box::pin(async move {
+                    Err(EngineError::Backend("bake_state not supported".into()))
+                })
             }
         }
         let b = NoStateBackend;

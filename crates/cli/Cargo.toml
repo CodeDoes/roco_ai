@@ -22,6 +22,7 @@ net = ["dep:roco-server", "dep:roco-gateway", "dep:axum"]
 [dependencies]
 roco-engine = { path = "../engine" }
 roco-grammar = { path = "../grammar" }
+roco-bnf-engine = { path = "../bnf-engine" }
 roco-message = { path = "../message" }
 roco-agent = { path = "../agent" }
 roco-tools = { path = "../tools" }

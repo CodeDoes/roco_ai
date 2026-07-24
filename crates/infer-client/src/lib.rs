@@ -133,6 +133,18 @@ impl ModelBackend for RemoteBackend {
         let extra_headers = self.extra_headers.clone();
         Box::pin(async move { remote_complete(&client, &base_url, &extra_headers, req).await })
     }
+
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> BoxFuture<'a, Result<String, EngineError>> {
+        Box::pin(async move {
+            let _ = (session_id, system, few_shots);
+            Err(EngineError::Backend("state baking not supported".into()))
+        })
+    }
 }
 
 /// Serialized request shape sent to the remote `/v1/completions` endpoint.

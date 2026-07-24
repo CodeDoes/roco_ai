@@ -512,6 +512,29 @@ impl roco_engine::ModelBackend for TokioBackend {
     ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         Box::pin(async move { Ok(()) })
     }
+
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> futures::future::BoxFuture<'a, Result<String, roco_engine::EngineError>> {
+        let inner = self.inner.clone();
+        let rt_handle = self.rt.handle().clone();
+        let session_id = session_id.to_string();
+        let system = system.to_string();
+        let few_shots: Vec<(String, String)> = few_shots.iter().map(|(u, a)| (u.to_string(), a.to_string())).collect();
+        Box::pin(async move {
+            rt_handle
+                .spawn(async move {
+                    inner.bake_state(&session_id, &system, &few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect::<Vec<_>>()).await
+                })
+                .await
+                .unwrap_or(Err(roco_engine::EngineError::Backend(
+                    "TokioBackend runtime shut down".into(),
+                )))
+        })
+    }
 }
 
 /// Return a backend that works from synchronous code (uses a dedicated tokio

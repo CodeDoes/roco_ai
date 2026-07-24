@@ -20,6 +20,7 @@ use roco_agent::mechanistic::{
     HandlerResult, MechanisticAgent, Plan as MechPlan, RepairConfig, Task,
 };
 use roco_engine::{CompletionRequest, ModelBackend};
+
 use roco_grammar::{Schema, StrategyKind, StrategySelector};
 use roco_tools::{ReadTool, Tool, WriteTool};
 use roco_workspace::{Workspace, WorkspaceKind};
@@ -389,40 +390,59 @@ impl StorySynopsis {
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// State-tuned structured completion: generates without grammar constraint,
-/// then parses using `clean_json_output` (strips code fences, thinking blocks,
-/// and extracts the first JSON object/array).
+/// Structured completion using the strategy's grammar + parser.
 ///
-/// This is more reliable than grammar-constrained generation for RWKV models,
-/// which have known issues with BNF grammar (thinking contamination, code fences).
+/// For grammar strategies (Schema, LooseJson, RawGbnf), builds a BnfMask
+/// from the strategy's GBNF grammar and the backend's vocabulary, and sets
+/// `prefill` to `"{\n"` to jump-start JSON output.
+///
+/// For StateTuned, no grammar is used — the state-tuned prompt carries the
+/// signal — and `prefill` is left as `None` so the model generates freely.
 fn structured_complete_with_strategy<T>(
     backend: &dyn ModelBackend,
     system: &str,
     prompt: &str,
-    _strategy: &StrategySelector,
+    strategy: &StrategySelector,
     temperature: f32,
     max_tokens: usize,
+    session_id: Option<&str>,
 ) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
 {
+    let grammar = strategy.grammar();
+    let use_grammar = !grammar.is_empty();
+
+    let bnf_mask = if use_grammar {
+        backend
+            .vocab_bytes()
+            .ok_or_else(|| "backend does not provide vocabulary bytes for BNF masking".to_string())
+            .and_then(|vocab| {
+                roco_bnf_engine::create_bnf_mask(&grammar, &vocab)
+                    .map(|m| Some(m as Box<dyn roco_engine::BnfMask>))
+                    .map_err(|e| format!("BNF mask creation failed: {e}"))
+            })?
+    } else {
+        None
+    };
+
     let text = futures::executor::block_on(backend.complete(CompletionRequest {
         system: system.to_string(),
         prompt: prompt.to_string(),
-        grammar: None, // No grammar constraint - state tuned approach
+        grammar: if use_grammar { Some(grammar.clone()) } else { None },
         temperature,
         max_tokens,
-        prefill: Some("{\n".into()),
+        prefill: if use_grammar { Some("{\n".into()) } else { None },
+        session: session_id.map(|s| s.to_string()),
+        bnf_mask,
         ..Default::default()
     }))
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    // Parse using StateTunedStrategy's robust clean_json_output
-    // Handles: code fences, thinking blocks, nested JSON
-    let cleaned = roco_grammar::strategies::clean_json_output(&text);
-    serde_json::from_str::<T>(&cleaned)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}\ncleaned: {cleaned}"))
+    strategy
+        .parse::<T>(&text)
+        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 fn extract_title(outline: &str) -> String {
@@ -668,6 +688,7 @@ pub fn cmd_story(extra: &[&str]) {
                         &outline_strategy_clone,
                         0.6,
                         300,
+                        Some("story-session"),
                     )
                     .unwrap_or_else(|e| StoryOutline {
                         title: "Untitled".into(),
@@ -750,6 +771,7 @@ pub fn cmd_story(extra: &[&str]) {
                     &wiki_strategy_clone,
                     0.7,
                     500,
+                    Some("story-session"),
                 )
                 .unwrap_or_else(|e| StoryWiki {
                     characters: vec![StoryCharacter {
@@ -860,6 +882,7 @@ pub fn cmd_story(extra: &[&str]) {
                     &chapter_strategy_clone,
                     0.8,
                     max_tokens,
+                    Some("story-session"),
                 )
                 .unwrap_or_else(|e| StoryChapter {
                     title: chapter_label.into(),
@@ -926,6 +949,7 @@ pub fn cmd_story(extra: &[&str]) {
                         &val_strategy_clone,
                         0.3,
                         200,
+                        Some("story-session"),
                     )
                     .map(|v: StoryValidation| {
                         format!(
@@ -996,6 +1020,7 @@ pub fn cmd_story(extra: &[&str]) {
                     &synopsis_strategy_clone,
                     0.5,
                     200,
+                    Some("story-session"),
                 )
                 .unwrap_or_else(|e| StorySynopsis {
                     summary: format!("Error writing synopsis: {e}"),

@@ -289,6 +289,65 @@ impl ModelBackend for RwkvBackend {
         })
     }
 
+    fn bake_state(
+        &self,
+        session_id: &str,
+        system: &str,
+        few_shots: &[(&str, &str)], // (user_prompt, assistant_response)
+    ) -> BoxFuture<'_, Result<String, EngineError>> {
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
+        let session_id = session_id.to_string();
+        let system = system.to_string();
+        let few_shots = few_shots
+            .iter()
+            .map(|(u, a)| (u.to_string(), a.to_string()))
+            .collect::<Vec<_>>();
+        Box::pin(async move {
+            // Build the prompt with system + few-shots
+            let mut prompt = String::new();
+            if !system.is_empty() {
+                prompt.push_str(&format!("System: {system}\n\n"));
+            }
+            for (user, assistant) in &few_shots {
+                prompt.push_str(&format!("User: {user}\n\nAssistant: {assistant}\n\n"));
+            }
+            // Feed token 0 (EOS) between examples to reset document boundary
+            // In practice we bake in one go, the actor handles it
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+            tx.send(
+                CompleteReq {
+                    system: String::new(), // Already in prompt
+                    prompt,
+                    prefill: None,
+                    max_tokens: 1, // Just process prompt, emit 1 token to finalize state
+                    temperature: 0.0,
+                    top_a: None,
+                    grammar: None,
+                    bnf_mask: None,
+                    reply: reply_tx,
+                    preserve_state: true, // Bake into session
+                    on_token: None,
+                    session: Some(session_id.clone()),
+                    deadline_ms: 60000,
+                }
+                .into(),
+            )
+            .await
+            .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
+
+            // Wait for completion
+            let _ = reply_rx
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
+                .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
+
+            Ok(session_id)
+        })
+    }
+
     fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
         let tx = self
             .tx

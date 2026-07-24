@@ -51,6 +51,14 @@ impl ModelBackend for RecordingBackend {
     fn load_state(&self, state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
         self.inner.load_state(state)
     }
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> BoxFuture<'a, Result<String, EngineError>> {
+        self.inner.bake_state(session_id, system, few_shots)
+    }
 }
 
 // ── Scenario 1: Exact completion and error sequences ───────────────────────
