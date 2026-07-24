@@ -64,7 +64,41 @@ A major conceptual friction point in this workspace is the existence of **two en
 
 ---
 
-## 2. Developer Onboarding: Cognitive Load & Understandability
+## 2. State-Tuned Fallbacks & Recurrent State Handling (Examples)
+
+To avoid heavy fine-tuning of 2.9B parameters for complex DSL/JSON layouts, RoCo AI relies extensively on **recurrent state tuning and state-tuned fallbacks**, demonstrated in the `crates/inference/examples/` targets:
+
+* **State-Tuning (Recurrent States):** Since RWKV-7 is an RNN-based architecture, states can be snapshotted, modified, and hot-swapped mid-session. The capability methods `model_state` and `model_state_generate` allow the application to preserve recurrent contexts (e.g., world wikis, persistent outline parameters) without re-evaluating long prefixes.
+* **EOS Baking & Padding:** In standard generation, LLMs often emit trailing tokens or leak formatting characters after an End-of-Stream (EOS). Our state-tuning examples demonstrate:
+  - **EOS-Padded State Tuning:** Baking the EOS token directly into target recurrent states, which forces the model to halt immediately on the desired boundary without leaking thinking blocks.
+  - **Prefix Prefilling:** Injecting state prefixes to bias grammar decoding toward specific templates without manual prefix prompts.
+* **The Simplicity/Safety Trade-off:** By using recurrent states, we bypass the need for a remote fine-tuning server or local LoRA training. The state-tuned fallbacks are entirely local, extremely fast (requiring zero prefix pre-filling times), and 100% deterministic when wrapped with grammar boundaries.
+
+---
+
+## 3. Configs, Logging, and Tracing Architecture
+
+A major part of making an application simple for coders is ensuring that debugging is transparent and configurations are highly predictable.
+
+### A. Priority-Based Configuration Loading
+In `crates/app/src/config.rs`, configurations follow XDG standards but offer explicit developer overrides. The priority load order is:
+1. **`$ROCO_CONFIG` (Env Variable):** Points to an explicit `.toml` configuration path.
+2. **`.roco/config.toml` (Current Directory):** Scoped to the active project workspace.
+3. **`~/.config/roco/config.toml` (Home XDG Config):** Global user configuration.
+4. **`~/.roco/config.toml` (Legacy Dotfile):** High-priority backward compatibility.
+
+**The Override Shield:** Any environment variables explicitly set on the CLI (e.g., `RWKV_MODEL` and `RWKV_VOCAB`) take absolute precedence over values written inside any loaded configuration file. When no config or env variables are present, the backend gracefully runs auto-detection on local directories (`models/`).
+
+### B. Tracing, Subscribers, and Env-Filters
+The logging architecture unifies debugging without polluting the user-facing UI or terminal stdout:
+* **Structured Tracing:** All crates leverage the `tracing` library. Rather than using arbitrary `println!`, core execution points construct structured span records (e.g., tracking `path` or `session_id`).
+* **Subscriber Routing:** Surfaces (TUI, GUI, CLI) configure custom `tracing-subscriber` layers:
+  - For the interactive CLI and TUI, `env-filter` is used to send info/debug logs into a dedicated log file (`.roco/roco.log`) or standard error, preventing trace statements from overlapping with natural language outputs.
+  - For daemon modes (`roco-inferd`), events are serialized to disk to allow offline diagnostic analysis.
+
+---
+
+## 4. Developer Onboarding: Cognitive Load & Understandability
 
 ### Crate Fragmentation (19 Workspace Crates)
 The cargo workspace comprises **19 separate crates** under `crates/`. This represents a high degree of fragmentation:
@@ -83,7 +117,7 @@ The cargo workspace comprises **19 separate crates** under `crates/`. This repre
 
 ---
 
-## 3. Structural Clarity: Filepath Mapping & Search Paths
+## 5. Structural Clarity: Filepath Mapping & Search Paths
 
 ### Filepath Layout Analysis
 Are filepaths conceptually understandable? Let's trace how folders map to concepts:
@@ -104,7 +138,7 @@ Yes, navigation is currently search-heavy due to tight coupling across many tiny
 
 ---
 
-## 4. Setup, Environment, and Build Complexity
+## 6. Setup, Environment, and Build Complexity
 
 ### Developer Setup Analysis
 * **The Good:** End-user setup is highly streamlined. Running `./start.sh` compiles and executes the CLI, with configuration auto-detected via local directories or standard system paths.
@@ -114,7 +148,7 @@ Yes, navigation is currently search-heavy due to tight coupling across many tiny
 
 ---
 
-## 5. Production Simplicity: Elegant Usage with a Neat Backend
+## 7. Production Simplicity: Elegant Usage with a Neat Backend
 
 The system achieves a wonderful design balance: **The user interface remains exceptionally simple while grammar enforcement operates strictly in the background.**
 
@@ -126,7 +160,7 @@ A classic local LLM challenge is *prompt contamination* and formatting failures.
 
 ---
 
-## 6. Realized Safety & Consistency Upgrades
+## 8. Realized Safety & Consistency Upgrades
 
 As part of this conceptual audit, we implemented concrete security and consistency changes to make the codebase safer and simpler:
 
