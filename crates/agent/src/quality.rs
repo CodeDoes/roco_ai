@@ -13,8 +13,9 @@
 //! Feed the model critique/approval examples and ask it to critique the story.
 //! This leverages the model's understanding to evaluate quality.
 
-use roco_engine::{CompletionRequest, ModelBackend};
+use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
+use crate::util::structured_complete;
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -326,35 +327,6 @@ impl QualityAnalyzer {
              Output valid JSON only."
         )
     }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Helper function
-// ═════════════════════════════════════════════════════════════════════════════
-
-fn structured_complete<T>(
-    backend: &dyn ModelBackend,
-    system: &str,
-    prompt: &str,
-    grammar: &str,
-    temperature: f32,
-    max_tokens: usize,
-) -> Result<T, String>
-where
-    T: serde::de::DeserializeOwned,
-{
-    let text = futures::executor::block_on(backend.complete(CompletionRequest {
-        system: system.to_string(),
-        prompt: prompt.to_string(),
-        grammar: Some(grammar.to_string()),
-        temperature,
-        max_tokens,
-        ..Default::default()
-    }))
-    .map_err(|e| format!("model error: {e}"))?
-    .text;
-
-    crate::util::parse_structured_response(&text)
 }
 
 #[cfg(test)]

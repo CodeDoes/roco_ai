@@ -8,8 +8,9 @@
 //!
 //! The agent parses this into structured directives that can be applied.
 
-use roco_engine::{CompletionRequest, ModelBackend};
+use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
+use crate::util::structured_complete;
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -176,35 +177,6 @@ impl FeedbackParser {
             confidence: 1.0,
         })
     }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Helper function
-// ═════════════════════════════════════════════════════════════════════════════
-
-fn structured_complete<T>(
-    backend: &dyn ModelBackend,
-    system: &str,
-    prompt: &str,
-    grammar: &str,
-    temperature: f32,
-    max_tokens: usize,
-) -> Result<T, String>
-where
-    T: serde::de::DeserializeOwned,
-{
-    let text = futures::executor::block_on(backend.complete(CompletionRequest {
-        system: system.to_string(),
-        prompt: prompt.to_string(),
-        grammar: Some(grammar.to_string()),
-        temperature,
-        max_tokens,
-        ..Default::default()
-    }))
-    .map_err(|e| format!("model error: {e}"))?
-    .text;
-
-    crate::util::parse_structured_response(&text)
 }
 
 #[cfg(test)]

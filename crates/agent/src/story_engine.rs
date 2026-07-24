@@ -26,8 +26,9 @@
 //!                          └───────────┘ (dynamic loop)
 //! ```
 
-use roco_engine::{CompletionRequest, ModelBackend};
+use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
+use crate::util::structured_complete;
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Serialize};
 
@@ -826,32 +827,6 @@ impl ChapterOutput {
     fn grammar() -> String {
         schema_to_gbnf("root", Self::schema().to_json()).expect("ChapterOutput schema is valid")
     }
-}
-
-/// Call the model with grammar constraint and deserialize output
-fn structured_complete<T>(
-    backend: &dyn ModelBackend,
-    system: &str,
-    prompt: &str,
-    grammar: &str,
-    temperature: f32,
-    max_tokens: usize,
-) -> Result<T, String>
-where
-    T: serde::de::DeserializeOwned,
-{
-    let text = futures::executor::block_on(backend.complete(CompletionRequest {
-        system: system.to_string(),
-        prompt: prompt.to_string(),
-        grammar: Some(grammar.to_string()),
-        temperature,
-        max_tokens,
-        ..Default::default()
-    }))
-    .map_err(|e| format!("model error: {e}"))?
-    .text;
-
-    crate::util::parse_structured_response(&text)
 }
 
 /// Write file helper
