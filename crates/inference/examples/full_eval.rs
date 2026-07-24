@@ -1005,7 +1005,15 @@ async fn main() -> anyhow::Result<()> {
     }
     println!();
 
-    let report = run_suite("full_eval", &backend, cases, None, None, true).await;
+    let trace_dir = std::path::Path::new("evals/results");
+    let trace_path = trace_dir.join("latest_trace.txt");
+    let log_path = trace_dir.join("latest_log.jsonl");
+    let _ = std::fs::create_dir_all(trace_dir);
+
+    let report = run_suite(
+        "full_eval", &backend, cases, None,
+        Some(&trace_path), Some(&log_path), true,
+    ).await;
 
     eval::print_report(&report);
 

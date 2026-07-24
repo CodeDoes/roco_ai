@@ -16,7 +16,7 @@ tracing.workspace = true
 futures.workspace = true
 roco-grammar = { path = "../grammar" }
 # MockBackend latency injection; cheap feature set
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["time", "signal"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
