@@ -452,7 +452,7 @@ impl StoryModeAgent {
         )))
     }
 
-    fn handle_summarize_all(&self, backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
+    fn handle_summarize_all(&self, _backend: &dyn ModelBackend) -> Result<StoryModeResult, String> {
         let session = self.require_session()?;
         let chapters = session.tool_set.read_all_chapters().unwrap_or_default();
         let wiki = session.tool_set.read_wiki().unwrap_or_default();
@@ -881,6 +881,7 @@ impl StoryModeAgent {
             chapters: Vec<StyleChapter>,
         }
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct StyleChapter {
             chapter_num: usize,
             content: String,
@@ -941,6 +942,7 @@ impl StoryModeAgent {
             chapters: Vec<PovChapter>,
         }
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct PovChapter {
             chapter_num: usize,
             content: String,
@@ -1203,23 +1205,6 @@ impl StoryModeAgent {
         struct BrainstormResponse {
             ideas: Vec<StoryIdea>,
         }
-
-        let schema = Schema::object()
-            .prop(
-                "ideas",
-                Schema::array(
-                    Schema::object()
-                        .prop("title", Schema::string())
-                        .prop("genre", Schema::string())
-                        .prop("tone", Schema::string())
-                        .prop("premise", Schema::string())
-                        .prop("protagonist", Schema::string())
-                        .prop("central_conflict", Schema::string())
-                        .prop("themes", Schema::array(Schema::string()))
-                        .build(),
-                ),
-            )
-            .build();
 
         // State-tuned: no grammar constraint for creative generation
         let brainstorm_system = "You are a creative writing assistant. Generate creative story ideas. Output valid JSON only. No thinking.";

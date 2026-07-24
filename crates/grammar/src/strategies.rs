@@ -404,10 +404,8 @@ pub fn repair_truncated_json(s: &str) -> String {
     let mut depth = 0i32;
     let mut in_string = false;
     let mut escaped = false;
-    let mut last_key_value_end = result.len();
-    let mut needs_quote = false;
 
-    for (i, &c) in chars.iter().enumerate() {
+    for &c in chars.iter() {
         if in_string {
             if escaped {
                 escaped = false;
@@ -422,13 +420,9 @@ pub fn repair_truncated_json(s: &str) -> String {
             '"' => in_string = true,
             '{' | '[' => {
                 depth += 1;
-                last_key_value_end = i + 1;
             }
             '}' | ']' => {
                 depth -= 1;
-                if depth >= 0 {
-                    last_key_value_end = i + 1;
-                }
             }
             _ => {}
         }
@@ -437,7 +431,6 @@ pub fn repair_truncated_json(s: &str) -> String {
     // If we're still in a string at the end, the string is unterminated
     if in_string {
         result.push('"');
-        needs_quote = true;
     }
 
     // Close unclosed objects/arrays
