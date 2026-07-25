@@ -1064,7 +1064,7 @@ impl RwkvActor {
                 #[cfg(not(feature = "grammar"))]
                 let token = sampling::sample_token(probs.data(), temperature, top_p, top_a_val);
 
-                if token == 0 {
+                if token == 0 || token >= 65530 {
                     break;
                 }
 
@@ -1204,7 +1204,7 @@ impl RwkvActor {
                     None => break,
                 };
 
-                if token == 0 {
+                if token == 0 || token >= 65530 {
                     break;
                 }
 
@@ -1279,10 +1279,15 @@ impl RwkvActor {
             let result_text = if generated.is_empty() {
                 return Err(EngineError::EmptyResponse);
             } else {
+                let valid_tokens: Vec<u32> = generated
+                    .iter()
+                    .copied()
+                    .filter(|&t| t > 0 && t < 65530)
+                    .collect();
                 let decoded = self
                     .tokenizer
-                    .decode(&generated)
-                    .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
+                    .decode(&valid_tokens)
+                    .unwrap_or_else(|_| Vec::new());
                 String::from_utf8_lossy(&decoded).to_string()
             };
 

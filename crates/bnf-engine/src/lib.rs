@@ -186,6 +186,12 @@ impl BnfMask for BnfEngine {
     fn mask(&mut self, logits: &mut [f32]) {
         // ignore errors: if logits is too short, it's a caller bug we can't fix
         let _ = self.mask_logits(logits);
+        // Token 0 (EOS) is not part of kbnf's byte vocabulary matching.
+        // Unless the grammar has finished, token 0 MUST be masked to NEG_INFINITY
+        // so unmasked raw logits for token 0 do not prematurely trigger EOS!
+        if !self.is_finished() && !logits.is_empty() {
+            logits[0] = f32::NEG_INFINITY;
+        }
     }
 
     fn accept(&mut self, token_id: u32) -> bool {
