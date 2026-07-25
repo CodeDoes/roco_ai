@@ -13,9 +13,9 @@
 //! This is more flexible than rule-based evals and leverages the model's
 //! understanding of narrative quality.
 
+use crate::util::{lazy_bake, session_structured, EVAL_SESSION};
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::{lazy_bake, session_structured, EVAL_SESSION};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -13,9 +13,9 @@
 //! Feed the model critique/approval examples and ask it to critique the story.
 //! This leverages the model's understanding to evaluate quality.
 
+use crate::util::{lazy_bake, session_structured, CRITIQUE_SESSION};
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::{lazy_bake, session_structured, CRITIQUE_SESSION};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

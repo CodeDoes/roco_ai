@@ -57,6 +57,7 @@ impl Gateway {
 
         let app = AxumRouter::new()
             .route("/health", get(handle_health))
+            .route("/vocab", get(handle_vocab_proxy))
             .route("/complete", post(handle_proxy))
             .route("/v1/completions", post(handle_proxy))
             .with_state(state);
@@ -70,6 +71,38 @@ impl Gateway {
             .await
             .map_err(|e| format!("Gateway run error: {e}"))?;
         Ok(())
+    }
+}
+
+/// Proxy GET /vocab to the upstream inference server.
+/// Returns the model vocabulary as base64-encoded per-token byte strings.
+async fn handle_vocab_proxy(State(state): State<GatewayState>) -> Response {
+    let forward_url = format!("{}/vocab", state.target_url.trim_end_matches('/'));
+    info!("Proxying vocab request to {}", forward_url);
+
+    match state.req_client.get(&forward_url).send().await {
+        Ok(res) => {
+            let status = res.status();
+            let body = match res.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    return (
+                        axum::http::StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({ "error": format!("Failed to read vocab response: {e}") })),
+                    ).into_response();
+                }
+            };
+            Response::builder()
+                .status(status.as_u16())
+                .header("Content-Type", "application/json")
+                .body(axum::body::Body::from(body))
+                .unwrap_or_else(|_| (axum::http::StatusCode::INTERNAL_SERVER_ERROR).into_response())
+        }
+        Err(e) => (
+            axum::http::StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({ "error": format!("Failed to reach backend for vocab: {e}") })),
+        )
+            .into_response(),
     }
 }
 
@@ -187,6 +220,14 @@ mod tests {
                 get(|| async { Json(serde_json::json!({ "status": "ok" })) }),
             )
             .route(
+                "/vocab",
+                get(|| async {
+                    Json(serde_json::json!({
+                        "vocab": ["AAA=", "AAE=", "AAo="] // base64: "", "\x01", "\x0a"
+                    }))
+                }),
+            )
+            .route(
                 "/complete",
                 post(|| async { Json(serde_json::json!({ "text": "mocked response" })) }),
             );
@@ -216,6 +257,7 @@ mod tests {
 
         let gw_app = AxumRouter::new()
             .route("/health", get(handle_health))
+            .route("/vocab", get(handle_vocab_proxy))
             .route("/complete", post(handle_proxy))
             .with_state(app_state);
 
@@ -266,5 +308,12 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Rate limit exceeded"));
+
+        // 7. Vocab proxy
+        let res_vocab = client.get(format!("{gw_url}/vocab")).send().await.unwrap();
+        assert_eq!(res_vocab.status(), 200);
+        let vocab_data: serde_json::Value = res_vocab.json().await.unwrap();
+        assert!(vocab_data["vocab"].is_array());
+        assert_eq!(vocab_data["vocab"].as_array().unwrap().len(), 3);
     }
 }

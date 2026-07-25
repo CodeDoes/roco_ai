@@ -493,7 +493,9 @@ mod tests {
             _few_shots: &'a [(&'a str, &'a str)],
         ) -> BoxFuture<'a, Result<String, roco_engine::EngineError>> {
             Box::pin(async move {
-                Err(roco_engine::EngineError::Backend("bake_state not supported".into()))
+                Err(roco_engine::EngineError::Backend(
+                    "bake_state not supported".into(),
+                ))
             })
         }
     }
@@ -543,7 +545,9 @@ mod tests {
                 _few_shots: &'a [(&'a str, &'a str)],
             ) -> BoxFuture<'a, Result<String, roco_engine::EngineError>> {
                 Box::pin(async move {
-                    Err(roco_engine::EngineError::Backend("bake_state not supported".into()))
+                    Err(roco_engine::EngineError::Backend(
+                        "bake_state not supported".into(),
+                    ))
                 })
             }
         }

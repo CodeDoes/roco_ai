@@ -99,7 +99,13 @@ impl web_rwkv::runtime::loader::Reader for CachedReader {
             })
     }
 
-    fn tensor(&self, name: &str) -> Result<(safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>), safetensors::SafeTensorError> {
+    fn tensor(
+        &self,
+        name: &str,
+    ) -> Result<
+        (safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>),
+        safetensors::SafeTensorError,
+    > {
         // Load from cache
         let safe = name.replace(['.', '/', '\\', ':'], "_");
         let vec_path = self.cache_dir.join(format!("{safe}_vec.bin"));
@@ -110,17 +116,20 @@ impl web_rwkv::runtime::loader::Reader for CachedReader {
             ))
         })?;
 
-        let (dtype_str, shape) = self.metadata.get(name).ok_or_else(|| {
-            safetensors::SafeTensorError::TensorNotFound(name.to_string())
-        })?;
+        let (dtype_str, shape) = self
+            .metadata
+            .get(name)
+            .ok_or_else(|| safetensors::SafeTensorError::TensorNotFound(name.to_string()))?;
 
         let dtype = match dtype_str.as_str() {
             "F32" => safetensors::Dtype::F32,
             "F16" => safetensors::Dtype::F16,
             "BF16" => safetensors::Dtype::BF16,
-            _ => return Err(safetensors::SafeTensorError::TensorNotFound(
-                format!("{name}: unsupported dtype {dtype_str}")
-            )),
+            _ => {
+                return Err(safetensors::SafeTensorError::TensorNotFound(format!(
+                    "{name}: unsupported dtype {dtype_str}"
+                )))
+            }
         };
 
         Ok((dtype, shape.clone(), std::borrow::Cow::Owned(data)))
@@ -171,9 +180,19 @@ impl web_rwkv::runtime::loader::Reader for MmapReader {
         Ok(self.st.tensor(name)?.shape().to_vec())
     }
 
-    fn tensor(&self, name: &str) -> Result<(safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>), safetensors::SafeTensorError> {
+    fn tensor(
+        &self,
+        name: &str,
+    ) -> Result<
+        (safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>),
+        safetensors::SafeTensorError,
+    > {
         let view = self.st.tensor(name)?;
-        Ok((view.dtype(), view.shape().to_vec(), std::borrow::Cow::Borrowed(view.data())))
+        Ok((
+            view.dtype(),
+            view.shape().to_vec(),
+            std::borrow::Cow::Borrowed(view.data()),
+        ))
     }
 }
 
@@ -193,7 +212,8 @@ impl MmapReader {
         for name in self.names() {
             // Read tensor data through the Reader interface (from mmap).
             // The mmap only pages in the bytes we actually access.
-            let (dtype, _shape, data) = match web_rwkv::runtime::loader::Reader::tensor(self, name) {
+            let (dtype, _shape, data) = match web_rwkv::runtime::loader::Reader::tensor(self, name)
+            {
                 Ok(t) => t,
                 Err(_) => continue,
             };
@@ -247,7 +267,13 @@ impl web_rwkv::runtime::loader::Reader for ReaderBox {
         }
     }
 
-    fn tensor(&self, name: &str) -> Result<(safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>), safetensors::SafeTensorError> {
+    fn tensor(
+        &self,
+        name: &str,
+    ) -> Result<
+        (safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>),
+        safetensors::SafeTensorError,
+    > {
         match self {
             ReaderBox::Cached(r) => r.tensor(name),
             ReaderBox::Mmap(r) => r.tensor(name),
@@ -450,7 +476,11 @@ impl RwkvActor {
                 .map_err(|e| anyhow::anyhow!("failed to open .st file {}: {e}", model_path))?;
             let mmap = unsafe { memmap2::Mmap::map(&file) }
                 .map_err(|e| anyhow::anyhow!("failed to mmap .st file {}: {e}", model_path))?;
-            file_len = Some(file.metadata().map(|m| m.len() / (1024*1024)).unwrap_or(0));
+            file_len = Some(
+                file.metadata()
+                    .map(|m| m.len() / (1024 * 1024))
+                    .unwrap_or(0),
+            );
 
             let mmap_reader = MmapReader::new(mmap)?;
             let info = Loader::info(&mmap_reader)?;
@@ -469,9 +499,14 @@ impl RwkvActor {
 
         // Save tensor metadata (names + shapes) before the reader is
         // consumed by ModelBuilder. Used after build_v7 to build the cache index.
-        let tensor_metadata: HashMap<String, Vec<usize>> = model_reader.names().iter()
+        let tensor_metadata: HashMap<String, Vec<usize>> = model_reader
+            .names()
+            .iter()
             .filter_map(|name| {
-                model_reader.shape(name).ok().map(|shape| (name.to_string(), shape))
+                model_reader
+                    .shape(name)
+                    .ok()
+                    .map(|shape| (name.to_string(), shape))
             })
             .collect();
         info!("extracted metadata for {} tensors", tensor_metadata.len());
@@ -979,6 +1014,14 @@ impl RwkvActor {
                     continue;
                 }
 
+                // max_tokens=0: process prompt+prefill through inference to
+                // update the recurrent state (for state tuning/baking) but
+                // stop BEFORE sampling any generated tokens. This avoids
+                // contaminating the state with the model's own output.
+                if max_tokens == 0 {
+                    break;
+                }
+
                 let ot = output[0].0.clone();
                 if ot.size() == 0 {
                     break;
@@ -1070,6 +1113,17 @@ impl RwkvActor {
             }
 
             if !first_token_sampled {
+                // Save session state even when no tokens were generated
+                // (e.g. max_tokens=0 bake calls that process prompt+prefill
+                // through inference but don't sample anything).
+                if let Some(ref sid) = session_id {
+                    match self.state.back(0).await {
+                        Ok(saved_state) => {
+                            self.state_pool.insert(sid.clone(), Some(saved_state));
+                        }
+                        Err(e) => warn!(session = sid, error = %e, "failed to save state (silent)"),
+                    }
+                }
                 return Ok((
                     text,
                     TokenUsage {

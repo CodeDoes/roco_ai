@@ -197,10 +197,8 @@ pub fn lazy_bake(
     examples: &[(&str, &str)],
 ) -> Result<(), String> {
     if claim_bake(session) {
-        futures::executor::block_on(bake_no_think_session(
-            backend, session, system, examples,
-        ))
-        .map_err(|e| format!("state-tune bake failed for {session}: {e}"))
+        futures::executor::block_on(bake_no_think_session(backend, session, system, examples))
+            .map_err(|e| format!("state-tune bake failed for {session}: {e}"))
     } else {
         Ok(())
     }
@@ -249,10 +247,15 @@ where
     T: DeserializeOwned,
 {
     let text = session_complete(
-        backend, session, prompt, Some(grammar), temperature, max_tokens, None,
+        backend,
+        session,
+        prompt,
+        Some(grammar),
+        temperature,
+        max_tokens,
+        None,
     )?;
-    serde_json::from_str::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -294,8 +297,14 @@ pub fn structured_complete<T>(
 where
     T: DeserializeOwned,
 {
-    let text =
-        model_complete(backend, system, prompt, Some(grammar), temperature, max_tokens, None)?;
-    serde_json::from_str::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+    let text = model_complete(
+        backend,
+        system,
+        prompt,
+        Some(grammar),
+        temperature,
+        max_tokens,
+        None,
+    )?;
+    serde_json::from_str::<T>(&text).map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }

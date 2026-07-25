@@ -232,7 +232,10 @@ impl StoryIdeaGenerator {
         let guidelines_str = if guidelines.is_empty() {
             String::new()
         } else {
-            format!("\nFormatting & Styling Guidelines:\n- {}", guidelines.join("\n- "))
+            format!(
+                "\nFormatting & Styling Guidelines:\n- {}",
+                guidelines.join("\n- ")
+            )
         };
 
         let system = "You are an elite creative writing assistant. Generate innovative, feature-packed story ideas. \
@@ -310,7 +313,10 @@ impl StoryIdeaGenerator {
         let guidelines_str = if guidelines.is_empty() {
             String::new()
         } else {
-            format!("\nFormatting & Styling Guidelines:\n- {}", guidelines.join("\n- "))
+            format!(
+                "\nFormatting & Styling Guidelines:\n- {}",
+                guidelines.join("\n- ")
+            )
         };
 
         let system = "You expand story premises into highly-detailed, feature-packed outlines. \
@@ -382,7 +388,9 @@ impl StoryIdeaGenerator {
         if idea.premise.split_whitespace().count() < 15 {
             score -= 1.0;
             issues.push("Premise description is too brief (under 15 words).".to_string());
-            suggestions.push("Expand the premise to explain the hook and unique world elements.".to_string());
+            suggestions.push(
+                "Expand the premise to explain the hook and unique world elements.".to_string(),
+            );
         }
 
         if idea.suggested_chapters.len() < 3 {
@@ -391,13 +399,18 @@ impl StoryIdeaGenerator {
                 "Too few chapters (found {}, minimum recommended is 3 for an arc).",
                 idea.suggested_chapters.len()
             ));
-            suggestions.push("Flesh out the outline to span at least three major chapters/acts.".to_string());
+            suggestions.push(
+                "Flesh out the outline to span at least three major chapters/acts.".to_string(),
+            );
         }
 
         if idea.themes.is_empty() {
             score -= 0.5;
             issues.push("No core themes identified.".to_string());
-            suggestions.push("Identify 1-2 driving themes (e.g., identity, betrayal, hope) to ground the story.".to_string());
+            suggestions.push(
+                "Identify 1-2 driving themes (e.g., identity, betrayal, hope) to ground the story."
+                    .to_string(),
+            );
         }
 
         // 2. Twist & Subplot checks
@@ -405,12 +418,16 @@ impl StoryIdeaGenerator {
             if twists.is_empty() {
                 score -= 0.5;
                 issues.push("Twist array is empty.".to_string());
-                suggestions.push("Add at least one dramatic twist or unexpected revelation.".to_string());
+                suggestions
+                    .push("Add at least one dramatic twist or unexpected revelation.".to_string());
             }
         } else {
             score -= 0.5;
             issues.push("No key twists provided.".to_string());
-            suggestions.push("Incorporate unexpected twists to elevate mystery and narrative tension.".to_string());
+            suggestions.push(
+                "Incorporate unexpected twists to elevate mystery and narrative tension."
+                    .to_string(),
+            );
         }
 
         if let Some(ref subplots) = idea.sub_plots {
@@ -546,7 +563,7 @@ mod tests {
             protagonist: "Detective".into(),
             central_conflict: "Mystery".into(),
             suggested_chapters: vec!["Chapter 1".into()], // under 3 chapters
-            themes: vec![], // empty
+            themes: vec![],                               // empty
             target_audience: None,
             pacing: None,
             key_twists: None,

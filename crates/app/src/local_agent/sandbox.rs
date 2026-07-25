@@ -1,6 +1,6 @@
 //! Workspace sandbox enforcing file access boundaries.
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 pub struct Sandbox {
     root: PathBuf,
@@ -11,7 +11,13 @@ impl Sandbox {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
-            allowed_exts: vec!["txt".into(), "md".into(), "json".into(), "py".into(), "rs".into()],
+            allowed_exts: vec![
+                "txt".into(),
+                "md".into(),
+                "json".into(),
+                "py".into(),
+                "rs".into(),
+            ],
         }
     }
 

@@ -8,6 +8,7 @@ name = "roco_server"
 
 [dependencies]
 roco-engine = { path = "../engine" }
+roco-bnf-engine = { path = "../bnf-engine" }
 roco-session = { path = "../session" }
 roco-message = { path = "../message" }
 roco-protocol = { path = "../protocol" }

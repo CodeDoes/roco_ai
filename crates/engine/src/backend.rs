@@ -250,6 +250,9 @@ pub async fn bake_persona(
     examples: &[(&str, &str)],
 ) -> Result<Vec<u8>, EngineError> {
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
+        // Single shot: user prompt + assistant answer as prefill in ONE request
+        // with max_tokens=0 (process through inference, no generation). This
+        // avoids contaminating the state with the model's own noisy output.
         let req = CompletionRequest {
             system: if i == 0 {
                 system.to_string()
@@ -257,20 +260,13 @@ pub async fn bake_persona(
                 String::new()
             },
             prompt: user_msg.to_string(),
+            prefill: Some(assistant_msg.to_string()),
             temperature: 0.0,
-            max_tokens: 1024,
+            max_tokens: 0, // process prompt+prefill only, no generation
             preserve_state: i > 0,
             ..Default::default()
         };
         backend.complete(req).await?;
-        let req_assistant = CompletionRequest {
-            prefill: Some(assistant_msg.to_string()),
-            temperature: 0.0,
-            max_tokens: 1024,
-            preserve_state: true,
-            ..Default::default()
-        };
-        backend.complete(req_assistant).await?;
         // Feed EOS (token 0) between examples to match training distribution
         if i + 1 < examples.len() {
             backend.feed_eos(None).await?;
@@ -317,30 +313,24 @@ pub async fn bake_into_session(
     examples: &[(&str, &str)],
 ) -> Result<(), EngineError> {
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
-        let user_req = CompletionRequest {
+        // Single shot: user prompt + assistant answer as prefill in ONE request
+        // with max_tokens=0 (process through inference, no generation). This
+        // avoids contaminating the state with the model's own noisy output.
+        let req = CompletionRequest {
             system: if i == 0 {
                 system.to_string()
             } else {
                 String::new()
             },
             prompt: user_msg.to_string(),
+            prefill: Some(assistant_msg.to_string()),
             temperature: 0.0,
-            max_tokens: 1, // State-tuning: only need prompt processing, not generation
+            max_tokens: 0, // process prompt+prefill only, no generation
             preserve_state: true,
             session: Some(session.to_string()),
             ..Default::default()
         };
-        backend.complete(user_req).await?;
-        let asst_req = CompletionRequest {
-            system: String::new(),
-            prompt: assistant_msg.to_string(),
-            temperature: 0.0,
-            max_tokens: 1, // State-tuning: only need prompt processing, not generation
-            preserve_state: true,
-            session: Some(session.to_string()),
-            ..Default::default()
-        };
-        backend.complete(asst_req).await?;
+        backend.complete(req).await?;
         // Feed EOS (token 0) between examples to match training distribution
         // where token 0 separates documents. Without this, the recurrent state
         // accumulates across examples in a way that does not match how the
@@ -402,30 +392,24 @@ pub async fn bake_no_think_session(
     examples: &[(&str, &str)],
 ) -> Result<(), EngineError> {
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
-        let user_req = CompletionRequest {
+        // Single shot: user prompt + assistant answer as prefill in ONE request
+        // with max_tokens=0 (process through inference, no generation). This
+        // avoids contaminating the state with the model's own noisy output.
+        let req = CompletionRequest {
             system: if i == 0 {
                 system.to_string()
             } else {
                 String::new()
             },
             prompt: user_msg.to_string(),
-            temperature: 0.0,
-            max_tokens: 1, // State-tuning: only need prompt processing, not generation
-            preserve_state: true,
-            session: Some(session.to_string()),
-            ..Default::default()
-        };
-        backend.complete(user_req).await?;
-        let asst_req = CompletionRequest {
-            system: String::new(),
             prefill: Some(assistant_msg.to_string()),
             temperature: 0.0,
-            max_tokens: 1, // State-tuning: only need prompt processing, not generation
+            max_tokens: 0, // process prompt+prefill only, no generation
             preserve_state: true,
             session: Some(session.to_string()),
             ..Default::default()
         };
-        backend.complete(asst_req).await?;
+        backend.complete(req).await?;
         // Feed EOS (token 0) between examples to match training distribution
         if i + 1 < examples.len() {
             backend.feed_eos(Some(session.to_string())).await?;
@@ -499,9 +483,9 @@ mod tests {
                 _system: &'a str,
                 _few_shots: &'a [(&'a str, &'a str)],
             ) -> BoxFuture<'a, Result<String, EngineError>> {
-                Box::pin(async move {
-                    Err(EngineError::Backend("bake_state not supported".into()))
-                })
+                Box::pin(
+                    async move { Err(EngineError::Backend("bake_state not supported".into())) },
+                )
             }
         }
         let b = NoStateBackend;

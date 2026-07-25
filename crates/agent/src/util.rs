@@ -13,8 +13,8 @@
 
 pub use roco_engine::util::{
     claim_bake, lazy_bake, model_complete, reset_baked_sessions, session_complete,
-    session_structured, structured_complete, CHAPTER_SESSION, CONTINUE_SESSION,
-    CRITIQUE_SESSION, EVAL_SESSION, OUTLINE_SESSION, WRITING_ANALYSIS_SESSION,
+    session_structured, structured_complete, CHAPTER_SESSION, CONTINUE_SESSION, CRITIQUE_SESSION,
+    EVAL_SESSION, OUTLINE_SESSION, WRITING_ANALYSIS_SESSION,
 };
 
 use serde::de::DeserializeOwned;

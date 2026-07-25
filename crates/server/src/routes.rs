@@ -62,9 +62,42 @@ async fn handle_vocab(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn handle_complete(
     State(state): State<AppState>,
-    Json(req): Json<CompletionRequest>,
+    Json(mut req): Json<CompletionRequest>,
 ) -> Result<Json<CompletionResponse>, String> {
     info!("Handling direct complete request");
+
+    // If grammar is provided as a string but no BnfMask was built yet,
+    // create one from the model's vocabulary. This ensures grammar
+    // constraints work when sent through the HTTP API (inferd).
+    if req.bnf_mask.is_none() {
+        if let Some(grammar) = &req.grammar {
+            if !grammar.is_empty() {
+                if let Some(vocab) = state.backend.vocab_bytes() {
+                    match roco_bnf_engine::create_bnf_mask(grammar, &vocab) {
+                        Ok(mask) => {
+                            req.bnf_mask = Some(mask);
+                            info!(
+                                "Built BnfMask from grammar ({} chars, {} vocab entries)",
+                                grammar.len(),
+                                vocab.len()
+                            );
+                        }
+                        Err(e) => {
+                            // Grammar is invalid — surface the error so the
+                            // caller can fix the grammar definition.
+                            return Err(format!(
+                                "Grammar '{}' is invalid: {e:?}",
+                                grammar.chars().take(80).collect::<String>()
+                            ));
+                        }
+                    }
+                } else {
+                    info!("Grammar provided but backend has no vocab_bytes — cannot build BnfMask");
+                }
+            }
+        }
+    }
+
     let resp = state
         .backend
         .complete(req)
@@ -128,7 +161,20 @@ async fn handle_openai_completion(
             .keep_alive(KeepAlive::default())
             .into_response()
     } else {
-        let engine_req = req.into_engine();
+        let mut engine_req = req.into_engine();
+
+        // Same BnfMask construction for OpenAI-format requests with grammar
+        if engine_req.bnf_mask.is_none() {
+            if let Some(grammar) = &engine_req.grammar {
+                if !grammar.is_empty() {
+                    if let Some(vocab) = backend.vocab_bytes() {
+                        let _ = roco_bnf_engine::create_bnf_mask(grammar, &vocab)
+                            .map(|mask| engine_req.bnf_mask = Some(mask));
+                    }
+                }
+            }
+        }
+
         match backend.complete(engine_req).await {
             Ok(resp) => {
                 let req_id = format!(

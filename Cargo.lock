@@ -4585,6 +4585,7 @@ dependencies = [
  "base64 0.22.1",
  "futures",
  "reqwest",
+ "roco-bnf-engine",
  "roco-engine",
  "roco-message",
  "roco-protocol",

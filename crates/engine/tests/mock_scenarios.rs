@@ -8,9 +8,7 @@
 //! Run: cargo test -p roco-engine --test mock_scenarios
 
 use futures::future::BoxFuture;
-use roco_engine::{
-    CompletionRequest, CompletionResponse, EngineError, MockBackend, ModelBackend,
-};
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, MockBackend, ModelBackend};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 

@@ -32,7 +32,6 @@
 //! | `brainstorm` | brainstorm, expand_premise | Story idea generation |
 //! | `justChatting` | chat | Default fallback — no tools, just talk |
 
-
 use roco_agent::mechanistic::{MechanisticAgent, RepairConfig};
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_grammar::Schema;

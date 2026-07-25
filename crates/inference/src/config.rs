@@ -31,8 +31,12 @@ pub fn get_pipeline_cache_path(model_path: &str) -> PathBuf {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
-    let root = env::var("RWKV_PIPELINE_CACHE_DIR")
-        .unwrap_or_else(|_| default_cache_root().join("pipeline-cache").to_string_lossy().to_string());
+    let root = env::var("RWKV_PIPELINE_CACHE_DIR").unwrap_or_else(|_| {
+        default_cache_root()
+            .join("pipeline-cache")
+            .to_string_lossy()
+            .to_string()
+    });
     PathBuf::from(root).join(format!("{:016x}.bin", hash))
 }
 
@@ -42,8 +46,12 @@ pub fn get_quant_cache_dir(model_path: &str) -> PathBuf {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     model_path.hash(&mut hasher);
     let hash = hasher.finish();
-    let root =
-        env::var("RWKV_QUANT_CACHE_DIR").unwrap_or_else(|_| default_cache_root().join("quant-cache").to_string_lossy().to_string());
+    let root = env::var("RWKV_QUANT_CACHE_DIR").unwrap_or_else(|_| {
+        default_cache_root()
+            .join("quant-cache")
+            .to_string_lossy()
+            .to_string()
+    });
     PathBuf::from(root).join(format!("{:016x}", hash))
 }
 
@@ -266,12 +274,10 @@ impl CacheIndex {
             std::fs::create_dir_all(parent).ok();
         }
         match serde_json::to_string_pretty(self) {
-            Ok(json) => {
-                match std::fs::write(&path, &json) {
-                    Ok(()) => info!(path = ?path, "saved cache index"),
-                    Err(e) => warn!(path = ?path, error = %e, "failed to save cache index"),
-                }
-            }
+            Ok(json) => match std::fs::write(&path, &json) {
+                Ok(()) => info!(path = ?path, "saved cache index"),
+                Err(e) => warn!(path = ?path, error = %e, "failed to save cache index"),
+            },
             Err(e) => warn!(error = %e, "failed to serialize cache index"),
         }
     }
@@ -322,7 +328,7 @@ pub fn check_model_cache(model_path: &str) -> Option<CacheIndex> {
 
 /// Compute md5 of a byte slice.
 pub fn compute_md5(data: &[u8]) -> Option<String> {
-    use md5::{Md5, Digest};
+    use md5::{Digest, Md5};
     use std::fmt::Write;
     let result = Md5::digest(data);
     let mut hex = String::with_capacity(32);
@@ -376,7 +382,11 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
             let lower = name.to_lowercase();
             // Score: prefer RWKV-7 models over generic .st files
             let score = if lower.contains("rwkv") && lower.contains("7") {
-                if lower.contains("-converted") { 90 } else { 100 }
+                if lower.contains("-converted") {
+                    90
+                } else {
+                    100
+                }
             } else if lower.contains("rwkv") {
                 80
             } else {

@@ -523,11 +523,23 @@ impl roco_engine::ModelBackend for TokioBackend {
         let rt_handle = self.rt.handle().clone();
         let session_id = session_id.to_string();
         let system = system.to_string();
-        let few_shots: Vec<(String, String)> = few_shots.iter().map(|(u, a)| (u.to_string(), a.to_string())).collect();
+        let few_shots: Vec<(String, String)> = few_shots
+            .iter()
+            .map(|(u, a)| (u.to_string(), a.to_string()))
+            .collect();
         Box::pin(async move {
             rt_handle
                 .spawn(async move {
-                    inner.bake_state(&session_id, &system, &few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect::<Vec<_>>()).await
+                    inner
+                        .bake_state(
+                            &session_id,
+                            &system,
+                            &few_shots
+                                .iter()
+                                .map(|(u, a)| (u.as_str(), a.as_str()))
+                                .collect::<Vec<_>>(),
+                        )
+                        .await
                 })
                 .await
                 .unwrap_or(Err(roco_engine::EngineError::Backend(

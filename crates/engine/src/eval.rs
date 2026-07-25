@@ -425,7 +425,11 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                     .append(true)
                     .open(log_path)
                     .and_then(|mut f| {
-                        writeln!(f, "{}", serde_json::to_string(&log_entry).unwrap_or_default())
+                        writeln!(
+                            f,
+                            "{}",
+                            serde_json::to_string(&log_entry).unwrap_or_default()
+                        )
                     });
             }
 
@@ -475,7 +479,10 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
 
     for case in cases {
         if interrupted.load(Ordering::SeqCst) {
-            eprintln!("Interrupted after {} cases, saving partial report…", results.len());
+            eprintln!(
+                "Interrupted after {} cases, saving partial report…",
+                results.len()
+            );
             break;
         }
         if let Some(filter) = filter {
@@ -626,32 +633,40 @@ pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
 /// See [`STATE_TUNE_EXAMPLES.md`](https://github.com/roco-ai/roco/blob/main/STATE_TUNE_EXAMPLES.md#3-eval-bake_fim_session--fill-in-the-middle)
 /// for the full catalog with example pairs.
 pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(backend: &B) -> Result<(), String> {
-    // Build full multi-shot prompt in one pass. We assemble the few-shot
-    // as a single user/assistant transcript so the recurrent state carries
-    // the persona + format in one shot, instead of a 6-call replay that
-    // pollutes the state with single-token partial responses (`max_tokens: 1`
-    // on each turn produced pathological outputs in early testing).
+    // Single-shot per example: each (user, assistant) pair is sent as one
+    // completion with the answer as prefill and max_tokens=0 (process through
+    // inference, no generation). Token-0 (feed_eos) boundaries between examples
+    // create clean separation in the recurrent state, matching the model's
+    // training distribution.
     let system = "You are RoCo, a collaborative story-writing assistant. \
         Given the text BEFORE the cursor and the text AFTER the cursor, write \
         ONLY the short passage that connects them. Never repeat the BEFORE or \
         AFTER text, never add commentary.";
-    let mut transcript = String::new();
-    for (context, answer) in FIM_FEW_SHOT.iter() {
-        transcript.push_str(&format!("\nUser: {context}\n\nAssistant:{answer}"));
-    }
-    transcript.push_str("\n\nAssistant:");
-    let req = CompletionRequest {
-        system: system.to_string(),
-        prompt: transcript,
-        prefill: Some("<think></think>".to_string()),
-        temperature: 0.0,
-        max_tokens: 4,
-        session: Some(FIM_SESSION.to_string()),
-        preserve_state: true,
-        ..Default::default()
-    };
-    if let Err(e) = backend.complete(req).await {
-        return Err(format!("FIM bake (single-shot): {e}"));
+    for (i, (context, answer)) in FIM_FEW_SHOT.iter().enumerate() {
+        let req = CompletionRequest {
+            system: if i == 0 {
+                system.to_string()
+            } else {
+                String::new()
+            },
+            prompt: context.to_string(),
+            prefill: Some(answer.to_string()),
+            temperature: 0.0,
+            max_tokens: 0, // no generation — just process prompt+prefill
+            session: Some(FIM_SESSION.to_string()),
+            preserve_state: true,
+            ..Default::default()
+        };
+        if let Err(e) = backend.complete(req).await {
+            return Err(format!("FIM bake example {i}: {e}"));
+        }
+        // Token-0 boundary between examples
+        if i + 1 < FIM_FEW_SHOT.len() {
+            backend
+                .feed_eos(Some(FIM_SESSION.to_string()))
+                .await
+                .map_err(|e| format!("feed_eos after FIM example {i}: {e}"))?;
+        }
     }
     Ok(())
 }

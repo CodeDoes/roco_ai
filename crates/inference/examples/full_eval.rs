@@ -9,7 +9,10 @@
 
 use roco_agent::mecha_agent::INTENT_GRAMMAR;
 use roco_engine::eval::{self, run_suite, EvalCase, EvalCategory};
-use roco_engine::util::{lazy_bake, OUTLINE_SESSION, CHAPTER_SESSION, CONTINUE_SESSION, CRITIQUE_SESSION, EVAL_SESSION, CHAT_SESSION, INTENT_SESSION};
+use roco_engine::util::{
+    lazy_bake, CHAPTER_SESSION, CHAT_SESSION, CONTINUE_SESSION, CRITIQUE_SESSION, EVAL_SESSION,
+    INTENT_SESSION, OUTLINE_SESSION,
+};
 use roco_engine::ModelBackend;
 use roco_inference::RwkvBackend;
 
@@ -1011,9 +1014,15 @@ async fn main() -> anyhow::Result<()> {
     let _ = std::fs::create_dir_all(trace_dir);
 
     let report = run_suite(
-        "full_eval", &backend, cases, None,
-        Some(&trace_path), Some(&log_path), true,
-    ).await;
+        "full_eval",
+        &backend,
+        cases,
+        None,
+        Some(&trace_path),
+        Some(&log_path),
+        true,
+    )
+    .await;
 
     eval::print_report(&report);
 

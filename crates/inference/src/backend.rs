@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
-use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
+use roco_engine::{
+    CompletionRequest, CompletionResponse, EngineError, GrammarBuilder, ModelBackend,
+};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tracing::info;
@@ -23,9 +25,33 @@ pub struct RwkvBackend {
     /// Default wall-clock deadline for completions (ms). 0 = no deadline.
     /// Can be overridden per-request via CompletionRequest::deadline_ms.
     default_deadline_ms: u64,
+    /// Optional callback that builds a BnfMask from grammar string + vocab
+    /// bytes. Set by the application layer (e.g. roco-cli) when the backend
+    /// is used directly (not through inferd). Cannot be set inside this crate
+    /// due to kbnf ↔ web-rwkv compiler overflow (E0275).
+    grammar_builder: Option<GrammarBuilder>,
+    /// Cached vocabulary bytes. Populated lazily on first grammar request
+    /// via the actor channel, then reused to avoid a channel round-trip +
+    /// clone on every subsequent request.
+    vocab_cache: std::sync::OnceLock<Vec<Vec<u8>>>,
 }
 
 impl RwkvBackend {
+    /// Fetch vocabulary from the actor and cache it.
+    fn cached_vocab(&self) -> Option<&[Vec<u8>]> {
+        let cache = self.vocab_cache.get_or_init(|| {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            if let Some(ref tx) = self.tx {
+                let _ = futures::executor::block_on(
+                    tx.send(ActorMessage::GetVocabBytes(reply_tx)),
+                );
+                futures::executor::block_on(reply_rx).ok().unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        });
+        if cache.is_empty() { None } else { Some(cache) }
+    }
     /// Build from environment variables.
     ///
     /// Spawns a dedicated OS thread owning all non-Send GPU resources.
@@ -102,6 +128,8 @@ impl RwkvBackend {
             actor_thread: Some(actor_thread),
             name: "rwkv".to_string(),
             default_deadline_ms,
+            grammar_builder: None,
+            vocab_cache: std::sync::OnceLock::new(),
         })
     }
 
@@ -178,6 +206,14 @@ impl RwkvBackend {
                 .map_err(|e| EngineError::Backend(format!("blend_states recv: {e}")))?
         })
     }
+
+    /// Register a grammar→BnfMask builder. Set by the application layer
+    /// (roco-cli) so that `complete()` can create the BnfMask from a grammar
+    /// string even when used directly (not through inferd). Cannot be set
+    /// inside this crate due to kbnf ↔ web-rwkv compiler overflow (E0275).
+    pub fn set_grammar_builder(&mut self, builder: GrammarBuilder) {
+        self.grammar_builder = Some(builder);
+    }
 }
 
 impl ModelBackend for RwkvBackend {
@@ -191,13 +227,28 @@ impl ModelBackend for RwkvBackend {
 
     fn complete(
         &self,
-        req: CompletionRequest,
+        mut req: CompletionRequest,
     ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         let tx = self
             .tx
             .clone()
             .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
+            // If grammar is provided as a string but no BnfMask was built
+            // yet, use the grammar builder callback (set by the application
+            // layer) to create one from the model's vocabulary.
+            if req.bnf_mask.is_none() {
+                if let Some(ref grammar) = req.grammar {
+                    if !grammar.is_empty() {
+                        if let Some(ref builder) = self.grammar_builder {
+                            if let Some(vocab) = self.cached_vocab() {
+                                req.bnf_mask = builder(grammar, vocab);
+                            }
+                        }
+                    }
+                }
+            }
+
             let started = Instant::now();
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
@@ -292,7 +343,7 @@ impl ModelBackend for RwkvBackend {
     fn bake_state(
         &self,
         session_id: &str,
-        system: &str,
+        _system: &str,
         few_shots: &[(&str, &str)], // (user_prompt, assistant_response)
     ) -> BoxFuture<'_, Result<String, EngineError>> {
         let tx = self
@@ -300,23 +351,30 @@ impl ModelBackend for RwkvBackend {
             .clone()
             .expect("rwkv backend already shut down (channel closed)");
         let session_id = session_id.to_string();
-        let _system = system.to_string(); // System prompt is baked through examples, not prepended
         let few_shots = few_shots
             .iter()
             .map(|(u, a)| (u.to_string(), a.to_string()))
             .collect::<Vec<_>>();
         Box::pin(async move {
+            // Reset session before baking so previous state doesn't bleed in
+            tx.send(ActorMessage::FeedEos(Some(session_id.clone())))
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
+
             for (i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
-                // Send user message through the session.
-                // The actor's handle_complete will format this as "User: {prompt}\n\nAssistant:"
-                // and skip the "System:" prefix when session_id is set (it's already baked).
+                // Single shot: send user message + assistant answer as prefill
+                // in ONE request with max_tokens=0. The actor processes all
+                // prompt+prefill tokens through inference (updating state)
+                // but stops BEFORE sampling, so there is NO generation
+                // contamination. The state learns the exact (user, assistant)
+                // pair without the model's own noisy output mixed in.
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 tx.send(
                     CompleteReq {
-                        system: String::new(), // system is not used when session is set
+                        system: String::new(),
                         prompt: user_msg.clone(),
-                        prefill: None,
-                        max_tokens: 1024,
+                        prefill: Some(assistant_msg.clone()),
+                        max_tokens: 0, // process prompt+prefill only, no generation
                         temperature: 0.0,
                         top_a: None,
                         grammar: None,
@@ -332,42 +390,14 @@ impl ModelBackend for RwkvBackend {
                 .await
                 .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
 
-                // Wait for user message completion
                 let _ = reply_rx
                     .await
                     .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
                     .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
 
-                // Prefill the assistant's response to bake the expected output pattern
-                let (reply_tx2, reply_rx2) = tokio::sync::oneshot::channel();
-                tx.send(
-                    CompleteReq {
-                        system: String::new(),
-                        prompt: String::new(),
-                        prefill: Some(assistant_msg.clone()),
-                        max_tokens: 1, // just process the prefill
-                        temperature: 0.0,
-                        top_a: None,
-                        grammar: None,
-                        bnf_mask: None,
-                        reply: reply_tx2,
-                        preserve_state: true,
-                        on_token: None,
-                        session: Some(session_id.clone()),
-                        deadline_ms: 60000,
-                    }
-                    .into(),
-                )
-                .await
-                .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
-
-                // Wait for assistant response completion
-                let _ = reply_rx2
-                    .await
-                    .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
-                    .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
-
-                // Feed EOS (token 0) between examples to match training distribution
+                // Feed EOS (token 0) between examples to create clean
+                // boundaries in the recurrent state, matching the model's
+                // training distribution where token 0 separates examples.
                 if i + 1 < few_shots.len() {
                     tx.send(ActorMessage::FeedEos(Some(session_id.clone())))
                         .await

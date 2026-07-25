@@ -6,7 +6,12 @@ pub struct ExecutionLoop {
 }
 
 impl ExecutionLoop {
-    pub fn execute<A: DomainHarness>(&self, agent: &mut A, input: &str, ctx: &Context) -> LoopResult {
+    pub fn execute<A: DomainHarness>(
+        &self,
+        agent: &mut A,
+        input: &str,
+        ctx: &Context,
+    ) -> LoopResult {
         let mut state = State::default();
         let mut history: Vec<State> = Vec::new();
         let mut output = String::new();

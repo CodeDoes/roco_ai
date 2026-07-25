@@ -1032,9 +1032,7 @@ mod tests {
             _system: &'a str,
             _few_shots: &'a [(&'a str, &'a str)],
         ) -> BoxFuture<'a, Result<String, EngineError>> {
-            Box::pin(async move {
-                Err(EngineError::Backend("bake_state not supported".into()))
-            })
+            Box::pin(async move { Err(EngineError::Backend("bake_state not supported".into())) })
         }
     }
 
