@@ -152,24 +152,14 @@ if [[ "${1:-}" == "--no-watch" ]]; then
     while true; do sleep 10; done
 else
     header "Hot reload enabled — watching for changes"
-    info "Any code change rebuilds and restarts the CLI."
-    info "Daemons (inference + gateway) stay alive."
+    info "Any code change rebuilds and restarts roco-inferd, gateway, and CLI."
     info ""
-    info "Watching: crates/cli/ crates/app/ crates/ui/ crates/agent/"
+    info "Watching: crates/"
     info "Press Ctrl+C to stop."
     echo ""
 
-    # cargo watch on relevant crates
+    # cargo watch on all crate source trees
     cargo watch \
-        --watch crates/cli/ \
-        --watch crates/app/ \
-        --watch crates/ui/ \
-        --watch crates/agent/ \
-        --watch crates/grammar/ \
-        --watch crates/engine/ \
-        --watch crates/message/ \
-        --watch crates/tools/ \
-        --watch crates/workspace/ \
-        --watch crates/session/ \
-        --shell "cargo check --features desktop 2>&1 | tail -5 && echo '${GREEN}✓ Build OK${RESET}' || echo '${RED}✗ Build failed${RESET}'"
+        --watch crates/ \
+        --shell "./scripts/restart_dev_daemons.sh"
 fi

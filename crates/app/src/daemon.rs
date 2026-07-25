@@ -313,10 +313,11 @@ fn send_term(pid: u32) {
 
 /// Stop the inference server (SIGTERM). Cleans up PID file.
 pub fn stop_inference() {
-    if let Some(pid) = read_pid("server") {
+    if let Some(pid) = read_pid("inferd").or_else(|| read_pid("server")) {
         eprintln!("Stopping inference server (PID {pid})...");
         send_term(pid);
     }
+    let _ = std::fs::remove_file(pid_path("inferd"));
     let _ = std::fs::remove_file(pid_path("server"));
 }
 
