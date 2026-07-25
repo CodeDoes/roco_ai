@@ -99,10 +99,14 @@ async fn handle_bake(
     Json(req): Json<BakeRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<OpenAiErrorBody>)> {
     let _guard = JobGuard::new(state.active_jobs.clone());
+    let start = std::time::Instant::now();
     info!(
         session_id = %req.session_id,
-        shots_count = req.few_shots.len(),
-        "Baking session state"
+        few_shots_count = req.few_shots.len(),
+        system_len = req.system.len(),
+        "Request → POST /v1/bake (baking {} few-shot pairs into session '{}')",
+        req.few_shots.len(),
+        req.session_id
     );
 
     let shots_ref: Vec<(&str, &str)> = req
@@ -116,6 +120,12 @@ async fn handle_bake(
         .bake_state(&req.session_id, &req.system, &shots_ref)
         .await
         .map_err(|e| {
+            tracing::warn!(
+                session_id = %req.session_id,
+                latency_ms = start.elapsed().as_millis() as u64,
+                error = %e,
+                "State baking failed"
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(OpenAiErrorBody::new(
@@ -124,6 +134,16 @@ async fn handle_bake(
                 )),
             )
         })?;
+
+    let latency_ms = start.elapsed().as_millis() as u64;
+    info!(
+        session_id = %session_id,
+        baked_shots = req.few_shots.len(),
+        latency_ms = latency_ms,
+        "Response ← POST /v1/bake (HTTP 200 in {}ms for session '{}')",
+        latency_ms,
+        session_id
+    );
 
     Ok(Json(BakeResponse {
         session_id,
@@ -201,9 +221,27 @@ async fn handle_openai_completion(
     Json(req): Json<OpenAiCompletionRequest>,
 ) -> impl IntoResponse {
     let _guard = JobGuard::new(state.active_jobs.clone());
+    let start = std::time::Instant::now();
+    let session_str = req.session.as_deref().unwrap_or("<none>").to_string();
+    let prompt_tail = req
+        .prompt
+        .lines()
+        .last()
+        .unwrap_or("")
+        .chars()
+        .take(60)
+        .collect::<String>();
+
     info!(
-        "Handling OpenAI completion request for prompt (len={})",
-        req.prompt.len()
+        session = %session_str,
+        prompt_len = req.prompt.len(),
+        max_tokens = req.max_tokens.unwrap_or(512),
+        temperature = req.temperature.unwrap_or(0.2),
+        grammar = req.grammar.as_deref().unwrap_or("none"),
+        "Request → POST /v1/completions (session: '{}', prompt: {} bytes, tail: '...{}')",
+        session_str,
+        req.prompt.len(),
+        prompt_tail
     );
 
     let is_stream = req.stream.unwrap_or(false);
@@ -262,6 +300,26 @@ async fn handle_openai_completion(
 
         match backend.complete(engine_req).await {
             Ok(resp) => {
+                let latency_ms = start.elapsed().as_millis() as u64;
+                let snippet = resp
+                    .text
+                    .chars()
+                    .take(80)
+                    .collect::<String>()
+                    .replace('\n', " ");
+                info!(
+                    session = %session_str,
+                    latency_ms = latency_ms,
+                    prompt_tokens = resp.usage.prompt_tokens,
+                    completion_tokens = resp.usage.completion_tokens,
+                    total_tokens = resp.usage.total(),
+                    "Response ← POST /v1/completions (HTTP 200 in {}ms, {} prompt + {} completion tokens): '{}...'",
+                    latency_ms,
+                    resp.usage.prompt_tokens,
+                    resp.usage.completion_tokens,
+                    snippet
+                );
+
                 let req_id = format!(
                     "cmpl-{}",
                     uuid::Uuid::new_v4()
@@ -278,6 +336,14 @@ async fn handle_openai_completion(
                 Json(out_resp).into_response()
             }
             Err(e) => {
+                let latency_ms = start.elapsed().as_millis() as u64;
+                tracing::warn!(
+                    session = %session_str,
+                    latency_ms = latency_ms,
+                    error = %e,
+                    "Response ← POST /v1/completions (HTTP 500 error in {}ms: {e})",
+                    latency_ms
+                );
                 let err_body = OpenAiErrorBody::new(format!("Backend error: {e}"), "backend_error");
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(err_body)).into_response()
             }

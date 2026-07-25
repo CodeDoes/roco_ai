@@ -1,7 +1,7 @@
 use axum::{
     extract::{Request, State},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
     Json, Router as AxumRouter,
 };
 use parking_lot::Mutex;
@@ -48,6 +48,13 @@ impl Gateway {
     }
 
     pub async fn run(&self) -> Result<(), String> {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
+            .try_init();
+
         let state = GatewayState {
             target_url: self.target_url.clone(),
             rate_limit_per_minute: self.rate_limit_per_minute,
@@ -57,13 +64,14 @@ impl Gateway {
 
         let app = AxumRouter::new()
             .route("/health", get(handle_health))
-            .route("/vocab", get(handle_vocab_proxy))
-            .route("/complete", post(handle_proxy))
-            .route("/v1/completions", post(handle_proxy))
+            .fallback(handle_proxy)
             .with_state(state);
 
         let addr = format!("{}:{}", self.host, self.port);
-        info!("Starting API Gateway on {}", addr);
+        info!(
+            "Starting API Gateway on {} targeting {}",
+            addr, self.target_url
+        );
         let listener = tokio::net::TcpListener::bind(&addr)
             .await
             .map_err(|e| format!("Failed to bind gateway to {addr}: {e}"))?;
@@ -74,40 +82,22 @@ impl Gateway {
     }
 }
 
-/// Proxy GET /vocab to the upstream inference server.
-/// Returns the model vocabulary as base64-encoded per-token byte strings.
-async fn handle_vocab_proxy(State(state): State<GatewayState>) -> Response {
-    let forward_url = format!("{}/vocab", state.target_url.trim_end_matches('/'));
-    info!("Proxying vocab request to {}", forward_url);
-
-    match state.req_client.get(&forward_url).send().await {
-        Ok(res) => {
-            let status = res.status();
-            let body = match res.bytes().await {
-                Ok(b) => b,
-                Err(e) => {
-                    return (
-                        axum::http::StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({ "error": format!("Failed to read vocab response: {e}") })),
-                    ).into_response();
-                }
-            };
-            Response::builder()
-                .status(status.as_u16())
-                .header("Content-Type", "application/json")
-                .body(axum::body::Body::from(body))
-                .unwrap_or_else(|_| (axum::http::StatusCode::INTERNAL_SERVER_ERROR).into_response())
-        }
-        Err(e) => (
-            axum::http::StatusCode::BAD_GATEWAY,
-            Json(serde_json::json!({ "error": format!("Failed to reach backend for vocab: {e}") })),
-        )
-            .into_response(),
-    }
-}
-
 async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Response {
+    let method = req.method().clone();
+    let path_and_query = req
+        .uri()
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or_else(|| req.uri().path())
+        .to_string();
+    let forward_url = format!(
+        "{}{}",
+        state.target_url.trim_end_matches('/'),
+        path_and_query
+    );
+
     let client_ip = "global".to_string();
+    let start = Instant::now();
 
     // Check rate limit
     {
@@ -119,7 +109,7 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
         timestamps.retain(|&t| now.duration_since(t) < Duration::from_secs(60));
 
         if timestamps.len() >= state.rate_limit_per_minute {
-            warn!("Rate limit exceeded for client {}", client_ip);
+            warn!(method = %method, path = %path_and_query, "Rate limit exceeded for client {}", client_ip);
             return (
                 axum::http::StatusCode::TOO_MANY_REQUESTS,
                 Json(serde_json::json!({
@@ -132,14 +122,11 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
         timestamps.push(now);
     }
 
-    let path = req.uri().path().to_string();
-    let forward_url = format!("{}{}", state.target_url.trim_end_matches('/'), path);
-    info!("Proxying request to {}", forward_url);
-
-    // Get body bytes from request
+    // Read body bytes from request
     let body_bytes = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
         Ok(b) => b,
         Err(e) => {
+            warn!(method = %method, path = %path_and_query, error = %e, "Failed to read request body");
             return (
                 axum::http::StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({ "error": format!("Failed to read request body: {e}") })),
@@ -148,21 +135,37 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
         }
     };
 
+    let req_len = body_bytes.len();
+    info!(
+        method = %method,
+        path = %path_and_query,
+        body_bytes = req_len,
+        "Proxying request → {}",
+        forward_url
+    );
+
     // Forward using reqwest
-    let upstream_res = match state
-        .req_client
-        .post(&forward_url)
-        .header("Content-Type", "application/json")
-        .body(body_bytes)
-        .send()
-        .await
-    {
+    let mut builder = state.req_client.request(method.clone(), &forward_url);
+    builder = builder.header("Content-Type", "application/json");
+    if req_len > 0 {
+        builder = builder.body(body_bytes);
+    }
+
+    let upstream_res = match builder.send().await {
         Ok(res) => res,
         Err(e) => {
+            warn!(
+                method = %method,
+                path = %path_and_query,
+                latency_ms = start.elapsed().as_millis() as u64,
+                error = %e,
+                "Failed to forward request to backend"
+            );
             return (
                 axum::http::StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({ "error": format!("Failed to forward request to backend: {e}") }))
-            ).into_response();
+                Json(serde_json::json!({ "error": format!("Failed to forward request to backend: {e}") })),
+            )
+                .into_response();
         }
     };
 
@@ -170,6 +173,13 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
     let res_bytes = match upstream_res.bytes().await {
         Ok(b) => b,
         Err(e) => {
+            warn!(
+                method = %method,
+                path = %path_and_query,
+                latency_ms = start.elapsed().as_millis() as u64,
+                error = %e,
+                "Failed to read backend response body"
+            );
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(
@@ -179,6 +189,19 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
                 .into_response();
         }
     };
+
+    let latency_ms = start.elapsed().as_millis() as u64;
+    info!(
+        method = %method,
+        path = %path_and_query,
+        status = status.as_u16(),
+        res_bytes = res_bytes.len(),
+        latency_ms = latency_ms,
+        "Proxy response ← HTTP {} ({} bytes in {}ms)",
+        status.as_u16(),
+        res_bytes.len(),
+        latency_ms
+    );
 
     Response::builder()
         .status(status.as_u16())
@@ -210,6 +233,7 @@ async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::routing::post;
 
     #[tokio::test]
     async fn test_gateway_proxy_and_rate_limiting() {
@@ -257,8 +281,7 @@ mod tests {
 
         let gw_app = AxumRouter::new()
             .route("/health", get(handle_health))
-            .route("/vocab", get(handle_vocab_proxy))
-            .route("/complete", post(handle_proxy))
+            .fallback(handle_proxy)
             .with_state(app_state);
 
         tokio::spawn(async move {
