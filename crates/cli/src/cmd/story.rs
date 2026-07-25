@@ -454,6 +454,28 @@ fn extract_title(outline: &str) -> String {
     "Untitled Story".to_string()
 }
 
+
+
+/// Parse the outline markdown and extract the title and summary for a specific chapter.
+fn chapter_outline_info(outline: &str, chapter_num: usize) -> (String, String) {
+    let header = format!("## Chapter {}: ", chapter_num);
+    if let Some(start) = outline.find(&header) {
+        let rest = &outline[start + header.len()..];
+        // Find end of title line
+        let title_end = rest.find('\n').unwrap_or(rest.len());
+        let title = rest[..title_end].trim().to_string();
+        // Find summary text (after title line, before next ## or end)
+        let after_title = &rest[title_end..].trim_start();
+        let summary = if let Some(next_header) = after_title.find("\n## ") {
+            after_title[..next_header].trim().to_string()
+        } else {
+            after_title.trim().to_string()
+        };
+        (title, summary)
+    } else {
+        (format!("Chapter {chapter_num}"), String::new())
+    }
+}
 fn extract_genre(outline: &str) -> String {
     for line in outline.lines() {
         if line.starts_with("Genre:") {
@@ -822,6 +844,16 @@ pub fn cmd_story(extra: &[&str]) {
                     .get("label")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Chapter 1");
+                let chapter_title = task
+                    .spec
+                    .get("chapter_title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(chapter_label);
+                let chapter_summary = task
+                    .spec
+                    .get("chapter_summary")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let outline = task
                     .spec
                     .get("outline")
@@ -856,7 +888,8 @@ pub fn cmd_story(extra: &[&str]) {
 
                 let directive = if is_retry {
                     format!(
-                        "Revise {chapter_label} to fix the following issues:\n{feedback}\n\n\
+                        "Revise {chapter_label}: {chapter_title} to fix the following issues:\n{feedback}\n\n\
+                         Chapter purpose:\n{chapter_summary}\n\n\
                          Rules:\n\
                          - Fix the specific issues listed above.\n\
                          - Keep the original story elements that work.\n\
@@ -864,32 +897,35 @@ pub fn cmd_story(extra: &[&str]) {
                          - Start directly with the narrative.\n\
                          - Use paragraph breaks (double newlines) between scenes.\n\
                          - Do NOT include thinking, reasoning, or commentary.\n\n\
-                         Outline context:\n{outline}\n\n\
+                         Full story outline:\n{outline}\n\n\
                          Output JSON with: title (string), content (string, the chapter prose)",
                     )
                 } else if chapter_num == 1 {
                     format!(
-                        "Write {chapter_label}. Introduce the main character and setting. \
+                        "Write {chapter_label}: {chapter_title}. \
+                         {chapter_summary}\n\n\
                          ~400 words of vivid prose.\n\n\
                          Rules:\n\
                          - Write actual story prose, NOT meta-commentary or planning.\n\
-                         - Start directly with the narrative.\n\
+                         - Start directly with the narrative, introducing the main character and setting.\n\
                          - Use paragraph breaks (double newlines) between scenes.\n\
                          - Do NOT include thinking, reasoning, or commentary.\n\n\
-                         Outline context:\n{outline}\n\n\
+                         Full story outline:\n{outline}\n\n\
                          Output JSON with: title (string), content (string, the chapter prose)",
                     )
                 } else {
                     format!(
-                        "Write {chapter_label}. Continue from where the previous chapter left off. \
-                         Advance the plot. ~400 words of vivid prose.\n\n\
+                        "Write {chapter_label}: {chapter_title}. \
+                         {chapter_summary}\n\n\
+                         ~400 words of vivid prose.\n\n\
                          Rules:\n\
                          - Write actual story prose, NOT meta-commentary or planning.\n\
-                         - Start directly with the narrative.\n\
+                         - Start directly with the narrative from the scene described above.\n\
                          - Use paragraph breaks (double newlines) between scenes.\n\
+                         - Advance the plot toward the story\'s conclusion.\n\
                          - Do NOT include thinking, reasoning, or commentary.\n\n\
                          Previous chapter recap:\n{previous}\n\n\
-                         Outline context:\n{outline}\n\n\
+                         Full story outline:\n{outline}\n\n\
                          Output JSON with: title (string), content (string, the chapter prose)",
                     )
                 };
@@ -1199,8 +1235,16 @@ pub fn cmd_story(extra: &[&str]) {
         AgentJournal::info("story", "Phase 3: Writing chapters");
         let mut chapter_texts = Vec::new();
         for i in 1..=3 {
+            // Feed EOS between chapters to prevent state bleeding
+            if i > 1 {
+                let _ = futures::executor::block_on(
+                    backend.feed_eos(Some("story-session".to_string()))
+                );
+            }
+
             let chapter_label = format!("Chapter {i}");
             let previous = chapter_texts.last().cloned().unwrap_or_default();
+            let (chapter_title, chapter_summary) = chapter_outline_info(outline_text, i);
 
             println!("  ✍️  {}...", &chapter_label);
 
@@ -1212,6 +1256,8 @@ pub fn cmd_story(extra: &[&str]) {
                     "label": chapter_label,
                     "outline": outline_text,
                     "previous": previous,
+                    "chapter_title": chapter_title,
+                    "chapter_summary": chapter_summary,
                 }),
             };
             let ch_result = agent
