@@ -30,9 +30,11 @@
 /// Shared character rule: any printable ASCII byte plus tab/newline.
 /// Used by every prose-bearing format so the text body is unconstrained
 /// while the structural delimiters are pinned by the grammar.
+#[cfg(test)]
 const CHAR_RULE: &str = "char ::= #'[ -~\\t\\n]';\n";
 
 /// `text ::= char { char }` — one or more characters.
+#[cfg(test)]
 const TEXT_RULE: &str = "text ::= char { char };\n";
 
 /// XML envelope: `<task>...<context>...<data>...` then either `mid...end<write>prose</write>`

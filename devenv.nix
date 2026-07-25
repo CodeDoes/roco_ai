@@ -57,7 +57,9 @@
   scripts.eval.exec = "cargo run -p roco-cli -- eval";
   # Multi-format eval: compares message envelope styles × {think, no-think}
   # × {baked session, fresh session}. Requires a running `roco inferd`.
-  scripts.format-eval.exec = "cargo run --release --example format_eval -p roco-cli -- \"$@\"";
+  # Build with --features net so RemoteBackend is available; pass runtime
+  # args (e.g. a URL) after `--` via $@.
+  scripts.format-eval.exec = "cargo run --release --example format_eval -p roco-cli --features net -- \"$@\"";
   scripts.chat.exec = "cargo run -p roco-cli -- interact";
   scripts.agent.exec = "cargo run -p roco-cli -- interact --";
   scripts.daemon.exec = "cargo run -p roco-server --example daemon --release";
