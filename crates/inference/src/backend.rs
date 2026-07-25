@@ -306,43 +306,77 @@ impl ModelBackend for RwkvBackend {
             .map(|(u, a)| (u.to_string(), a.to_string()))
             .collect::<Vec<_>>();
         Box::pin(async move {
-            // Build the prompt with system + few-shots
-            let mut prompt = String::new();
-            if !system.is_empty() {
-                prompt.push_str(&format!("System: {system}\n\n"));
-            }
-            for (user, assistant) in &few_shots {
-                prompt.push_str(&format!("User: {user}\n\nAssistant: {assistant}\n\n"));
-            }
-            // Feed token 0 (EOS) between examples to reset document boundary
-            // In practice we bake in one go, the actor handles it
-            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-            tx.send(
-                CompleteReq {
-                    system: String::new(), // Already in prompt
-                    prompt,
-                    prefill: None,
-                    max_tokens: 1, // Just process prompt, emit 1 token to finalize state
-                    temperature: 0.0,
-                    top_a: None,
-                    grammar: None,
-                    bnf_mask: None,
-                    reply: reply_tx,
-                    preserve_state: true, // Bake into session
-                    on_token: None,
-                    session: Some(session_id.clone()),
-                    deadline_ms: 60000,
-                }
-                .into(),
-            )
-            .await
-            .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
-
-            // Wait for completion
-            let _ = reply_rx
+            for (i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
+                // Send user message through the session (first message includes system)
+                let prompt = if i == 0 && !system.is_empty() {
+                    format!("{system}\n\n{user_msg}")
+                } else {
+                    user_msg.clone()
+                };
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                tx.send(
+                    CompleteReq {
+                        system: String::new(), // system is folded into the first prompt
+                        prompt,
+                        prefill: None,
+                        max_tokens: 1024,
+                        temperature: 0.0,
+                        top_a: None,
+                        grammar: None,
+                        bnf_mask: None,
+                        reply: reply_tx,
+                        preserve_state: true,
+                        on_token: None,
+                        session: Some(session_id.clone()),
+                        deadline_ms: 60000,
+                    }
+                    .into(),
+                )
                 .await
-                .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
-                .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
+                .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
+
+                // Wait for user message completion
+                let _ = reply_rx
+                    .await
+                    .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
+                    .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
+
+                // Prefill the assistant's response to bake the expected output pattern
+                let (reply_tx2, reply_rx2) = tokio::sync::oneshot::channel();
+                tx.send(
+                    CompleteReq {
+                        system: String::new(),
+                        prompt: String::new(),
+                        prefill: Some(assistant_msg.clone()),
+                        max_tokens: 1, // just process the prefill
+                        temperature: 0.0,
+                        top_a: None,
+                        grammar: None,
+                        bnf_mask: None,
+                        reply: reply_tx2,
+                        preserve_state: true,
+                        on_token: None,
+                        session: Some(session_id.clone()),
+                        deadline_ms: 60000,
+                    }
+                    .into(),
+                )
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
+
+                // Wait for assistant response completion
+                let _ = reply_rx2
+                    .await
+                    .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
+                    .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
+
+                // Feed EOS (token 0) between examples to match training distribution
+                if i + 1 < few_shots.len() {
+                    tx.send(ActorMessage::FeedEos(Some(session_id.clone())))
+                        .await
+                        .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
+                }
+            }
 
             Ok(session_id)
         })

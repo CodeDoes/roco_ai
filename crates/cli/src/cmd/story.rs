@@ -1231,6 +1231,32 @@ pub fn cmd_story(extra: &[&str]) {
             .expect("wiki failed");
         println!("  ✓ World bible complete\n");
 
+        // Bake session for chapter writing: prime the state with a writer persona
+        // This ensures the recurrent state carries the writing style forward
+        println!("  🔥 Baking session (state-tuning for consistent prose)...");
+        AgentJournal::info("story", "Baking session with writer persona");
+        let bake_few_shots = [
+            (
+                "Write an engaging opening paragraph for a mystery story set in a foggy lighthouse.",
+                "The bronze bell of the lighthouse tolled six times before Elias finally looked up from the logbook. Through the salt-crusted window, the fog was rolling in thick and white, swallowing the rocky shoreline as if the world outside no longer existed. He set down his pen and listened \u{2014} to the creak of the iron stairs, the moan of the wind through the lantern room, and something else, something that didn't belong."
+            ),
+            (
+                "Write a paragraph that builds atmosphere and tension in a quiet, eerie setting.",
+                "The fog muffled every sound, turning the crash of waves into a distant whisper. Somewhere beyond the wall of white, a buoy clanged its lonely warning, but the rhythm was wrong \u{2014} off by a beat, as if someone or something was pulling the rope. Sarah pulled her coat tighter and stepped closer to the edge, straining to see through the veil."
+            ),
+        ];
+        let bake_result = futures::executor::block_on(
+            backend.bake_state(
+                "story-session",
+                "You are a fiction writer. Write vivid, atmospheric prose with strong sensory details. Build tension gradually. Use short sentences for impact and longer ones for description. Never include thinking, reasoning, or meta-commentary. Only write the story.",
+                &bake_few_shots,
+            )
+        );
+        match bake_result {
+            Ok(sid) => AgentJournal::action("story", &format!("Session baked: {sid}")),
+            Err(e) => AgentJournal::warn("story", &format!("Session baking skipped (backend may not support it): {e}")),
+        }
+
         // Phase 3: chapters ×3
         AgentJournal::info("story", "Phase 3: Writing chapters");
         let mut chapter_texts = Vec::new();
