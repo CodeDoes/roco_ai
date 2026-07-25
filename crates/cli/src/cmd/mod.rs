@@ -7,6 +7,7 @@ pub mod game;
 pub mod gpu;
 pub mod html;
 pub mod interact;
+pub mod jobs;
 pub mod pet;
 pub mod router;
 pub mod story;

@@ -8,9 +8,10 @@
 //! the whole thing is testable with a fake clock (no real waiting).
 //! Satisfies `goals/agent/scheduled_tasks.md`.
 
+use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_tools::{Tool, ToolError};
@@ -87,10 +88,10 @@ impl Scheduler {
             let text = std::fs::read_to_string(&path)?;
             if !text.trim().is_empty() {
                 let loaded: Vec<ScheduledTask> = serde_json::from_str(&text)?;
-                *store.tasks.write().expect("sched lock poisoned") = loaded;
+                *store.tasks.write() = loaded;
             }
         }
-        *store.path.write().expect("sched path lock poisoned") = Some(path);
+        *store.path.write() = Some(path);
         Ok(store)
     }
 
@@ -101,17 +102,14 @@ impl Scheduler {
     /// Schedule a one-off task due at unix time `at`.
     pub fn schedule_one_off(&self, description: &str, at: u64, payload: Option<Value>) -> String {
         let id = new_sched_id();
-        self.tasks
-            .write()
-            .expect("sched lock poisoned")
-            .push(ScheduledTask {
-                id: id.clone(),
-                description: description.to_string(),
-                payload,
-                kind: "one_off".into(),
-                next_run: at,
-                interval: None,
-            });
+        self.tasks.write().push(ScheduledTask {
+            id: id.clone(),
+            description: description.to_string(),
+            payload,
+            kind: "one_off".into(),
+            next_run: at,
+            interval: None,
+        });
         let _ = self.save();
         id
     }
@@ -127,17 +125,14 @@ impl Scheduler {
     ) -> String {
         let next_run = start.unwrap_or_else(|| self.now());
         let id = new_sched_id();
-        self.tasks
-            .write()
-            .expect("sched lock poisoned")
-            .push(ScheduledTask {
-                id: id.clone(),
-                description: description.to_string(),
-                payload,
-                kind: "periodic".into(),
-                next_run,
-                interval: Some(interval),
-            });
+        self.tasks.write().push(ScheduledTask {
+            id: id.clone(),
+            description: description.to_string(),
+            payload,
+            kind: "periodic".into(),
+            next_run,
+            interval: Some(interval),
+        });
         let _ = self.save();
         id
     }
@@ -147,7 +142,6 @@ impl Scheduler {
         let now = self.now();
         self.tasks
             .read()
-            .expect("sched lock poisoned")
             .iter()
             .filter(|t| t.next_run <= now)
             .cloned()
@@ -155,16 +149,11 @@ impl Scheduler {
     }
 
     pub fn get(&self, id: &str) -> Option<ScheduledTask> {
-        self.tasks
-            .read()
-            .expect("sched lock poisoned")
-            .iter()
-            .find(|t| t.id == id)
-            .cloned()
+        self.tasks.read().iter().find(|t| t.id == id).cloned()
     }
 
     pub fn len(&self) -> usize {
-        self.tasks.read().expect("sched lock poisoned").len()
+        self.tasks.read().len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -172,14 +161,11 @@ impl Scheduler {
     }
 
     fn remove(&self, id: &str) {
-        self.tasks
-            .write()
-            .expect("sched lock poisoned")
-            .retain(|t| t.id != id);
+        self.tasks.write().retain(|t| t.id != id);
     }
 
     fn set_next_run(&self, id: &str, next_run: u64) {
-        let mut tasks = self.tasks.write().expect("sched lock poisoned");
+        let mut tasks = self.tasks.write();
         if let Some(t) = tasks.iter_mut().find(|t| t.id == id) {
             t.next_run = next_run;
         }
@@ -196,9 +182,19 @@ impl Scheduler {
         let due = self.due();
         let mut outcomes = Vec::with_capacity(due.len());
         for task in due {
+            let prompt = if let Some(ref payload) = task.payload {
+                format!(
+                    "{}
+
+Payload: {}",
+                    task.description, payload
+                )
+            } else {
+                task.description.clone()
+            };
             let req = CompletionRequest::new(
                 "You are executing a scheduled task. Produce only the result.",
-                task.description.clone(),
+                prompt,
             );
             let resp = backend
                 .complete(req)
@@ -231,9 +227,9 @@ impl Scheduler {
 
     /// Persist tasks to `path`, if configured.
     pub fn save(&self) -> anyhow::Result<()> {
-        let path = self.path.read().expect("sched path lock poisoned");
+        let path = self.path.read();
         if let Some(p) = path.as_ref() {
-            let tasks = self.tasks.read().expect("sched lock poisoned");
+            let tasks = self.tasks.read();
             let text = serde_json::to_string_pretty(&*tasks)?;
             if let Some(parent) = p.parent() {
                 std::fs::create_dir_all(parent).ok();

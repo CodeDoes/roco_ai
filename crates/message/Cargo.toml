@@ -18,6 +18,7 @@ tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 schoolmarm = "0.1"
+roco-bnf-engine = { path = "../bnf-engine" }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [features]

@@ -35,40 +35,16 @@ You type a premise
     ↓
 AppContext (crates/app/) — wires everything together
     ↓
-StoryEngine (crates/agent-core/) — outline → chapters → quality check
+StoryEngine (crates/agent/) — outline → chapters → quality check
     ↓
-MechaAgent (crates/agent-core/) — plan-first loop: classify intent → derive plan → dispatch actions
+MechaAgent (crates/agent/) — plan-first loop: classify intent → derive plan → dispatch actions
     ↓
 ModelBackend (crates/engine/ + crates/inference/) — RWKV-7 inference with BNF grammar constraints
     ↓
 Workspace (crates/workspace/) — saves chapters, outlines, wikis to .roco/workspaces/
 ```
 
----
-
-## Code Layout
-
-| Crate | What it does |
-|---|---|
-| `crates/cli/` | CLI binary (`roco`), entry point, subcommands |
-| `crates/ui/` | Desktop GUI (egui widgets: chat, pacing, editor, file tree, wiki, link graph, sessions, timeline) |
-| `crates/app/` | Single surface primitive (`AppContext`) — CLI and GUI both use this |
-| `crates/agent-core/` | Core agent loop: `MechanisticAgent` (plan-first) + `CommonAgent` (ReAct) |
-| `crates/agent-story/` | Story pipeline: outline generation, chapter writing, quality eval, revision |
-| `crates/engine/` | Model backend interface, completion requests, grammar-constrained generation |
-| `crates/inference/` | RWKV-7 inference runtime (actor thread, sampling, quantization) |
-| `crates/grammar/` | BNF grammar definitions + pipeline state machine |
-| `crates/bnf-engine/` | Isolated kbnf grammar engine (patched from vendor) |
-| `crates/workspace/` | Sandbox file storage for story outputs |
-| `crates/session/` | Conversation session pool (`LruSessionPool`, max 8) |
-| `crates/message/` | Message types shared across the system |
-| `crates/tools/` | Tool definitions the agent can call |
-| `crates/chat-common/` | Shared chat types |
-| `crates/server/` | HTTP server for plugins (VSCode, Zed, Obsidian) |
-| `crates/gateway/` | Backend gateway |
-| `crates/infer-client/` | Remote inference client |
-| `crates/inferd/` | Standalone inference daemon |
-| `crates/validation/` | Story quality validation |
+> For the live crate list, sizes, dependency graph, and test counts — run `./scout.sh`. It introspects the actual codebase so it's never out of date.
 
 ---
 
@@ -83,6 +59,9 @@ Workspace (crates/workspace/) — saves chapters, outlines, wikis to .roco/works
 ## Key Design Rules
 
 - **BNF grammar on every LLM call.** Raw prompting on RWKV-7 produces `thinking` contamination. Grammar constrains output.
+- **FormatSpec for message envelopes.** `FormatSpec` (`roco-message`) is the single source of truth for envelope grammars, prompt building, and prose extraction.
+- **Single-site BNF compilation.** Grammar strings pass over boundaries; `inferd` (`roco-server`) compiles them into `BnfMask` masks via `build_mask_or_error()`.
+- **Consolidated chat state.** Shared conversation data structures live in `roco-chat-common`.
 - **No `.await` in GUI.** Desktop uses `block_on()` for backend calls inside `egui::update()`.
 - **Standalone-first widgets.** Each widget in `crates/ui/` has its own `#[cfg(test)]` — test before wiring into the desktop.
 - **Never redirect test output.** Use `run_tests.sh` directly; fix failures instead of hiding them.
@@ -106,9 +85,16 @@ Workspace (crates/workspace/) — saves chapters, outlines, wikis to .roco/works
 | `./start.sh ["premise"]` | Full story generation |
 | `./run_desktop.sh` | Desktop GUI |
 | `./run_tests.sh` | `cargo check` + `clippy` + test build |
+| `./scout.sh` | Live project state (crates, deps, tests, dead docs) |
+| `./scout.sh files [N]` | List files exceeding N lines (default 150) |
+| `./scout.sh dep-health` | Dependency tree health & duplicate dependency check |
+| `./scout.sh dupes` | Find duplicate files, type definitions, and Cargo deps |
+| `./scout.sh jobs` | Check active inferd daemon jobs & status |
 | `cargo test --workspace --no-run` | Compile all tests |
 | `roco eval` | Run eval + snapshot |
 | `roco bless` | Update oracle snapshots |
 | `roco server` | Start HTTP server for editor plugins |
+| `roco jobs` | Inspect active inference jobs and daemon status |
+| `cargo run --release --example format_eval` | Multi-format evaluation (or `devenv format-eval`) |
 | `roco gui` | Desktop GUI (same as `run_desktop.sh`) |
 | `roco interact` | Interactive chat session |

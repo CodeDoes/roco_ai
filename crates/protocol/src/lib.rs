@@ -227,6 +227,24 @@ impl OpenAiErrorBody {
     }
 }
 
+// ── Bake ──────────────────────────────────────────────────────────────────
+
+/// Request to bake a set of few-shot example pairs into a named session state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BakeRequest {
+    pub session_id: String,
+    #[serde(default)]
+    pub system: String,
+    pub few_shots: Vec<(String, String)>,
+}
+
+/// Response returned after successfully baking few-shot state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BakeResponse {
+    pub session_id: String,
+    pub baked_shots: usize,
+}
+
 // ── Health ────────────────────────────────────────────────────────────────
 
 /// Standard health-check response.
@@ -234,6 +252,18 @@ impl OpenAiErrorBody {
 pub struct HealthResponse {
     pub status: String,
     pub backend: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<serde_json::Value>,
+}
+
+/// Detailed status and active job metrics for the inference daemon.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferJobsResponse {
+    pub status: String,
+    pub backend: String,
+    pub active_jobs: usize,
+    pub uptime_secs: u64,
+    pub features: Vec<String>,
 }
 
 #[cfg(test)]

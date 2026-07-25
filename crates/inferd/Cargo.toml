@@ -13,6 +13,7 @@ path = "src/main.rs"
 roco-engine = { path = "../engine" }
 roco-inference = { path = "../inference" }
 roco-server = { path = "../server" }
+roco-app = { path = "../app" }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "signal"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true

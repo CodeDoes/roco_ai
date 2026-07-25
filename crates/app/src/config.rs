@@ -22,17 +22,44 @@ use serde::Deserialize;
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Top-level configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
 #[derive(Default)]
 pub struct RoCoConfig {
+    pub hotreload: bool,
     pub model: ModelConfig,
     pub server: ServerConfig,
     pub gateway: GatewayConfig,
+    pub template: TemplateConfig,
+}
+
+/// Message-exchange template settings.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct TemplateConfig {
+    pub think: bool,
+    pub r#type: String,
+    pub state_tune: bool,
+    pub system_prompt: bool,
+    pub context_state: bool,
+    pub max_tokens: String,
+}
+
+impl Default for TemplateConfig {
+    fn default() -> Self {
+        Self {
+            think: false,
+            r#type: "prose".into(),
+            state_tune: false,
+            system_prompt: true,
+            context_state: false,
+            max_tokens: "inf".into(),
+        }
+    }
 }
 
 /// Model / inference settings.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
 #[derive(Default)]
 pub struct ModelConfig {
@@ -43,20 +70,22 @@ pub struct ModelConfig {
 }
 
 /// Inference server settings (used by `roco server`).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+    pub hotreload: bool,
 }
 
 /// API gateway settings (used by `roco gateway`).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct GatewayConfig {
     pub host: String,
     pub port: u16,
     pub rate_limit: usize,
+    pub hotreload: bool,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -68,6 +97,7 @@ impl Default for ServerConfig {
         Self {
             host: "127.0.0.1".into(),
             port: 8080,
+            hotreload: false,
         }
     }
 }
@@ -78,6 +108,7 @@ impl Default for GatewayConfig {
             host: "127.0.0.1".into(),
             port: 8000,
             rate_limit: 60,
+            hotreload: false,
         }
     }
 }
@@ -87,6 +118,21 @@ impl Default for GatewayConfig {
 // ═════════════════════════════════════════════════════════════════════════════
 
 impl RoCoConfig {
+    /// Check whether hot-reload mode is enabled.
+    /// Priority: `ROCO_HOTRELOAD` env var > config file settings (`hotreload = true`).
+    pub fn is_hotreload_enabled(&self) -> bool {
+        if let Ok(val) = std::env::var("ROCO_HOTRELOAD") {
+            let val = val.trim().to_lowercase();
+            if val == "1" || val == "true" || val == "yes" || val == "on" {
+                return true;
+            }
+            if val == "0" || val == "false" || val == "no" || val == "off" {
+                return false;
+            }
+        }
+        self.hotreload || self.server.hotreload || self.gateway.hotreload
+    }
+
     /// Load config from the first available location.
     ///
     /// Returns `Default::default()` (all `None`s / safe defaults) when no
@@ -291,5 +337,58 @@ mod tests {
 
         fs::remove_dir_all(&dir).ok();
         std::env::remove_var("ROCO_CONFIG");
+    }
+
+    #[test]
+    fn test_template_config_defaults() {
+        let cfg = RoCoConfig::default();
+        assert!(!cfg.template.think);
+        assert_eq!(cfg.template.r#type, "prose");
+        assert!(!cfg.template.state_tune);
+        assert!(cfg.template.system_prompt);
+        assert!(!cfg.template.context_state);
+        assert_eq!(cfg.template.max_tokens, "inf");
+    }
+
+    #[test]
+    fn test_template_config_from_toml() {
+        let toml_str = r#"
+            [template]
+            think = true
+            type = "xml"
+            state_tune = true
+            system_prompt = false
+            context_state = true
+            max_tokens = "inf"
+        "#;
+
+        let cfg: RoCoConfig = toml::from_str(toml_str).unwrap();
+        assert!(cfg.template.think);
+        assert_eq!(cfg.template.r#type, "xml");
+        assert!(cfg.template.state_tune);
+        assert!(!cfg.template.system_prompt);
+        assert!(cfg.template.context_state);
+        assert_eq!(cfg.template.max_tokens, "inf");
+    }
+
+    #[test]
+    fn test_hotreload_config() {
+        let mut cfg = RoCoConfig::default();
+        assert!(!cfg.is_hotreload_enabled());
+
+        cfg.hotreload = true;
+        assert!(cfg.is_hotreload_enabled());
+
+        let mut cfg2 = RoCoConfig::default();
+        cfg2.server.hotreload = true;
+        assert!(cfg2.is_hotreload_enabled());
+
+        let content = r#"
+            hotreload = true
+            [server]
+            port = 8080
+        "#;
+        let parsed: RoCoConfig = toml::from_str(content).unwrap();
+        assert!(parsed.is_hotreload_enabled());
     }
 }

@@ -1,11 +1,12 @@
 use axum::{
     extract::{Request, State},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
     Json, Router as AxumRouter,
 };
 use parking_lot::Mutex;
 use reqwest::Client;
+use roco_app::RoCoConfig;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,6 +18,7 @@ pub struct GatewayState {
     pub rate_limit_per_minute: usize,
     pub req_client: Client,
     pub rate_limiter: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
+    pub template: Option<roco_app::config::TemplateConfig>,
 }
 
 pub struct Gateway {
@@ -48,21 +50,31 @@ impl Gateway {
     }
 
     pub async fn run(&self) -> Result<(), String> {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
+            .try_init();
+
         let state = GatewayState {
             target_url: self.target_url.clone(),
             rate_limit_per_minute: self.rate_limit_per_minute,
             req_client: Client::new(),
             rate_limiter: Arc::new(Mutex::new(HashMap::new())),
+            template: RoCoConfig::load().template.into(),
         };
 
         let app = AxumRouter::new()
             .route("/health", get(handle_health))
-            .route("/complete", post(handle_proxy))
-            .route("/v1/completions", post(handle_proxy))
+            .fallback(handle_proxy)
             .with_state(state);
 
         let addr = format!("{}:{}", self.host, self.port);
-        info!("Starting API Gateway on {}", addr);
+        info!(
+            "Starting API Gateway on {} targeting {}",
+            addr, self.target_url
+        );
         let listener = tokio::net::TcpListener::bind(&addr)
             .await
             .map_err(|e| format!("Failed to bind gateway to {addr}: {e}"))?;
@@ -74,10 +86,27 @@ impl Gateway {
 }
 
 async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Response {
-    let client_ip = "global".to_string();
+    let method = req.method().clone();
+    let path_and_query = req
+        .uri()
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or_else(|| req.uri().path())
+        .to_string();
+    let forward_url = format!(
+        "{}{}",
+        state.target_url.trim_end_matches('/'),
+        path_and_query
+    );
 
-    // Check rate limit
-    {
+    let client_ip = "global".to_string();
+    let start = Instant::now();
+
+    // Skip rate limiting for health checks and static data endpoints so
+    // monitoring / data fetches do not consume the caller's quota.
+    let is_health = path_and_query == "/health" || path_and_query.starts_with("/health?");
+    let is_vocab = path_and_query == "/vocab" || path_and_query.starts_with("/vocab?");
+    if !is_health && !is_vocab {
         let mut limiter = state.rate_limiter.lock();
         let now = Instant::now();
         let timestamps = limiter.entry(client_ip.clone()).or_insert_with(Vec::new);
@@ -86,7 +115,7 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
         timestamps.retain(|&t| now.duration_since(t) < Duration::from_secs(60));
 
         if timestamps.len() >= state.rate_limit_per_minute {
-            warn!("Rate limit exceeded for client {}", client_ip);
+            warn!(method = %method, path = %path_and_query, "Rate limit exceeded for client {}", client_ip);
             return (
                 axum::http::StatusCode::TOO_MANY_REQUESTS,
                 Json(serde_json::json!({
@@ -99,14 +128,11 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
         timestamps.push(now);
     }
 
-    let path = req.uri().path().to_string();
-    let forward_url = format!("{}{}", state.target_url.trim_end_matches('/'), path);
-    info!("Proxying request to {}", forward_url);
-
-    // Get body bytes from request
+    // Read body bytes from request
     let body_bytes = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
         Ok(b) => b,
         Err(e) => {
+            warn!(method = %method, path = %path_and_query, error = %e, "Failed to read request body");
             return (
                 axum::http::StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({ "error": format!("Failed to read request body: {e}") })),
@@ -115,21 +141,37 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
         }
     };
 
+    let req_len = body_bytes.len();
+    info!(
+        method = %method,
+        path = %path_and_query,
+        body_bytes = req_len,
+        "Proxying request → {}",
+        forward_url
+    );
+
     // Forward using reqwest
-    let upstream_res = match state
-        .req_client
-        .post(&forward_url)
-        .header("Content-Type", "application/json")
-        .body(body_bytes)
-        .send()
-        .await
-    {
+    let mut builder = state.req_client.request(method.clone(), &forward_url);
+    builder = builder.header("Content-Type", "application/json");
+    if req_len > 0 {
+        builder = builder.body(body_bytes);
+    }
+
+    let upstream_res = match builder.send().await {
         Ok(res) => res,
         Err(e) => {
+            warn!(
+                method = %method,
+                path = %path_and_query,
+                latency_ms = start.elapsed().as_millis() as u64,
+                error = %e,
+                "Failed to forward request to backend"
+            );
             return (
                 axum::http::StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({ "error": format!("Failed to forward request to backend: {e}") }))
-            ).into_response();
+                Json(serde_json::json!({ "error": format!("Failed to forward request to backend: {e}") })),
+            )
+                .into_response();
         }
     };
 
@@ -137,6 +179,13 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
     let res_bytes = match upstream_res.bytes().await {
         Ok(b) => b,
         Err(e) => {
+            warn!(
+                method = %method,
+                path = %path_and_query,
+                latency_ms = start.elapsed().as_millis() as u64,
+                error = %e,
+                "Failed to read backend response body"
+            );
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(
@@ -146,6 +195,19 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
                 .into_response();
         }
     };
+
+    let latency_ms = start.elapsed().as_millis() as u64;
+    info!(
+        method = %method,
+        path = %path_and_query,
+        status = status.as_u16(),
+        res_bytes = res_bytes.len(),
+        latency_ms = latency_ms,
+        "Proxy response ← HTTP {} ({} bytes in {}ms)",
+        status.as_u16(),
+        res_bytes.len(),
+        latency_ms
+    );
 
     Response::builder()
         .status(status.as_u16())
@@ -170,13 +232,22 @@ async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
     Json(serde_json::json!({
         "gateway": "online",
         "backend_url": state.target_url,
-        "backend_status": backend_status
+        "backend_status": backend_status,
+        "template": state.template.as_ref().map(|t| serde_json::json!({
+            "type": t.r#type,
+            "think": t.think,
+            "state_tune": t.state_tune,
+            "system_prompt": t.system_prompt,
+            "context_state": t.context_state,
+            "max_tokens": t.max_tokens,
+        }))
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::routing::post;
 
     #[tokio::test]
     async fn test_gateway_proxy_and_rate_limiting() {
@@ -185,6 +256,14 @@ mod tests {
             .route(
                 "/health",
                 get(|| async { Json(serde_json::json!({ "status": "ok" })) }),
+            )
+            .route(
+                "/vocab",
+                get(|| async {
+                    Json(serde_json::json!({
+                        "vocab": ["AAA=", "AAE=", "AAo="] // base64: "", "\x01", "\x0a"
+                    }))
+                }),
             )
             .route(
                 "/complete",
@@ -212,11 +291,12 @@ mod tests {
             rate_limit_per_minute: gateway.rate_limit_per_minute,
             req_client: Client::new(),
             rate_limiter: Arc::new(Mutex::new(HashMap::new())),
+            template: RoCoConfig::load().template.into(),
         };
 
         let gw_app = AxumRouter::new()
             .route("/health", get(handle_health))
-            .route("/complete", post(handle_proxy))
+            .fallback(handle_proxy)
             .with_state(app_state);
 
         tokio::spawn(async move {
@@ -266,5 +346,12 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Rate limit exceeded"));
+
+        // 7. Vocab proxy
+        let res_vocab = client.get(format!("{gw_url}/vocab")).send().await.unwrap();
+        assert_eq!(res_vocab.status(), 200);
+        let vocab_data: serde_json::Value = res_vocab.json().await.unwrap();
+        assert!(vocab_data["vocab"].is_array());
+        assert_eq!(vocab_data["vocab"].as_array().unwrap().len(), 3);
     }
 }

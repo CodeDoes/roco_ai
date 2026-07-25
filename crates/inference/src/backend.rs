@@ -5,15 +5,15 @@
 //! via channels.
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tracing::info;
 
 use crate::actor::{ActorMessage, BlendReq, CompleteReq, RwkvActor};
-use tokio::sync::oneshot;
 
 /// Thread-safe handle to the RWKV inference actor.
 pub struct RwkvBackend {
@@ -36,8 +36,11 @@ impl RwkvBackend {
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
         let (tx, rx) = mpsc::channel::<ActorMessage>(4);
-        let (ready_tx, ready_rx) =
-            tokio::sync::oneshot::channel::<std::result::Result<(), String>>();
+        // Use std::sync::mpsc (not tokio::sync::oneshot) for the ready
+        // signal so the main thread can block with a timeout without needing
+        // a tokio runtime. This avoids the cross-executor fragility of
+        // futures::executor::block_on driving a tokio oneshot.
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
 
         let actor_thread = std::thread::Builder::new()
             .name("rwkv-actor".into())
@@ -65,13 +68,34 @@ impl RwkvBackend {
             })
             .expect("failed to spawn rwkv actor thread");
 
-        futures::executor::block_on(async {
-            match ready_rx.await {
-                Ok(Ok(())) => Ok::<_, anyhow::Error>(()),
-                Ok(Err(msg)) => Err(anyhow::anyhow!("RWKV backend init failed: {msg}")),
-                Err(_) => Err(anyhow::anyhow!("RWKV actor thread died before init")),
+        // Block with a timeout so a hanging GPU init doesn't freeze the
+        // process forever. Default 120s, overridable via RWKV_BACKEND_TIMEOUT.
+        let timeout_secs: u64 = std::env::var("RWKV_BACKEND_TIMEOUT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(120);
+        let timeout = Duration::from_secs(timeout_secs);
+        match ready_rx.recv_timeout(timeout) {
+            Ok(Ok(())) => {}
+            Ok(Err(msg)) => {
+                anyhow::bail!("RWKV backend init failed: {msg}");
             }
-        })?;
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                anyhow::bail!(
+                    "RWKV backend init timed out after {timeout_secs}s. \
+                     The model file may be too large, the GPU may be busy, \
+                     or Vulkan drivers may be missing. \
+                     Set RWKV_BACKEND_TIMEOUT for a longer wait, \
+                     or check GPU setup with: roco gpu-check"
+                );
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!(
+                    "RWKV actor thread died before initialization completed. \
+                     Check the logs above for panic details."
+                );
+            }
+        }
 
         Ok(Self {
             tx: Some(tx),
@@ -174,6 +198,17 @@ impl ModelBackend for RwkvBackend {
             .clone()
             .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
+            // Grammar handling: this crate does NOT build BnfMask instances
+            // (doing so would pull kbnf types into web-rwkv's compilation
+            // unit, triggering E0275). Callers must either:
+            //   (a) send `req.grammar` as a string over HTTP to `roco-inferd`,
+            //       whose server route builds the mask via `create_bnf_mask`,
+            //       or
+            //   (b) pass a pre-built `req.bnf_mask` (Box<dyn BnfMask>) built
+            //       in a crate that already depends on `roco-bnf-engine`.
+            //
+            // Any `req.grammar` string set here is forwarded to the actor
+            // for logging only; the actor ignores it for masking.
             let started = Instant::now();
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
@@ -262,6 +297,75 @@ impl ModelBackend for RwkvBackend {
                 .await
                 .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
             Ok(())
+        })
+    }
+
+    fn bake_state(
+        &self,
+        session_id: &str,
+        _system: &str,
+        few_shots: &[(&str, &str)], // (user_prompt, assistant_response)
+    ) -> BoxFuture<'_, Result<String, EngineError>> {
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
+        let session_id = session_id.to_string();
+        let few_shots = few_shots
+            .iter()
+            .map(|(u, a)| (u.to_string(), a.to_string()))
+            .collect::<Vec<_>>();
+        Box::pin(async move {
+            // Reset session before baking so previous state doesn't bleed in
+            tx.send(ActorMessage::FeedEos(Some(session_id.clone())))
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
+
+            for (i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
+                // Single shot: send user message + assistant answer as prefill
+                // in ONE request with max_tokens=0. The actor processes all
+                // prompt+prefill tokens through inference (updating state)
+                // but stops BEFORE sampling, so there is NO generation
+                // contamination. The state learns the exact (user, assistant)
+                // pair without the model's own noisy output mixed in.
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                tx.send(
+                    CompleteReq {
+                        system: String::new(),
+                        prompt: user_msg.clone(),
+                        prefill: Some(assistant_msg.clone()),
+                        max_tokens: 0, // process prompt+prefill only, no generation
+                        temperature: 0.0,
+                        top_a: None,
+                        grammar: None,
+                        bnf_mask: None,
+                        reply: reply_tx,
+                        preserve_state: true,
+                        on_token: None,
+                        session: Some(session_id.clone()),
+                        deadline_ms: 60000,
+                    }
+                    .into(),
+                )
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
+
+                let _ = reply_rx
+                    .await
+                    .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
+                    .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
+
+                // Feed EOS (token 0) between examples to create clean
+                // boundaries in the recurrent state, matching the model's
+                // training distribution where token 0 separates examples.
+                if i + 1 < few_shots.len() {
+                    tx.send(ActorMessage::FeedEos(Some(session_id.clone())))
+                        .await
+                        .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
+                }
+            }
+
+            Ok(session_id)
         })
     }
 

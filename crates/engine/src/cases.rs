@@ -204,6 +204,7 @@ pub fn default_eval_suite() -> Vec<EvalCase> {
         },
     ];
     suite.extend(validation_eval_cases());
+    suite.extend(story_pipeline_eval_cases());
     suite
 }
 
@@ -749,6 +750,84 @@ pub fn validation_eval_cases() -> Vec<EvalCase> {
             vec!["horror", "haunted", "2000", "first person"],
             vec![],
             60, 250, None,
+        ),
+    ]
+}
+
+// ------------------------------------------------------------------------------
+// Story pipeline eval cases
+//
+// Isolated tests for each stage of the structured story pipeline:
+// outline -> wiki -> chapter -> validation.
+// ------------------------------------------------------------------------------
+
+pub fn story_pipeline_eval_cases() -> Vec<EvalCase> {
+    use crate::eval::{EvalCase, EvalCategory};
+
+    let mk = |name: &str,
+              description: &str,
+              system: &str,
+              prompt: &str,
+              hints: Vec<&str>,
+              forbidden: Vec<&str>,
+              min_chars: usize,
+              max_tok: usize| {
+        EvalCase {
+            name: name.to_string(),
+            description: description.to_string(),
+            system: system.to_string(),
+            prompt: prompt.to_string(),
+            expected_hints: hints.into_iter().map(|s| s.to_string()).collect(),
+            forbidden_strings: forbidden.into_iter().map(|s| s.to_string()).collect(),
+            max_tokens: max_tok,
+            temperature: 0.7,
+            min_output_chars: min_chars,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Coherence,
+        }
+    };
+
+    vec![
+        mk(
+            "story_outline_json",
+            "Model produces a 3-chapter story outline as JSON",
+            "You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.",
+            "Outline a short story with 3 chapters based on this premise:\nA time traveler gets stuck in a medieval bakery.\n\nOutput JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).",
+            vec!["title", "genre", "chapters", "number", "summary"],
+            vec!["thinking", "reasoning", "meta-commentary"],
+            80, 400,
+        ),
+        mk(
+            "story_wiki_json",
+            "Model produces character bios and setting lore as JSON",
+            "You are a worldbuilding assistant. Output valid JSON only. No thinking, no reasoning, no commentary. Only JSON.",
+            "Based on this premise and outline, create character bios and setting lore:\n\nPremise: A time traveler gets stuck in a medieval bakery.\nOutline: Title: Bread and Time. Genre: Fantasy. Tone: Whimsical.\nChapter 1: The Flour of Fate - Alex is transported to a medieval village.\nChapter 2: The Art of the Artisan - Alex learns baking from Master Thorne.\nChapter 3: The Final Flour - Alex returns home changed.\n\nOutput JSON matching the schema: characters (array of objects with name, description), setting (string).",
+            vec!["characters", "name", "description", "setting"],
+            vec!["thinking", "reasoning", "meta-commentary"],
+            80, 400,
+        ),
+        mk(
+            "story_chapter_json",
+            "Model produces a chapter of story prose as JSON",
+            "You are a fiction writer. Write vivid, engaging prose. Output valid JSON only. NEVER include thinking, reasoning, or meta-commentary in your output. Only the JSON object.",
+            "Write Chapter 1: The Flour of Fate. A modern baker, Alex, is accidentally transported to a medieval village while trying to source the perfect flour. He finds himself in a bustling market, surrounded by curious onlookers and a confused townsfolk. With no way to return home, Alex decides to use his modern knowledge to help the baker, Master Thorne, improve his bread and gain the trust of the villagers.\n\n~400 words of vivid prose. Write actual story prose, NOT meta-commentary or planning. Start directly with the narrative.\n\nOutput JSON with: title (string), content (string, the chapter prose)",
+            vec!["title", "content", "Alex", "Master Thorne", "flour"],
+            vec!["thinking", "reasoning", "meta-commentary", "Chapter 1:"],
+            200, 600,
+        ),
+        mk(
+            "story_validation_json",
+            "Model produces chapter quality validation as JSON",
+            "You are a quality reviewer. Be strict. Output valid JSON only. Check for meta-commentary and thinking contamination.",
+            "Review this chapter and check for:\n1. Does it read like a coherent story (not meta-commentary)?\n2. Is the prose engaging with proper paragraph breaks?\n3. Does it avoid thinking/reasoning tags?\n\nChapter:\nThe city breathed. Its skyline, a jagged silhouette against a bruised purple twilight, shuddered with the rhythm of unseen engines. Below, the streets were silent, their glassy surfaces reflecting a sky that was almost empty.\n\nOutput JSON matching the schema: quality (pass/fail/needs-work), issues (string), suggestion (string).",
+            vec!["quality", "issues", "suggestion"],
+            vec!["thinking", "reasoning", "meta-commentary"],
+            30, 200,
         ),
     ]
 }

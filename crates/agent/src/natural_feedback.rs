@@ -100,7 +100,7 @@ impl ParsedFeedback {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json()).expect("ParsedFeedback schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).unwrap_or_default()
     }
 
     /// Check if this feedback requires action

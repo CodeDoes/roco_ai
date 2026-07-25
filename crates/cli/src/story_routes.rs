@@ -89,7 +89,7 @@ pub struct StatusResponse {
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[derive(Clone)]
-pub struct StoryState {
+pub struct StoryApiState {
     pub backend: Arc<dyn ModelBackend>,
     pub engine: Arc<tokio::sync::Mutex<StoryEngine>>,
 }
@@ -99,7 +99,7 @@ pub struct StoryState {
 // ═════════════════════════════════════════════════════════════════════════════
 
 pub fn create_story_router(backend: Arc<dyn ModelBackend>, engine: StoryEngine) -> Router {
-    let state = StoryState {
+    let state = StoryApiState {
         backend,
         engine: Arc::new(tokio::sync::Mutex::new(engine)),
     };
@@ -134,7 +134,7 @@ pub fn create_story_router(backend: Arc<dyn ModelBackend>, engine: StoryEngine) 
 // Story API Handlers
 // ═════════════════════════════════════════════════════════════════════════════
 
-async fn get_outline(State(state): State<StoryState>) -> impl IntoResponse {
+async fn get_outline(State(state): State<StoryApiState>) -> impl IntoResponse {
     let engine = state.engine.lock().await;
     let outline: Vec<ChapterInfo> = engine
         .outline()
@@ -150,7 +150,7 @@ async fn get_outline(State(state): State<StoryState>) -> impl IntoResponse {
 }
 
 async fn update_outline(
-    State(state): State<StoryState>,
+    State(state): State<StoryApiState>,
     Json(_outline): Json<Outline>,
 ) -> impl IntoResponse {
     let _engine = state.engine.lock().await;
@@ -158,7 +158,10 @@ async fn update_outline(
     Json(serde_json::json!({ "status": "ok" }))
 }
 
-async fn get_chapter(State(state): State<StoryState>, Path(num): Path<usize>) -> impl IntoResponse {
+async fn get_chapter(
+    State(state): State<StoryApiState>,
+    Path(num): Path<usize>,
+) -> impl IntoResponse {
     let engine = state.engine.lock().await;
     let chapters = engine.chapters();
 
@@ -175,7 +178,7 @@ async fn get_chapter(State(state): State<StoryState>, Path(num): Path<usize>) ->
 }
 
 async fn save_chapter(
-    State(_state): State<StoryState>,
+    State(_state): State<StoryApiState>,
     Path(_num): Path<usize>,
     Json(_chapter): Json<Chapter>,
 ) -> impl IntoResponse {
@@ -184,7 +187,7 @@ async fn save_chapter(
 }
 
 async fn generate_chapter(
-    State(state): State<StoryState>,
+    State(state): State<StoryApiState>,
     Path(_num): Path<usize>,
     Json(_req): Json<GenerateRequest>,
 ) -> impl IntoResponse {
@@ -205,7 +208,7 @@ async fn generate_chapter(
 }
 
 async fn revise_chapter(
-    State(state): State<StoryState>,
+    State(state): State<StoryApiState>,
     Path(_num): Path<usize>,
     Json(_req): Json<ReviseRequest>,
 ) -> impl IntoResponse {
@@ -217,7 +220,7 @@ async fn revise_chapter(
 }
 
 async fn evaluate_quality(
-    State(state): State<StoryState>,
+    State(state): State<StoryApiState>,
     Path(num): Path<usize>,
 ) -> impl IntoResponse {
     let backend = state.backend.clone();
@@ -237,7 +240,7 @@ async fn evaluate_quality(
 }
 
 async fn get_suggestions(
-    State(_state): State<StoryState>,
+    State(_state): State<StoryApiState>,
     Json(_req): Json<SuggestRequest>,
 ) -> impl IntoResponse {
     // TODO: Get suggestions from writing assistant
@@ -260,7 +263,7 @@ async fn get_suggestions(
 }
 
 async fn apply_suggestion(
-    State(_state): State<StoryState>,
+    State(_state): State<StoryApiState>,
     Json(suggestion): Json<Suggestion>,
 ) -> impl IntoResponse {
     // TODO: Apply suggestion to editor
@@ -268,7 +271,7 @@ async fn apply_suggestion(
 }
 
 async fn continue_writing(
-    State(_state): State<StoryState>,
+    State(_state): State<StoryApiState>,
     Json(_req): Json<ContinueRequest>,
 ) -> impl IntoResponse {
     // TODO: Continue writing from current text
@@ -278,7 +281,7 @@ async fn continue_writing(
 }
 
 async fn send_feedback(
-    State(state): State<StoryState>,
+    State(state): State<StoryApiState>,
     Json(req): Json<FeedbackRequest>,
 ) -> impl IntoResponse {
     let _backend = state.backend.clone();
@@ -298,7 +301,7 @@ async fn send_feedback(
     }
 }
 
-async fn get_plot_state(State(state): State<StoryState>) -> impl IntoResponse {
+async fn get_plot_state(State(state): State<StoryApiState>) -> impl IntoResponse {
     let engine = state.engine.lock().await;
     let plot = engine.plot_state();
 
@@ -311,7 +314,7 @@ async fn get_plot_state(State(state): State<StoryState>) -> impl IntoResponse {
     })
 }
 
-async fn publish_story(State(state): State<StoryState>) -> impl IntoResponse {
+async fn publish_story(State(state): State<StoryApiState>) -> impl IntoResponse {
     let engine = state.engine.lock().await;
 
     match engine.publish() {
@@ -327,7 +330,7 @@ async fn publish_story(State(state): State<StoryState>) -> impl IntoResponse {
     }
 }
 
-async fn get_status(State(state): State<StoryState>) -> impl IntoResponse {
+async fn get_status(State(state): State<StoryApiState>) -> impl IntoResponse {
     let engine = state.engine.lock().await;
     let chapters = engine.chapters();
     let words: usize = chapters.iter().map(|c| c.split_whitespace().count()).sum();

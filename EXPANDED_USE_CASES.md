@@ -3,15 +3,15 @@
 ## Domains & Crate Mapping
 | Domain | Existing Crate / Module | Initial Implementation Target |
 |--------|-------------------------|-------------------------------|
-| Writing / Story | agent-story, agent, validation | Story pipeline + critique |
-| Coding | agent-core (mecha_agent), cli (coder) | Code-driven agent loop for file edits |
+| Writing / Story | agent, validation | Story pipeline + critique |
+| Coding | agent (mecha_agent), cli (coder) | Code-driven agent loop for file edits |
 | HTML | cli (html), workspace (write/edit) | HTML generation + preview workspace |
-| Chat | chat-common, agent-core (agent_chat), ui (chat) | Multi-turn session persistence |
+| Chat | chat-common, agent (agent_chat), ui (chat) | Multi-turn session persistence |
 | Organization | session, workspace, tools | Workspace timeline + session pool |
 | Desktop Pet | ui (pet) | Always-on-top widget using local inference |
 | Debugging | tools (builtins), validation (inference) | Bash/read/error analysis pipeline |
 | Emails | message, grammar | Structured message/GBNF templates |
-| Research | agent-core (memory, sessions), infer-client | Recall + remote fallback option |
+| Research | agent (memory, sessions), infer-client | Recall + remote fallback option |
 | Aggregating | engine (eval), workspace (version) | Snapshot comparison + eval aggregation |
 | Browser Use | workspace, gateway, server | Local server gateway for web surface |
 

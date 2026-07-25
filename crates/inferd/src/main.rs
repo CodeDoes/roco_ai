@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use clap::Parser;
+use roco_app::RoCoConfig;
 use roco_inference::RwkvBackend;
 use roco_server::{Server, ServerConfig};
 
@@ -46,11 +47,22 @@ fn main() {
     };
     eprintln!("roco-inferd: model loaded");
 
-    let config = ServerConfig {
+    let config = RoCoConfig::load();
+    eprintln!(
+        "roco-inferd: template config: type={} think={} state_tune={} system_prompt={} context_state={} max_tokens={}",
+        config.template.r#type,
+        config.template.think,
+        config.template.state_tune,
+        config.template.system_prompt,
+        config.template.context_state,
+        config.template.max_tokens,
+    );
+
+    let server_config = ServerConfig {
         host: args.host.clone(),
         port: args.port,
     };
-    let server = Server::new(config, backend);
+    let server = Server::new(server_config, backend);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

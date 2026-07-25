@@ -17,3 +17,11 @@ port = 8080
 host = "127.0.0.1"
 port = 8000
 rate_limit = 60
+
+[template]
+think = true
+type = "xml"
+state_tune = true
+system_prompt = false
+context_state = true
+max_tokens = "inf"

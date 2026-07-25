@@ -5,6 +5,8 @@
 //! Produces structured JSON reports.
 
 use std::collections::{BTreeMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -161,6 +163,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     backend: &B,
     case: EvalCase,
     trace_path: Option<&std::path::Path>,
+    log_path: Option<&std::path::Path>,
     live_console: bool,
 ) -> EvalResult {
     let mut errors: Vec<String> = Vec::new();
@@ -379,7 +382,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 "eval result"
             );
 
-            EvalResult {
+            let result = EvalResult {
                 name: case.name.clone(),
                 description: case.description.clone(),
                 category: case.category,
@@ -392,7 +395,45 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
                 checks,
                 errors,
                 oracle: case.oracle.clone(),
+            };
+
+            // Write JSONL log line for this eval case
+            if let Some(log_path) = log_path {
+                if let Some(parent) = log_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let log_entry = serde_json::json!({
+                    "ts": std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    "phase": "eval",
+                    "role": result.name,
+                    "content": result.output,
+                    "metadata": {
+                        "passed": result.passed,
+                        "latency_ms": result.latency_ms,
+                        "tokens_per_sec": result.tokens_per_sec,
+                        "category": result.category.to_string(),
+                        "description": result.description,
+                        "errors": result.errors,
+                    },
+                });
+                use std::io::Write;
+                let _ = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(log_path)
+                    .and_then(|mut f| {
+                        writeln!(
+                            f,
+                            "{}",
+                            serde_json::to_string(&log_entry).unwrap_or_default()
+                        )
+                    });
             }
+
+            result
         }
         Err(e) => {
             errors.push(format!("{e}"));
@@ -421,12 +462,29 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
     cases: Vec<EvalCase>,
     filter: Option<&str>,
     trace_path: Option<&std::path::Path>,
+    log_path: Option<&std::path::Path>,
     live_console: bool,
 ) -> EvalReport {
     let mut results = Vec::new();
     let start = Instant::now();
 
+    // Set up Ctrl+C handler for graceful interrupt
+    let interrupted = Arc::new(AtomicBool::new(false));
+    let sig = interrupted.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        sig.store(true, Ordering::SeqCst);
+        eprintln!("\n⚠ Interrupt received, saving accumulated results…");
+    });
+
     for case in cases {
+        if interrupted.load(Ordering::SeqCst) {
+            eprintln!(
+                "Interrupted after {} cases, saving partial report…",
+                results.len()
+            );
+            break;
+        }
         if let Some(filter) = filter {
             if !case.name.contains(filter)
                 && !case.description.contains(filter)
@@ -435,17 +493,65 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
                 continue;
             }
         }
-        let result = run_eval(backend, case, trace_path, live_console).await;
+        let result = run_eval(backend, case, trace_path, log_path, live_console).await;
+
+        // Print incremental result to stderr so stdout can be piped to a file
+        let symbol = if result.passed { "✅" } else { "❌" };
+        eprintln!("  {} {} ({})", symbol, result.name, result.category);
+        if !result.passed {
+            for check in &result.checks {
+                if !check.passed {
+                    eprintln!("         ↳ {}: {}", check.name, check.detail);
+                }
+            }
+            for err in &result.errors {
+                eprintln!("         ↳ error: {}", err);
+            }
+        }
+        if result.latency_ms > 0 {
+            eprint!("         latency: {}ms", result.latency_ms);
+            if result.token_usage.completion_tokens > 0 {
+                eprint!(
+                    ", {} tok/s ({}+{} tokens)",
+                    result.tokens_per_sec.round(),
+                    result.token_usage.prompt_tokens,
+                    result.token_usage.completion_tokens
+                );
+            }
+            eprintln!();
+        }
+
         results.push(result);
+
+        // Save partial snapshot after each case (for interrupt resilience)
+        let partial_report = build_report(suite_name, backend, &results, start);
+        if let Some(log_path) = log_path {
+            if let Some(parent) = log_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+                let snapshot_path = parent.join("partial_report.json");
+                if let Ok(json) = serde_json::to_string_pretty(&partial_report) {
+                    let _ = std::fs::write(&snapshot_path, &json);
+                }
+            }
+        }
     }
 
+    build_report(suite_name, backend, &results, start)
+}
+
+fn build_report<B: ModelBackend + Send + Sync>(
+    suite_name: &str,
+    backend: &B,
+    results: &[EvalResult],
+    start: Instant,
+) -> EvalReport {
     let total_latency_ms = start.elapsed().as_millis() as u64;
     let total = results.len();
     let passed = results.iter().filter(|r| r.passed).count();
     let failed = total - passed;
 
     let mut cat_map: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-    for r in &results {
+    for r in results {
         let cat = r.category.to_string();
         let entry = cat_map.entry(cat).or_insert((0, 0));
         entry.0 += 1;
@@ -469,7 +575,7 @@ pub async fn run_suite<B: ModelBackend + Send + Sync>(
         passed,
         failed,
         total_latency_ms,
-        results,
+        results: results.to_vec(),
         category_breakdown,
     }
 }
@@ -521,33 +627,46 @@ pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
 /// The system instruction is included only on the first user turn (the actor
 /// drops the `system` field for session/preserve_state calls), so the task
 /// persona and the few-shot both live in the recurrent state.
+///
+/// # State Tune Example
+///
+/// See [`STATE_TUNE_EXAMPLES.md`](https://github.com/roco-ai/roco/blob/main/STATE_TUNE_EXAMPLES.md#3-eval-bake_fim_session--fill-in-the-middle)
+/// for the full catalog with example pairs.
 pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(backend: &B) -> Result<(), String> {
-    // Build full multi-shot prompt in one pass. We assemble the few-shot
-    // as a single user/assistant transcript so the recurrent state carries
-    // the persona + format in one shot, instead of a 6-call replay that
-    // pollutes the state with single-token partial responses (`max_tokens: 1`
-    // on each turn produced pathological outputs in early testing).
+    // Single-shot per example: each (user, assistant) pair is sent as one
+    // completion with the answer as prefill and max_tokens=0 (process through
+    // inference, no generation). Token-0 (feed_eos) boundaries between examples
+    // create clean separation in the recurrent state, matching the model's
+    // training distribution.
     let system = "You are RoCo, a collaborative story-writing assistant. \
         Given the text BEFORE the cursor and the text AFTER the cursor, write \
         ONLY the short passage that connects them. Never repeat the BEFORE or \
         AFTER text, never add commentary.";
-    let mut transcript = String::new();
-    for (context, answer) in FIM_FEW_SHOT.iter() {
-        transcript.push_str(&format!("\nUser: {context}\n\nAssistant:{answer}"));
-    }
-    transcript.push_str("\n\nAssistant:");
-    let req = CompletionRequest {
-        system: system.to_string(),
-        prompt: transcript,
-        prefill: Some("<think></think>".to_string()),
-        temperature: 0.0,
-        max_tokens: 4,
-        session: Some(FIM_SESSION.to_string()),
-        preserve_state: true,
-        ..Default::default()
-    };
-    if let Err(e) = backend.complete(req).await {
-        return Err(format!("FIM bake (single-shot): {e}"));
+    for (i, (context, answer)) in FIM_FEW_SHOT.iter().enumerate() {
+        let req = CompletionRequest {
+            system: if i == 0 {
+                system.to_string()
+            } else {
+                String::new()
+            },
+            prompt: context.to_string(),
+            prefill: Some(answer.to_string()),
+            temperature: 0.0,
+            max_tokens: 0, // no generation — just process prompt+prefill
+            session: Some(FIM_SESSION.to_string()),
+            preserve_state: true,
+            ..Default::default()
+        };
+        if let Err(e) = backend.complete(req).await {
+            return Err(format!("FIM bake example {i}: {e}"));
+        }
+        // Token-0 boundary between examples
+        if i + 1 < FIM_FEW_SHOT.len() {
+            backend
+                .feed_eos(Some(FIM_SESSION.to_string()))
+                .await
+                .map_err(|e| format!("feed_eos after FIM example {i}: {e}"))?;
+        }
     }
     Ok(())
 }

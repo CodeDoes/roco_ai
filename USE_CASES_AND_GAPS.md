@@ -3,9 +3,8 @@
 ## Use Cases by Crate
 | Crate | Use Case |
 |-------|----------|
-| agent-core | Autonomous agent loop (ReAct + Mechanistic), memory, scheduling, reversibility |
-| agent-story | Story pipeline: chapter steering, commentary, outline editing, quality, persistence |
-| agent | Combined agent + story exports |
+| agent | Autonomous agent loop (ReAct + Mechanistic), memory, story pipeline (chapter steering, commentary, outline editing, quality, persistence) |
+| app | AppContext, session agent binding, workspace timeline |
 | app | AppContext, session agent binding, workspace timeline |
 | bnf-engine | Token-level BNF grammar engine (kbnf wrapper) |
 | chat-common | Shared chat types across CLI/TUI/web |
@@ -31,8 +30,8 @@
 - crates/inference/examples/rwkv_test.rs
 - crates/cli/src/cmd/eval.rs
 - evals/run.sh, evals/results/
-- agent-story/src/evals.rs, agent/src/evals.rs, engine/src/eval.rs, engine/src/story_evals.rs
-- Added temporary: agent-core/src/tests/mod.rs, agent-story/src/tests/mod.rs, bnf-engine/src/tests/mod.rs, evals/run_missing.sh
+- agent/src/evals.rs, engine/src/eval.rs, engine/src/story_evals.rs
+- Added temporary: bnf-engine/src/tests/mod.rs, evals/run_missing.sh
 
 ## Gaps Found
 Crates with NO tests: chat-common, cli, gateway, grammar, message, server, session, tools, ui (only 2), workspace, validation.

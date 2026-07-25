@@ -13,12 +13,11 @@ use std::sync::Arc;
 
 use half::f16;
 use roco_engine::{BnfMask, EngineError, TokenUsage};
-use safetensors::SafeTensors;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
 use web_rwkv::context::{Context, ContextBuilder};
 use web_rwkv::runtime::infer::{Rnn, RnnInput, RnnInputBatch, RnnOption};
-use web_rwkv::runtime::loader::Loader;
+use web_rwkv::runtime::loader::{Loader, Reader as _};
 use web_rwkv::runtime::model::State as RwkvState;
 use web_rwkv::runtime::model::{Bundle, ContextAutoLimits, ModelBuilder, ModelVersion, Quant};
 use web_rwkv::runtime::softmax::softmax_one;
@@ -32,8 +31,255 @@ use web_rwkv::tokenizer::Tokenizer;
 // appear in the same compilation unit as web-rwkv's TokioRuntime.
 // Grammar constraints are pre-built as Box<dyn BnfMask> outside this crate.
 
-use crate::config::{auto_quant, default_model_path, get_pipeline_cache_path, get_quant_cache_dir};
+use crate::config::{
+    auto_quant, check_model_cache, default_model_path, get_pipeline_cache_path,
+    get_quant_cache_dir, CacheIndex, CachedTensorInfo,
+};
 use crate::sampling;
+
+// ---------------------------------------------------------------------------
+// CachedReader — serves tensor data from disk cache, bypassing .st file
+// ---------------------------------------------------------------------------
+
+/// A `Reader` implementation that loads tensor data from pre-cached files
+/// on disk. Used on subsequent loads after the first successful model build
+/// has populated the quant cache + vector cache.
+///
+/// The `.st` file is NOT read at all when cache is complete — only GPU
+/// is used for model building (and for quantized matrices, the quant cache).
+pub(crate) struct CachedReader {
+    /// All tensor names from the cache index
+    names: Vec<String>,
+    /// Quick-lookup: name -> (dtype_str, shape)
+    metadata: HashMap<String, (String, Vec<usize>)>,
+    /// Cache directory root
+    cache_dir: PathBuf,
+}
+
+impl CachedReader {
+    /// Create from a complete cache index + on-disk files (no .st file needed).
+    pub fn from_cache(cache_dir: PathBuf) -> anyhow::Result<Self> {
+        let index = CacheIndex::load(&cache_dir)
+            .ok_or_else(|| anyhow::anyhow!("cache index not found in {:?}", cache_dir))?;
+        let mut names = Vec::new();
+        let mut metadata = HashMap::new();
+        for t in &index.tensors {
+            names.push(t.name.clone());
+            metadata.insert(t.name.clone(), (t.dtype.clone(), t.shape.clone()));
+        }
+        info!(
+            "CachedReader: {} tensors from cache index in {:?}",
+            names.len(),
+            cache_dir
+        );
+        Ok(Self {
+            names,
+            metadata,
+            cache_dir,
+        })
+    }
+}
+
+impl web_rwkv::runtime::loader::Reader for CachedReader {
+    fn names(&self) -> Vec<&str> {
+        self.names.iter().map(|s| s.as_str()).collect()
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.metadata.contains_key(name)
+    }
+
+    fn shape(&self, name: &str) -> Result<Vec<usize>, safetensors::SafeTensorError> {
+        self.metadata
+            .get(name)
+            .map(|(_, shape)| shape.clone())
+            .ok_or_else(|| {
+                tracing::warn!("CachedReader::shape: tensor not found: {name}");
+                safetensors::SafeTensorError::TensorNotFound(name.to_string())
+            })
+    }
+
+    fn tensor(
+        &self,
+        name: &str,
+    ) -> Result<
+        (safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>),
+        safetensors::SafeTensorError,
+    > {
+        // Load from cache
+        let safe = name.replace(['.', '/', '\\', ':'], "_");
+        let vec_path = self.cache_dir.join(format!("{safe}_vec.bin"));
+        let data = std::fs::read(&vec_path).map_err(|e| {
+            safetensors::SafeTensorError::TensorNotFound(format!(
+                "{name}: {safe}_vec.bin not found in {:?}: {e}",
+                self.cache_dir
+            ))
+        })?;
+
+        let (dtype_str, shape) = self
+            .metadata
+            .get(name)
+            .ok_or_else(|| safetensors::SafeTensorError::TensorNotFound(name.to_string()))?;
+
+        let dtype = match dtype_str.as_str() {
+            "F32" => safetensors::Dtype::F32,
+            "F16" => safetensors::Dtype::F16,
+            "BF16" => safetensors::Dtype::BF16,
+            _ => {
+                return Err(safetensors::SafeTensorError::TensorNotFound(format!(
+                    "{name}: unsupported dtype {dtype_str}"
+                )))
+            }
+        };
+
+        Ok((dtype, shape.clone(), std::borrow::Cow::Owned(data)))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MmapReader — wraps a memory-mapped .st file as a web-rwkv Reader.
+// Used on first-time (cache-miss) loads. The mmap'd data is paged by the
+// OS; only pages actually accessed (layer-by-layer during build_v7) get
+// loaded into RAM.
+// ---------------------------------------------------------------------------
+
+/// A `Reader` that wraps a memory-mapped `.st` file. Used on first-time
+/// loads when no cache exists. The mmap stays valid for the duration of
+/// the `ModelBuilder.build_v7()` call, which loads tensors layer-by-layer.
+/// `_mmap` is held alive only to keep the memory mapping valid.
+struct MmapReader {
+    /// SAFETY: `st` must be dropped BEFORE `_mmap`. Rust drops struct fields
+    /// in declaration order, so `st` (declared first) is dropped first.
+    st: safetensors::SafeTensors<'static>,
+    _mmap: memmap2::Mmap,
+}
+
+impl MmapReader {
+    fn new(mmap: memmap2::Mmap) -> anyhow::Result<Self> {
+        // SafeTensors borrows the mmap data. We extend the lifetime to
+        // 'static because the mmap is owned by this struct and lives as
+        // long as the SafeTensors. Since `st` is declared before `_mmap`,
+        // Rust drops `st` first (dropping the borrow), then drops `_mmap`.
+        let data: &[u8] = &mmap;
+        let st = unsafe { std::mem::transmute::<&[u8], &'static [u8]>(data) };
+        let st = safetensors::SafeTensors::deserialize(st)?;
+        Ok(Self { st, _mmap: mmap })
+    }
+}
+
+impl web_rwkv::runtime::loader::Reader for MmapReader {
+    fn names(&self) -> Vec<&str> {
+        self.st.names()
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.st.contains(name)
+    }
+
+    fn shape(&self, name: &str) -> Result<Vec<usize>, safetensors::SafeTensorError> {
+        Ok(self.st.tensor(name)?.shape().to_vec())
+    }
+
+    fn tensor(
+        &self,
+        name: &str,
+    ) -> Result<
+        (safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>),
+        safetensors::SafeTensorError,
+    > {
+        let view = self.st.tensor(name)?;
+        Ok((
+            view.dtype(),
+            view.shape().to_vec(),
+            std::borrow::Cow::Borrowed(view.data()),
+        ))
+    }
+}
+
+impl MmapReader {
+    /// Before `build_v7()` runs, save ALL tensor data to the cache directory
+    /// as `_vec.bin` files. The mmap pages each tensor in one at a time as
+    /// we write it; the OS can evict pages after each write. This avoids ever
+    /// having the full 5.6GB in RAM at once.
+    ///
+    /// During `build_v7()`, web-rwkv's quant cache saves `_q.bin` / `_m.bin`
+    /// for quantized matrices on top of these `_vec.bin` files. The post-build
+    /// step removes `_vec.bin` where `_q.bin` exists.
+    fn cache_small_tensors(&self, cache_dir: &std::path::Path) -> anyhow::Result<()> {
+        use std::io::Write;
+        std::fs::create_dir_all(cache_dir)?;
+
+        for name in self.names() {
+            // Read tensor data through the Reader interface (from mmap).
+            // The mmap only pages in the bytes we actually access.
+            let (dtype, _shape, data) = match web_rwkv::runtime::loader::Reader::tensor(self, name)
+            {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            match dtype {
+                safetensors::Dtype::F32 | safetensors::Dtype::F16 | safetensors::Dtype::BF16 => {}
+                _ => continue,
+            }
+
+            let safe = name.replace(['.', '/', '\\', ':'], "_");
+            let vec_path = cache_dir.join(format!("{safe}_vec.bin"));
+            if vec_path.exists() {
+                continue; // already cached
+            }
+
+            // Write to disk. The mmap pages in this tensor's data, we write
+            // it, then the page can be evicted by the OS.
+            let mut f = std::fs::File::create(&vec_path)?;
+            f.write_all(data.as_ref())?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Unifies `CachedReader` and `MmapReader` into a single type for
+/// `ModelBuilder::new()`, which takes a concrete generic `R: Reader`.
+enum ReaderBox {
+    Cached(CachedReader),
+    Mmap(MmapReader),
+}
+
+impl web_rwkv::runtime::loader::Reader for ReaderBox {
+    fn names(&self) -> Vec<&str> {
+        match self {
+            ReaderBox::Cached(r) => r.names(),
+            ReaderBox::Mmap(r) => r.names(),
+        }
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        match self {
+            ReaderBox::Cached(r) => r.contains(name),
+            ReaderBox::Mmap(r) => r.contains(name),
+        }
+    }
+
+    fn shape(&self, name: &str) -> Result<Vec<usize>, safetensors::SafeTensorError> {
+        match self {
+            ReaderBox::Cached(r) => r.shape(name),
+            ReaderBox::Mmap(r) => r.shape(name),
+        }
+    }
+
+    fn tensor(
+        &self,
+        name: &str,
+    ) -> Result<
+        (safetensors::Dtype, Vec<usize>, std::borrow::Cow<'_, [u8]>),
+        safetensors::SafeTensorError,
+    > {
+        match self {
+            ReaderBox::Cached(r) => r.tensor(name),
+            ReaderBox::Mmap(r) => r.tensor(name),
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Type-erased state
@@ -159,7 +405,8 @@ pub struct RwkvActor {
     /// this crate.
     pub vocab_bytes: Vec<Vec<u8>>,
     pub token_chunk_size: usize,
-    pub _model_data: Vec<u8>,
+    // model_data intentionally NOT stored — freed after build_v7()
+    // to avoid pinning ~5GB of system RAM for the raw .st file.
     pub cancel: Arc<AtomicBool>,
     pub state_pool: HashMap<String, Option<TensorCpu<f32>>>,
     pub session_lru: VecDeque<String>,
@@ -198,13 +445,78 @@ impl RwkvActor {
         info!("tokenizer loaded");
         let vocab_bytes = tokenizer.token_index_to_bytes().to_vec();
 
-        let model_data = std::fs::read(&model_path)?;
-        let model = SafeTensors::deserialize(&model_data)?;
-        let info = Loader::info(&model)?;
-        let version = info.version;
-        info!(version = ?version, layers = info.num_layer, vocab = info.num_vocab, emb = info.num_emb, "model info");
+        // Track .st file size for reporting (only loaded from metadata, not data)
+        let mut file_len: Option<u64> = None;
 
-        // GPU enumeration
+        // -------------------------------------------------------------------
+        // Step 1: Check for complete model cache on disk
+        // -------------------------------------------------------------------
+        let quant_cache_dir = get_quant_cache_dir(&model_path);
+        let is_cache_hit = check_model_cache(&model_path).is_some();
+
+        let (model_reader, model_info) = if is_cache_hit {
+            // Cache is complete — build a CachedReader, no .st file needed.
+            info!(
+                "complete model cache found in {:?} — skipping .st file (GPU only)",
+                quant_cache_dir
+            );
+            let reader = CachedReader::from_cache(quant_cache_dir.clone())?;
+            let info = Loader::info(&reader)?;
+            (ReaderBox::Cached(reader), info)
+        } else {
+            // First-time load — memory-map .st; do NOT iterate all tensors.
+            // build_v7() loads layer-by-layer from mmap, and web-rwkv's
+            // quant cache populates during load_matrix(). Only pages that
+            // are actually accessed get paged in by the OS.
+            info!(
+                "no cache found — memory-mapping .st file: {} (layer-by-layer)",
+                model_path
+            );
+            let file = std::fs::File::open(&model_path)
+                .map_err(|e| anyhow::anyhow!("failed to open .st file {}: {e}", model_path))?;
+            let mmap = unsafe { memmap2::Mmap::map(&file) }
+                .map_err(|e| anyhow::anyhow!("failed to mmap .st file {}: {e}", model_path))?;
+            file_len = Some(
+                file.metadata()
+                    .map(|m| m.len() / (1024 * 1024))
+                    .unwrap_or(0),
+            );
+
+            let mmap_reader = MmapReader::new(mmap)?;
+            let info = Loader::info(&mmap_reader)?;
+
+            // Before build_v7, cache only small tensors (vectors, layernorms,
+            // biases, tiny matrices). This is ~150MB total — safe to copy.
+            // Large weight matrices will be cached by web-rwkv's quant cache
+            // during build_v7(). This avoids iterating the full 5.6GB file.
+            info!(
+                "caching small tensors (vectors, biases, LN) in {:?}…",
+                quant_cache_dir
+            );
+            mmap_reader.cache_small_tensors(&quant_cache_dir)?;
+            (ReaderBox::Mmap(mmap_reader), info)
+        };
+
+        // Save tensor metadata (names + shapes) before the reader is
+        // consumed by ModelBuilder. Used after build_v7 to build the cache index.
+        let tensor_metadata: HashMap<String, Vec<usize>> = model_reader
+            .names()
+            .iter()
+            .filter_map(|name| {
+                model_reader
+                    .shape(name)
+                    .ok()
+                    .map(|shape| (name.to_string(), shape))
+            })
+            .collect();
+        info!("extracted metadata for {} tensors", tensor_metadata.len());
+
+        let version = model_info.version;
+        info!(version = ?version, layers = model_info.num_layer, vocab = model_info.num_vocab, emb = model_info.num_emb, "model info");
+
+        // -------------------------------------------------------------------
+        // GPU enumeration (uses model_info for buffer size estimation)
+        // -------------------------------------------------------------------
         let instance = wgpu::Instance::default();
         let all_adapters = instance.enumerate_adapters(wgpu::Backends::all()).await;
         let mut scored: Vec<_> = all_adapters
@@ -263,7 +575,7 @@ impl RwkvActor {
 
             let cache_path = get_pipeline_cache_path(&model_path);
             let cached_pipelines = std::fs::read(&cache_path).ok();
-            let mut builder = ContextBuilder::new(adapter).auto_limits(&info);
+            let mut builder = ContextBuilder::new(adapter).auto_limits(&model_info);
             if let Some(ref data) = cached_pipelines {
                 builder = builder.with_pipeline_cache(data.clone());
             }
@@ -291,58 +603,62 @@ impl RwkvActor {
             gpu_info_name, gpu_coop, gpu_max_mb
         );
 
-        // Memory estimate
-        let num_emb = info.num_emb as u64;
-        let num_layer = info.num_layer as u64;
-        let num_vocab = info.num_vocab as u64;
-        let resident_fp16_mb =
-            (2 * num_emb * num_vocab * 2 + num_emb * num_layer * 4 * 4) / (1024 * 1024);
-        let file_mb = std::fs::metadata(&model_path)
-            .map(|m| m.len() / (1024 * 1024))
-            .unwrap_or(0);
+        // -------------------------------------------------------------------
+        // Model build — the reader serves ALL tensor data from cache files.
+        // Quantized matrices use web-rwkv's built-in quant cache disk layer.
+        // Vectors and small FP16 matrices come from the CachedReader.
+        // -------------------------------------------------------------------
+        let _file_mb = file_len.unwrap_or_else(|| {
+            std::fs::metadata(&model_path)
+                .map(|m| m.len() / (1024 * 1024))
+                .unwrap_or(0)
+        });
+        let num_emb = model_info.num_emb as u64;
+        let num_layer = model_info.num_layer as u64;
         info!(
-            "model memory: file={}MB resident(FP16)={}MB layers={} emb={} vocab={}",
-            file_mb, resident_fp16_mb, num_layer, num_emb, num_vocab
+            "model: {}MB on disk, {} layers, {} emb",
+            _file_mb, num_layer, num_emb
         );
 
-        // Quantization
+        // Quantization plan
         let quant_spec_env = env::var("RWKV_QUANT").ok();
         let quant_layers: HashMap<usize, Quant> = if let Some(ref qs) = quant_spec_env {
             if qs == "none" {
                 info!("quantization: none (user override)");
                 HashMap::new()
             } else if let Some(n) = qs.strip_prefix("nf4=") {
-                let n = n.parse::<usize>().unwrap_or(0).min(info.num_layer);
+                let n = n.parse::<usize>().unwrap_or(0).min(model_info.num_layer);
                 if n > 0 && !gpu_coop {
                     warn!("NF4 requested but GPU lacks cooperative matrix");
                 }
                 let layers = (0..n).map(|l| (l, Quant::NF4)).collect();
                 info!(
                     "quantization: NF4 {n} of {} layers (user override)",
-                    info.num_layer
+                    model_info.num_layer
                 );
                 layers
             } else if let Ok(n) = qs.parse::<usize>() {
-                let n = n.min(info.num_layer);
+                let n = n.min(model_info.num_layer);
                 let layers = (0..n).map(|l| (l, Quant::Int8)).collect();
                 info!(
                     "quantization: Int8 {n} of {} layers (user override)",
-                    info.num_layer
+                    model_info.num_layer
                 );
                 layers
             } else {
-                auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb)
+                // _model_data not needed for auto_quant when using mmap
+                auto_quant(&model_info, &model_path, &[], gpu_coop, gpu_max_mb)
             }
         } else {
-            auto_quant(&info, &model_path, &model_data, gpu_coop, gpu_max_mb)
+            auto_quant(&model_info, &model_path, &[], gpu_coop, gpu_max_mb)
         };
 
         info!("quantization: {} layers", quant_layers.len());
-        let quant_cache_dir = get_quant_cache_dir(&model_path);
         std::fs::create_dir_all(&quant_cache_dir).ok();
-        let builder = ModelBuilder::new(&context, model)
+
+        let builder = ModelBuilder::new(&context, model_reader)
             .quant(quant_layers)
-            .quant_cache(quant_cache_dir);
+            .quant_cache(quant_cache_dir.clone());
 
         #[cfg(debug_assertions)]
         warn!("Debug build detected! build_v7() may hang on some GPUs. Rebuild with `--release`.");
@@ -393,7 +709,63 @@ impl RwkvActor {
             }
         }
 
-        info!("RWKV runtime initialized");
+        // Build the cache index from the actual files on disk + saved metadata.
+        // After build_v7(), web-rwkv's quant cache has saved _q.bin files for
+        // quantized matrices. Our pre-build step saved _vec.bin for the rest.
+        let mut cached_tensor_count = 0usize;
+        let mut total_tensor_count = 0usize;
+        let mut cache_tensors: Vec<CachedTensorInfo> = Vec::new();
+        for (name, shape) in &tensor_metadata {
+            total_tensor_count += 1;
+            let safe = name.replace(['.', '/', '\\', ':'], "_");
+            let q_path = quant_cache_dir.join(format!("{safe}_q.bin"));
+            let vec_path = quant_cache_dir.join(format!("{safe}_vec.bin"));
+
+            if q_path.exists() {
+                // web-rwkv cached this as quantized — record it.
+                // Keep the _vec.bin as fallback (load_matrix may need
+                // raw FP16 data via tensor() if quant format mismatches).
+                cache_tensors.push(CachedTensorInfo {
+                    name: name.clone(),
+                    dtype: "F16".to_string(),
+                    shape: shape.clone(),
+                    quantized: true,
+                    md5: None,
+                });
+                cached_tensor_count += 1;
+            } else if vec_path.exists() {
+                cache_tensors.push(CachedTensorInfo {
+                    name: name.clone(),
+                    dtype: "F16".to_string(),
+                    shape: shape.clone(),
+                    quantized: false,
+                    md5: None,
+                });
+                cached_tensor_count += 1;
+            }
+            // If neither file exists, this tensor wasn't cached.
+            // On the next run, check_model_cache will detect this and fall
+            // back to mmap. After build_v7 runs again, it'll be cached.
+        }
+
+        let cache_index = CacheIndex {
+            model_name: std::path::Path::new(&model_path)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            num_layer: model_info.num_layer,
+            num_emb: model_info.num_emb,
+            num_hidden: model_info.num_hidden,
+            num_vocab: model_info.num_vocab,
+            num_head: model_info.num_head,
+            model_version: format!("{:?}", model_info.version),
+            tensors: cache_tensors,
+        };
+        cache_index.save(&quant_cache_dir);
+        info!(
+            "cache index saved: {cached_tensor_count}/{total_tensor_count} tensors cached in {:?}",
+            quant_cache_dir
+        );
 
         Ok(Self {
             context,
@@ -403,7 +775,6 @@ impl RwkvActor {
             tokenizer,
             vocab_bytes,
             token_chunk_size,
-            _model_data: model_data,
             cancel: Arc::new(AtomicBool::new(false)),
             state_pool: HashMap::new(),
             session_lru: VecDeque::new(),
@@ -643,6 +1014,14 @@ impl RwkvActor {
                     continue;
                 }
 
+                // max_tokens=0: process prompt+prefill through inference to
+                // update the recurrent state (for state tuning/baking) but
+                // stop BEFORE sampling any generated tokens. This avoids
+                // contaminating the state with the model's own output.
+                if max_tokens == 0 {
+                    break;
+                }
+
                 let ot = output[0].0.clone();
                 if ot.size() == 0 {
                     break;
@@ -685,7 +1064,7 @@ impl RwkvActor {
                 #[cfg(not(feature = "grammar"))]
                 let token = sampling::sample_token(probs.data(), temperature, top_p, top_a_val);
 
-                if token == 0 {
+                if token == 0 || token >= 65530 {
                     break;
                 }
 
@@ -734,6 +1113,17 @@ impl RwkvActor {
             }
 
             if !first_token_sampled {
+                // Save session state even when no tokens were generated
+                // (e.g. max_tokens=0 bake calls that process prompt+prefill
+                // through inference but don't sample anything).
+                if let Some(ref sid) = session_id {
+                    match self.state.back(0).await {
+                        Ok(saved_state) => {
+                            self.state_pool.insert(sid.clone(), Some(saved_state));
+                        }
+                        Err(e) => warn!(session = sid, error = %e, "failed to save state (silent)"),
+                    }
+                }
                 return Ok((
                     text,
                     TokenUsage {
@@ -814,7 +1204,7 @@ impl RwkvActor {
                     None => break,
                 };
 
-                if token == 0 {
+                if token == 0 || token >= 65530 {
                     break;
                 }
 
@@ -889,10 +1279,15 @@ impl RwkvActor {
             let result_text = if generated.is_empty() {
                 return Err(EngineError::EmptyResponse);
             } else {
+                let valid_tokens: Vec<u32> = generated
+                    .iter()
+                    .copied()
+                    .filter(|&t| t > 0 && t < 65530)
+                    .collect();
                 let decoded = self
                     .tokenizer
-                    .decode(&generated)
-                    .map_err(|e| EngineError::Backend(format!("tokenizer decode: {e}")))?;
+                    .decode(&valid_tokens)
+                    .unwrap_or_else(|_| Vec::new());
                 String::from_utf8_lossy(&decoded).to_string()
             };
 

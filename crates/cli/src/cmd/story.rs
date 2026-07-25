@@ -20,6 +20,7 @@ use roco_agent::mechanistic::{
     HandlerResult, MechanisticAgent, Plan as MechPlan, RepairConfig, Task,
 };
 use roco_engine::{CompletionRequest, ModelBackend};
+
 use roco_grammar::{Schema, StrategyKind, StrategySelector};
 use roco_tools::{ReadTool, Tool, WriteTool};
 use roco_workspace::{Workspace, WorkspaceKind};
@@ -386,43 +387,260 @@ impl StorySynopsis {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Session names — separate roles so state doesn't bleed between them
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Session for outline, wiki, chapter writing, synopsis (narrative generation)
+const SESSION_WRITER: &str = "story-writer";
+/// Session for quality validation (different output format, must not carry writer state)
+const SESSION_VALIDATOR: &str = "story-validator";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Prompts — all at module level for visibility and easy editing
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// System prompt for outline generation.
+const SYSTEM_OUTLINE: &str = "You are a story outliner. Output valid JSON only. \
+Do NOT include any thinking or reasoning. Output ONLY the JSON object.";
+
+/// System prompt for wiki/worldbuilding.
+const SYSTEM_WIKI: &str = "You are a worldbuilding assistant. Output valid JSON only. \
+No thinking, no reasoning, no commentary. Only JSON.";
+
+/// System prompt for chapter writing.
+const SYSTEM_CHAPTER: &str = "You are a fiction writer. Write vivid, engaging prose. \
+Output valid JSON only. NEVER include thinking, reasoning, \
+or meta-commentary in your output. Only the JSON object.";
+
+/// System prompt for validation/review.
+const SYSTEM_VALIDATOR: &str = "You are a quality reviewer. Be strict. Output valid JSON only. \
+Check for meta-commentary and thinking contamination.";
+
+/// System prompt for synopsis.
+const SYSTEM_SYNOPSIS: &str = "You are a literary summarizer. Output valid JSON only. \
+No thinking, no reasoning.";
+
+/// Prompt template for outline generation.
+fn prompt_outline(premise: &str) -> String {
+    format!(
+        "Outline a short story with 3 chapters based on this premise:\n{premise}\n\n\
+         Output JSON matching the schema: title, genre, tone, chapters \
+         (array of 3 objects with number, title, summary)."
+    )
+}
+
+/// Prompt template for wiki generation.
+fn prompt_wiki(premise: &str, outline: &str) -> String {
+    format!(
+        "Based on this premise and outline, create character bios and setting lore:\n\n\
+         Premise: {premise}\nOutline: {outline}\n\n\
+         Output JSON matching the schema: characters (array of objects with name, description), \
+         setting (string)."
+    )
+}
+
+/// Prompt template for chapter writing (first attempt).
+fn prompt_chapter(
+    label: &str,
+    title: &str,
+    summary: &str,
+    outline: &str,
+    previous: &str,
+    is_first: bool,
+) -> String {
+    if is_first {
+        format!(
+            "Write {label}: {title}. \
+             {summary}\n\n\
+             ~400 words of vivid prose.\n\n\
+             Rules:\n\
+             - Write actual story prose, NOT meta-commentary or planning.\n\
+             - Start directly with the narrative, introducing the main character and setting.\n\
+             - Use paragraph breaks (double newlines) between scenes.\n\
+             - Do NOT include thinking, reasoning, or commentary.\n\n\
+             Full story outline:\n{outline}\n\n\
+             Output JSON with: title (string), content (string, the chapter prose)"
+        )
+    } else {
+        format!(
+            "Write {label}: {title}. \
+             {summary}\n\n\
+             ~400 words of vivid prose.\n\n\
+             Rules:\n\
+             - Write actual story prose, NOT meta-commentary or planning.\n\
+             - Start directly with the narrative from the scene described above.\n\
+             - Use paragraph breaks (double newlines) between scenes.\n\
+             - Advance the plot toward the story's conclusion.\n\
+             - Do NOT include thinking, reasoning, or commentary.\n\n\
+             Previous chapter recap:\n{previous}\n\n\
+             Full story outline:\n{outline}\n\n\
+             Output JSON with: title (string), content (string, the chapter prose)"
+        )
+    }
+}
+
+/// Prompt template for chapter revision (retry with feedback).
+fn prompt_revision(
+    label: &str,
+    title: &str,
+    summary: &str,
+    feedback: &str,
+    outline: &str,
+) -> String {
+    format!(
+        "Revise {label}: {title} to fix the following issues:\n{feedback}\n\n\
+         Chapter purpose:\n{summary}\n\n\
+         Rules:\n\
+         - Fix the specific issues listed above.\n\
+         - Keep the original story elements that work.\n\
+         - Write actual story prose, NOT meta-commentary or planning.\n\
+         - Start directly with the narrative.\n\
+         - Use paragraph breaks (double newlines) between scenes.\n\
+         - Do NOT include thinking, reasoning, or commentary.\n\n\
+         Full story outline:\n{outline}\n\n\
+         Output JSON with: title (string), content (string, the chapter prose)"
+    )
+}
+
+/// Prompt template for validation.
+fn prompt_validation(chapter_text: &str) -> String {
+    format!(
+        "Review this chapter and check for:\n\
+         1. Does it read like a coherent story (not meta-commentary)?\n\
+         2. Is the prose engaging with proper paragraph breaks?\n\
+         3. Does it avoid thinking/reasoning tags?\n\n\
+         Chapter:\n{chapter_text}\n\n\
+         Output JSON matching the schema: quality (\"pass\" | \"fail\" | \"needs-work\"), \
+         issues (string), suggestion (string)."
+    )
+}
+
+/// Prompt template for synopsis.
+fn prompt_synopsis(chapters: &str) -> String {
+    format!(
+        "Write a one-paragraph synopsis of the complete story based on these chapters:\n\n\
+         {chapters}\n\n\
+         Output JSON matching the schema: summary (string, one paragraph, ~100 words)"
+    )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Instructional bake examples — primes the MODEL'S OUTPUT FORMAT, not content
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// These examples teach the model to respond with JSON `{{title, content}}`
+// when given a chapter-writing prompt. The THEMES must be different across
+// examples so the state learns the FORMAT, not the CONTENT.
+//
+// The prompt side mirrors the actual chapter prompt structure
+// (outline context + rules + JSON instruction) so the model's
+// recurrent state expects that shape.
+
+/// Bake examples for chapter-writing — diverse themes, same JSON output format.
+const BAKE_CHAPTER_EXAMPLES: &[(&str, &str)] = &[
+    (
+        // Example 1: fantasy — no overlap with real story
+        "Write Chapter 1: The Iron Gate. A blacksmith discovers a door beneath the forge.\n\n\
+         ~400 words of vivid prose.\n\n\
+         Rules:\n\
+         - Write actual story prose, NOT meta-commentary.\n\
+         - Start directly with the narrative.\n\
+         - Use paragraph breaks between scenes.\n\n\
+         Full story outline:\n\
+         ## Chapter 1: The Iron Gate\nSmith finds a buried door.\n\
+         ## Chapter 2: The Whispering Hall\nHe explores tunnels beneath.\n\
+         ## Chapter 3: The Crown\nHe claims a forgotten legacy.\n\n\
+         Output JSON with: title (string), content (string, the chapter prose)",
+        r##"{"title": "The Iron Gate", "content": "Kael's hammer rang against the anvil long after the bellows fell cold. Three strikes, then a pause. Three more, then he set down the tool and pressed his ear to the flagstone floor. A hum — faint, rhythmic, like a heartbeat buried in stone. He reached for the chisel. The first chip of stone fell away, and a breath of cold air escaped from the crack, smelling of iron and old earth. Kael did not stop. He could not stop. Something down there was waiting."}"##
+    ),
+    (
+        // Example 2: sci-fi — different domain, same format
+        "Write Chapter 1: First Contact. Dr. Varma checks the deep-space radio array and finds a signal.\n\n\
+         ~400 words of vivid prose.\n\n\
+         Rules:\n\
+         - Write actual story prose, NOT meta-commentary.\n\
+         - Start directly with the narrative.\n\
+         - Use paragraph breaks between scenes.\n\n\
+         Full story outline:\n\
+         ## Chapter 1: First Contact\nVarma detects an artificial signal from Proxima.\n\
+         ## Chapter 2: Decoding\nThe message reveals a warning.\n\
+         ## Chapter 3: The Reply\nHumanity must decide its answer.\n\n\
+         Output JSON with: title (string), content (string, the chapter prose)",
+        r##"{"title": "First Contact", "content": "The readout spooled across the monitor in flat green lines. Dr. Varma had been staring at it for eleven hours, long enough that the numbers had begun to blur into meaningless patterns. She reached for her coffee, found the mug empty, and set it down. That was when the signal arrived. Not the usual thermal noise or the rhythmic pulse of a pulsar. This was structured — prime numbers, clean and deliberate, repeating every 27.3 seconds. She pressed the intercom. \"Control, this is Varma. You need to hear this.\" The word caught in her throat. \"We are not alone.\"}"##
+    ),
+];
+
+/// Bake examples for validation — teaches the model to output `{quality, issues, suggestion}` instead of narrative.
+const BAKE_VALIDATION_EXAMPLES: &[(&str, &str)] = &[
+    (
+        "Review this chapter:\n\
+         The dragon landed on the tower with a thud. Sir Garret drew his sword and charged. The end.\n\n\
+         Output JSON matching the schema: quality (\"pass\" | \"fail\" | \"needs-work\"), \
+         issues (string), suggestion (string).",
+        r##"{"quality": "needs-work", "issues": "Chapter is extremely short (16 words). No character development, no setting, no tension building. Reads more like a plot summary than a story chapter.", "suggestion": "Expand to at least 300 words. Add sensory details about the dragon, the tower, the knight's emotions. Build tension before the confrontation."}"##
+    ),
+    (
+        "Review this chapter:\n\
+         So I was thinking about what should happen next and maybe the hero should find a map or something. Anyway, here is what I came up with: The hero walked into the cave. It was dark. The end.\n\n\
+         Output JSON matching the schema: quality (\"pass\" | \"fail\" | \"needs-work\"), \
+         issues (string), suggestion (string).",
+        r##"{"quality": "fail", "issues": "Contains meta-commentary ('So I was thinking about what should happen next'). Prose is bare minimum with no sensory detail. Authorial intrusion breaks narrative immersion.", "suggestion": "Remove all meta-commentary. Rewrite with concrete sensory details: the cold damp of the cave, the echo of footsteps, the smell of moss and stone. Show the hero's emotional state through action."}"##
+    ),
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// State-tuned structured completion: generates without grammar constraint,
-/// then parses using `clean_json_output` (strips code fences, thinking blocks,
-/// and extracts the first JSON object/array).
+/// Structured completion using the strategy's grammar + parser.
 ///
-/// This is more reliable than grammar-constrained generation for RWKV models,
-/// which have known issues with BNF grammar (thinking contamination, code fences).
+/// Grammar is passed as a string — `roco-inferd`'s server route builds
+/// the `BnfMask` from it server-side via `create_bnf_mask`. Client-side
+/// BnfMask construction is not possible (kbnf types trigger E0275 when
+/// alongside web-rwkv in the same crate).
+///
+/// Sets `prefill` to `"{\n"` for grammar strategies to jump-start JSON.
+/// For StateTuned, both `grammar` and `prefill` are left empty.
 fn structured_complete_with_strategy<T>(
     backend: &dyn ModelBackend,
     system: &str,
     prompt: &str,
-    _strategy: &StrategySelector,
+    strategy: &StrategySelector,
     temperature: f32,
     max_tokens: usize,
+    session_id: Option<&str>,
 ) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
 {
+    let grammar = strategy.grammar();
+    let use_grammar = !grammar.is_empty();
+
     let text = futures::executor::block_on(backend.complete(CompletionRequest {
         system: system.to_string(),
         prompt: prompt.to_string(),
-        grammar: None, // No grammar constraint - state tuned approach
+        grammar: if use_grammar {
+            Some(grammar.clone())
+        } else {
+            None
+        },
         temperature,
         max_tokens,
-        prefill: Some("{\n".into()),
+        prefill: if use_grammar {
+            Some("{\n".into())
+        } else {
+            None
+        },
+        session: session_id.map(|s| s.to_string()),
+        bnf_mask: None,
         ..Default::default()
     }))
     .map_err(|e| format!("model error: {e}"))?
     .text;
 
-    // Parse using StateTunedStrategy's robust clean_json_output
-    // Handles: code fences, thinking blocks, nested JSON
-    let cleaned = roco_grammar::strategies::clean_json_output(&text);
-    serde_json::from_str::<T>(&cleaned)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}\ncleaned: {cleaned}"))
+    strategy
+        .parse::<T>(&text)
+        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
 }
 
 fn extract_title(outline: &str) -> String {
@@ -434,6 +652,26 @@ fn extract_title(outline: &str) -> String {
     "Untitled Story".to_string()
 }
 
+/// Parse the outline markdown and extract the title and summary for a specific chapter.
+fn chapter_outline_info(outline: &str, chapter_num: usize) -> (String, String) {
+    let header = format!("## Chapter {}: ", chapter_num);
+    if let Some(start) = outline.find(&header) {
+        let rest = &outline[start + header.len()..];
+        // Find end of title line
+        let title_end = rest.find('\n').unwrap_or(rest.len());
+        let title = rest[..title_end].trim().to_string();
+        // Find summary text (after title line, before next ## or end)
+        let after_title = &rest[title_end..].trim_start();
+        let summary = if let Some(next_header) = after_title.find("\n## ") {
+            after_title[..next_header].trim().to_string()
+        } else {
+            after_title.trim().to_string()
+        };
+        (title, summary)
+    } else {
+        (format!("Chapter {chapter_num}"), String::new())
+    }
+}
 fn extract_genre(outline: &str) -> String {
     for line in outline.lines() {
         if line.starts_with("Genre:") {
@@ -491,13 +729,14 @@ fn create_story_workspace(prompt: &str) -> Result<Workspace, anyhow::Error> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let name = if prompt.trim().is_empty() {
-        format!("story_ts_{ts}")
+    let slug = if prompt.trim().is_empty() {
+        "story".to_string()
     } else {
         let words: Vec<&str> = prompt.split_whitespace().take(4).collect();
-        format!("story_{}", sanitize_story_dirname(&words.join("_")))
+        sanitize_story_dirname(&words.join("_"))
     };
-    let dir = base.join(format!("{name}_{ts}"));
+    let name = format!("{ts}_{slug}");
+    let dir = base.join(&name);
     std::fs::create_dir_all(&dir)?;
     let ws = Workspace::from_existing(dir, WorkspaceKind::Agent)?;
     Ok(ws.with_name(name))
@@ -574,7 +813,7 @@ pub fn cmd_story(extra: &[&str]) {
         "Write a short story about a lighthouse keeper who discovers a message in a bottle.",
     );
 
-    let strategy_str = parse_opt("--strategy", extra).unwrap_or("loose");
+    let strategy_str = parse_opt("--strategy", extra).unwrap_or("state-tuned");
     let strategy_kind = StrategyKind::parse(strategy_str).unwrap_or(StrategyKind::StateTuned);
 
     let max_tok_str = parse_opt("--max-tokens", extra).unwrap_or("800");
@@ -658,16 +897,12 @@ pub fn cmd_story(extra: &[&str]) {
                 let outline: StoryOutline =
                     structured_complete_with_strategy(
                         backend,
-                        "You are a story outliner. Output valid JSON only. \
-                         Do NOT include any thinking or reasoning. Output ONLY the JSON object.",
-                        &format!(
-                            "Outline a short story with 3 chapters based on this premise:\n{premise}\n\n\
-                             Output JSON matching the schema: title, genre, tone, chapters \
-                             (array of 3 objects with number, title, summary).",
-                        ),
+                        SYSTEM_OUTLINE,
+                        &prompt_outline(premise),
                         &outline_strategy_clone,
                         0.6,
                         300,
+                        Some(SESSION_WRITER),
                     )
                     .unwrap_or_else(|e| StoryOutline {
                         title: "Untitled".into(),
@@ -739,17 +974,12 @@ pub fn cmd_story(extra: &[&str]) {
 
                 let wiki: StoryWiki = structured_complete_with_strategy(
                     backend,
-                    "You are a worldbuilding assistant. Output valid JSON only. \
-                     No thinking, no reasoning, no commentary. Only JSON.",
-                    &format!(
-                        "Based on this premise and outline, create character bios and setting lore:\n\n\
-                         Premise: {premise}\nOutline: {outline}\n\n\
-                         Output JSON matching the schema: characters (array of objects with name, description), \
-                         setting (string).",
-                    ),
+                    SYSTEM_WIKI,
+                    &prompt_wiki(premise, outline),
                     &wiki_strategy_clone,
                     0.7,
                     500,
+                    Some(SESSION_WRITER),
                 )
                 .unwrap_or_else(|e| StoryWiki {
                     characters: vec![StoryCharacter {
@@ -800,6 +1030,16 @@ pub fn cmd_story(extra: &[&str]) {
                     .get("label")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Chapter 1");
+                let chapter_title = task
+                    .spec
+                    .get("chapter_title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(chapter_label);
+                let chapter_summary = task
+                    .spec
+                    .get("chapter_summary")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let outline = task
                     .spec
                     .get("outline")
@@ -815,6 +1055,12 @@ pub fn cmd_story(extra: &[&str]) {
                     .get("retry")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let feedback = task
+                    .spec
+                    .get("feedback")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
 
                 let label = if is_retry {
                     format!("{chapter_label} (revision)")
@@ -822,44 +1068,24 @@ pub fn cmd_story(extra: &[&str]) {
                     chapter_label.to_string()
                 };
 
+                let temperature = if is_retry { 0.6 } else { 0.8 };
+
                 AgentJournal::phase("story", &format!("Writing {label} (phase 3/6)..."));
 
-                let directive = if chapter_num == 1 {
-                    format!(
-                        "Write {chapter_label}. Introduce the main character and setting. \
-                         ~400 words of vivid prose.\n\n\
-                         Rules:\n\
-                         - Write actual story prose, NOT meta-commentary or planning.\n\
-                         - Start directly with the narrative.\n\
-                         - Use paragraph breaks (double newlines) between scenes.\n\
-                         - Do NOT include thinking, reasoning, or commentary.\n\n\
-                         Outline context:\n{outline}\n\n\
-                         Output JSON with: title (string), content (string, the chapter prose)",
-                    )
+                let directive = if is_retry {
+                    prompt_revision(chapter_label, &chapter_title, &chapter_summary, &feedback, outline)
                 } else {
-                    format!(
-                        "Write {chapter_label}. Continue from where the previous chapter left off. \
-                         Advance the plot. ~400 words of vivid prose.\n\n\
-                         Rules:\n\
-                         - Write actual story prose, NOT meta-commentary or planning.\n\
-                         - Start directly with the narrative.\n\
-                         - Use paragraph breaks (double newlines) between scenes.\n\
-                         - Do NOT include thinking, reasoning, or commentary.\n\n\
-                         Previous chapter recap:\n{previous}\n\n\
-                         Outline context:\n{outline}\n\n\
-                         Output JSON with: title (string), content (string, the chapter prose)",
-                    )
+                    prompt_chapter(chapter_label, &chapter_title, &chapter_summary, outline, &previous, chapter_num == 1)
                 };
 
                 let chapter: StoryChapter = structured_complete_with_strategy(
                     backend,
-                    "You are a fiction writer. Write vivid, engaging prose. \
-                     Output valid JSON only. NEVER include thinking, reasoning, \
-                     or meta-commentary in your output. Only the JSON object.",
+                    SYSTEM_CHAPTER,
                     &directive,
                     &chapter_strategy_clone,
-                    0.8,
+                    temperature,
                     max_tokens,
+                    Some(SESSION_WRITER),
                 )
                 .unwrap_or_else(|e| StoryChapter {
                     title: chapter_label.into(),
@@ -912,20 +1138,12 @@ pub fn cmd_story(extra: &[&str]) {
                 } else {
                     structured_complete_with_strategy::<StoryValidation>(
                         backend,
-                        "You are a quality reviewer. Be strict. Output valid JSON only. \
-                         Check for meta-commentary and thinking contamination.",
-                        &format!(
-                            "Review this chapter and check for:\n\
-                             1. Does it read like a coherent story (not meta-commentary)?\n\
-                             2. Is the prose engaging with proper paragraph breaks?\n\
-                             3. Does it avoid thinking/reasoning tags?\n\n\
-                             Chapter:\n{chapter_text}\n\n\
-                             Output JSON matching the schema: quality (\"pass\" | \"fail\" | \"needs-work\"), \
-                             issues (string), suggestion (string).",
-                        ),
+                        SYSTEM_VALIDATOR,
+                        &prompt_validation(chapter_text),
                         &val_strategy_clone,
                         0.3,
                         200,
+                        Some(SESSION_VALIDATOR),
                     )
                     .map(|v: StoryValidation| {
                         format!(
@@ -986,16 +1204,12 @@ pub fn cmd_story(extra: &[&str]) {
 
                 let synopsis: StorySynopsis = structured_complete_with_strategy(
                     backend,
-                    "You are a literary summarizer. Output valid JSON only. \
-                     No thinking, no reasoning.",
-                    &format!(
-                        "Write a one-paragraph synopsis of the complete story based on these chapters:\n\n\
-                         {chapters}\n\n\
-                         Output JSON matching the schema: summary (string, one paragraph, ~100 words)",
-                    ),
+                    SYSTEM_SYNOPSIS,
+                    &prompt_synopsis(chapters),
                     &synopsis_strategy_clone,
                     0.5,
                     200,
+                    Some(SESSION_WRITER),
                 )
                 .unwrap_or_else(|e| StorySynopsis {
                     summary: format!("Error writing synopsis: {e}"),
@@ -1149,12 +1363,58 @@ pub fn cmd_story(extra: &[&str]) {
             .expect("wiki failed");
         println!("  ✓ World bible complete\n");
 
+        // Reset writer session so outline/wiki state doesn't contaminate instructional baking
+        let _ = futures::executor::block_on(
+            backend.feed_eos(Some(SESSION_WRITER.to_string()))
+        );
+
+        // Bake instructional state into writer session — primes OUTPUT FORMAT, not content
+        // Examples have diverse themes (fantasy, sci-fi) but identical JSON output schema
+        println!("  🔥 Baking writer session (format: JSON chapter prose)...");
+        AgentJournal::info("story", "Baking writer session with format examples");
+        let bake_result = futures::executor::block_on(
+            backend.bake_state(
+                SESSION_WRITER,
+                "You write fiction chapters. You always output JSON with title and content fields. \
+                 Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
+                BAKE_CHAPTER_EXAMPLES,
+            )
+        );
+        match bake_result {
+            Ok(sid) => AgentJournal::action("story", &format!("Writer session baked: {sid}")),
+            Err(e) => AgentJournal::warn("story", &format!("Writer session baking skipped: {e}")),
+        }
+
+        // Bake instructional state into validator session — primes JSON `{quality, issues, suggestion}` format
+        println!("  🔥 Baking validator session (format: JSON quality report)...");
+        AgentJournal::info("story", "Baking validator session with format examples");
+        let val_bake_result = futures::executor::block_on(
+            backend.bake_state(
+                SESSION_VALIDATOR,
+                "You review fiction chapters. You always output JSON with quality, issues, and suggestion fields. \
+                 Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
+                BAKE_VALIDATION_EXAMPLES,
+            )
+        );
+        match val_bake_result {
+            Ok(sid) => AgentJournal::action("story", &format!("Validator session baked: {sid}")),
+            Err(e) => AgentJournal::warn("story", &format!("Validator session baking skipped: {e}")),
+        }
+
         // Phase 3: chapters ×3
         AgentJournal::info("story", "Phase 3: Writing chapters");
         let mut chapter_texts = Vec::new();
         for i in 1..=3 {
+            // Feed EOS between chapters to prevent state bleeding
+            if i > 1 {
+                let _ = futures::executor::block_on(
+                    backend.feed_eos(Some(SESSION_WRITER.to_string()))
+                );
+            }
+
             let chapter_label = format!("Chapter {i}");
             let previous = chapter_texts.last().cloned().unwrap_or_default();
+            let (chapter_title, chapter_summary) = chapter_outline_info(outline_text, i);
 
             println!("  ✍️  {}...", &chapter_label);
 
@@ -1166,6 +1426,8 @@ pub fn cmd_story(extra: &[&str]) {
                     "label": chapter_label,
                     "outline": outline_text,
                     "previous": previous,
+                    "chapter_title": chapter_title,
+                    "chapter_summary": chapter_summary,
                 }),
             };
             let ch_result = agent
@@ -1183,65 +1445,54 @@ pub fn cmd_story(extra: &[&str]) {
                     "text": ch_result.output,
                 }),
             };
-            let _val_result = agent
+            let val_result = agent
                 .dispatch_single(backend.as_ref(), &val_task, &ws)
                 .expect("validation failed");
 
-            // Self-correction loop
-            let val_path = ws.root().join("04-VALIDATION.md");
-            if let Some(val_content) = ReadTool
-                .call(json!({"path": val_path.to_string_lossy()}))
-                .ok()
-                .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
-            {
-                let chapter_header = format!("## Chapter {i}");
-                let needs_revision = if let Some(start_idx) =
-                    val_content.find(&chapter_header)
-                {
-                    let segment = &val_content[start_idx..];
-                    let next_chapter_header = format!("## Chapter {}", i + 1);
-                    let segment = if let Some(end_idx) = segment.find(&next_chapter_header)
-                    {
-                        &segment[..end_idx]
-                    } else {
-                        segment
-                    };
-                    segment.contains("Quality: fail")
-                        || segment.contains("Quality: needs-work")
-                } else {
-                    false
+            // Self-correction loop: extract feedback from validation output directly
+            let val_entry = &val_result.output;
+            let needs_revision = val_entry.contains("Quality: fail")
+                || val_entry.contains("Quality: needs-work");
+            let revision_feedback: String = val_entry
+                .lines()
+                .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>()
+                .join("
+");
+
+            if needs_revision {
+                println!("  ⚠️  {} needs revision — retrying...", &chapter_label);
+                AgentJournal::warn("story", &format!("{chapter_label} needs revision, retrying..."));
+
+                let retry_task = Task {
+                    r#type: "write".into(),
+                    domain: "chapter".into(),
+                    spec: serde_json::json!({
+                        "number": i,
+                        "label": chapter_label,
+                        "outline": outline_text,
+                        "previous": previous,
+                        "retry": true,
+                        "feedback": revision_feedback,
+                    }),
                 };
+                let retry_result = agent
+                    .dispatch_single(backend.as_ref(), &retry_task, &ws)
+                    .unwrap_or(ch_result);
 
-                if needs_revision {
-                    println!("  ⚠️  {} needs revision — retrying...", &chapter_label);
-                    AgentJournal::warn("story", &format!("{chapter_label} needs revision, retrying..."));
-
-                    let retry_task = Task {
-                        r#type: "write".into(),
-                        domain: "chapter".into(),
-                        spec: serde_json::json!({
-                            "number": i,
-                            "label": chapter_label,
-                            "outline": outline_text,
-                            "previous": previous,
-                            "retry": true,
-                        }),
-                    };
-                    let retry_result = agent
-                        .dispatch_single(backend.as_ref(), &retry_task, &ws)
-                        .unwrap_or(ch_result);
-
-                    let filename = format!("03-CHAPTER_{i}.md");
-                    let path = ws.resolve(&filename).unwrap();
-                    let _ = WriteTool.call(json!({
-                        "path": path.to_string_lossy(),
-                        "content": &retry_result.output,
-                    }));
-                    chapter_texts[i - 1] = retry_result.output;
-                    println!("  ✓ {chapter_label} revised\n");
-                } else {
-                    println!("  ✓ {chapter_label} quality check passed\n");
-                }
+                let filename = format!("03-CHAPTER_{i}.md");
+                let path = ws.resolve(&filename).unwrap();
+                let _ = WriteTool.call(json!({
+                    "path": path.to_string_lossy(),
+                    "content": &retry_result.output,
+                }));
+                chapter_texts[i - 1] = retry_result.output;
+                println!("  ✓ {chapter_label} revised
+");
+            } else {
+                println!("  ✓ {chapter_label} quality check passed
+");
             }
         }
 

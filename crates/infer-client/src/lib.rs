@@ -133,6 +133,61 @@ impl ModelBackend for RemoteBackend {
         let extra_headers = self.extra_headers.clone();
         Box::pin(async move { remote_complete(&client, &base_url, &extra_headers, req).await })
     }
+
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> BoxFuture<'a, Result<String, EngineError>> {
+        let base_url = self.base_url.clone();
+        let client = self.client.clone();
+        let extra_headers = self.extra_headers.clone();
+        let session_id = session_id.to_string();
+        let system = system.to_string();
+        let few_shots_vec: Vec<(String, String)> = few_shots
+            .iter()
+            .map(|(u, a)| (u.to_string(), a.to_string()))
+            .collect();
+
+        Box::pin(async move {
+            let req_body = roco_protocol::BakeRequest {
+                session_id: session_id.clone(),
+                system,
+                few_shots: few_shots_vec,
+            };
+            let url = format!("{base_url}/v1/bake");
+            let mut builder = client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&req_body);
+            for (k, v) in &extra_headers {
+                builder = builder.header(k, v);
+            }
+
+            let resp = builder.send().await.map_err(|e| {
+                EngineError::Backend(format!("bake_state HTTP request failed: {e}"))
+            })?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "<unreadable>".to_string());
+                return Err(EngineError::Backend(format!(
+                    "bake_state HTTP error {status}: {body}"
+                )));
+            }
+
+            let bake_resp: roco_protocol::BakeResponse = resp
+                .json()
+                .await
+                .map_err(|e| EngineError::Backend(format!("bake_state decode failed: {e}")))?;
+
+            Ok(bake_resp.session_id)
+        })
+    }
 }
 
 /// Serialized request shape sent to the remote `/v1/completions` endpoint.

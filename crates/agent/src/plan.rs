@@ -386,7 +386,7 @@ pub fn plan_grammar() -> String {
         .prop("steps", Schema::array(step_schema))
         .build();
 
-    schema_to_gbnf("root", plan_schema.to_json()).expect("Plan schema is valid")
+    schema_to_gbnf("root", plan_schema.to_json()).unwrap_or_default()
 }
 
 /// The planner: turns a natural-language goal into a [`Plan`].
@@ -485,6 +485,19 @@ mod tests {
                 })
             })
         }
+
+        fn bake_state<'a>(
+            &'a self,
+            _session_id: &'a str,
+            _system: &'a str,
+            _few_shots: &'a [(&'a str, &'a str)],
+        ) -> BoxFuture<'a, Result<String, roco_engine::EngineError>> {
+            Box::pin(async move {
+                Err(roco_engine::EngineError::Backend(
+                    "bake_state not supported".into(),
+                ))
+            })
+        }
     }
 
     #[tokio::test]
@@ -523,6 +536,18 @@ mod tests {
                         parsed: None,
                         think_trace: None,
                     })
+                })
+            }
+            fn bake_state<'a>(
+                &'a self,
+                _session_id: &'a str,
+                _system: &'a str,
+                _few_shots: &'a [(&'a str, &'a str)],
+            ) -> BoxFuture<'a, Result<String, roco_engine::EngineError>> {
+                Box::pin(async move {
+                    Err(roco_engine::EngineError::Backend(
+                        "bake_state not supported".into(),
+                    ))
                 })
             }
         }

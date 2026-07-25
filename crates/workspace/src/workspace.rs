@@ -1,5 +1,5 @@
+use parking_lot::RwLock;
 use std::path::{Component, Path, PathBuf};
-use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use roco_tools::Tool;
@@ -140,9 +140,7 @@ impl Workspace {
 
     /// Set a human-readable name for this workspace.
     pub fn with_name(self, name: impl Into<String>) -> Self {
-        if let Ok(mut n) = self.name.write() {
-            *n = name.into();
-        }
+        *self.name.write() = name.into();
         self
     }
 
@@ -152,7 +150,7 @@ impl Workspace {
 
     /// Current working directory, relative to [`Workspace::root`].
     pub fn cwd(&self) -> PathBuf {
-        self.cwd.read().expect("cwd lock poisoned").clone()
+        self.cwd.read().clone()
     }
 
     pub fn kind(&self) -> WorkspaceKind {
@@ -160,7 +158,7 @@ impl Workspace {
     }
 
     pub fn name(&self) -> String {
-        self.name.read().expect("name lock poisoned").clone()
+        self.name.read().clone()
     }
 
     pub fn created_at(&self) -> u64 {
@@ -171,7 +169,7 @@ impl Workspace {
     /// stays inside the workspace boundary.
     pub fn set_cwd(&self, cwd: &str) -> Result<(), WorkspaceError> {
         self.resolve(cwd)?;
-        let mut guard = self.cwd.write().expect("cwd lock poisoned");
+        let mut guard = self.cwd.write();
         *guard = PathBuf::from(cwd);
         Ok(())
     }

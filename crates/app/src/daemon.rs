@@ -174,7 +174,7 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
                     "Started roco-inferd (PID {pid}, log: {})",
                     log_file_path.display()
                 );
-                return false;
+                return true;
             }
             Err(e) => {
                 eprintln!("Warning: failed to spawn roco-inferd: {e}");
@@ -249,7 +249,7 @@ pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]
                 "Started {subcmd} (PID {pid}, log: {})",
                 log_file_path.display()
             );
-            false
+            true
         }
         Err(e) => {
             eprintln!("Warning: failed to spawn {subcmd}: {e}");
@@ -313,10 +313,11 @@ fn send_term(pid: u32) {
 
 /// Stop the inference server (SIGTERM). Cleans up PID file.
 pub fn stop_inference() {
-    if let Some(pid) = read_pid("server") {
+    if let Some(pid) = read_pid("inferd").or_else(|| read_pid("server")) {
         eprintln!("Stopping inference server (PID {pid})...");
         send_term(pid);
     }
+    let _ = std::fs::remove_file(pid_path("inferd"));
     let _ = std::fs::remove_file(pid_path("server"));
 }
 
@@ -338,6 +339,23 @@ pub fn stop_all() {
     // Wait briefly for processes to exit
     std::thread::sleep(std::time::Duration::from_millis(500));
     eprintln!("Stopped.");
+}
+
+/// Reload the inference daemon by stopping any running process and starting a new one.
+pub fn reload_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
+    stop_inference();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    ensure_inference_daemon(roco_exe, port)
+}
+
+/// Reload the gateway daemon by stopping any running process and starting a new one.
+pub fn reload_gateway_daemon(_roco_exe: &PathBuf, port: u16) -> bool {
+    stop_gateway();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let log_path = log_path("gateway", port);
+    let pid_path = pid_path("gateway");
+    spawn_detached("gateway", &[], &log_path, &pid_path);
+    true
 }
 
 /// Entry point for the gateway when spawned as a daemon.
@@ -511,6 +529,41 @@ impl roco_engine::ModelBackend for TokioBackend {
         _session: Option<String>,
     ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         Box::pin(async move { Ok(()) })
+    }
+
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> futures::future::BoxFuture<'a, Result<String, roco_engine::EngineError>> {
+        let inner = self.inner.clone();
+        let rt_handle = self.rt.handle().clone();
+        let session_id = session_id.to_string();
+        let system = system.to_string();
+        let few_shots: Vec<(String, String)> = few_shots
+            .iter()
+            .map(|(u, a)| (u.to_string(), a.to_string()))
+            .collect();
+        Box::pin(async move {
+            rt_handle
+                .spawn(async move {
+                    inner
+                        .bake_state(
+                            &session_id,
+                            &system,
+                            &few_shots
+                                .iter()
+                                .map(|(u, a)| (u.as_str(), a.as_str()))
+                                .collect::<Vec<_>>(),
+                        )
+                        .await
+                })
+                .await
+                .unwrap_or(Err(roco_engine::EngineError::Backend(
+                    "TokioBackend runtime shut down".into(),
+                )))
+        })
     }
 }
 

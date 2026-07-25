@@ -13,7 +13,7 @@
 //! This is more flexible than rule-based evals and leverages the model's
 //! understanding of narrative quality.
 
-use crate::util::structured_complete;
+use crate::util::{lazy_bake, session_structured, EVAL_SESSION};
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,7 @@ impl StoryEval {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json()).expect("StoryEval schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).unwrap_or_default()
     }
 
     /// Get high-severity issues
@@ -173,8 +173,9 @@ impl StoryEvaluator {
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        let eval: StoryEval = structured_complete(
+        let eval: StoryEval = state_tuned_complete(
             backend,
+            EVAL_SESSION,
             &self.evaluator_system_prompt(),
             &format!(
                 "Evaluate this story against the criteria.\n\n\
@@ -208,8 +209,9 @@ impl StoryEvaluator {
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        let eval: StoryEval = structured_complete(
+        let eval: StoryEval = state_tuned_complete(
             backend,
+            EVAL_SESSION,
             &self.evaluator_system_prompt(),
             &format!(
                 "Evaluate Chapter {chapter_num}.\n\n\
@@ -314,6 +316,24 @@ impl RevisionGenerator {
 
         instructions
     }
+}
+
+/// State-tuned model call with grammar constraint and deserialize output.
+/// Lazily bakes the session on first use, then resumes from it.
+fn state_tuned_complete<T>(
+    backend: &dyn ModelBackend,
+    session: &'static str,
+    system: &str,
+    prompt: &str,
+    grammar: &str,
+    temperature: f32,
+    max_tokens: usize,
+) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    lazy_bake(backend, session, system, &[])?;
+    session_structured(backend, session, prompt, grammar, temperature, max_tokens)
 }
 
 #[cfg(test)]

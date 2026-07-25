@@ -38,15 +38,15 @@ pub fn sample_token(probs: &[f32], temperature: f32, top_p: f32, top_a: f32) -> 
     }
 
     let mut cum = 0.0f32;
-    let mut keep = sorted.len();
+    let mut keep = 0;
     for (_, p) in sorted.iter() {
         cum += p;
+        keep += 1;
         if cum >= top_p {
             break;
         }
-        keep -= 1;
     }
-    sorted.truncate(keep);
+    sorted.truncate(keep.max(1));
 
     let sum: f32 = sorted.iter().map(|(_, p)| p.powf(1.0 / temperature)).sum();
     let weighted: Vec<(usize, f32)> = sorted

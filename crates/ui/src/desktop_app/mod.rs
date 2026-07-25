@@ -33,44 +33,13 @@ use eframe::egui;
 use egui::{CentralPanel, Context, Layout, RichText, SidePanel, TopBottomPanel};
 use roco_agent::interaction::{HumanAction, InteractionMode, InteractionState};
 use roco_app::{AppContext, AppError, AppResult, WorkspaceKind};
+use roco_chat_common::{ConversationMessage, ConversationState};
 use roco_engine::{CompletionRequest, ModelBackend};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Which tool is shown in the right/browser panel
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RightPanelTool {
-    Editor,
-    FileTree,
-    Wiki,
-    LinkGraph,
-    Sessions,
-    Timeline,
-}
-
-impl RightPanelTool {
-    pub fn label(self) -> &'static str {
-        match self {
-            RightPanelTool::Editor => "Editor",
-            RightPanelTool::FileTree => "Files",
-            RightPanelTool::Wiki => "Wiki",
-            RightPanelTool::LinkGraph => "Graph",
-            RightPanelTool::Sessions => "Sessions",
-            RightPanelTool::Timeline => "Timeline",
-        }
-    }
-
-    pub fn icon(self) -> &'static str {
-        match self {
-            RightPanelTool::Editor => "\u{1f4dd}",
-            RightPanelTool::FileTree => "\u{1f4c1}",
-            RightPanelTool::Wiki => "\u{1f4d6}",
-            RightPanelTool::LinkGraph => "\u{1f517}",
-            RightPanelTool::Sessions => "\u{1f4ac}",
-            RightPanelTool::Timeline => "\u{23f1}\u{fe0f}",
-        }
-    }
-}
+mod tool_panel;
+pub use tool_panel::*;
 
 /// The main desktop application
 pub struct RocoDesktopApp {
@@ -710,36 +679,6 @@ impl RocoDesktopApp {
     }
 }
 
-/// Conversation state for serialization
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct ConversationState {
-    pub id: String,
-    pub messages: Vec<ConversationMessage>,
-    pub pacing: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-impl ConversationState {
-    pub fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(path, &json).map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    pub fn load(path: &std::path::Path) -> Result<Self, String> {
-        let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&json).map_err(|e| e.to_string())
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct ConversationMessage {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
-}
-
 impl eframe::App for RocoDesktopApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // ── Menu bar ────────────────────────────────────────────────────
@@ -1024,6 +963,15 @@ mod tests {
                     think_trace: None,
                 })
             })
+        }
+
+        fn bake_state<'a>(
+            &'a self,
+            _session_id: &'a str,
+            _system: &'a str,
+            _few_shots: &'a [(&'a str, &'a str)],
+        ) -> BoxFuture<'a, Result<String, EngineError>> {
+            Box::pin(async move { Err(EngineError::Backend("bake_state not supported".into())) })
         }
     }
 

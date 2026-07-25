@@ -55,6 +55,11 @@
   scripts.rwkv.exec = "cargo run -p roco-inference --example rwkv_test --release";
   scripts.grammar.exec = "cargo run -p roco-inference --example grammar_smoke --release";
   scripts.eval.exec = "cargo run -p roco-cli -- eval";
+  # Multi-format eval: compares message envelope styles × {think, no-think}
+  # × {baked session, fresh session}. Requires a running `roco inferd`.
+  # Build with --features net so RemoteBackend is available; pass runtime
+  # args (e.g. a URL) after `--` via $@.
+  scripts.format-eval.exec = "cargo run --release --example format_eval -p roco-cli --features net -- \"$@\"";
   scripts.chat.exec = "cargo run -p roco-cli -- interact";
   scripts.agent.exec = "cargo run -p roco-cli -- interact --";
   scripts.daemon.exec = "cargo run -p roco-server --example daemon --release";
@@ -108,6 +113,18 @@
     # Add the roco CLI binary to PATH after a cargo build.
     export PATH="$PATH:$CARGO_TARGET_DIR/release"
 
+    # Rust toolchain shadowing fix: prefer rustup's stable toolchain over
+    # devenv's Nix-provided rust-toolchain bin on PATH. Without this,
+    # `cargo` resolves to rustup's 1.96+ binary while its companion binaries
+    # (`cargo-clippy`, `clippy-driver`, `rustfmt`) resolve to the Nix 1.95.0
+    # build — the mixed versions produce E0514 ("compiled by an incompatible
+    # version of rustc") when sccache picks up rmeta from whichever rustc
+    # ran first. `rustup which rustc` returns rustup's toolchain bin dir.
+    RUSTUP_BIN="$(rustup which rustc 2>/dev/null | xargs -I{} dirname {})"
+    if [ -n "$RUSTUP_BIN" ] && [ -d "$RUSTUP_BIN" ]; then
+      export PATH="$RUSTUP_BIN:$PATH"
+    fi
+
     # sccache: cache compiled Rust crate artifacts across builds so repeated
     # `cargo build`/`cargo check` are fast (sccache warms across builds).
     # This is what actually addresses slow cargo builds — cachix does not.
@@ -124,6 +141,7 @@
     echo ""
     echo "  ── Rust (local RWKV inference) ──"
     echo "  cargo test --workspace              # run the full test suite"
+    echo "  cargo clippy --workspace            # lint (uses rustup's stable)"
     echo "  roco eval                           # run the rwkv eval suite (--release)"
     echo "  roco rwkv                           # smoke-test the RWKV backend"
     echo "  roco grammar                        # grammar-constrained decode smoke test"

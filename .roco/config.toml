@@ -1,0 +1,22 @@
+# RoCo AI Configuration
+
+[model]
+# path  = "models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st"
+# vocab = "assets/vocab/rwkv_vocab_v20230424.json"
+
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[gateway]
+host = "127.0.0.1"
+port = 8000
+rate_limit = 60
+
+[template]
+think = true
+type = "xml"
+state_tune = true
+system_prompt = false
+context_state = true
+max_tokens = "inf"

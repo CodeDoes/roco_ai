@@ -225,3 +225,32 @@ pub fn cmd_server(extra: &[&str]) {
         }
     });
 }
+
+pub fn cmd_inferd_reload(extra: &[&str]) {
+    let port_str = parse_opt("--port", extra).unwrap_or("8080");
+    let port = port_str.parse::<u16>().unwrap_or(8080);
+    println!("Reloading roco-inferd daemon on port {port}...");
+    let exe = std::env::current_exe().expect("failed to get current executable path");
+    if daemon::reload_inference_daemon(&exe, port) {
+        println!("✓ roco-inferd daemon reload initiated.");
+    } else {
+        eprintln!("⚠ roco-inferd reload failed or binary not found.");
+    }
+}
+
+pub fn cmd_gateway_reload(extra: &[&str]) {
+    let port_str = parse_opt("--port", extra).unwrap_or("8000");
+    let port = port_str.parse::<u16>().unwrap_or(8000);
+    println!("Reloading roco gateway daemon on port {port}...");
+    let exe = std::env::current_exe().expect("failed to get current executable path");
+    if daemon::reload_gateway_daemon(&exe, port) {
+        println!("✓ roco gateway daemon reload initiated.");
+    } else {
+        eprintln!("⚠ roco gateway reload failed.");
+    }
+}
+
+pub fn cmd_reload(extra: &[&str]) {
+    cmd_inferd_reload(extra);
+    cmd_gateway_reload(extra);
+}

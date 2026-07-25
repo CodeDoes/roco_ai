@@ -7,6 +7,7 @@
 //! - `list` — list directory contents
 //! - `bash` — execute a shell command
 //! - `now` — get current date/time
+//! - `find_long_files` — find files exceeding a line-count threshold
 
 use std::sync::Arc;
 use std::time::SystemTime;
