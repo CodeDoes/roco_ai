@@ -23,7 +23,6 @@ pub fn all_tools() -> Vec<Arc<dyn Tool>> {
         Arc::new(ListDirTool),
         Arc::new(BashTool),
         Arc::new(NowTool),
-        Arc::new(FindLongFilesTool),
     ]
 }
 

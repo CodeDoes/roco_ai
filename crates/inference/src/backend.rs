@@ -25,33 +25,23 @@ pub struct RwkvBackend {
     /// Default wall-clock deadline for completions (ms). 0 = no deadline.
     /// Can be overridden per-request via CompletionRequest::deadline_ms.
     default_deadline_ms: u64,
-    /// Optional callback that builds a BnfMask from grammar string + vocab
-    /// bytes. Set by the application layer (e.g. roco-cli) when the backend
-    /// is used directly (not through inferd). Cannot be set inside this crate
-    /// due to kbnf ↔ web-rwkv compiler overflow (E0275).
+    /// Runtime callback that builds a BnfMask from a GBNF grammar string
+    /// + vocabulary bytes. Set by the application layer (e.g. roco-cli)
+    /// so that `complete()` can compile the grammar on-the-fly without
+    /// pulling kbnf types into this crate (avoids E0275).
     grammar_builder: Option<GrammarBuilder>,
-    /// Cached vocabulary bytes. Populated lazily on first grammar request
-    /// via the actor channel, then reused to avoid a channel round-trip +
-    /// clone on every subsequent request.
-    vocab_cache: std::sync::OnceLock<Vec<Vec<u8>>>,
 }
 
 impl RwkvBackend {
-    /// Fetch vocabulary from the actor and cache it.
-    fn cached_vocab(&self) -> Option<&[Vec<u8>]> {
-        let cache = self.vocab_cache.get_or_init(|| {
-            let (reply_tx, reply_rx) = oneshot::channel();
-            if let Some(ref tx) = self.tx {
-                let _ = futures::executor::block_on(
-                    tx.send(ActorMessage::GetVocabBytes(reply_tx)),
-                );
-                futures::executor::block_on(reply_rx).ok().unwrap_or_default()
-            } else {
-                Vec::new()
-            }
-        });
-        if cache.is_empty() { None } else { Some(cache) }
+    /// Register a grammar→BnfMask builder. Must be called before any
+    /// `complete()` call that passes a `grammar` string without a
+    /// pre-built `bnf_mask`. The builder wraps `roco_bnf_engine::create_bnf_mask`
+    /// and is set by the application layer to avoid pulling kbnf types
+    /// into the same compilation unit as `web-rwkv` (E0275).
+    pub fn set_grammar_builder(&mut self, builder: GrammarBuilder) {
+        self.grammar_builder = Some(builder);
     }
+
     /// Build from environment variables.
     ///
     /// Spawns a dedicated OS thread owning all non-Send GPU resources.
@@ -129,7 +119,6 @@ impl RwkvBackend {
             name: "rwkv".to_string(),
             default_deadline_ms,
             grammar_builder: None,
-            vocab_cache: std::sync::OnceLock::new(),
         })
     }
 
@@ -207,13 +196,6 @@ impl RwkvBackend {
         })
     }
 
-    /// Register a grammar→BnfMask builder. Set by the application layer
-    /// (roco-cli) so that `complete()` can create the BnfMask from a grammar
-    /// string even when used directly (not through inferd). Cannot be set
-    /// inside this crate due to kbnf ↔ web-rwkv compiler overflow (E0275).
-    pub fn set_grammar_builder(&mut self, builder: GrammarBuilder) {
-        self.grammar_builder = Some(builder);
-    }
 }
 
 impl ModelBackend for RwkvBackend {
@@ -241,8 +223,8 @@ impl ModelBackend for RwkvBackend {
                 if let Some(ref grammar) = req.grammar {
                     if !grammar.is_empty() {
                         if let Some(ref builder) = self.grammar_builder {
-                            if let Some(vocab) = self.cached_vocab() {
-                                req.bnf_mask = builder(grammar, vocab);
+                            if let Ok(vocab) = self.vocab_bytes() {
+                                req.bnf_mask = builder(grammar, &vocab);
                             }
                         }
                     }
