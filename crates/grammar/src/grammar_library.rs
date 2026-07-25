@@ -178,7 +178,7 @@ mod tests {
             let kbnf = g.kbnf();
             // Must contain a root rule.
             assert!(kbnf.contains("root ::="), "{:?} missing root rule", g);
-            let mut engine = BnfEngine::new(&kbnf, &vocab)
+            let engine = BnfEngine::new(&kbnf, &vocab)
                 .unwrap_or_else(|e| panic!("{:?} failed to build engine: {e:?}", g));
             assert!(
                 engine.allowed_count() > 0,

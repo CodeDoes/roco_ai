@@ -106,7 +106,7 @@ fn measure_repetition(text: &str) -> f64 {
     if words.len() < 10 {
         return 0.0;
     }
-    let mut ngrams: Vec<Vec<&str>> = words.windows(6).map(|w| w.to_vec()).collect();
+    let ngrams: Vec<Vec<&str>> = words.windows(6).map(|w| w.to_vec()).collect();
     let total = ngrams.len();
     if total == 0 {
         return 0.0;

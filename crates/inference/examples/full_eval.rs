@@ -11,7 +11,7 @@ use roco_agent::mecha_agent::INTENT_GRAMMAR;
 use roco_engine::eval::{self, run_suite, EvalCase, EvalCategory};
 use roco_engine::util::{
     lazy_bake, CHAPTER_SESSION, CHAT_SESSION, CONTINUE_SESSION, CRITIQUE_SESSION, EVAL_SESSION,
-    INTENT_SESSION, OUTLINE_SESSION,
+    OUTLINE_SESSION,
 };
 use roco_engine::ModelBackend;
 use roco_inference::RwkvBackend;

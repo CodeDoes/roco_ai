@@ -33,6 +33,5 @@ grammar = ["dep:roco-grammar"]
 
 [dev-dependencies]
 roco-agent = { path = "../agent" }
-roco-grammar = { path = "../grammar" }
 roco-bnf-engine = { path = "../bnf-engine" }
 anyhow.workspace = true

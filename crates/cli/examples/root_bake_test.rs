@@ -64,7 +64,7 @@ fn chapter_prompt(num: usize, title: &str) -> String {
     )
 }
 
-fn chapter_prompt_no_bake(num: usize, title: &str, outline: &str, wiki: &str) -> String {
+fn chapter_prompt_no_bake(num: usize, _title: &str, outline: &str, wiki: &str) -> String {
     let instruction = match num {
         1 => "Write Chapter 1: The Lonely Coder. Begin with Kael alone at his terminal. Luna writes her first poem.",
         2 => "Write Chapter 2: The First Verse. Kael reads Luna's new poem and recognizes his own loneliness in it.",
