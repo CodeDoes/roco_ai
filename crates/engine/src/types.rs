@@ -9,13 +9,6 @@ use thiserror::Error;
 /// Callback invoked for each token emitted during streaming generation.
 pub type OnToken = Option<Box<dyn Fn(&str) + Send + Sync>>;
 
-/// Runtime callback that builds a `BnfMask` from a GBNF grammar string and
-/// vocabulary bytes. Implementations live outside the inference crate (e.g.
-/// `roco-bnf-engine::create_bnf_mask`) to avoid pulling kbnf types into the
-/// same compilation unit as `web-rwkv::TokioRuntime`.
-pub type GrammarBuilder =
-    Box<dyn Fn(&str, &[Vec<u8>]) -> Option<Box<dyn BnfMask>> + Send + Sync>;
-
 #[derive(Debug, Error)]
 pub enum EngineError {
     #[error("backend failure: {0}")]

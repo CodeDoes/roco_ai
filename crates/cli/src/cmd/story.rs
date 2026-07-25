@@ -594,10 +594,10 @@ const BAKE_VALIDATION_EXAMPLES: &[(&str, &str)] = &[
 
 /// Structured completion using the strategy's grammar + parser.
 ///
-/// Grammar is passed as a string — the backend (server-side for HTTP,
-/// or the grammar builder hook for direct usage) converts it to a BnfMask
-/// internally. Client-side BnfMask construction was removed because the
-/// kbnf types trigger E0275 when alongside web-rwkv in the same crate.
+/// Grammar is passed as a string — `roco-inferd`'s server route builds
+/// the `BnfMask` from it server-side via `create_bnf_mask`. Client-side
+/// BnfMask construction is not possible (kbnf types trigger E0275 when
+/// alongside web-rwkv in the same crate).
 ///
 /// Sets `prefill` to `"{\n"` for grammar strategies to jump-start JSON.
 /// For StateTuned, both `grammar` and `prefill` are left empty.

@@ -26,6 +26,37 @@ pub struct AppState {
     pub backend: Arc<dyn ModelBackend>,
 }
 
+/// Build a `BnfMask` from a grammar string + the backend's vocabulary.
+///
+/// This is the single site in the codebase that compiles a grammar string
+/// into a `Box<dyn BnfMask>` at runtime. `roco-server` (linked into
+/// `roco-inferd`) is the only binary that depends on `roco-bnf-engine`,
+/// keeping kbnf types out of every other compilation unit (avoids E0275
+/// when kbnf sits alongside `web-rwkv::TokioRuntime`).
+///
+/// Returns `Ok(Some(mask))` if a grammar was provided, `Ok(None)` if no
+/// grammar was set, or `Err(msg)` if the grammar is invalid.
+fn build_mask_or_error(
+    grammar: &Option<String>,
+    backend: &dyn ModelBackend,
+) -> Result<Option<Box<dyn roco_engine::BnfMask>>, String> {
+    let Some(grammar) = grammar else {
+        return Ok(None);
+    };
+    if grammar.is_empty() {
+        return Ok(None);
+    }
+    let Some(vocab) = backend.vocab_bytes() else {
+        return Ok(None);
+    };
+    roco_bnf_engine::create_bnf_mask(grammar, &vocab).map(Some).map_err(|e| {
+        format!(
+            "Grammar '{}' is invalid: {e:?}",
+            grammar.chars().take(80).collect::<String>()
+        )
+    })
+}
+
 pub fn create_router(backend: Arc<dyn ModelBackend>) -> Router {
     let state = AppState { backend };
     Router::new()
@@ -66,35 +97,13 @@ async fn handle_complete(
 ) -> Result<Json<CompletionResponse>, String> {
     info!("Handling direct complete request");
 
-    // If grammar is provided as a string but no BnfMask was built yet,
-    // create one from the model's vocabulary. This ensures grammar
-    // constraints work when sent through the HTTP API (inferd).
     if req.bnf_mask.is_none() {
-        if let Some(grammar) = &req.grammar {
-            if !grammar.is_empty() {
-                if let Some(vocab) = state.backend.vocab_bytes() {
-                    match roco_bnf_engine::create_bnf_mask(grammar, &vocab) {
-                        Ok(mask) => {
-                            req.bnf_mask = Some(mask);
-                            info!(
-                                "Built BnfMask from grammar ({} chars, {} vocab entries)",
-                                grammar.len(),
-                                vocab.len()
-                            );
-                        }
-                        Err(e) => {
-                            // Grammar is invalid — surface the error so the
-                            // caller can fix the grammar definition.
-                            return Err(format!(
-                                "Grammar '{}' is invalid: {e:?}",
-                                grammar.chars().take(80).collect::<String>()
-                            ));
-                        }
-                    }
-                } else {
-                    info!("Grammar provided but backend has no vocab_bytes — cannot build BnfMask");
-                }
-            }
+        req.bnf_mask = build_mask_or_error(&req.grammar, state.backend.as_ref())?;
+        if req.bnf_mask.is_some() {
+            info!(
+                "Built BnfMask from grammar ({} chars)",
+                req.grammar.as_deref().map(|g| g.len()).unwrap_or(0)
+            );
         }
     }
 
@@ -163,16 +172,9 @@ async fn handle_openai_completion(
     } else {
         let mut engine_req = req.into_engine();
 
-        // Same BnfMask construction for OpenAI-format requests with grammar
         if engine_req.bnf_mask.is_none() {
-            if let Some(grammar) = &engine_req.grammar {
-                if !grammar.is_empty() {
-                    if let Some(vocab) = backend.vocab_bytes() {
-                        let _ = roco_bnf_engine::create_bnf_mask(grammar, &vocab)
-                            .map(|mask| engine_req.bnf_mask = Some(mask));
-                    }
-                }
-            }
+            engine_req.bnf_mask =
+                build_mask_or_error(&engine_req.grammar, backend.as_ref()).ok().flatten();
         }
 
         match backend.complete(engine_req).await {

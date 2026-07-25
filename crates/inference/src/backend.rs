@@ -8,9 +8,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
-use roco_engine::{
-    CompletionRequest, CompletionResponse, EngineError, GrammarBuilder, ModelBackend,
-};
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tracing::info;
@@ -25,23 +23,9 @@ pub struct RwkvBackend {
     /// Default wall-clock deadline for completions (ms). 0 = no deadline.
     /// Can be overridden per-request via CompletionRequest::deadline_ms.
     default_deadline_ms: u64,
-    /// Runtime callback that builds a BnfMask from a GBNF grammar string
-    /// + vocabulary bytes. Set by the application layer (e.g. roco-cli)
-    /// so that `complete()` can compile the grammar on-the-fly without
-    /// pulling kbnf types into this crate (avoids E0275).
-    grammar_builder: Option<GrammarBuilder>,
 }
 
 impl RwkvBackend {
-    /// Register a grammar→BnfMask builder. Must be called before any
-    /// `complete()` call that passes a `grammar` string without a
-    /// pre-built `bnf_mask`. The builder wraps `roco_bnf_engine::create_bnf_mask`
-    /// and is set by the application layer to avoid pulling kbnf types
-    /// into the same compilation unit as `web-rwkv` (E0275).
-    pub fn set_grammar_builder(&mut self, builder: GrammarBuilder) {
-        self.grammar_builder = Some(builder);
-    }
-
     /// Build from environment variables.
     ///
     /// Spawns a dedicated OS thread owning all non-Send GPU resources.
@@ -118,7 +102,6 @@ impl RwkvBackend {
             actor_thread: Some(actor_thread),
             name: "rwkv".to_string(),
             default_deadline_ms,
-            grammar_builder: None,
         })
     }
 
@@ -209,28 +192,24 @@ impl ModelBackend for RwkvBackend {
 
     fn complete(
         &self,
-        mut req: CompletionRequest,
+        req: CompletionRequest,
     ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         let tx = self
             .tx
             .clone()
             .expect("rwkv backend already shut down (channel closed)");
         Box::pin(async move {
-            // If grammar is provided as a string but no BnfMask was built
-            // yet, use the grammar builder callback (set by the application
-            // layer) to create one from the model's vocabulary.
-            if req.bnf_mask.is_none() {
-                if let Some(ref grammar) = req.grammar {
-                    if !grammar.is_empty() {
-                        if let Some(ref builder) = self.grammar_builder {
-                            if let Ok(vocab) = self.vocab_bytes() {
-                                req.bnf_mask = builder(grammar, &vocab);
-                            }
-                        }
-                    }
-                }
-            }
-
+            // Grammar handling: this crate does NOT build BnfMask instances
+            // (doing so would pull kbnf types into web-rwkv's compilation
+            // unit, triggering E0275). Callers must either:
+            //   (a) send `req.grammar` as a string over HTTP to `roco-inferd`,
+            //       whose server route builds the mask via `create_bnf_mask`,
+            //       or
+            //   (b) pass a pre-built `req.bnf_mask` (Box<dyn BnfMask>) built
+            //       in a crate that already depends on `roco-bnf-engine`.
+            //
+            // Any `req.grammar` string set here is forwarded to the actor
+            // for logging only; the actor ignores it for masking.
             let started = Instant::now();
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
