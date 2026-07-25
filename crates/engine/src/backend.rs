@@ -300,7 +300,7 @@ pub async fn bake_persona(
 ///
 /// ```rust
 /// # use roco_engine::{bake_into_session, MockBackend};
-/// # tokio_test::block_on(async {
+/// # futures::executor::block_on(async {
 /// let backend = MockBackend::new("pirate", 0);
 /// let session = "pirate_persona";
 /// let examples = vec![
@@ -385,7 +385,7 @@ pub const NO_THINK_PREFILL: &str = " thinking response";
 ///
 /// ```rust
 /// # use roco_engine::{bake_no_think_session, MockBackend};
-/// # tokio_test::block_on(async {
+/// # futures::executor::block_on(async {
 /// let backend = MockBackend::new("tutor", 0);
 /// let session = "math_tutor";
 /// let examples = vec![

@@ -429,7 +429,9 @@ mod tests {
 
     #[test]
     fn test_manager_history() {
-        let manager = StorySessionManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test_sessions.json");
+        let manager = StorySessionManager::with_persistence_path(path);
         assert!(manager.list_stories().is_empty());
     }
 
