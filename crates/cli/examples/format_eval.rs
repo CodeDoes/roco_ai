@@ -166,9 +166,9 @@ fn sensory_count(s: &str) -> usize {
 // Runner
 // ═════════════════════════════════════════════════════════════════════════
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 struct RunResult {
-    spec: FormatSpec,
+    spec_name: String,
     baked: bool,
     trial: usize,
     prose_words: usize,
@@ -178,6 +178,8 @@ struct RunResult {
     format_ok: bool,
     think_contam: bool,
     snippet: String,
+    raw_text: String,
+    prose_text: String,
     error: Option<String>,
 }
 
@@ -221,7 +223,7 @@ async fn run_one(
         Err(e) => {
             let err = format!("ERROR: {e}");
             return RunResult {
-                spec: *spec,
+                spec_name: spec.name().to_string(),
                 baked: false,
                 trial,
                 prose_words: 0,
@@ -231,6 +233,8 @@ async fn run_one(
                 format_ok: false,
                 think_contam: false,
                 snippet: err.clone(),
+                raw_text: String::new(),
+                prose_text: String::new(),
                 error: Some(err),
             };
         }
@@ -238,7 +242,7 @@ async fn run_one(
 
     let prose = spec.extract(&raw);
     RunResult {
-        spec: *spec,
+        spec_name: spec.name().to_string(),
         baked: false, // filled in by caller
         trial,
         prose_words: word_count(&prose),
@@ -248,6 +252,8 @@ async fn run_one(
         format_ok: format_followed(&raw, spec),
         think_contam: has_think_contamination(&raw, spec),
         snippet: prose.chars().take(100).collect(),
+        raw_text: raw.clone(),
+        prose_text: prose,
         error: None,
     }
 }
@@ -325,13 +331,16 @@ async fn main() {
 
     // Average over trials, grouped by (spec, baked).
     use std::collections::HashMap;
-    let mut groups: HashMap<(&'static str, bool), Vec<&RunResult>> = HashMap::new();
+    let mut groups: HashMap<(&str, bool), Vec<&RunResult>> = HashMap::new();
     for r in &results {
-        groups.entry((r.spec.name(), r.baked)).or_default().push(r);
+        groups
+            .entry((r.spec_name.as_str(), r.baked))
+            .or_default()
+            .push(r);
     }
 
     // Stable row order: by FormatSpec::all() order, then fresh before baked.
-    let mut rows: Vec<(&'static str, bool, Vec<&RunResult>)> = Vec::new();
+    let mut rows: Vec<(&str, bool, Vec<&RunResult>)> = Vec::new();
     for spec in FormatSpec::all() {
         if let Some(rs) = groups.get(&(spec.name(), false)) {
             rows.push((spec.name(), false, rs.clone()));
@@ -394,7 +403,7 @@ async fn main() {
     for spec in FormatSpec::all() {
         if let Some(r) = results
             .iter()
-            .find(|r| r.spec == *spec && !r.baked && r.trial == 0)
+            .find(|r| r.spec_name == spec.name() && !r.baked && r.trial == 0)
         {
             eprintln!("  [{}] {}", spec.name(), r.snippet);
             if let Some(ref err) = r.error {
@@ -435,5 +444,72 @@ async fn main() {
             if *fmt_ok { "✅" } else { "❌" },
             if *clean { "✓" } else { "⚠" },
         );
+    }
+
+    // Save full JSON report & Markdown sample book for manual subjective evaluation
+    std::fs::create_dir_all("evals/results").ok();
+    if let Ok(json) = serde_json::to_string_pretty(&results) {
+        if std::fs::write("evals/results/format_eval_report.json", &json).is_ok() {
+            eprintln!("\n✅ Saved JSON report to evals/results/format_eval_report.json");
+        }
+    }
+
+    let mut md = String::new();
+    md.push_str("# Message Exchange Format Manual Evaluation — Subjective Samples\n\n");
+    md.push_str("Use this file to manually compare narrative flow, prose voice, sensory density, and format compliance across formats.\n\n");
+    md.push_str("## Summary Metrics\n\n");
+    md.push_str("| Format | Words | Sensory | Repetition | Latency (ms) | Format OK | Clean Think | Mode |\n");
+    md.push_str("|---|---|---|---|---|---|---|---|\n");
+    for (name, baked, runs) in &rows {
+        let avg = |f: fn(&RunResult) -> f64| -> f64 {
+            runs.iter().map(|r| f(r)).sum::<f64>() / runs.len() as f64
+        };
+        let all_fmt = runs.iter().all(|r| r.format_ok);
+        let any_contam = runs.iter().any(|r| r.think_contam);
+        md.push_str(&format!(
+            "| {} | {:.0} | {:.0} | {:.1}% | {:.0} | {} | {} | {} |\n",
+            if *baked {
+                format!("{}+bake", name)
+            } else {
+                name.to_string()
+            },
+            avg(|r| r.prose_words as f64),
+            avg(|r| r.sensory as f64),
+            avg(|r| r.repetition * 100.0),
+            avg(|r| r.latency_ms as f64),
+            if all_fmt { "Pass" } else { "Fail" },
+            if any_contam { "Contam" } else { "Clean" },
+            if *baked { "Baked" } else { "Fresh" },
+        ));
+    }
+    md.push_str("\n---\n\n## Generated Samples by Format\n\n");
+
+    for r in &results {
+        md.push_str(&format!(
+            "### Format: {} ({}, Trial {})\n\n",
+            r.spec_name,
+            if r.baked { "Baked" } else { "Fresh" },
+            r.trial + 1
+        ));
+        md.push_str(&format!(
+            "- **Words**: {}\n- **Sensory Count**: {}\n- **Latency**: {} ms\n- **Format Check**: {}\n- **Think Contamination**: {}\n\n",
+            r.prose_words,
+            r.sensory,
+            r.latency_ms,
+            if r.format_ok { "✅ Followed" } else { "❌ Failed" },
+            if r.think_contam { "⚠ Contaminated" } else { "✓ Clean" }
+        ));
+        md.push_str("#### Extracted Prose Text\n\n");
+        md.push_str("```markdown\n");
+        md.push_str(&r.prose_text);
+        md.push_str("\n```\n\n");
+        md.push_str("<details><summary>Click to view Raw Model Output</summary>\n\n");
+        md.push_str("```text\n");
+        md.push_str(&r.raw_text);
+        md.push_str("\n```\n\n</details>\n\n---\n\n");
+    }
+
+    if std::fs::write("evals/results/format_eval_samples.md", &md).is_ok() {
+        eprintln!("✅ Saved Markdown samples to evals/results/format_eval_samples.md");
     }
 }
