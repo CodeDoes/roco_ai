@@ -105,7 +105,7 @@ impl ContextQuery for SessionContextSource {
         let results = self.store.search(query_text, self.max_results);
         results
             .iter()
-            .take(self.max_results)
+            .take(_limit.min(self.max_results))
             .map(|t| {
                 // Use task/title-equivalent as the searchable content.
                 let search_content = &t.task;
@@ -282,18 +282,22 @@ impl ContextManager {
 
     /// Run the full pull protocol: query each source, sort by relevance,
     /// budget, and return the assembled snippets.
-    pub fn collect(&mut self, _query_text: &str) -> Vec<ContextSnippet> {
+    pub fn collect(&mut self, query_text: &str) -> Vec<ContextSnippet> {
         self.budget = ContextBudget::new(self.budget.total_capacity());
         let mut all_snippets: Vec<ContextSnippet> = Vec::new();
 
         for source in &self.sources {
             // Ask each source for up to 5 snippets.
-            let raw = source.query(_query_text, 5);
+            let raw = source.query(query_text, 5);
             all_snippets.extend(raw);
         }
 
         // Sort globally by relevance descending.
-        all_snippets.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap());
+        all_snippets.sort_by(|a, b| {
+            b.relevance
+                .partial_cmp(&a.relevance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         all_snippets.truncate(self.global_limit);
 
         // Budget-gated selection.

@@ -112,7 +112,7 @@ impl StoryEval {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json()).expect("StoryEval schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).unwrap_or_default()
     }
 
     /// Get high-severity issues

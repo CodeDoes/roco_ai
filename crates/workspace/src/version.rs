@@ -6,9 +6,9 @@
 //! - Rollback to any previous state
 //! - Git-like versioning for story state
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -114,7 +114,7 @@ impl VersionControl {
         std::fs::write(&path, json).map_err(|e| format!("failed to write snapshot: {e}"))?;
 
         // Add to history
-        self.snapshots.lock().unwrap().push(snapshot);
+        self.snapshots.lock().push(snapshot);
 
         Ok(snapshot_id)
     }
@@ -140,8 +140,8 @@ impl VersionControl {
             snapshot_after: None,
         };
 
-        let mut history = self.action_history.lock().unwrap();
-        let mut position = self.current_position.lock().unwrap();
+        let mut history = self.action_history.lock();
+        let mut position = self.current_position.lock();
 
         // Truncate any actions after current position (they're now invalid)
         history.truncate(*position);
@@ -155,8 +155,8 @@ impl VersionControl {
 
     /// Undo the last action
     pub fn undo(&self) -> Result<Option<ReversibleAction>, String> {
-        let history = self.action_history.lock().unwrap();
-        let mut position = self.current_position.lock().unwrap();
+        let history = self.action_history.lock();
+        let mut position = self.current_position.lock();
 
         if *position == 0 {
             return Ok(None);
@@ -173,8 +173,8 @@ impl VersionControl {
 
     /// Redo the last undone action
     pub fn redo(&self) -> Result<Option<ReversibleAction>, String> {
-        let history = self.action_history.lock().unwrap();
-        let mut position = self.current_position.lock().unwrap();
+        let history = self.action_history.lock();
+        let mut position = self.current_position.lock();
 
         if *position >= history.len() {
             return Ok(None);
@@ -191,7 +191,7 @@ impl VersionControl {
 
     /// Rollback to a specific snapshot
     pub fn rollback(&self, snapshot_id: &str) -> Result<(), String> {
-        let snapshots = self.snapshots.lock().unwrap();
+        let snapshots = self.snapshots.lock();
         let snapshot = snapshots
             .iter()
             .find(|s| s.snapshot_id == snapshot_id)
@@ -225,7 +225,6 @@ impl VersionControl {
     pub fn list_snapshots(&self) -> Vec<SnapshotSummary> {
         self.snapshots
             .lock()
-            .unwrap()
             .iter()
             .map(|s| SnapshotSummary {
                 snapshot_id: s.snapshot_id.clone(),
@@ -238,12 +237,12 @@ impl VersionControl {
 
     /// Get action history
     pub fn action_history(&self) -> Vec<ReversibleAction> {
-        self.action_history.lock().unwrap().clone()
+        self.action_history.lock().clone()
     }
 
     /// Get current position in history
     pub fn current_position(&self) -> usize {
-        *self.current_position.lock().unwrap()
+        *self.current_position.lock()
     }
 
     /// Apply a payload (forward or backward)

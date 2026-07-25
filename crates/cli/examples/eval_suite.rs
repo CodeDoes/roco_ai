@@ -17,7 +17,7 @@ use std::env;
 use std::path::PathBuf;
 
 use roco_engine::eval::run_eval;
-use roco_engine::{ModelBackend, cases::default_eval_suite};
+use roco_engine::{cases::default_eval_suite, ModelBackend};
 use roco_infer_client::RemoteBackend;
 
 #[tokio::main]
@@ -67,14 +67,17 @@ async fn main() {
         }
     };
 
-    let case = suite.into_iter().find(|c| c.name == target).unwrap_or_else(|| {
-        eprintln!("Unknown eval case: {target}");
-        eprintln!("Available eval cases:");
-        for name in &names {
-            eprintln!("  {name}");
-        }
-        std::process::exit(1);
-    });
+    let case = suite
+        .into_iter()
+        .find(|c| c.name == target)
+        .unwrap_or_else(|| {
+            eprintln!("Unknown eval case: {target}");
+            eprintln!("Available eval cases:");
+            for name in &names {
+                eprintln!("  {name}");
+            }
+            std::process::exit(1);
+        });
 
     eprintln!("═══ Single Eval ═══");
     eprintln!("Backend: {}", backend.name());

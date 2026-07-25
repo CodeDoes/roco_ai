@@ -166,8 +166,8 @@ pub const INTENT_SESSION: &str = "roco_intent";
 // process lifetime. Uses a global static set so lazy bakes are thread-safe.
 // ═════════════════════════════════════════════════════════════════════════════
 
+use parking_lot::Mutex;
 use std::sync::LazyLock;
-use std::sync::Mutex;
 
 static BAKED_SESSIONS: LazyLock<Mutex<std::collections::HashSet<&'static str>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
@@ -175,12 +175,12 @@ static BAKED_SESSIONS: LazyLock<Mutex<std::collections::HashSet<&'static str>>> 
 /// Check (and atomically claim) whether a session has been baked in this
 /// process lifetime. Returns `true` if this is the **first** claim.
 pub fn claim_bake(session: &'static str) -> bool {
-    BAKED_SESSIONS.lock().unwrap().insert(session)
+    BAKED_SESSIONS.lock().insert(session)
 }
 
 /// Reset all baked-session flags (used in tests or after a backend reload).
 pub fn reset_baked_sessions() {
-    BAKED_SESSIONS.lock().unwrap().clear();
+    BAKED_SESSIONS.lock().clear();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -14,8 +14,9 @@
 //! so the model can recall past conversations via a `search_sessions` tool.
 //! This satisfies `goals/agent/session_search.md`.
 
+use parking_lot::RwLock;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use roco_session::SessionStore as RoCoSessionStore;
 use roco_tools::{Tool, ToolError};
@@ -123,7 +124,7 @@ impl SessionStore {
     /// Initialize the underlying roco_session store and load any existing search index.
     pub fn init(&self) -> anyhow::Result<()> {
         let store = RoCoSessionStore::new(&self.base_path)?;
-        *self.inner.write().unwrap() = Some(store);
+        *self.inner.write() = Some(store);
         // Load persisted search index if it exists
         self.load_search_index()?;
         Ok(())
@@ -131,7 +132,7 @@ impl SessionStore {
 
     /// Set the path where the search index should be persisted.
     pub fn set_index_path<P: AsRef<Path>>(&self, path: P) {
-        *self.index_path.write().unwrap() = Some(path.as_ref().to_path_buf());
+        *self.index_path.write() = Some(path.as_ref().to_path_buf());
     }
 
     /// Open the store at a specific path, loading existing data.
@@ -158,14 +159,14 @@ impl SessionStore {
         };
 
         let store = Self::new(&base);
-        *store.index_path.write().unwrap() = idx;
+        *store.index_path.write() = idx;
         store.init()?;
         Ok(store)
     }
 
     /// Create a top-level root session in the file-backed store.
     pub fn create_root(&self, id: &str) -> anyhow::Result<()> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -175,7 +176,7 @@ impl SessionStore {
 
     /// Open an existing session by ID, returning a handle scoped to it.
     pub fn open_session(&self, id: &str) -> anyhow::Result<roco_session::SessionHandle> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -188,7 +189,7 @@ impl SessionStore {
         parent_id: PId,
         child_id: SId,
     ) -> anyhow::Result<roco_session::SessionHandle> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -202,7 +203,7 @@ impl SessionStore {
         parent_id: Pid,
         summary: &str,
     ) -> anyhow::Result<()> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -216,7 +217,7 @@ impl SessionStore {
         from: SFrom,
         dest: SDest,
     ) -> anyhow::Result<()> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -226,7 +227,7 @@ impl SessionStore {
 
     /// Log a conversation turn to a session's `session.log`.
     pub fn log_conversation<S: AsRef<str>>(&self, session_id: S, text: &str) -> anyhow::Result<()> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -236,7 +237,7 @@ impl SessionStore {
 
     /// Stream a line into a session's `trace.txt` (raw prompt/response).
     pub fn log_trace<S: AsRef<str>>(&self, session_id: S, text: &str) -> anyhow::Result<()> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -246,7 +247,7 @@ impl SessionStore {
 
     /// Write an event to the global trace log (`.roco/trace.log`).
     pub fn log_global<E: serde::Serialize>(&self, event: &E) -> anyhow::Result<()> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read();
         let store = guard
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SessionStore not initialized"))?;
@@ -257,10 +258,7 @@ impl SessionStore {
     /// Record a finished transcript and update the search index.
     pub fn record(&self, transcript: SessionTranscript) {
         {
-            let mut idx = self
-                .search_index
-                .write()
-                .expect("search index lock poisoned");
+            let mut idx = self.search_index.write();
             idx.push(transcript);
         } // write lock dropped here
         let _ = self.save();
@@ -277,10 +275,7 @@ impl SessionStore {
         if query_tokens.is_empty() {
             return Vec::new();
         }
-        let idx = self
-            .search_index
-            .read()
-            .expect("search index lock poisoned");
+        let idx = self.search_index.read();
         let mut scored: Vec<(f64, SessionTranscript)> = idx
             .iter()
             .map(|s| {
@@ -302,18 +297,12 @@ impl SessionStore {
     }
 
     pub fn get(&self, id: &str) -> Option<SessionTranscript> {
-        let idx = self
-            .search_index
-            .read()
-            .expect("search index lock poisoned");
+        let idx = self.search_index.read();
         idx.iter().find(|s| s.id == id).cloned()
     }
 
     pub fn len(&self) -> usize {
-        let idx = self
-            .search_index
-            .read()
-            .expect("search index lock poisoned");
+        let idx = self.search_index.read();
         idx.len()
     }
 
@@ -323,16 +312,8 @@ impl SessionStore {
 
     /// Persist the search index to disk (if a path was set or via `open()`).
     pub fn save(&self) -> anyhow::Result<()> {
-        let idx = self
-            .search_index
-            .read()
-            .expect("search index lock poisoned");
-        let path = match self
-            .index_path
-            .read()
-            .expect("index path lock poisoned")
-            .as_ref()
-        {
+        let idx = self.search_index.read();
+        let path = match self.index_path.read().as_ref() {
             Some(p) => p.clone(),
             None => return Ok(()),
         };
@@ -346,22 +327,14 @@ impl SessionStore {
 
     /// Load previously persisted search index from disk.
     fn load_search_index(&self) -> anyhow::Result<()> {
-        let path = match self
-            .index_path
-            .read()
-            .expect("index path lock poisoned")
-            .as_ref()
-        {
+        let path = match self.index_path.read().as_ref() {
             Some(p) if p.exists() => p.clone(),
             _ => return Ok(()),
         };
         let text = std::fs::read_to_string(&path)?;
         if !text.trim().is_empty() {
             let loaded: Vec<SessionTranscript> = serde_json::from_str(&text)?;
-            *self
-                .search_index
-                .write()
-                .expect("search index lock poisoned") = loaded;
+            *self.search_index.write() = loaded;
         }
         Ok(())
     }

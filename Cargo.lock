@@ -4367,6 +4367,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures",
+ "parking_lot",
  "roco-engine",
  "roco-grammar",
  "roco-message",
@@ -4386,6 +4387,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "futures",
+ "parking_lot",
  "reqwest",
  "roco-engine",
  "roco-infer-client",
@@ -4462,6 +4464,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures",
+ "parking_lot",
  "roco-grammar",
  "serde",
  "serde_json",
@@ -4614,6 +4617,7 @@ dependencies = [
 name = "roco-session"
 version = "0.1.0"
 dependencies = [
+ "parking_lot",
  "roco-engine",
  "serde",
  "serde_json",
@@ -4656,6 +4660,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "filetime",
+ "parking_lot",
  "regex",
  "roco-engine",
  "roco-tools",

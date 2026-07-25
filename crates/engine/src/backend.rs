@@ -572,29 +572,29 @@ mod tests {
     #[tokio::test]
     async fn mock_backend_on_token_invoked_for_non_thinking() {
         let b = MockBackend::default();
-        let tokens = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let tokens = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
         let tokens_clone = tokens.clone();
         let mut req = CompletionRequest::new("sys", "hello");
         req.on_token = Some(Box::new(move |tok: &str| {
-            tokens_clone.lock().unwrap().push(tok.to_string());
+            tokens_clone.lock().push(tok.to_string());
         }));
         let _resp = b.complete(req).await.unwrap();
-        let collected = tokens.lock().unwrap();
+        let collected = tokens.lock();
         assert!(!collected.is_empty(), "on_token should be called");
     }
 
     #[tokio::test]
     async fn mock_backend_on_token_invoked_for_thinking() {
         let b = MockBackend::default();
-        let tokens = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let tokens = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
         let tokens_clone = tokens.clone();
         let mut req = CompletionRequest::new("sys", "think hello");
         req.thinking = true;
         req.on_token = Some(Box::new(move |tok: &str| {
-            tokens_clone.lock().unwrap().push(tok.to_string());
+            tokens_clone.lock().push(tok.to_string());
         }));
         let _resp = b.complete(req).await.unwrap();
-        let collected = tokens.lock().unwrap();
+        let collected = tokens.lock();
         // Should have at least 2 calls: result_text + think_text
         assert!(
             collected.len() >= 2,

@@ -9,6 +9,7 @@ name = "roco_session"
 [dependencies]
 roco-engine = { path = "../engine" }
 serde.workspace = true
+parking_lot.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

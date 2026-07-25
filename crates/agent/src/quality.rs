@@ -96,7 +96,7 @@ impl QualityScore {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json()).expect("QualityScore schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).unwrap_or_default()
     }
 
     /// Check if the chapter passes quality thresholds
@@ -180,7 +180,7 @@ impl StoryCritique {
     }
 
     pub fn grammar() -> String {
-        schema_to_gbnf("root", Self::schema().to_json()).expect("StoryCritique schema is valid")
+        schema_to_gbnf("root", Self::schema().to_json()).unwrap_or_default()
     }
 }
 

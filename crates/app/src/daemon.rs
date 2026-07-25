@@ -174,7 +174,7 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
                     "Started roco-inferd (PID {pid}, log: {})",
                     log_file_path.display()
                 );
-                return false;
+                return true;
             }
             Err(e) => {
                 eprintln!("Warning: failed to spawn roco-inferd: {e}");
@@ -249,7 +249,7 @@ pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]
                 "Started {subcmd} (PID {pid}, log: {})",
                 log_file_path.display()
             );
-            false
+            true
         }
         Err(e) => {
             eprintln!("Warning: failed to spawn {subcmd}: {e}");

@@ -10,9 +10,10 @@
 //! (with substring tolerance) plus a mild recency bonus — no external
 //! embeddings required, which keeps it runnable on the local RWKV stack.
 
+use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use roco_tools::{Tool, ToolError};
@@ -102,10 +103,10 @@ impl MemoryStore {
             let text = std::fs::read_to_string(&path)?;
             if !text.trim().is_empty() {
                 let loaded: Vec<MemoryEntry> = serde_json::from_str(&text)?;
-                *store.entries.write().expect("mem lock poisoned") = loaded;
+                *store.entries.write() = loaded;
             }
         }
-        *store.path.write().expect("mem path lock poisoned") = Some(path);
+        *store.path.write() = Some(path);
         Ok(store)
     }
 
@@ -125,7 +126,7 @@ impl MemoryStore {
             accessed_at: now_secs(),
         };
         {
-            let mut entries = self.entries.write().expect("mem lock poisoned");
+            let mut entries = self.entries.write();
             entries.push(entry);
             if entries.len() > self.capacity {
                 entries.sort_by_key(|e| e.accessed_at);
@@ -143,7 +144,7 @@ impl MemoryStore {
         if query_tokens.is_empty() {
             return Vec::new();
         }
-        let entries = self.entries.read().expect("mem lock poisoned");
+        let entries = self.entries.read();
         let mut scored: Vec<(f64, MemoryEntry)> = entries
             .iter()
             .map(|e| {
@@ -160,7 +161,7 @@ impl MemoryStore {
         drop(entries);
 
         // Mark returned entries as accessed (recency for future ranking).
-        let mut entries = self.entries.write().expect("mem lock poisoned");
+        let mut entries = self.entries.write();
         for o in &out {
             if let Some(e) = entries.iter_mut().find(|x| x.id == o.id) {
                 e.touch();
@@ -178,7 +179,7 @@ impl MemoryStore {
     }
 
     pub fn len(&self) -> usize {
-        self.entries.read().expect("mem lock poisoned").len()
+        self.entries.read().len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -187,9 +188,9 @@ impl MemoryStore {
 
     /// Persist the store to its `path`, if one is configured.
     pub fn save(&self) -> anyhow::Result<()> {
-        let path = self.path.read().expect("mem path lock poisoned");
+        let path = self.path.read();
         if let Some(p) = path.as_ref() {
-            let entries = self.entries.read().expect("mem lock poisoned");
+            let entries = self.entries.read();
             let text = serde_json::to_string_pretty(&*entries)?;
             if let Some(parent) = p.parent() {
                 std::fs::create_dir_all(parent).ok();
@@ -201,7 +202,7 @@ impl MemoryStore {
 
     /// Remove all entries (and overwrite the persisted file, if any).
     pub fn clear(&self) {
-        self.entries.write().expect("mem lock poisoned").clear();
+        self.entries.write().clear();
         let _ = self.save();
     }
 

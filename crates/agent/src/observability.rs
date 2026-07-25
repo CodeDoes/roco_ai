@@ -12,10 +12,10 @@
 //! - Auditing (track all changes)
 //! - Improvement (analyze patterns, optimize prompts)
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -322,13 +322,13 @@ impl ObservabilitySystem {
             metadata,
         };
         let trace_id = trace.trace_id.clone();
-        *self.current_trace.lock().unwrap() = Some(trace);
+        *self.current_trace.lock() = Some(trace);
         trace_id
     }
 
     /// End the current trace
     pub fn end_trace(&self) {
-        if let Some(ref mut trace) = *self.current_trace.lock().unwrap() {
+        if let Some(ref mut trace) = *self.current_trace.lock() {
             trace.ended_at = Some(now());
         }
         self.flush();
@@ -349,7 +349,7 @@ impl ObservabilitySystem {
         };
         let span_id = span.span_id.clone();
 
-        if let Some(ref mut trace) = *self.current_trace.lock().unwrap() {
+        if let Some(ref mut trace) = *self.current_trace.lock() {
             trace.spans.push(span);
         }
 
@@ -358,7 +358,7 @@ impl ObservabilitySystem {
 
     /// End a span
     pub fn end_span(&self, span_id: &SpanId, status: SpanStatus) {
-        if let Some(ref mut trace) = *self.current_trace.lock().unwrap() {
+        if let Some(ref mut trace) = *self.current_trace.lock() {
             if let Some(span) = trace.spans.iter_mut().find(|s| s.span_id == *span_id) {
                 span.ended_at = Some(now());
                 span.status = status;
@@ -368,7 +368,7 @@ impl ObservabilitySystem {
 
     /// Add an event to a span
     pub fn add_event(&self, span_id: &SpanId, name: &str, attributes: HashMap<String, String>) {
-        if let Some(ref mut trace) = *self.current_trace.lock().unwrap() {
+        if let Some(ref mut trace) = *self.current_trace.lock() {
             if let Some(span) = trace.spans.iter_mut().find(|s| s.span_id == *span_id) {
                 span.events.push(Event {
                     name: name.to_string(),
@@ -381,52 +381,52 @@ impl ObservabilitySystem {
 
     /// Record a model call
     pub fn record_model_call(&self, record: ModelCallRecord) {
-        self.model_calls.lock().unwrap().push(record);
+        self.model_calls.lock().push(record);
     }
 
     /// Record a decision
     pub fn record_decision(&self, record: DecisionRecord) {
-        self.decisions.lock().unwrap().push(record);
+        self.decisions.lock().push(record);
     }
 
     /// Record an action
     pub fn record_action(&self, record: ActionRecord) {
-        self.actions.lock().unwrap().push(record);
+        self.actions.lock().push(record);
     }
 
     /// Record a quality assessment
     pub fn record_quality(&self, record: QualityRecord) {
-        self.quality_assessments.lock().unwrap().push(record);
+        self.quality_assessments.lock().push(record);
     }
 
     /// Record a workspace checkpoint.
     pub fn record_checkpoint(&self, record: CheckpointRecord) {
-        self.checkpoints.lock().unwrap().push(record);
+        self.checkpoints.lock().push(record);
     }
 
     /// Get all model calls
     pub fn model_calls(&self) -> Vec<ModelCallRecord> {
-        self.model_calls.lock().unwrap().clone()
+        self.model_calls.lock().clone()
     }
 
     /// Get all decisions
     pub fn decisions(&self) -> Vec<DecisionRecord> {
-        self.decisions.lock().unwrap().clone()
+        self.decisions.lock().clone()
     }
 
     /// Get all actions
     pub fn actions(&self) -> Vec<ActionRecord> {
-        self.actions.lock().unwrap().clone()
+        self.actions.lock().clone()
     }
 
     /// Get all quality assessments
     pub fn quality_assessments(&self) -> Vec<QualityRecord> {
-        self.quality_assessments.lock().unwrap().clone()
+        self.quality_assessments.lock().clone()
     }
 
     /// Get all checkpoints.
     pub fn checkpoints(&self) -> Vec<CheckpointRecord> {
-        self.checkpoints.lock().unwrap().clone()
+        self.checkpoints.lock().clone()
     }
 
     /// Flush all logs to disk
@@ -434,7 +434,7 @@ impl ObservabilitySystem {
         let timestamp = now();
 
         // Save trace
-        if let Some(trace) = self.current_trace.lock().unwrap().clone() {
+        if let Some(trace) = self.current_trace.lock().clone() {
             let path = self
                 .output_dir
                 .join(format!("trace_{}.json", trace.trace_id.0));
@@ -445,7 +445,7 @@ impl ObservabilitySystem {
 
         // Save model calls
         {
-            let calls = self.model_calls.lock().unwrap();
+            let calls = self.model_calls.lock();
             if !calls.is_empty() {
                 let path = self
                     .output_dir
@@ -458,7 +458,7 @@ impl ObservabilitySystem {
 
         // Save decisions
         {
-            let decisions = self.decisions.lock().unwrap();
+            let decisions = self.decisions.lock();
             if !decisions.is_empty() {
                 let path = self
                     .output_dir
@@ -471,7 +471,7 @@ impl ObservabilitySystem {
 
         // Save actions
         {
-            let actions = self.actions.lock().unwrap();
+            let actions = self.actions.lock();
             if !actions.is_empty() {
                 let path = self.output_dir.join(format!("actions_{}.json", timestamp));
                 if let Ok(json) = serde_json::to_string_pretty(&*actions) {
@@ -482,7 +482,7 @@ impl ObservabilitySystem {
 
         // Save quality assessments
         {
-            let quality = self.quality_assessments.lock().unwrap();
+            let quality = self.quality_assessments.lock();
             if !quality.is_empty() {
                 let path = self.output_dir.join(format!("quality_{}.json", timestamp));
                 if let Ok(json) = serde_json::to_string_pretty(&*quality) {
@@ -493,7 +493,7 @@ impl ObservabilitySystem {
 
         // Save checkpoints
         {
-            let cps = self.checkpoints.lock().unwrap();
+            let cps = self.checkpoints.lock();
             if !cps.is_empty() {
                 let path = self
                     .output_dir
@@ -518,7 +518,6 @@ impl ObservabilitySystem {
         let model_calls_redacted: Vec<serde_json::Value> = self
             .model_calls
             .lock()
-            .unwrap()
             .iter()
             .map(|mc| {
                 let mut v = serde_json::to_value(mc).unwrap_or_default();
@@ -559,10 +558,10 @@ impl ObservabilitySystem {
 
     /// Generate a summary report
     pub fn summary(&self) -> ObservabilitySummary {
-        let model_calls = self.model_calls.lock().unwrap();
-        let decisions = self.decisions.lock().unwrap();
-        let actions = self.actions.lock().unwrap();
-        let quality = self.quality_assessments.lock().unwrap();
+        let model_calls = self.model_calls.lock();
+        let decisions = self.decisions.lock();
+        let actions = self.actions.lock();
+        let quality = self.quality_assessments.lock();
 
         ObservabilitySummary {
             total_model_calls: model_calls.len(),

@@ -386,7 +386,7 @@ pub fn plan_grammar() -> String {
         .prop("steps", Schema::array(step_schema))
         .build();
 
-    schema_to_gbnf("root", plan_schema.to_json()).expect("Plan schema is valid")
+    schema_to_gbnf("root", plan_schema.to_json()).unwrap_or_default()
 }
 
 /// The planner: turns a natural-language goal into a [`Plan`].

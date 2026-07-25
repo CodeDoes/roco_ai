@@ -382,20 +382,20 @@ impl SessionHandle {
 
 // Thread-safe singleton for global log operations.
 // Only ever used when one agent is active — no locking needed.
-static GLOBAL_STORE: std::sync::LazyLock<std::sync::Mutex<Option<SessionStore>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+static GLOBAL_STORE: std::sync::LazyLock<parking_lot::Mutex<Option<SessionStore>>> =
+    std::sync::LazyLock::new(|| parking_lot::Mutex::new(None));
 
 impl SessionStore {
     /// Initialize the global store once. Called early during agent startup.
     pub fn init_global<P: AsRef<Path>>(base: P) -> Result<(), SessionError> {
         let store = SessionStore::new(base)?;
-        *GLOBAL_STORE.lock().unwrap() = Some(store);
+        *GLOBAL_STORE.lock() = Some(store);
         Ok(())
     }
 
     /// Borrow the global store for writing events to `trace.log`.
-    pub(crate) fn global() -> std::sync::MutexGuard<'static, Option<SessionStore>> {
-        GLOBAL_STORE.lock().expect("global store poisoned")
+    pub(crate) fn global() -> parking_lot::MutexGuard<'static, Option<SessionStore>> {
+        GLOBAL_STORE.lock()
     }
 }
 

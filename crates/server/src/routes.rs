@@ -9,12 +9,12 @@ use axum::{
     Json, Router,
 };
 use base64::Engine;
+use roco_app::RoCoConfig;
 use roco_engine::{CompletionRequest, CompletionResponse, ModelBackend};
 use roco_protocol::{
     BakeRequest, BakeResponse, HealthResponse, InferJobsResponse, OpenAiCompletionRequest,
     OpenAiCompletionResponse, OpenAiErrorBody, OpenAiStreamChunk,
 };
-use roco_app::RoCoConfig;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

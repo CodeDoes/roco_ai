@@ -115,11 +115,11 @@ impl AppContext {
         mut req: CompletionRequest,
         on_token: impl FnMut(&str) + Send + 'static,
     ) -> AppResult<CompletionResponse> {
-        use std::sync::Mutex;
+        use parking_lot::Mutex;
         let cb = Arc::new(Mutex::new(on_token));
         let cb_clone = cb.clone();
         req.on_token = Some(Box::new(move |tok: &str| {
-            let mut f = cb_clone.lock().unwrap();
+            let mut f = cb_clone.lock();
             f(tok);
         }));
         generate(req, self.backend.as_ref())
