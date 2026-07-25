@@ -14,6 +14,7 @@ use roco_protocol::{
     BakeRequest, BakeResponse, HealthResponse, InferJobsResponse, OpenAiCompletionRequest,
     OpenAiCompletionResponse, OpenAiErrorBody, OpenAiStreamChunk,
 };
+use roco_app::RoCoConfig;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -152,9 +153,18 @@ async fn handle_bake(
 }
 
 async fn handle_health(State(state): State<AppState>) -> impl IntoResponse {
+    let config = RoCoConfig::load();
     let resp = HealthResponse {
         status: "ok".into(),
         backend: state.backend.name().to_string(),
+        template: Some(serde_json::json!({
+            "type": config.template.r#type,
+            "think": config.template.think,
+            "state_tune": config.template.state_tune,
+            "system_prompt": config.template.system_prompt,
+            "context_state": config.template.context_state,
+            "max_tokens": config.template.max_tokens,
+        })),
     };
     Json(resp)
 }

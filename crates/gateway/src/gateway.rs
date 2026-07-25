@@ -6,6 +6,7 @@ use axum::{
 };
 use parking_lot::Mutex;
 use reqwest::Client;
+use roco_app::RoCoConfig;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,6 +18,7 @@ pub struct GatewayState {
     pub rate_limit_per_minute: usize,
     pub req_client: Client,
     pub rate_limiter: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
+    pub template: Option<roco_app::config::TemplateConfig>,
 }
 
 pub struct Gateway {
@@ -60,6 +62,7 @@ impl Gateway {
             rate_limit_per_minute: self.rate_limit_per_minute,
             req_client: Client::new(),
             rate_limiter: Arc::new(Mutex::new(HashMap::new())),
+            template: RoCoConfig::load().template.into(),
         };
 
         let app = AxumRouter::new()
@@ -229,7 +232,15 @@ async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
     Json(serde_json::json!({
         "gateway": "online",
         "backend_url": state.target_url,
-        "backend_status": backend_status
+        "backend_status": backend_status,
+        "template": state.template.as_ref().map(|t| serde_json::json!({
+            "type": t.r#type,
+            "think": t.think,
+            "state_tune": t.state_tune,
+            "system_prompt": t.system_prompt,
+            "context_state": t.context_state,
+            "max_tokens": t.max_tokens,
+        }))
     }))
 }
 
@@ -280,6 +291,7 @@ mod tests {
             rate_limit_per_minute: gateway.rate_limit_per_minute,
             req_client: Client::new(),
             rate_limiter: Arc::new(Mutex::new(HashMap::new())),
+            template: RoCoConfig::load().template.into(),
         };
 
         let gw_app = AxumRouter::new()

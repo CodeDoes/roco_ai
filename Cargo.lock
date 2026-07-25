@@ -4478,6 +4478,7 @@ dependencies = [
  "axum",
  "parking_lot",
  "reqwest",
+ "roco-app",
  "roco-engine",
  "roco-session",
  "serde",
@@ -4526,6 +4527,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "roco-app",
  "roco-engine",
  "roco-inference",
  "roco-server",
@@ -4592,6 +4594,7 @@ dependencies = [
  "base64 0.22.1",
  "futures",
  "reqwest",
+ "roco-app",
  "roco-bnf-engine",
  "roco-engine",
  "roco-message",

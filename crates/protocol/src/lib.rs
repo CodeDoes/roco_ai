@@ -252,6 +252,8 @@ pub struct BakeResponse {
 pub struct HealthResponse {
     pub status: String,
     pub backend: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<serde_json::Value>,
 }
 
 /// Detailed status and active job metrics for the inference daemon.
