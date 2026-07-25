@@ -5,10 +5,12 @@
 
 pub mod error;
 pub mod format;
+pub mod format_spec;
 pub mod gbnf;
 pub mod roles;
 
 pub use format::{build_prompt, ChatMessage, PromptStyle};
+pub use format_spec::{format_followed, has_think_contamination, FormatSpec};
 pub use gbnf::{assistant_response_gbnf, message_format_gbnf, MessageFormatOptions};
 pub use roles::*;
 

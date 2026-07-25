@@ -4558,6 +4558,7 @@ name = "roco-message"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "roco-bnf-engine",
  "roco-engine",
  "roco-grammar",
  "schoolmarm",
