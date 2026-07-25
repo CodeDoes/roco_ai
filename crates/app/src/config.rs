@@ -30,6 +30,32 @@ pub struct RoCoConfig {
     pub model: ModelConfig,
     pub server: ServerConfig,
     pub gateway: GatewayConfig,
+    pub template: TemplateConfig,
+}
+
+/// Message-exchange template settings.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct TemplateConfig {
+    pub think: bool,
+    pub r#type: String,
+    pub state_tune: bool,
+    pub system_prompt: bool,
+    pub context_state: bool,
+    pub max_tokens: String,
+}
+
+impl Default for TemplateConfig {
+    fn default() -> Self {
+        Self {
+            think: false,
+            r#type: "prose".into(),
+            state_tune: false,
+            system_prompt: true,
+            context_state: false,
+            max_tokens: "inf".into(),
+        }
+    }
 }
 
 /// Model / inference settings.
@@ -311,6 +337,38 @@ mod tests {
 
         fs::remove_dir_all(&dir).ok();
         std::env::remove_var("ROCO_CONFIG");
+    }
+
+    #[test]
+    fn test_template_config_defaults() {
+        let cfg = RoCoConfig::default();
+        assert!(!cfg.template.think);
+        assert_eq!(cfg.template.r#type, "prose");
+        assert!(!cfg.template.state_tune);
+        assert!(cfg.template.system_prompt);
+        assert!(!cfg.template.context_state);
+        assert_eq!(cfg.template.max_tokens, "inf");
+    }
+
+    #[test]
+    fn test_template_config_from_toml() {
+        let toml_str = r#"
+            [template]
+            think = true
+            type = "xml"
+            state_tune = true
+            system_prompt = false
+            context_state = true
+            max_tokens = "inf"
+        "#;
+
+        let cfg: RoCoConfig = toml::from_str(toml_str).unwrap();
+        assert!(cfg.template.think);
+        assert_eq!(cfg.template.r#type, "xml");
+        assert!(cfg.template.state_tune);
+        assert!(!cfg.template.system_prompt);
+        assert!(cfg.template.context_state);
+        assert_eq!(cfg.template.max_tokens, "inf");
     }
 
     #[test]

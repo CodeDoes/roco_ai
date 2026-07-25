@@ -729,13 +729,14 @@ fn create_story_workspace(prompt: &str) -> Result<Workspace, anyhow::Error> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let name = if prompt.trim().is_empty() {
-        format!("story_ts_{ts}")
+    let slug = if prompt.trim().is_empty() {
+        "story".to_string()
     } else {
         let words: Vec<&str> = prompt.split_whitespace().take(4).collect();
-        format!("story_{}", sanitize_story_dirname(&words.join("_")))
+        sanitize_story_dirname(&words.join("_"))
     };
-    let dir = base.join(format!("{name}_{ts}"));
+    let name = format!("{ts}_{slug}");
+    let dir = base.join(&name);
     std::fs::create_dir_all(&dir)?;
     let ws = Workspace::from_existing(dir, WorkspaceKind::Agent)?;
     Ok(ws.with_name(name))
