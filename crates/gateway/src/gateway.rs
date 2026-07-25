@@ -99,8 +99,11 @@ async fn handle_proxy(State(state): State<GatewayState>, req: Request) -> Respon
     let client_ip = "global".to_string();
     let start = Instant::now();
 
-    // Check rate limit
-    {
+    // Skip rate limiting for health checks and static data endpoints so
+    // monitoring / data fetches do not consume the caller's quota.
+    let is_health = path_and_query == "/health" || path_and_query.starts_with("/health?");
+    let is_vocab = path_and_query == "/vocab" || path_and_query.starts_with("/vocab?");
+    if !is_health && !is_vocab {
         let mut limiter = state.rate_limiter.lock();
         let now = Instant::now();
         let timestamps = limiter.entry(client_ip.clone()).or_insert_with(Vec::new);

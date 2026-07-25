@@ -1,6 +1,6 @@
 //! Unified multi-format eval.
 //!
-//! Compares every [`FormatSpec`] variant on a single chapter-generation task,
+//! Compares [`FormatSpec`] variants on a single chapter-generation task,
 //! measuring: format-followed?, think-contamination?, prose word count,
 //! repetition ratio, latency, and the state-tune delta (baked session vs
 //! fresh session).
@@ -22,6 +22,18 @@
 //! cargo run --release --example format_eval -p roco-cli --features net
 //! # or against a remote server:
 //! cargo run --release --example format_eval -p roco-cli --features net -- http://1.2.3.4:8080
+//! ```
+//!
+//! ## Isolate a single format / variant
+//!
+//! ```bash
+//! # Run only the XML + think + state-tune variant
+//! cargo run --release --example format_eval -p roco-cli --features net \
+//!   -- http://127.0.0.1:8080 --format xml-think
+//!
+//! # Run only XML + direct (no think), skip state tuning
+//! cargo run --release --example format_eval -p roco-cli --features net \
+//!   -- http://127.0.0.1:8080 --format xml-direct --no-bake --trials 4
 //! ```
 //!
 //! Requires `roco-cli`'s `net` feature (for `roco-infer-client::RemoteBackend`).
@@ -69,7 +81,7 @@ fn bake_pair(spec: &FormatSpec) -> (String, String) {
 
     let assistant = match spec {
         FormatSpec::Xml { think: true } => {
-            format!("midBren felt the strange floor vibration.end\n<write>{prose_sample}</write>")
+            format!("mid Bren felt the strange floor vibration.end\n<write>{prose_sample}</write>")
         }
         FormatSpec::Xml { think: false } => {
             format!("<write>{prose_sample}</write>")
@@ -106,7 +118,7 @@ fn bake_pair_2(spec: &FormatSpec) -> (String, String) {
 
     let assistant = match spec {
         FormatSpec::Xml { think: true } => {
-            format!("midVarma notices the telemetry spike.end\n<write>{prose_sample}</write>")
+            format!("mid Varma notices the telemetry spike.end\n<write>{prose_sample}</write>")
         }
         FormatSpec::Xml { think: false } => {
             format!("<write>{prose_sample}</write>")
@@ -354,18 +366,79 @@ async fn run_one(
 
 #[tokio::main]
 async fn main() {
-    let url = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
+    let args: Vec<String> = env::args().collect();
+    let mut url = "http://127.0.0.1:8080".to_string();
+    let mut filter_format: Option<String> = None;
+    let mut trials = 2usize;
+    let mut no_bake = false;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--format" => {
+                i += 1;
+                filter_format = args.get(i).cloned();
+            }
+            "--trials" => {
+                i += 1;
+                if let Some(s) = args.get(i) {
+                    if let Ok(n) = s.parse::<usize>() {
+                        trials = n;
+                    }
+                }
+            }
+            "--no-bake" => {
+                no_bake = true;
+            }
+            _ => {
+                if !args[i].starts_with("--") {
+                    url = args[i].clone();
+                }
+            }
+        }
+        i += 1;
+    }
+
     let backend = RemoteBackend::new(url);
 
     eprintln!("═══ Multi-Format Eval ═══");
-    eprintln!("Backend: {}\n", backend.name());
+    eprintln!("Backend: {}", backend.name());
+    if let Some(ref name) = filter_format {
+        eprintln!("Isolated format: {name}");
+    }
+    if no_bake {
+        eprintln!("State tuning: disabled (--no-bake)");
+    }
+    eprintln!("Trials per mode: {trials}\n");
 
-    let trials = 2usize;
+    let formats: Vec<FormatSpec> = match filter_format {
+        Some(ref name) => {
+            let mut v = Vec::new();
+            for f in FormatSpec::all() {
+                if f.name() == name {
+                    v.push(*f);
+                    break;
+                }
+            }
+            if v.is_empty() {
+                eprintln!(
+                    "Unknown format: {name}\nAvailable: {}",
+                    FormatSpec::all()
+                        .iter()
+                        .map(|f| f.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                std::process::exit(1);
+            }
+            v
+        }
+        None => FormatSpec::all().iter().copied().collect(),
+    };
+
     let mut results: Vec<RunResult> = Vec::new();
 
-    for spec in FormatSpec::all() {
+    for spec in &formats {
         eprintln!("─── {} — {} ───", spec.name(), spec.desc());
 
         // Fresh session: no baking.
@@ -382,27 +455,34 @@ async fn main() {
             results.push(r);
         }
 
-        // Baked session: state-tuned with 2 few-shot pairs in this format.
-        let bake_sid = format!("fmt-{}-baked", spec.name());
-        eprint!("  baking session...");
-        bake_format(&backend, spec, &bake_sid).await;
-        eprintln!(" done");
-        for t in 0..trials {
-            // Re-bake only on the first trial; reuse the baked state after.
-            if t == 0 {
-                let _ = backend.feed_eos(Some(bake_sid.clone())).await;
-                bake_format(&backend, spec, &bake_sid).await;
+        if !no_bake {
+            // Baked session: state-tuned with 2 few-shot pairs in this format.
+            let bake_sid = format!("fmt-{}-baked", spec.name());
+            eprint!("  baking session...");
+            bake_format(&backend, spec, &bake_sid).await;
+            eprintln!(" done");
+            for t in 0..trials {
+                // Re-bake only on the first trial; reuse the baked state after.
+                if t == 0 {
+                    let _ = backend.feed_eos(Some(bake_sid.clone())).await;
+                    bake_format(&backend, spec, &bake_sid).await;
+                }
+                eprint!("  baked  trial {t}...");
+                let mut r = run_one(&backend, spec, &bake_sid, t).await;
+                r.baked = true;
+                eprintln!(
+                    " {}w, {}s, fmt={}, think={}",
+                    r.prose_words, r.sensory, r.format_ok, r.think_contam
+                );
+                results.push(r);
             }
-            eprint!("  baked  trial {t}...");
-            let mut r = run_one(&backend, spec, &bake_sid, t).await;
-            r.baked = true;
-            eprintln!(
-                " {}w, {}s, fmt={}, think={}",
-                r.prose_words, r.sensory, r.format_ok, r.think_contam
-            );
-            results.push(r);
         }
         eprintln!();
+    }
+
+    if results.is_empty() {
+        eprintln!("No results collected.");
+        return;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -428,9 +508,9 @@ async fn main() {
             .push(r);
     }
 
-    // Stable row order: by FormatSpec::all() order, then fresh before baked.
+    // Stable row order: by requested format order, then fresh before baked.
     let mut rows: Vec<(&str, bool, Vec<&RunResult>)> = Vec::new();
-    for spec in FormatSpec::all() {
+    for spec in &formats {
         if let Some(rs) = groups.get(&(spec.name(), false)) {
             rows.push((spec.name(), false, rs.clone()));
         }
@@ -466,7 +546,7 @@ async fn main() {
     // State-tune delta: baked vs fresh per format
     // ═════════════════════════════════════════════════════════════════════════
     eprintln!("\n─── State-tune delta (baked − fresh, avg words) ───\n");
-    for spec in FormatSpec::all() {
+    for spec in &formats {
         let fresh: f64 = groups
             .get(&(spec.name(), false))
             .map(|rs| rs.iter().map(|r| r.prose_words as f64).sum::<f64>() / rs.len() as f64)
@@ -489,7 +569,7 @@ async fn main() {
     // Snippets
     // ═════════════════════════════════════════════════════════════════════════
     eprintln!("\n─── Prose excerpts (first trial, fresh) ───\n");
-    for spec in FormatSpec::all() {
+    for spec in &formats {
         if let Some(r) = results
             .iter()
             .find(|r| r.spec_name == spec.name() && !r.baked && r.trial == 0)
@@ -573,7 +653,7 @@ async fn main() {
     }
     md.push_str("\n---\n\n## State-Tune Few-Shot Examples (Bake Pairs)\n\n");
     md.push_str("These are the exact user prompt and assistant response pairs baked into the model's recurrent state before generating trial outputs:\n\n");
-    for spec in FormatSpec::all() {
+    for spec in &formats {
         let (u1, a1) = bake_pair(spec);
         let (u2, a2) = bake_pair_2(spec);
         md.push_str(&format!("### Format Spec: `{}`\n\n", spec.name()));
