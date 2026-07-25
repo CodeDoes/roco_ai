@@ -837,6 +837,12 @@ pub fn cmd_story(extra: &[&str]) {
                     .get("retry")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let feedback = task
+                    .spec
+                    .get("feedback")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
 
                 let label = if is_retry {
                     format!("{chapter_label} (revision)")
@@ -844,9 +850,24 @@ pub fn cmd_story(extra: &[&str]) {
                     chapter_label.to_string()
                 };
 
+                let temperature = if is_retry { 0.6 } else { 0.8 };
+
                 AgentJournal::phase("story", &format!("Writing {label} (phase 3/6)..."));
 
-                let directive = if chapter_num == 1 {
+                let directive = if is_retry {
+                    format!(
+                        "Revise {chapter_label} to fix the following issues:\n{feedback}\n\n\
+                         Rules:\n\
+                         - Fix the specific issues listed above.\n\
+                         - Keep the original story elements that work.\n\
+                         - Write actual story prose, NOT meta-commentary or planning.\n\
+                         - Start directly with the narrative.\n\
+                         - Use paragraph breaks (double newlines) between scenes.\n\
+                         - Do NOT include thinking, reasoning, or commentary.\n\n\
+                         Outline context:\n{outline}\n\n\
+                         Output JSON with: title (string), content (string, the chapter prose)",
+                    )
+                } else if chapter_num == 1 {
                     format!(
                         "Write {chapter_label}. Introduce the main character and setting. \
                          ~400 words of vivid prose.\n\n\
@@ -880,7 +901,7 @@ pub fn cmd_story(extra: &[&str]) {
                      or meta-commentary in your output. Only the JSON object.",
                     &directive,
                     &chapter_strategy_clone,
-                    0.8,
+                    temperature,
                     max_tokens,
                     Some("story-session"),
                 )
@@ -1212,15 +1233,15 @@ pub fn cmd_story(extra: &[&str]) {
                 .dispatch_single(backend.as_ref(), &val_task, &ws)
                 .expect("validation failed");
 
-            // Self-correction loop
+            // Self-correction loop with validation feedback
             let val_path = ws.root().join("04-VALIDATION.md");
-            if let Some(val_content) = ReadTool
+            let (needs_revision, revision_feedback) = if let Some(val_content) = ReadTool
                 .call(json!({"path": val_path.to_string_lossy()}))
                 .ok()
                 .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
             {
                 let chapter_header = format!("## Chapter {i}");
-                let needs_revision = if let Some(start_idx) =
+                if let Some(start_idx) =
                     val_content.find(&chapter_header)
                 {
                     let segment = &val_content[start_idx..];
@@ -1231,42 +1252,56 @@ pub fn cmd_story(extra: &[&str]) {
                     } else {
                         segment
                     };
-                    segment.contains("Quality: fail")
-                        || segment.contains("Quality: needs-work")
+                    let needs = segment.contains("Quality: fail")
+                        || segment.contains("Quality: needs-work");
+                    // Extract issues and suggestion for retry feedback
+                    let feedback: String = segment
+                        .lines()
+                        .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join("
+");
+                    (needs, feedback)
                 } else {
-                    false
-                };
-
-                if needs_revision {
-                    println!("  ⚠️  {} needs revision — retrying...", &chapter_label);
-                    AgentJournal::warn("story", &format!("{chapter_label} needs revision, retrying..."));
-
-                    let retry_task = Task {
-                        r#type: "write".into(),
-                        domain: "chapter".into(),
-                        spec: serde_json::json!({
-                            "number": i,
-                            "label": chapter_label,
-                            "outline": outline_text,
-                            "previous": previous,
-                            "retry": true,
-                        }),
-                    };
-                    let retry_result = agent
-                        .dispatch_single(backend.as_ref(), &retry_task, &ws)
-                        .unwrap_or(ch_result);
-
-                    let filename = format!("03-CHAPTER_{i}.md");
-                    let path = ws.resolve(&filename).unwrap();
-                    let _ = WriteTool.call(json!({
-                        "path": path.to_string_lossy(),
-                        "content": &retry_result.output,
-                    }));
-                    chapter_texts[i - 1] = retry_result.output;
-                    println!("  ✓ {chapter_label} revised\n");
-                } else {
-                    println!("  ✓ {chapter_label} quality check passed\n");
+                    (false, String::new())
                 }
+            } else {
+                (false, String::new())
+            };
+
+            if needs_revision {
+                println!("  ⚠️  {} needs revision — retrying...", &chapter_label);
+                AgentJournal::warn("story", &format!("{chapter_label} needs revision, retrying..."));
+
+                let retry_task = Task {
+                    r#type: "write".into(),
+                    domain: "chapter".into(),
+                    spec: serde_json::json!({
+                        "number": i,
+                        "label": chapter_label,
+                        "outline": outline_text,
+                        "previous": previous,
+                        "retry": true,
+                        "feedback": revision_feedback,
+                    }),
+                };
+                let retry_result = agent
+                    .dispatch_single(backend.as_ref(), &retry_task, &ws)
+                    .unwrap_or(ch_result);
+
+                let filename = format!("03-CHAPTER_{i}.md");
+                let path = ws.resolve(&filename).unwrap();
+                let _ = WriteTool.call(json!({
+                    "path": path.to_string_lossy(),
+                    "content": &retry_result.output,
+                }));
+                chapter_texts[i - 1] = retry_result.output;
+                println!("  ✓ {chapter_label} revised
+");
+            } else {
+                println!("  ✓ {chapter_label} quality check passed
+");
             }
         }
 
