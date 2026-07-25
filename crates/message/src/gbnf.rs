@@ -92,7 +92,7 @@ pub fn message_format_gbnf(options: &MessageFormatOptions, tool_schemas: &[Value
     );
     g.push_str("hex ::= #'[0-9a-fA-F]';\n");
     g.push_str(
-        "number ::= \"-\"? (\"0\" | #'[1-9]' { #'[0-9]' }) (\".\" { #'[0-9]' })? ([eE] [\"+\" | \"-\"] { #'[0-9]' })?;\n",
+        "number ::= \"-\"? (\"0\" | #'[1-9]' { #'[0-9]' }) (\".\" { #'[0-9]' })? (( \"e\" | \"E\" ) ( \"+\" | \"-\" )? { #'[0-9]' })?;\n",
     );
     g.push_str("object ::= \"{\" ( string \":\" json { \",\" string \":\" json } )? \"}\";\n");
     g.push_str("array ::= \"[\" ( json { \",\" json } )? \"]\";\n\n");
