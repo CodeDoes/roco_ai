@@ -15,7 +15,7 @@ GATEWAY_PIDFILE="/tmp/roco/gateway.pid"
 
 echo -e "${BLUE}ℹ${RESET} Rebuilding binaries (roco-inferd, roco CLI & gateway)..."
 
-if cargo build -p roco-inferd 2>&1 && cargo build -p roco-cli --features desktop,net 2>&1; then
+if cargo build --release -p roco-inferd 2>&1 && cargo build -p roco-cli --features desktop,net 2>&1; then
     echo -e "${GREEN}✓ Build succeeded.${RESET} Restarting daemons..."
 
     # Stop running inferd process
@@ -42,14 +42,15 @@ if cargo build -p roco-inferd 2>&1 && cargo build -p roco-cli --features desktop
 
     # Start roco-inferd
     mkdir -p /tmp/roco
-    ./target/debug/roco-inferd --port 8080 > /tmp/roco/inferd_8080.log 2>&1 &
+    TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+    "${TARGET_DIR}/release/roco-inferd" --port 8080 > /tmp/roco/inferd_8080.log 2>&1 &
     INFERD_PID=$!
     echo "$INFERD_PID" > "$INFERD_PIDFILE"
     echo "$INFERD_PID" > "/tmp/roco/server.pid"
     echo -e "${GREEN}✓ roco-inferd restarted (PID $INFERD_PID)${RESET}"
 
     # Start gateway
-    ./target/debug/roco gateway --detach > /tmp/roco/gateway_8000.log 2>&1 || true
+    "${TARGET_DIR}/debug/roco" gateway --detach > /tmp/roco/gateway_8000.log 2>&1 || true
     echo -e "${GREEN}✓ roco gateway restarted.${RESET}"
 
     # Brief health check

@@ -58,13 +58,14 @@ fi
 
 # ── 1. Ensure inference daemon is built ─────────────────────────────────
 header "Checking build"
-if ! [[ -f "target/debug/roco-inferd" ]]; then
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+if ! [[ -f "${TARGET_DIR}/debug/roco-inferd" ]]; then
     info "Building inference daemon (first build may take a while)..."
     cargo build -p roco-inferd 2>&1 | tail -3
     ok "roco-inferd built."
 fi
 
-if ! [[ -f "target/debug/roco" ]]; then
+if ! [[ -f "${TARGET_DIR}/debug/roco" ]]; then
     info "Building CLI with desktop feature..."
     cargo build --features desktop 2>&1 | tail -3
     ok "roco (desktop) built."
@@ -83,14 +84,14 @@ if [[ -f "$INFERD_PIDFILE" ]]; then
         ok "Inference daemon already running (PID $PID)"
     else
         warn "Stale PID file, starting inference daemon..."
-        ./target/debug/roco server &
+        "${TARGET_DIR}/debug/roco-inferd" --port 8080 &
         INFERD_PID=$!
         echo "$INFERD_PID" > "$INFERD_PIDFILE"
         ok "Inference daemon started (PID $INFERD_PID)"
     fi
 else
     info "Starting inference daemon (roco-inferd)..."
-    ./target/debug/roco-inferd --port 8080 &
+    "${TARGET_DIR}/debug/roco-inferd" --port 8080 &
     INFERD_PID=$!
     echo "$INFERD_PID" > "$INFERD_PIDFILE"
     ok "Inference daemon started (PID $INFERD_PID)"
@@ -103,12 +104,12 @@ if [[ -f "$GATEWAY_PIDFILE" ]]; then
         ok "Gateway already running (PID $PID)"
     else
         warn "Stale PID file, starting gateway..."
-        ./target/debug/roco gateway --detach 2>/dev/null || \
+        "${TARGET_DIR}/debug/roco" gateway --detach 2>/dev/null || \
             warn "Gateway start may have failed (check logs)"
     fi
 else
     info "Starting gateway..."
-    ./target/debug/roco gateway --detach 2>/dev/null || \
+    "${TARGET_DIR}/debug/roco" gateway --detach 2>/dev/null || \
         warn "Gateway start may have failed (check logs)"
 fi
 
