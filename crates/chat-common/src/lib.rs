@@ -6,7 +6,9 @@
 pub mod conversation;
 pub mod display;
 
-pub use conversation::{Conversation, ConversationId, ConversationTurn};
+pub use conversation::{
+    Conversation, ConversationId, ConversationMessage, ConversationState, ConversationTurn,
+};
 pub use display::{DisplaySettings, OutputFormat};
 
 #[cfg(test)]

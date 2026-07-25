@@ -4413,6 +4413,7 @@ dependencies = [
 name = "roco-chat-common"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "roco-engine",
  "roco-message",
  "serde",
@@ -4432,6 +4433,7 @@ dependencies = [
  "roco-agent",
  "roco-app",
  "roco-bnf-engine",
+ "roco-chat-common",
  "roco-engine",
  "roco-gateway",
  "roco-grammar",
@@ -4668,6 +4670,7 @@ dependencies = [
  "reqwest",
  "roco-agent",
  "roco-app",
+ "roco-chat-common",
  "roco-engine",
  "roco-infer-client",
  "serde",

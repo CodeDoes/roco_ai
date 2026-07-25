@@ -33,6 +33,7 @@ use eframe::egui;
 use egui::{CentralPanel, Context, Layout, RichText, SidePanel, TopBottomPanel};
 use roco_agent::interaction::{HumanAction, InteractionMode, InteractionState};
 use roco_app::{AppContext, AppError, AppResult, WorkspaceKind};
+use roco_chat_common::{ConversationMessage, ConversationState};
 use roco_engine::{CompletionRequest, ModelBackend};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -708,36 +709,6 @@ impl RocoDesktopApp {
             }
         }
     }
-}
-
-/// Conversation state for serialization
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct ConversationState {
-    pub id: String,
-    pub messages: Vec<ConversationMessage>,
-    pub pacing: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-impl ConversationState {
-    pub fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(path, &json).map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    pub fn load(path: &std::path::Path) -> Result<Self, String> {
-        let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&json).map_err(|e| e.to_string())
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct ConversationMessage {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
 }
 
 impl eframe::App for RocoDesktopApp {

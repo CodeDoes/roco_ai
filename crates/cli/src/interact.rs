@@ -65,57 +65,10 @@ impl PacingChoice {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Conversation State (mirrors ChatWidgetState for the CLI)
+// Conversation State (uses shared roco_chat_common)
 // ═════════════════════════════════════════════════════════════════════════════
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ConversationMessage {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ConversationState {
-    pub id: String,
-    pub messages: Vec<ConversationMessage>,
-    pub pacing: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-impl ConversationState {
-    pub fn new(id: String, pacing: &str) -> Self {
-        let now = chrono::Utc::now().to_rfc3339();
-        Self {
-            id,
-            messages: Vec::new(),
-            pacing: pacing.to_string(),
-            created_at: now.clone(),
-            updated_at: now,
-        }
-    }
-
-    pub fn add_message(&mut self, role: &str, content: &str) {
-        self.messages.push(ConversationMessage {
-            role: role.to_string(),
-            content: content.to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        });
-        self.updated_at = chrono::Utc::now().to_rfc3339();
-    }
-
-    pub fn save(&self, path: &PathBuf) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(path, &json).map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    pub fn load(path: &PathBuf) -> Result<Self, String> {
-        let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&json).map_err(|e| e.to_string())
-    }
-}
+use roco_chat_common::ConversationState;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Running the interactive CLI
