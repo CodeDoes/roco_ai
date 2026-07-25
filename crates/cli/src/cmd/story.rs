@@ -813,7 +813,7 @@ pub fn cmd_story(extra: &[&str]) {
         "Write a short story about a lighthouse keeper who discovers a message in a bottle.",
     );
 
-    let strategy_str = parse_opt("--strategy", extra).unwrap_or("loose");
+    let strategy_str = parse_opt("--strategy", extra).unwrap_or("state-tuned");
     let strategy_kind = StrategyKind::parse(strategy_str).unwrap_or(StrategyKind::StateTuned);
 
     let max_tok_str = parse_opt("--max-tokens", extra).unwrap_or("800");
