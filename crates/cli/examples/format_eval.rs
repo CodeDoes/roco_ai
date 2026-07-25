@@ -388,14 +388,13 @@ async fn main() {
         bake_format(&backend, spec, &bake_sid).await;
         eprintln!(" done");
         for t in 0..trials {
-            let sid = format!("fmt-{}-baked-t{t}", spec.name());
             // Re-bake only on the first trial; reuse the baked state after.
             if t == 0 {
                 let _ = backend.feed_eos(Some(bake_sid.clone())).await;
                 bake_format(&backend, spec, &bake_sid).await;
             }
             eprint!("  baked  trial {t}...");
-            let mut r = run_one(&backend, spec, &sid, t).await;
+            let mut r = run_one(&backend, spec, &bake_sid, t).await;
             r.baked = true;
             eprintln!(
                 " {}w, {}s, fmt={}, think={}",
