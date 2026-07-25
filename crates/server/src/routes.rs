@@ -11,10 +11,11 @@ use axum::{
 use base64::Engine;
 use roco_engine::{CompletionRequest, CompletionResponse, ModelBackend};
 use roco_protocol::{
-    HealthResponse, OpenAiCompletionRequest, OpenAiCompletionResponse, OpenAiErrorBody,
-    OpenAiStreamChunk,
+    HealthResponse, InferJobsResponse, OpenAiCompletionRequest, OpenAiCompletionResponse,
+    OpenAiErrorBody, OpenAiStreamChunk,
 };
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -24,6 +25,23 @@ use tracing::info;
 #[derive(Clone)]
 pub struct AppState {
     pub backend: Arc<dyn ModelBackend>,
+    pub active_jobs: Arc<AtomicUsize>,
+    pub start_time: std::time::Instant,
+}
+
+struct JobGuard(Arc<AtomicUsize>);
+
+impl JobGuard {
+    fn new(counter: Arc<AtomicUsize>) -> Self {
+        counter.fetch_add(1, Ordering::SeqCst);
+        JobGuard(counter)
+    }
+}
+
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// Build a `BnfMask` from a grammar string + the backend's vocabulary.
@@ -60,9 +78,14 @@ fn build_mask_or_error(
 }
 
 pub fn create_router(backend: Arc<dyn ModelBackend>) -> Router {
-    let state = AppState { backend };
+    let state = AppState {
+        backend,
+        active_jobs: Arc::new(AtomicUsize::new(0)),
+        start_time: std::time::Instant::now(),
+    };
     Router::new()
         .route("/health", get(handle_health))
+        .route("/jobs", get(handle_jobs))
         .route("/vocab", get(handle_vocab))
         .route("/complete", post(handle_complete))
         .route("/v1/completions", post(handle_openai_completion))
@@ -73,6 +96,22 @@ async fn handle_health(State(state): State<AppState>) -> impl IntoResponse {
     let resp = HealthResponse {
         status: "ok".into(),
         backend: state.backend.name().to_string(),
+    };
+    Json(resp)
+}
+
+async fn handle_jobs(State(state): State<AppState>) -> impl IntoResponse {
+    let resp = InferJobsResponse {
+        status: "online".into(),
+        backend: state.backend.name().to_string(),
+        active_jobs: state.active_jobs.load(Ordering::SeqCst),
+        uptime_secs: state.start_time.elapsed().as_secs(),
+        features: vec![
+            "bnf_grammar".into(),
+            "session_baking".into(),
+            "think_extraction".into(),
+            "openai_compat".into(),
+        ],
     };
     Json(resp)
 }
@@ -97,6 +136,7 @@ async fn handle_complete(
     State(state): State<AppState>,
     Json(mut req): Json<CompletionRequest>,
 ) -> Result<Json<CompletionResponse>, String> {
+    let _guard = JobGuard::new(state.active_jobs.clone());
     info!("Handling direct complete request");
 
     if req.bnf_mask.is_none() {
@@ -121,6 +161,7 @@ async fn handle_openai_completion(
     State(state): State<AppState>,
     Json(req): Json<OpenAiCompletionRequest>,
 ) -> impl IntoResponse {
+    let _guard = JobGuard::new(state.active_jobs.clone());
     info!(
         "Handling OpenAI completion request for prompt (len={})",
         req.prompt.len()

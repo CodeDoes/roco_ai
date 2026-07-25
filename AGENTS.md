@@ -86,9 +86,11 @@ Workspace (crates/workspace/) — saves chapters, outlines, wikis to .roco/works
 | `./scout.sh files [N]` | List files exceeding N lines (default 150) |
 | `./scout.sh dep-health` | Dependency tree health & duplicate dependency check |
 | `./scout.sh dupes` | Find duplicate files, type definitions, and Cargo deps |
+| `./scout.sh jobs` | Check active inferd daemon jobs & status |
 | `cargo test --workspace --no-run` | Compile all tests |
 | `roco eval` | Run eval + snapshot |
 | `roco bless` | Update oracle snapshots |
 | `roco server` | Start HTTP server for editor plugins |
+| `roco jobs` | Inspect active inference jobs and daemon status |
 | `roco gui` | Desktop GUI (same as `run_desktop.sh`) |
 | `roco interact` | Interactive chat session |

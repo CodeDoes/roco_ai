@@ -237,6 +237,10 @@ case "$MODE" in
     header "Duplicate Detection (Files, Types, Dependencies)"
     find_duplicates
     ;;
+  jobs|inferd)
+    header "Inference Daemon (inferd) Jobs & Status"
+    curl -s http://localhost:8080/jobs 2>/dev/null | python3 -m json.tool 2>/dev/null || curl -s http://localhost:8080/health 2>/dev/null || echo "  ⚠ inferd is not reachable on http://localhost:8080"
+    ;;
   summary|brief)
     summary
     ;;
@@ -274,6 +278,7 @@ case "$MODE" in
     echo "  ./scout.sh files [N]    — list files exceeding N lines (default 150)"
     echo "  ./scout.sh dep-health   — dependency tree health & duplicate Cargo entries"
     echo "  ./scout.sh dupes        — find duplicate files, types & dependencies"
+    echo "  ./scout.sh jobs         — check inferd daemon jobs & status"
     echo "  ./scout.sh deps <name>  — dep graph for one crate"
     echo "  ./scout.sh api          — public API per crate"
     echo "  ./scout.sh types <pat>  — grep types/structs/traits"

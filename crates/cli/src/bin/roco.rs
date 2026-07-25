@@ -41,6 +41,7 @@ fn main() {
             &extra,
         ),
         "gpu-check" => cmd::gpu::cmd_gpu_check(&extra),
+        "jobs" | "inferd-jobs" | "inferd-status" => cmd::jobs::cmd_jobs(&extra),
         "server" => {
             #[cfg(feature = "net")]
             cmd::server::cmd_server(&extra);

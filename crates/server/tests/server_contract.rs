@@ -318,6 +318,23 @@ async fn health_route_returns_200() {
 }
 
 #[tokio::test]
+async fn jobs_route_returns_200_and_metrics() {
+    let app = test_app(0);
+    let response = app
+        .oneshot(Request::get("/jobs").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let jobs: roco_protocol::InferJobsResponse = serde_json::from_slice(&body).unwrap();
+    assert_eq!(jobs.status, "online");
+    assert_eq!(jobs.active_jobs, 0);
+    assert!(!jobs.features.is_empty());
+}
+
+#[tokio::test]
 async fn vocab_route_returns_not_implemented_for_mock() {
     let app = test_app(0);
     let response = app

@@ -236,6 +236,16 @@ pub struct HealthResponse {
     pub backend: String,
 }
 
+/// Detailed status and active job metrics for the inference daemon.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferJobsResponse {
+    pub status: String,
+    pub backend: String,
+    pub active_jobs: usize,
+    pub uptime_secs: u64,
+    pub features: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
