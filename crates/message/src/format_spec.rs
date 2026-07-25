@@ -163,7 +163,9 @@ impl FormatSpec {
     pub fn build_prompt(&self, outline: &str, wiki: &str, task: &str) -> String {
         match self {
             FormatSpec::Xml { think: true } => {
-                format!("<task>{task}</task>\n<context>{outline}</context>\n<data>{wiki}</data>\nmid")
+                format!(
+                    "<task>{task}</task>\n<context>{outline}</context>\n<data>{wiki}</data>\nmid"
+                )
             }
             FormatSpec::Xml { think: false } => {
                 format!("<task>{task}</task>\n<context>{outline}</context>\n<data>{wiki}</data>\n<write>")
@@ -198,13 +200,19 @@ impl FormatSpec {
             FormatSpec::Xml { .. } => extract_between(raw, "<write>", "</write>")
                 .or_else(|| after_last(raw, "end"))
                 .unwrap_or_else(|| raw.trim().to_string()),
-            FormatSpec::Marker { think: true } => after_last(raw, "WRITE:").unwrap_or_else(|| raw.trim().to_string()),
-            FormatSpec::Marker { think: false } => after_first(raw, "WRITE:").unwrap_or_else(|| raw.trim().to_string()),
+            FormatSpec::Marker { think: true } => {
+                after_last(raw, "WRITE:").unwrap_or_else(|| raw.trim().to_string())
+            }
+            FormatSpec::Marker { think: false } => {
+                after_first(raw, "WRITE:").unwrap_or_else(|| raw.trim().to_string())
+            }
             FormatSpec::Separator { think: true } => {
-                extract_between(raw, "---WRITE---", "---END---").unwrap_or_else(|| raw.trim().to_string())
+                extract_between(raw, "---WRITE---", "---END---")
+                    .unwrap_or_else(|| raw.trim().to_string())
             }
             FormatSpec::Separator { think: false } => {
-                extract_between(raw, "---CHAPTER---", "---END---").unwrap_or_else(|| raw.trim().to_string())
+                extract_between(raw, "---CHAPTER---", "---END---")
+                    .unwrap_or_else(|| raw.trim().to_string())
             }
             FormatSpec::Bracket => {
                 extract_between(raw, "[WRITE:", "]").unwrap_or_else(|| raw.trim().to_string())
@@ -259,7 +267,9 @@ pub fn format_followed(raw: &str, spec: &FormatSpec) -> bool {
         FormatSpec::Xml { think: false } => raw.contains("</write>"),
         FormatSpec::Marker { think: true } => raw.contains("THINK:") && raw.contains("WRITE:"),
         FormatSpec::Marker { think: false } => raw.contains("WRITE:"),
-        FormatSpec::Separator { think: true } => raw.contains("---WRITE---") && raw.contains("---END---"),
+        FormatSpec::Separator { think: true } => {
+            raw.contains("---WRITE---") && raw.contains("---END---")
+        }
         FormatSpec::Separator { think: false } => raw.contains("---END---"),
         FormatSpec::Bracket => raw.contains("[WRITE:"),
         FormatSpec::Prose => true,
@@ -326,7 +336,9 @@ mod tests {
                 "midFocus on atmosphere.end\n<write>Kael's fingers hovered.</write>"
             }
             FormatSpec::Xml { think: false } => "<write>Kael sat alone in the blue glow.</write>",
-            FormatSpec::Marker { think: true } => "THINK:Focus on discovery.\nWRITE:Kael stared at the screen.",
+            FormatSpec::Marker { think: true } => {
+                "THINK:Focus on discovery.\nWRITE:Kael stared at the screen."
+            }
             FormatSpec::Marker { think: false } => "WRITE:A neon sign flickered outside.",
             FormatSpec::Separator { think: true } => {
                 "---THINK---\nSet the mood.\n---WRITE---\nThe apartment was dark.\n---END---"
@@ -347,10 +359,13 @@ mod tests {
             if grammar.is_empty() {
                 continue;
             }
-            let engine = roco_bnf_engine::BnfEngine::new(grammar, &vocab).unwrap_or_else(|e| {
-                panic!("{} failed: {e:?}\ngrammar: {grammar}", spec.name())
-            });
-            assert!(engine.allowed_count() > 0, "{} allows 0 tokens", spec.name());
+            let engine = roco_bnf_engine::BnfEngine::new(grammar, &vocab)
+                .unwrap_or_else(|e| panic!("{} failed: {e:?}\ngrammar: {grammar}", spec.name()));
+            assert!(
+                engine.allowed_count() > 0,
+                "{} allows 0 tokens",
+                spec.name()
+            );
         }
     }
 
@@ -362,76 +377,134 @@ mod tests {
             if grammar.is_empty() {
                 continue;
             }
-            let mut engine = roco_bnf_engine::BnfEngine::new(grammar, &vocab).unwrap_or_else(|e| {
-                panic!("{} failed: {e:?}\ngrammar: {grammar}", spec.name())
-            });
+            let mut engine = roco_bnf_engine::BnfEngine::new(grammar, &vocab)
+                .unwrap_or_else(|e| panic!("{} failed: {e:?}\ngrammar: {grammar}", spec.name()));
             let tokens = tokenize(&vocab, sample(spec));
-            assert!(!tokens.is_empty(), "{}: sample tokenized to nothing", spec.name());
+            assert!(
+                !tokens.is_empty(),
+                "{}: sample tokenized to nothing",
+                spec.name()
+            );
             for (i, tok) in tokens.iter().enumerate() {
                 engine.accept_token(*tok).unwrap_or_else(|e| {
                     panic!("{}: rejected token {tok} at {i}: {e:?}", spec.name())
                 });
             }
-            assert!(engine.is_finished(), "{}: not finished on sample", spec.name());
+            assert!(
+                engine.is_finished(),
+                "{}: not finished on sample",
+                spec.name()
+            );
         }
     }
 
     #[test]
     fn extractors_pull_prose() {
         let cases: &[(&FormatSpec, &str, &str)] = &[
-            (&FormatSpec::Xml { think: true },
-             "midNote.end\n<write>Prose here.</write>",
-             "Prose here."),
-            (&FormatSpec::Xml { think: false },
-             "<write>Direct prose.</write>",
-             "Direct prose."),
-            (&FormatSpec::Marker { think: true },
-             "THINK:reasoning\nWRITE:visible prose",
-             "visible prose"),
-            (&FormatSpec::Marker { think: false },
-             "WRITE:just prose",
-             "just prose"),
-            (&FormatSpec::Separator { think: true },
-             "---THINK---\nx\n---WRITE---\nprose\n---END---",
-             "prose"),
-            (&FormatSpec::Separator { think: false },
-             "---CHAPTER---\nprose\n---END---",
-             "prose"),
-            (&FormatSpec::Bracket,
-             "[THINK:x]\n[WRITE:bracketed prose]",
-             "bracketed prose"),
+            (
+                &FormatSpec::Xml { think: true },
+                "midNote.end\n<write>Prose here.</write>",
+                "Prose here.",
+            ),
+            (
+                &FormatSpec::Xml { think: false },
+                "<write>Direct prose.</write>",
+                "Direct prose.",
+            ),
+            (
+                &FormatSpec::Marker { think: true },
+                "THINK:reasoning\nWRITE:visible prose",
+                "visible prose",
+            ),
+            (
+                &FormatSpec::Marker { think: false },
+                "WRITE:just prose",
+                "just prose",
+            ),
+            (
+                &FormatSpec::Separator { think: true },
+                "---THINK---\nx\n---WRITE---\nprose\n---END---",
+                "prose",
+            ),
+            (
+                &FormatSpec::Separator { think: false },
+                "---CHAPTER---\nprose\n---END---",
+                "prose",
+            ),
+            (
+                &FormatSpec::Bracket,
+                "[THINK:x]\n[WRITE:bracketed prose]",
+                "bracketed prose",
+            ),
             (&FormatSpec::Prose, "plain prose", "plain prose"),
         ];
         for (spec, raw, expected) in cases {
             let got = spec.extract(raw);
-            assert_eq!(&got, expected, "{}: extract({raw:?}) = {got:?}", spec.name());
+            assert_eq!(
+                &got,
+                expected,
+                "{}: extract({raw:?}) = {got:?}",
+                spec.name()
+            );
         }
     }
 
     #[test]
     fn format_followed_detects_missing_markers() {
-        assert!(format_followed("<write>x</write>", &FormatSpec::Xml { think: false }));
-        assert!(!format_followed("<write>x", &FormatSpec::Xml { think: false }));
-        assert!(format_followed("WRITE:x", &FormatSpec::Marker { think: false }));
-        assert!(!format_followed("no marker", &FormatSpec::Marker { think: false }));
-        assert!(format_followed("---CHAPTER---\nx\n---END---", &FormatSpec::Separator { think: false }));
+        assert!(format_followed(
+            "<write>x</write>",
+            &FormatSpec::Xml { think: false }
+        ));
+        assert!(!format_followed(
+            "<write>x",
+            &FormatSpec::Xml { think: false }
+        ));
+        assert!(format_followed(
+            "WRITE:x",
+            &FormatSpec::Marker { think: false }
+        ));
+        assert!(!format_followed(
+            "no marker",
+            &FormatSpec::Marker { think: false }
+        ));
+        assert!(format_followed(
+            "---CHAPTER---\nx\n---END---",
+            &FormatSpec::Separator { think: false }
+        ));
         assert!(format_followed("anything", &FormatSpec::Prose));
     }
 
     #[test]
     fn has_think_contamination_flags_unexpected_think() {
         // Prose format shouldn't emit mid/THINK: markers.
-        assert!(has_think_contamination("midI should think.end\nprose", &FormatSpec::Prose));
-        assert!(has_think_contamination("THINK:reasoning\nprose", &FormatSpec::Prose));
-        assert!(!has_think_contamination("clean prose only", &FormatSpec::Prose));
+        assert!(has_think_contamination(
+            "midI should think.end\nprose",
+            &FormatSpec::Prose
+        ));
+        assert!(has_think_contamination(
+            "THINK:reasoning\nprose",
+            &FormatSpec::Prose
+        ));
+        assert!(!has_think_contamination(
+            "clean prose only",
+            &FormatSpec::Prose
+        ));
         // Think formats never flag.
-        assert!(!has_think_contamination("midx.end\n<write>y</write>", &FormatSpec::Xml { think: true }));
+        assert!(!has_think_contamination(
+            "midx.end\n<write>y</write>",
+            &FormatSpec::Xml { think: true }
+        ));
     }
 
     #[test]
     fn lookup_round_trips_by_name() {
         for spec in FormatSpec::all() {
-            assert_eq!(FormatSpec::from_name(spec.name()), Some(*spec), "{}", spec.name());
+            assert_eq!(
+                FormatSpec::from_name(spec.name()),
+                Some(*spec),
+                "{}",
+                spec.name()
+            );
         }
         assert_eq!(FormatSpec::from_name("nonexistent"), None);
     }
@@ -442,13 +515,27 @@ mod tests {
         let outline = "Ch1: x";
         let wiki = "World: y";
         let task = "Write Ch1";
-        assert!(FormatSpec::Xml { think: true }.build_prompt(outline, wiki, task).ends_with("mid"));
-        assert!(FormatSpec::Xml { think: false }.build_prompt(outline, wiki, task).ends_with("<write>"));
-        assert!(FormatSpec::Marker { think: true }.build_prompt(outline, wiki, task).ends_with("THINK:"));
-        assert!(FormatSpec::Marker { think: false }.build_prompt(outline, wiki, task).ends_with("WRITE:"));
-        assert!(FormatSpec::Separator { think: true }.build_prompt(outline, wiki, task).ends_with("---THINK---"));
-        assert!(FormatSpec::Separator { think: false }.build_prompt(outline, wiki, task).ends_with("---CHAPTER---"));
-        assert!(FormatSpec::Bracket.build_prompt(outline, wiki, task).ends_with("[THINK:"));
+        assert!(FormatSpec::Xml { think: true }
+            .build_prompt(outline, wiki, task)
+            .ends_with("mid"));
+        assert!(FormatSpec::Xml { think: false }
+            .build_prompt(outline, wiki, task)
+            .ends_with("<write>"));
+        assert!(FormatSpec::Marker { think: true }
+            .build_prompt(outline, wiki, task)
+            .ends_with("THINK:"));
+        assert!(FormatSpec::Marker { think: false }
+            .build_prompt(outline, wiki, task)
+            .ends_with("WRITE:"));
+        assert!(FormatSpec::Separator { think: true }
+            .build_prompt(outline, wiki, task)
+            .ends_with("---THINK---"));
+        assert!(FormatSpec::Separator { think: false }
+            .build_prompt(outline, wiki, task)
+            .ends_with("---CHAPTER---"));
+        assert!(FormatSpec::Bracket
+            .build_prompt(outline, wiki, task)
+            .ends_with("[THINK:"));
     }
 
     /// The unused rule constants would otherwise warn; reference them so

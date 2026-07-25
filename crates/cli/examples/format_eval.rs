@@ -153,10 +153,10 @@ fn repetition_ratio(s: &str) -> f64 {
 
 fn sensory_count(s: &str) -> usize {
     const SENSORS: &[&str] = &[
-        "light", "dark", "sound", "smell", "cold", "warm", "glow", "hum", "silent",
-        "flicker", "shadow", "bright", "soft", "hard", "taste", "touch", "feel",
-        "see", "hear", "watch", "listen", "hot", "chill", "warmth", "echo",
-        "glimmer", "whisper", "dim", "faint", "pulse", "beat", "rhythm",
+        "light", "dark", "sound", "smell", "cold", "warm", "glow", "hum", "silent", "flicker",
+        "shadow", "bright", "soft", "hard", "taste", "touch", "feel", "see", "hear", "watch",
+        "listen", "hot", "chill", "warmth", "echo", "glimmer", "whisper", "dim", "faint", "pulse",
+        "beat", "rhythm",
     ];
     let lower = s.to_lowercase();
     SENSORS.iter().filter(|w| lower.contains(*w)).count()

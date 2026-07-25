@@ -34,7 +34,6 @@ name = "pet_demo"
 
 [dev-dependencies]
 roco-infer-client = { path = "../infer-client" }
-roco-engine = { path = "../engine" }
 reqwest = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

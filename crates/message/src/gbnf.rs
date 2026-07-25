@@ -1,44 +1,39 @@
-//! GBNF grammars for the structured chat message format.
+//! kbnf-native grammars for the structured chat message format.
 //!
-//! Generates GBNF strings that constrain model output to structured chat
-//! messages with role prefixes, optional `<think>` reasoning blocks, optional
-//! `<tools>` declarations, and optional `<tool_call>` / `<tool_result>` blocks.
+//! Generates kbnf-native grammar strings that constrain model output to
+//! structured chat messages with role prefixes, optional `mid` reasoning
+//! blocks, optional `<tools>` declarations, and optional tool_call /
+//! tool_result blocks.
 //!
-//! Compatible with both `schoolmarm` (fallback) and `bnf_sampler` (primary).
+//! # Dialect
 //!
-//! # Grammar variants
-//!
-//! - **Simple** (`think=false, tools=false`):  
-//!   `System: ... \n\n User: ... \n\n Assistant: ...`
-//!
-//! - **With think** (`think=true, tools=false`):  
-//!   `System: ... \n\n User: ... \n\n Assistant: <think>...</think>...`
-//!
-//! - **With tools** (`think=false, tools=true`):  
-//!   `System: ... <tools>{...} \n\n User: ... \n\n Assistant: <tool_call>{...}<tool_result>{...}...`
-//!
-//! - **Full** (`think=true, tools=true`):  
-//!   All features combined.
-//!
-//! # Why this approach works
-//!
-//! `bnf_sampler` constrains tokens via a vocabulary trie (`qp-trie`). We don't
-//! need explicit UTF-8 character rules — the tokenizer's vocabulary already
-//! maps byte sequences → valid token IDs. The GBNF here only needs to define
-//! the structural envelope (prefixes, delimiters, tag boundaries).
+//! All output is **kbnf-native**: `#'...'` regex char classes, `{...}`
+//! repetition (0+), `[...]` optional, `;` terminators on every rule.
+//! No llama.cpp GBNF `[abc]` character classes (kbnf parses those as
+//! optionals), no `*`/`+` postfix on groups. This is the only dialect the
+//! runtime grammar engine (`roco-bnf-engine` -> kbnf) accepts, so the
+//! grammar is fed straight to it with no conversion step.
 
 use serde_json::Value;
 
-/// Which structural features to enable in the message GBNF.
+/// Which structural features to enable in the message grammar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MessageFormatOptions {
-    /// Whether the model may emit `<think>...</think>` reasoning blocks.
+    /// Whether the model may emit `mid...end` reasoning blocks.
     pub think: bool,
-    /// Whether the model may emit `<tool_call>` / `<tool_result>` blocks.
+    /// Whether the model may emit tool_call / tool_result blocks.
     pub tools: bool,
 }
 
-/// Generate a GBNF grammar for the structured chat message format.
+/// Printable ASCII char (0x20-0x7E) -- the body of every text block.
+const CHAR_RULE: &str = "char ::= #'[ -~]';\n";
+
+/// JSON string char: printable ASCII except `"` (0x22) and `\` (0x5C),
+/// expressed as a positive class (kbnf's regex parser rejects literal
+/// `"` and `\\` inside a negated class).
+const JSON_STRING_CHAR_RULE: &str = "string_char ::= #'[\\x20-\\x21\\x23-\\x5B\\x5D-\\x7E]';\n";
+
+/// Generate a kbnf-native grammar for the structured chat message format.
 ///
 /// The grammar constrains output to:
 ///
@@ -52,79 +47,68 @@ pub struct MessageFormatOptions {
 pub fn message_format_gbnf(options: &MessageFormatOptions, tool_schemas: &[Value]) -> String {
     let mut g = String::new();
 
-    // --- Character matching: printable ASCII + high bytes ---
-    // schoolmarm-compatible: uses \xNN hex escapes, no char class subtraction,
-    // no null bytes in ranges. Text blocks are matched as sequences of
-    // arbitrary characters — the vocabulary trie handles token-level validity.
-    g.push_str("char ::= [ -~] | [\\x80-\\xFF]\n");
-    g.push_str("text ::= char*\n\n");
+    // --- Character + text rules (shared) ---
+    g.push_str(CHAR_RULE);
+    g.push_str("text ::= char { char };\n\n");
 
     // --- System content ---
     if options.tools && !tool_schemas.is_empty() {
         let tools_body = generate_tools_body(tool_schemas);
         g.push_str(&format!(
-            "sys ::= text \"<tools>\" {} \"</tools>\"\n",
-            tools_body
+            "sys ::= text \"<tools>\" {tools_body} \"</tools>\";\n"
         ));
     } else {
-        g.push_str("sys ::= text\n");
+        g.push_str("sys ::= text;\n");
     }
-    g.push_str("user ::= text\n\n");
+    g.push_str("user ::= text;\n\n");
 
     // --- Assistant content ---
     if options.think {
-        g.push_str("think ::= \"<think>\" text \"</think>\"\n");
+        g.push_str("think ::= \"mid\" text \"end\";\n");
         if options.tools {
-            g.push_str("asm ::= think | text | tool-call | tool-result\n");
+            g.push_str("asm ::= think | text | tool_call | tool_result;\n");
         } else {
-            g.push_str("asm ::= think | text\n");
+            g.push_str("asm ::= think | text;\n");
         }
+    } else if options.tools {
+        g.push_str("asm ::= text | tool_call | tool_result;\n");
     } else {
-        if options.tools {
-            g.push_str("asm ::= text | tool-call | tool-result\n");
-        } else {
-            g.push_str("asm ::= text\n");
-        }
+        g.push_str("asm ::= text;\n");
     }
-
     g.push('\n');
 
     if options.tools {
-        g.push_str("tool-call ::= \"<tool_call>\" json \"</tool_call>\"\n");
-        g.push_str("tool-result ::= \"<tool_result>\" text \"</tool_result>\"\n");
+        g.push_str("tool_call ::= \"<tool_call>\" json \"</tool_call>\";\n");
+        g.push_str("tool_result ::= \"<tool_result>\" text \"</tool_result>\";\n");
     }
     g.push('\n');
 
-    // --- JSON (compact library for tool_call arguments) ---
-    g.push_str("json ::= string | number | object | array | \"true\" | \"false\" | \"null\"\n");
-    g.push_str("string ::= \"\\\"\" ( [\\x20-\\x21\\x23-\\x5B\\x5D-\\x7E\\x80-\\xFF] | \"\\\\\" [\"/bfnrt] | \"\\\\u\" hex hex hex hex )* \"\\\"\"\n");
-    g.push_str("hex ::= [0-9a-fA-F]\n");
-    g.push_str("number ::= \"-\"? (\"0\" | [1-9] [0-9]*) (\".\" [0-9]+)? ([eE] [+-]? [0-9]+)?\n");
-    g.push_str("object ::= \"{\" ( string \":\" json ( \",\" string \":\" json )* )? \"}\"\n");
-    g.push_str("array ::= \"[\" ( json ( \",\" json )* )? \"]\"\n\n");
+    // --- JSON sub-grammar (for tool_call arguments) ---
+    g.push_str(JSON_STRING_CHAR_RULE);
+    g.push_str("json ::= string | number | object | array | \"true\" | \"false\" | \"null\";\n");
+    g.push_str("string ::= \"\\\"\" { string_char | escape } \"\\\"\";\n");
+    g.push_str(
+        "escape ::= \"\\\\\" (\"\\\"\" | \"\\\\\" | \"/\" | \"b\" | \"f\" | \"n\" | \"r\" | \"t\" | \"u\" hex hex hex hex);\n",
+    );
+    g.push_str("hex ::= #'[0-9a-fA-F]';\n");
+    g.push_str(
+        "number ::= \"-\"? (\"0\" | #'[1-9]' { #'[0-9]' }) (\".\" { #'[0-9]' })? ([eE] [\"+\" | \"-\"] { #'[0-9]' })?;\n",
+    );
+    g.push_str("object ::= \"{\" ( string \":\" json { \",\" string \":\" json } )? \"}\";\n");
+    g.push_str("array ::= \"[\" ( json { \",\" json } )? \"]\";\n\n");
 
     // --- Root: the message envelope ---
-    g.push_str("root ::= \"System: \" sys \"\\n\\nUser: \" user \"\\n\\nAssistant: \" asm\n");
+    g.push_str("root ::= \"System: \" sys \"\\n\\nUser: \" user \"\\n\\nAssistant: \" asm;\n");
 
     g
 }
 
-/// Build the GBNF for a `<tools>` block containing an array of tool schemas.
+/// Build the grammar for a `<tools>` block containing an array of tool schemas.
 fn generate_tools_body(schemas: &[Value]) -> String {
     if schemas.is_empty() {
         return String::new();
     }
-    // Produce a GBNF rule for a JSON array of tool descriptor objects.
-    // Items are separated by quoted commas for schoolmarm-compatible GBNF.
-    // Format: "[" first ( "," second ) ( "," third ) ... "]"
     let items: Vec<String> = schemas.iter().map(tool_schema_to_gbnf).collect();
-    let _body = items.join(" \",\" ");
-    // If multiple items, join with comma+space separators. Each comma is a literal "," string.
-    // But for GBNF we don't need comma separators between alternates — bare whitespace works.
-    // Actually, for a JSON array, items must be comma-separated. But in GBNF, bare commas
-    // are not valid. We use quoted commas: ","
-    // For 0 items: empty array
-    // For 1+ items: first ( "," item )*
     if items.len() == 1 {
         format!("\"[\" {} \"]\"", items[0])
     } else {
@@ -137,14 +121,12 @@ fn generate_tools_body(schemas: &[Value]) -> String {
     }
 }
 
-/// Convert a single tool schema Value into a GBNF object production.
+/// Convert a single tool schema Value into a grammar object production.
 fn tool_schema_to_gbnf(schema: &Value) -> String {
     let _name = schema
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("tool");
-    // Produce a simple JSON object with name, description, parameters keys.
-    // Each value is a JSON string or object, referencing the JSON library rules.
     "\"{\" string \":\" string \",\" string \":\" string \",\" string \":\" object \"}\""
         .to_string()
 }
@@ -154,13 +136,14 @@ pub fn options(think: bool, tools: bool) -> MessageFormatOptions {
     MessageFormatOptions { think, tools }
 }
 
-/// Full pipeline: message format GBNF with tool schemas embedded.
+/// Full pipeline: message format grammar with tool schemas embedded.
 pub fn pipeline_gbnf(options: &MessageFormatOptions, tool_schemas: &[Value]) -> String {
     message_format_gbnf(options, tool_schemas)
 }
 
-/// Generate a GBNF grammar that constrains **only the assistant's response**,
-/// stripping the `System:` / `User:` envelope from the `root` rule.
+/// Generate a kbnf-native grammar that constrains **only the assistant's
+/// response**, stripping the `System:` / `User:` envelope from the `root`
+/// rule.
 ///
 /// Use this when generating assistant output after the prompt already
 /// includes the System/User context (i.e. the model should only emit the
@@ -171,8 +154,7 @@ pub fn assistant_response_gbnf(options: &MessageFormatOptions, tool_schemas: &[V
         .map(|line| {
             let trimmed = line.trim_start();
             if trimmed.starts_with("root ::= \"System: ") {
-                // Replace the full-envelope root with an assistant-only root.
-                "root ::= asm".to_string()
+                "root ::= asm;".to_string()
             } else {
                 line.to_string()
             }
@@ -185,19 +167,30 @@ pub fn assistant_response_gbnf(options: &MessageFormatOptions, tool_schemas: &[V
 mod tests {
     use super::*;
 
-    /// Check that a GBNF string is parseable by schoolmarm.
-    fn check_schoolmarm(gbnf: &str, label: &str) {
-        assert!(gbnf.contains("root ::="), "{label}: must have root rule");
-        match schoolmarm::Grammar::new(gbnf) {
-            Ok(_) => {}
-            Err(e) => panic!("{label}: schoolmarm failed: {e:?}\n=== GBNF ===\n{gbnf}\n==="),
+    /// Build the grammar and assert it compiles in kbnf with a non-empty
+    /// allowed-token set. This is the real acceptance test -- a grammar
+    /// that parses but allows zero tokens at the start state is degenerate.
+    fn check_kbnf(gbnf: &str, label: &str) {
+        let mut vocab: Vec<Vec<u8>> = vec![b"".to_vec()];
+        for b in [0x09u8, 0x0Au8, 0x0Du8, 0x20u8] {
+            vocab.push(vec![b]);
         }
+        for b in 0x21u8..=0x7Eu8 {
+            vocab.push(vec![b]);
+        }
+        let engine = roco_bnf_engine::BnfEngine::new(gbnf, &vocab).unwrap_or_else(|e| {
+            panic!("{label}: kbnf failed: {e:?}\n=== grammar ===\n{gbnf}\n===")
+        });
+        assert!(
+            engine.allowed_count() > 0,
+            "{label}: grammar allows zero tokens at start"
+        );
     }
 
     #[test]
-    fn simple_parses_schoolmarm() {
+    fn simple_compiles_kbnf() {
         let gbnf = message_format_gbnf(&MessageFormatOptions::default(), &[]);
-        check_schoolmarm(&gbnf, "simple");
+        check_kbnf(&gbnf, "simple");
         assert!(gbnf.contains("System:"), "simple: must contain System:");
         assert!(gbnf.contains("User:"), "simple: must contain User:");
         assert!(
@@ -207,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn think_parses_schoolmarm() {
+    fn think_compiles_kbnf() {
         let gbnf = message_format_gbnf(
             &MessageFormatOptions {
                 think: true,
@@ -215,13 +208,13 @@ mod tests {
             },
             &[],
         );
-        check_schoolmarm(&gbnf, "think");
-        assert!(gbnf.contains("<think>"), "think: must contain <think>");
-        assert!(gbnf.contains("</think>"), "think: must contain </think>");
+        check_kbnf(&gbnf, "think");
+        assert!(gbnf.contains("mid"), "think: must contain mid");
+        assert!(gbnf.contains("end"), "think: must contain end");
     }
 
     #[test]
-    fn tools_parses_schoolmarm() {
+    fn tools_compiles_kbnf() {
         let schemas = vec![serde_json::json!({
             "name": "get_weather",
             "description": "Get weather for a location",
@@ -234,7 +227,7 @@ mod tests {
             },
             &schemas,
         );
-        check_schoolmarm(&gbnf, "tools");
+        check_kbnf(&gbnf, "tools");
         assert!(
             gbnf.contains("<tool_call>"),
             "tools: must contain <tool_call>"
@@ -247,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn full_without_schemas_parses_schoolmarm() {
+    fn full_without_schemas_compiles_kbnf() {
         // When tools=true but no schemas provided, grammar should still be valid.
         let gbnf = message_format_gbnf(
             &MessageFormatOptions {
@@ -256,15 +249,15 @@ mod tests {
             },
             &[],
         );
-        check_schoolmarm(&gbnf, "full-noschemas");
-        assert!(gbnf.contains("<think>"), "must contain <think>");
+        check_kbnf(&gbnf, "full-noschemas");
+        assert!(gbnf.contains("mid"), "must contain mid");
         assert!(gbnf.contains("<tool_call>"), "must contain <tool_call>");
         assert!(gbnf.contains("<tool_result>"), "must contain <tool_result>");
     }
 
     #[test]
-    fn full_without_tools_parses_schoolmarm() {
-        // think=true, tools=false — only think tags, no tool tags.
+    fn full_without_tools_compiles_kbnf() {
+        // think=true, tools=false -- only think tags, no tool tags.
         let gbnf = message_format_gbnf(
             &MessageFormatOptions {
                 think: true,
@@ -272,8 +265,8 @@ mod tests {
             },
             &[],
         );
-        check_schoolmarm(&gbnf, "full-nothink");
-        assert!(gbnf.contains("<think>"), "must contain <think>");
+        check_kbnf(&gbnf, "full-nothink");
+        assert!(gbnf.contains("mid"), "must contain mid");
         assert!(
             !gbnf.contains("<tool_call>"),
             "must NOT contain <tool_call>"
@@ -300,8 +293,8 @@ mod tests {
             "user",
             "asm",
             "think",
-            "tool-call",
-            "tool-result",
+            "tool_call",
+            "tool_result",
             "text",
             "char",
         ] {

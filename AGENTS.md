@@ -83,6 +83,9 @@ Workspace (crates/workspace/) — saves chapters, outlines, wikis to .roco/works
 | `./run_desktop.sh` | Desktop GUI |
 | `./run_tests.sh` | `cargo check` + `clippy` + test build |
 | `./scout.sh` | Live project state (crates, deps, tests, dead docs) |
+| `./scout.sh files [N]` | List files exceeding N lines (default 150) |
+| `./scout.sh dep-health` | Dependency tree health & duplicate dependency check |
+| `./scout.sh dupes` | Find duplicate files, type definitions, and Cargo deps |
 | `cargo test --workspace --no-run` | Compile all tests |
 | `roco eval` | Run eval + snapshot |
 | `roco bless` | Update oracle snapshots |

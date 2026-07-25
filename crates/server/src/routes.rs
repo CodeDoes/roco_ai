@@ -49,12 +49,14 @@ fn build_mask_or_error(
     let Some(vocab) = backend.vocab_bytes() else {
         return Ok(None);
     };
-    roco_bnf_engine::create_bnf_mask(grammar, &vocab).map(Some).map_err(|e| {
-        format!(
-            "Grammar '{}' is invalid: {e:?}",
-            grammar.chars().take(80).collect::<String>()
-        )
-    })
+    roco_bnf_engine::create_bnf_mask(grammar, &vocab)
+        .map(Some)
+        .map_err(|e| {
+            format!(
+                "Grammar '{}' is invalid: {e:?}",
+                grammar.chars().take(80).collect::<String>()
+            )
+        })
 }
 
 pub fn create_router(backend: Arc<dyn ModelBackend>) -> Router {
@@ -173,8 +175,9 @@ async fn handle_openai_completion(
         let mut engine_req = req.into_engine();
 
         if engine_req.bnf_mask.is_none() {
-            engine_req.bnf_mask =
-                build_mask_or_error(&engine_req.grammar, backend.as_ref()).ok().flatten();
+            engine_req.bnf_mask = build_mask_or_error(&engine_req.grammar, backend.as_ref())
+                .ok()
+                .flatten();
         }
 
         match backend.complete(engine_req).await {

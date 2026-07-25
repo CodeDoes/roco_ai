@@ -8,6 +8,9 @@ set -uo pipefail
 #   ./scout.sh                    # full report
 #   ./scout.sh crates             # crate list + sizes + dep graph
 #   ./scout.sh tests              # test modules per crate
+#   ./scout.sh files [min_lines]  # list files exceeding N lines (default: 150)
+#   ./scout.sh dep-health         # analyze workspace dependencies & Cargo duplicate entries
+#   ./scout.sh dupes              # check duplicate files, type definitions, and Cargo deps
 #   ./scout.sh types <pattern>    # grep for types/structs/traits
 #   ./scout.sh deps <crate>       # dep tree for one crate
 #   ./scout.sh api                # public API surface per crate
@@ -90,6 +93,79 @@ types_grep() {
   done
 }
 
+file_line_counts() {
+  local threshold="${1:-150}"
+  echo "  Files exceeding $threshold lines:"
+  echo ""
+  find crates -name '*.rs' -type f -exec wc -l {} + 2>/dev/null \
+    | awk -v t="$threshold" '$1 >= t && $2 != "total" {printf "  %5d lines  %s\n", $1, $2}' \
+    | sort -nr
+}
+
+dep_health() {
+  echo "  $(bold "Cargo.toml Duplicate Dependency Declarations:")"
+  local dup_found=0
+  for f in crates/*/Cargo.toml; do
+    crate=$(basename $(dirname "$f"))
+    dup=$(grep -E '^(roco-|roco_)' "$f" 2>/dev/null | sed 's/ = .*//' | sort | uniq -d)
+    if [ -n "$dup" ]; then
+      red "  ⚠ $crate ($f) has duplicate deps:"
+      echo "$dup" | sed 's/^/    - /'
+      dup_found=1
+    fi
+  done
+  [ "$dup_found" -eq 0 ] && green "  ✓ No duplicate dependency declarations found inside Cargo.toml files."
+
+  echo ""
+  echo "  $(bold "Reverse Workspace Dependency Counts (crates depending on each target):")"
+  for d in crates/*/; do
+    crate=$(basename "$d")
+    pkg=$(grep -m1 '^name' "$d/Cargo.toml" 2>/dev/null | sed 's/name = "\(.*\)"/\1/' | tr -d '"')
+    [ -z "$pkg" ] && continue
+    rev_crates=$(grep -rl "$pkg" crates/*/Cargo.toml 2>/dev/null | grep -v "$d/Cargo.toml" | wc -l || true)
+    printf "  %-22s (%-15s): imported by %2d crates\n" "$pkg" "$crate" "$rev_crates"
+  done | sort -k6 -nr
+
+  echo ""
+  echo "  $(bold "High Fan-Out Crates (Direct workspace dependencies > 5):")"
+  for d in crates/*/; do
+    crate=$(basename "$d")
+    pkg=$(grep -m1 '^name' "$d/Cargo.toml" 2>/dev/null | sed 's/name = "\(.*\)"/\1/' | tr -d '"')
+    deps_count=$(grep -E '^(roco-|roco_)' "$d/Cargo.toml" 2>/dev/null | wc -l || true)
+    if [ "$deps_count" -gt 5 ]; then
+      yellow_msg="  ⚠ $(printf '%-22s (%s): depends on %2d workspace crates' "$pkg" "$crate" "$deps_count")"
+      red "$yellow_msg"
+      echo ""
+    fi
+  done
+}
+
+find_duplicates() {
+  echo "  $(bold "Identical Source Files (MD5 Match):")"
+  local dup_files
+  dup_files=$(find crates -name '*.rs' -type f -exec md5sum {} + 2>/dev/null | sort | awk 'ARR[$1]++ {print $1}' | sort -u)
+  if [ -n "$dup_files" ]; then
+    echo "$dup_files" | while read -r hash; do
+      [ -z "$hash" ] && continue
+      red "  ⚠ Duplicate file content group ($hash):"
+      find crates -name '*.rs' -type f -exec md5sum {} + 2>/dev/null | grep "$hash" | awk '{print "    - " $2}'
+    done
+  else
+    green "  ✓ No identical Rust files found."
+  fi
+
+  echo ""
+  echo "  $(bold "Types Defined Multiple Times across workspace (Struct/Enum/Trait > 1):")"
+  grep -rnE 'pub (struct|enum|trait) [A-Za-z0-9_]+' crates/*/src 2>/dev/null \
+    | awk -F: '{print $3}' \
+    | sed -E 's/pub (struct|enum|trait) ([A-Za-z0-9_]+).*/\2/' \
+    | sort \
+    | uniq -c \
+    | awk '$1 > 1 {printf "  %2d declarations: %s\n", $1, $2}' \
+    | sort -nr \
+    | head -20
+}
+
 summary() {
   echo "  $(bold "RoCo AI") — $(date '+%Y-%m-%d %H:%M')"
   echo ""
@@ -149,6 +225,18 @@ case "$MODE" in
     header "Types matching: $2"
     types_grep "${2:-pub (struct|enum|trait|type)}"
     ;;
+  lines|files)
+    header "Files exceeding line count threshold"
+    file_line_counts "${2:-150}"
+    ;;
+  dep-health|dep-tree)
+    header "Workspace Dependency Health & Tree Analysis"
+    dep_health
+    ;;
+  dupes|duplicates)
+    header "Duplicate Detection (Files, Types, Dependencies)"
+    find_duplicates
+    ;;
   summary|brief)
     summary
     ;;
@@ -183,6 +271,9 @@ case "$MODE" in
     header "Quick commands"
     echo "  ./scout.sh crates       — list all crates with line counts"
     echo "  ./scout.sh tests        — test modules per crate"
+    echo "  ./scout.sh files [N]    — list files exceeding N lines (default 150)"
+    echo "  ./scout.sh dep-health   — dependency tree health & duplicate Cargo entries"
+    echo "  ./scout.sh dupes        — find duplicate files, types & dependencies"
     echo "  ./scout.sh deps <name>  — dep graph for one crate"
     echo "  ./scout.sh api          — public API per crate"
     echo "  ./scout.sh types <pat>  — grep types/structs/traits"

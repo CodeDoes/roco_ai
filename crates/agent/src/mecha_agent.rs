@@ -606,25 +606,31 @@ async fn backend_call(
     Ok(resp.text)
 }
 
-/// BNF grammar that constrains model output to a valid Intent JSON.
+/// kbnf-native grammar that constrains model output to a valid Intent JSON.
+///
+/// kbnf dialect: `#'...'` regex char classes, `{...}` repetition (0+),
+/// `[...]` optional, `;` terminators. No llama.cpp GBNF `[abc]` classes —
+/// those are parsed as optionals by kbnf and would silently break.
 pub const INTENT_GRAMMAR: &str = r#"
-root  ::= "{" space "\"route\"" space ":" space string space "," space "\"confidence\"" space ":" space number space "," space "\"goal\"" space ":" space string space "}"
-string ::= "\"" ( [ -~] )* "\""
-number ::= [0-9] "." [0-9] [0-9]?
-space ::= " "?
+root  ::= "{" space "\"route\"" space ":" space string space "," space "\"confidence\"" space ":" space number space "," space "\"goal\"" space ":" space string space "}";
+string ::= "\"" { char } "\"";
+char   ::= #'[\x20-\x21\x23-\x5B\x5D-\x7E]';
+number ::= #'[0-9]' "." #'[0-9]' { #'[0-9]' };
+space  ::= " "?;
 "#;
 
-/// BNF grammar that constrains model output to a valid Plan JSON.
+/// kbnf-native grammar that constrains model output to a valid Plan JSON.
 const PLAN_GRAMMAR: &str = r#"
-root  ::= "{" space "\"tasks\"" space ":" space "[" space task-list space "]" space "}"
-task-list ::= task ( space "," space task )*
-task  ::= "{" space "\"type\"" space ":" space string space "," space "\"domain\"" space ":" space string space "," space "\"spec\"" space ":" space value space "}"
-string ::= "\"" ( [ -~] )* "\""
-value ::= string | number | object | array | "true" | "false" | "null"
-number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)?
-object ::= "{" space ( string space ":" space value ( space "," space string space ":" space value )* )? space "}"
-array  ::= "[" space ( value ( space "," space value )* )? space "]"
-space ::= " "?
+root  ::= "{" space "\"tasks\"" space ":" space "[" space task-list space "]" space "}";
+task-list ::= task { space "," space task };
+task  ::= "{" space "\"type\"" space ":" space string space "," space "\"domain\"" space ":" space string space "," space "\"spec\"" space ":" space value space "}";
+string ::= "\"" { char } "\"";
+char   ::= #'[\x20-\x21\x23-\x5B\x5D-\x7E]';
+value ::= string | number | object | array | "true" | "false" | "null";
+number ::= "-"? ("0" | #'[1-9]' { #'[0-9]' }) ("." { #'[0-9]' })? ([eE] ["+"|"-"] { #'[0-9]' })?;
+object ::= "{" space ( string space ":" space value { space "," space string space ":" space value } )? space "}";
+array  ::= "[" space ( value { space "," space value } )? space "]";
+space  ::= " "?;
 "#;
 
 #[cfg(test)]

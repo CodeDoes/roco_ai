@@ -178,7 +178,6 @@ impl RwkvBackend {
                 .map_err(|e| EngineError::Backend(format!("blend_states recv: {e}")))?
         })
     }
-
 }
 
 impl ModelBackend for RwkvBackend {
