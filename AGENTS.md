@@ -59,6 +59,9 @@ Workspace (crates/workspace/) — saves chapters, outlines, wikis to .roco/works
 ## Key Design Rules
 
 - **BNF grammar on every LLM call.** Raw prompting on RWKV-7 produces `thinking` contamination. Grammar constrains output.
+- **FormatSpec for message envelopes.** `FormatSpec` (`roco-message`) is the single source of truth for envelope grammars, prompt building, and prose extraction.
+- **Single-site BNF compilation.** Grammar strings pass over boundaries; `inferd` (`roco-server`) compiles them into `BnfMask` masks via `build_mask_or_error()`.
+- **Consolidated chat state.** Shared conversation data structures live in `roco-chat-common`.
 - **No `.await` in GUI.** Desktop uses `block_on()` for backend calls inside `egui::update()`.
 - **Standalone-first widgets.** Each widget in `crates/ui/` has its own `#[cfg(test)]` — test before wiring into the desktop.
 - **Never redirect test output.** Use `run_tests.sh` directly; fix failures instead of hiding them.
@@ -92,5 +95,6 @@ Workspace (crates/workspace/) — saves chapters, outlines, wikis to .roco/works
 | `roco bless` | Update oracle snapshots |
 | `roco server` | Start HTTP server for editor plugins |
 | `roco jobs` | Inspect active inference jobs and daemon status |
+| `cargo run --release --example format_eval` | Multi-format evaluation (or `devenv format-eval`) |
 | `roco gui` | Desktop GUI (same as `run_desktop.sh`) |
 | `roco interact` | Interactive chat session |
