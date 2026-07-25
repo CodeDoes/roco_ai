@@ -300,24 +300,21 @@ impl ModelBackend for RwkvBackend {
             .clone()
             .expect("rwkv backend already shut down (channel closed)");
         let session_id = session_id.to_string();
-        let system = system.to_string();
+        let _system = system.to_string(); // System prompt is baked through examples, not prepended
         let few_shots = few_shots
             .iter()
             .map(|(u, a)| (u.to_string(), a.to_string()))
             .collect::<Vec<_>>();
         Box::pin(async move {
             for (i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
-                // Send user message through the session (first message includes system)
-                let prompt = if i == 0 && !system.is_empty() {
-                    format!("{system}\n\n{user_msg}")
-                } else {
-                    user_msg.clone()
-                };
+                // Send user message through the session.
+                // The actor's handle_complete will format this as "User: {prompt}\n\nAssistant:"
+                // and skip the "System:" prefix when session_id is set (it's already baked).
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 tx.send(
                     CompleteReq {
-                        system: String::new(), // system is folded into the first prompt
-                        prompt,
+                        system: String::new(), // system is not used when session is set
+                        prompt: user_msg.clone(),
                         prefill: None,
                         max_tokens: 1024,
                         temperature: 0.0,
