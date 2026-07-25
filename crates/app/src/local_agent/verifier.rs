@@ -50,7 +50,10 @@ impl Verifier {
 
     pub fn explain(&self, output: &str) -> String {
         if self.verify(output) {
-            format!("PASS: verified (len={}, required_patterns_matches)", output.len())
+            format!(
+                "PASS: verified (len={}, required_patterns_matches)",
+                output.len()
+            )
         } else {
             format!(
                 "FAIL: min_length={}, required={}, forbidden_check",

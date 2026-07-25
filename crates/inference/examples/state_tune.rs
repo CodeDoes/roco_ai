@@ -67,7 +67,10 @@ async fn main() -> anyhow::Result<()> {
     println!("Successfully hotswapped back to Prompt 1 state.");
 
     let resume_prompt = " suddenly there was a";
-    println!("Continuing generation with prompt suffix: '{}'...", resume_prompt);
+    println!(
+        "Continuing generation with prompt suffix: '{}'...",
+        resume_prompt
+    );
     let req3 = CompletionRequest {
         prompt: resume_prompt.into(),
         temperature: 0.1,
@@ -82,22 +85,26 @@ async fn main() -> anyhow::Result<()> {
     println!("Saving states to sessions 'session_a' and 'session_b'...");
 
     // Create state in session_a
-    let _ = backend.complete(CompletionRequest {
-        prompt: "A beautiful garden filled with roses".into(),
-        session: Some("session_a".into()),
-        max_tokens: 1,
-        preserve_state: true,
-        ..Default::default()
-    }).await?;
+    let _ = backend
+        .complete(CompletionRequest {
+            prompt: "A beautiful garden filled with roses".into(),
+            session: Some("session_a".into()),
+            max_tokens: 1,
+            preserve_state: true,
+            ..Default::default()
+        })
+        .await?;
 
     // Create state in session_b
-    let _ = backend.complete(CompletionRequest {
-        prompt: "A futuristic cyber city with neon lights".into(),
-        session: Some("session_b".into()),
-        max_tokens: 1,
-        preserve_state: true,
-        ..Default::default()
-    }).await?;
+    let _ = backend
+        .complete(CompletionRequest {
+            prompt: "A futuristic cyber city with neon lights".into(),
+            session: Some("session_b".into()),
+            max_tokens: 1,
+            preserve_state: true,
+            ..Default::default()
+        })
+        .await?;
 
     // Blend session_a and session_b with 50% blend factor into 'session_blended'
     println!("Blending session_a and session_b (alpha = 0.5) -> 'session_blended'...");

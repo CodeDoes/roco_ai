@@ -1,6 +1,6 @@
 //! Workspace sandbox enforcing file access boundaries with strict containment checks.
-use std::path::{Path, PathBuf, Component};
 use std::fs;
+use std::path::{Component, Path, PathBuf};
 
 pub struct Sandbox {
     root: PathBuf,
@@ -11,7 +11,13 @@ impl Sandbox {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
-            allowed_exts: vec!["txt".into(), "md".into(), "json".into(), "py".into(), "rs".into()],
+            allowed_exts: vec![
+                "txt".into(),
+                "md".into(),
+                "json".into(),
+                "py".into(),
+                "rs".into(),
+            ],
         }
     }
 

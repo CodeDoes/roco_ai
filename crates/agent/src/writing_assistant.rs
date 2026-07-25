@@ -9,9 +9,9 @@
 //!
 //! Designed for fast, local inference with small models.
 
+use crate::util::structured_complete;
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::structured_complete;
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

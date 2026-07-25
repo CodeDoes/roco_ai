@@ -14,7 +14,6 @@
 //! always available. Inference-backed fields (plot points, tone, themes)
 //! are generated lazily and cached per session.
 
-
 /// Condensed representation of a single chapter.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CondensedChapter {

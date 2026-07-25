@@ -26,9 +26,9 @@
 //!                          └───────────┘ (dynamic loop)
 //! ```
 
+use crate::util::structured_complete;
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::structured_complete;
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Serialize};
 

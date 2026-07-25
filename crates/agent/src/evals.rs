@@ -13,9 +13,9 @@
 //! This is more flexible than rule-based evals and leverages the model's
 //! understanding of narrative quality.
 
+use crate::util::structured_complete;
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::structured_complete;
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

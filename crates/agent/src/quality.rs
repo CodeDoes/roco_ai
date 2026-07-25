@@ -13,9 +13,9 @@
 //! Feed the model critique/approval examples and ask it to critique the story.
 //! This leverages the model's understanding to evaluate quality.
 
+use crate::util::structured_complete;
 use roco_engine::ModelBackend;
 use roco_grammar::{schema_to_gbnf, Schema};
-use crate::util::structured_complete;
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

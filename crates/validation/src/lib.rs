@@ -307,7 +307,6 @@ pub struct ValidationEngine {
     pub wiki: wiki::WikiValidator,
 }
 
-
 impl ValidationEngine {
     /// Create a new validation engine with custom config.
     pub fn new(

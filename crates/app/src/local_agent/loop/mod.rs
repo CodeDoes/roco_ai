@@ -6,7 +6,12 @@ pub struct ExecutionLoop {
 }
 
 impl ExecutionLoop {
-    pub fn execute<A: DomainHarness>(&self, agent: &mut A, input: &str, ctx: &Context) -> LoopResult {
+    pub fn execute<A: DomainHarness>(
+        &self,
+        agent: &mut A,
+        input: &str,
+        ctx: &Context,
+    ) -> LoopResult {
         let mut state = State::default();
         let mut history: Vec<State> = Vec::new();
         let mut output = String::new();
@@ -58,7 +63,9 @@ mod tests {
 
     struct FailVerifyAgent;
     impl DomainHarness for FailVerifyAgent {
-        fn name(&self) -> &'static str { "fail_verify" }
+        fn name(&self) -> &'static str {
+            "fail_verify"
+        }
         fn init(&mut self, _cfg: HarnessConfig) {}
         fn run(&self, input: &str, _ctx: &Context) -> Result<String, HarnessError> {
             Ok(format!("Result: {}", input))
