@@ -270,35 +270,71 @@ async fn bake(backend: &RemoteBackend, spec: &FormatSpec, session: &str) {
 }
 
 fn bake_pair(spec: &FormatSpec) -> (String, String) {
-    let prompt = spec.build_prompt(
-        "Chapter 1: The Forge\n- Bren works late.",
-        "Bren: village blacksmith.",
-        "Write Chapter 1.",
-    );
-    let prose = "Bren wiped soot from his brow. The forge had been cold for hours, yet a low hum vibrated beneath the anvil.";
-    let ans = match spec {
+    let outline = "Chapter 1: The Forge\n- Bren works late in the smithy.\n- A mysterious vibration pulses through the floor.";
+    let wiki = "Setting: Oakhaven, medieval mountain village.\nBren: village blacksmith, age 32.";
+    let task = "Write Chapter 1 based on the outline and world wiki.";
+    let user = spec.build_prompt(outline, wiki, task);
+
+    let prose_sample = "Bren wiped soot from his brow, his heavy leather apron stiff with sweat. The forge had been cold for hours, yet a low, rhythmic vibration vibrated through the stone floor beneath his boots. He set down his tongs, resting a gloved hand against the dark iron anvil. The metal was cool to the touch, but the hum grew louder—a steady, deliberate pulse like a hidden heartbeat buried beneath the ancient foundation of the shop.";
+
+    let assistant = match spec {
         FormatSpec::Xml { think: true } => {
-            format!("midBren felt the vibration.end\n<write>{prose}</write>")
+            format!("midBren felt the floor vibration.end\n<write>{prose_sample}</write>")
         }
-        FormatSpec::Xml { think: false } => format!("<write>{prose}</write>"),
-        _ => prose.to_string(),
+        FormatSpec::Xml { think: false } => {
+            format!("<write>{prose_sample}</write>")
+        }
+        FormatSpec::Marker { think: true } => {
+            format!("THINK:Set forge atmosphere.\nWRITE:{prose_sample}")
+        }
+        FormatSpec::Marker { think: false } => {
+            format!("WRITE:{prose_sample}")
+        }
+        FormatSpec::Separator { think: true } => {
+            format!("---THINK---\nSet forge atmosphere.\n---WRITE---\n{prose_sample}\n---END---")
+        }
+        FormatSpec::Separator { think: false } => {
+            format!("---CHAPTER---\n{prose_sample}\n---END---")
+        }
+        FormatSpec::Bracket => {
+            format!("[THINK:Forge atmosphere]\n[WRITE:{prose_sample}]")
+        }
+        FormatSpec::Prose => prose_sample.to_string(),
     };
-    (prompt, ans)
+    (user, assistant)
 }
 
 fn bake_pair_2(spec: &FormatSpec) -> (String, String) {
-    let prompt = spec.build_prompt(
-        "Chapter 2: Telemetry\n- Varma scans space.",
-        "Varma: radio astronomer.",
-        "Write Chapter 2.",
-    );
-    let prose = "Dr. Varma blinked against the blue glare of her monitoring screens. The green waveforms coalesced into a signal.";
-    let ans = match spec {
+    let outline = "Chapter 2: Telemetry\n- Dr. Varma monitors deep space signals.\n- An artificial frequency spike breaks cosmic static.";
+    let wiki = "Setting: Deep Sky Array, high-altitude observatory.\nVarma: radio astronomer, 11 hours into shift.";
+    let task = "Write Chapter 2 based on the outline and world wiki.";
+    let user = spec.build_prompt(outline, wiki, task);
+
+    let prose_sample = "Dr. Varma blinked against the blue glare of her monitoring screens. Eleven hours of uniform cosmic static had lulled the observatory into a quiet stupor. Then, without warning, the frequency analyzer spiked across three independent telemetry bands. The green waveforms coalesced into a tight, deliberate sequence that defied natural stellar phenomena.";
+
+    let assistant = match spec {
         FormatSpec::Xml { think: true } => {
-            format!("midVarma noticed the signal.end\n<write>{prose}</write>")
+            format!("midDr. Varma analyzes signal spike.end\n<write>{prose_sample}</write>")
         }
-        FormatSpec::Xml { think: false } => format!("<write>{prose}</write>"),
-        _ => prose.to_string(),
+        FormatSpec::Xml { think: false } => {
+            format!("<write>{prose_sample}</write>")
+        }
+        FormatSpec::Marker { think: true } => {
+            format!("THINK:Describe signal spike.\nWRITE:{prose_sample}")
+        }
+        FormatSpec::Marker { think: false } => {
+            format!("WRITE:{prose_sample}")
+        }
+        FormatSpec::Separator { think: true } => {
+            format!("---THINK---\nDescribe signal spike.\n---WRITE---\n{prose_sample}\n---END---")
+        }
+        FormatSpec::Separator { think: false } => {
+            format!("---CHAPTER---\n{prose_sample}\n---END---")
+        }
+        FormatSpec::Bracket => {
+            format!("[THINK:Signal spike]\n[WRITE:{prose_sample}]")
+        }
+        FormatSpec::Prose => prose_sample.to_string(),
     };
-    (prompt, ans)
+    (user, assistant)
 }
