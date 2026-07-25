@@ -140,14 +140,42 @@ async fn bake_format(backend: &RemoteBackend, spec: &FormatSpec, session: &str) 
     let (u1, a1) = bake_pair(spec);
     let (u2, a2) = bake_pair_2(spec);
 
-    let _ = backend.feed_eos(Some(session.to_string())).await;
-    let _ = backend
+    eprintln!(
+        "  [LOG] Baking session '{session}' for format '{}'...",
+        spec.name()
+    );
+    eprintln!(
+        "  [LOG]   Shot 1 prompt ends with: {:?}",
+        u1.lines().last().unwrap_or("")
+    );
+    eprintln!(
+        "  [LOG]   Shot 1 assistant start: {:?}",
+        a1.lines().next().unwrap_or("")
+    );
+    eprintln!(
+        "  [LOG]   Shot 2 prompt ends with: {:?}",
+        u2.lines().last().unwrap_or("")
+    );
+    eprintln!(
+        "  [LOG]   Shot 2 assistant start: {:?}",
+        a2.lines().next().unwrap_or("")
+    );
+
+    if let Err(e) = backend.feed_eos(Some(session.to_string())).await {
+        eprintln!("  [WARN] feed_eos failed: {e}");
+    }
+
+    match backend
         .bake_state(
             session,
             system,
             &[(u1.as_str(), a1.as_str()), (u2.as_str(), a2.as_str())],
         )
-        .await;
+        .await
+    {
+        Ok(s) => eprintln!("  [LOG] Session '{s}' baked successfully (2 shots)."),
+        Err(e) => eprintln!("  [ERROR] State baking failed for '{}': {e}", spec.name()),
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -220,6 +248,26 @@ async fn run_one(
         Some(spec.grammar().to_string())
     };
 
+    eprintln!(
+        "  [LOG] Running trial {} for spec '{}' (session: '{}')...",
+        trial + 1,
+        spec.name(),
+        session
+    );
+    eprintln!(
+        "  [LOG]   Prompt length: {} bytes, ends with: {:?}",
+        prompt.len(),
+        prompt.lines().last().unwrap_or("")
+    );
+    if let Some(g) = &grammar {
+        eprintln!(
+            "  [LOG]   Grammar root rule: {:?}",
+            g.lines().next().unwrap_or("")
+        );
+    } else {
+        eprintln!("  [LOG]   Grammar: (none)");
+    }
+
     let start = Instant::now();
     let resp = backend
         .complete(CompletionRequest {
@@ -243,9 +291,18 @@ async fn run_one(
     let latency_ms = start.elapsed().as_millis() as u64;
 
     let raw = match resp {
-        Ok(r) => r.text,
+        Ok(r) => {
+            eprintln!(
+                "  [LOG]   Response received in {} ms ({} bytes), raw output starts with: {:?}",
+                latency_ms,
+                r.text.len(),
+                r.text.lines().next().unwrap_or("")
+            );
+            r.text
+        }
         Err(e) => {
             let err = format!("ERROR: {e}");
+            eprintln!("  [ERROR] Completion failed: {err}");
             return RunResult {
                 spec_name: spec.name().to_string(),
                 baked: false,
@@ -265,6 +322,15 @@ async fn run_one(
     };
 
     let prose = spec.extract(&raw);
+    let fmt_ok = format_followed(&raw, spec);
+    let think_cont = has_think_contamination(&raw, spec);
+    eprintln!(
+        "  [LOG]   Extracted prose: {} words, Format OK: {}, Think Contam: {}",
+        word_count(&prose),
+        fmt_ok,
+        think_cont
+    );
+
     RunResult {
         spec_name: spec.name().to_string(),
         baked: false, // filled in by caller
@@ -273,8 +339,8 @@ async fn run_one(
         sensory: sensory_count(&prose),
         repetition: repetition_ratio(&prose),
         latency_ms,
-        format_ok: format_followed(&raw, spec),
-        think_contam: has_think_contamination(&raw, spec),
+        format_ok: fmt_ok,
+        think_contam: think_cont,
         snippet: prose.chars().take(100).collect(),
         raw_text: raw.clone(),
         prose_text: prose,

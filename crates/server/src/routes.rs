@@ -11,8 +11,8 @@ use axum::{
 use base64::Engine;
 use roco_engine::{CompletionRequest, CompletionResponse, ModelBackend};
 use roco_protocol::{
-    HealthResponse, InferJobsResponse, OpenAiCompletionRequest, OpenAiCompletionResponse,
-    OpenAiErrorBody, OpenAiStreamChunk,
+    BakeRequest, BakeResponse, HealthResponse, InferJobsResponse, OpenAiCompletionRequest,
+    OpenAiCompletionResponse, OpenAiErrorBody, OpenAiStreamChunk,
 };
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -89,7 +89,46 @@ pub fn create_router(backend: Arc<dyn ModelBackend>) -> Router {
         .route("/vocab", get(handle_vocab))
         .route("/complete", post(handle_complete))
         .route("/v1/completions", post(handle_openai_completion))
+        .route("/bake", post(handle_bake))
+        .route("/v1/bake", post(handle_bake))
         .with_state(state)
+}
+
+async fn handle_bake(
+    State(state): State<AppState>,
+    Json(req): Json<BakeRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<OpenAiErrorBody>)> {
+    let _guard = JobGuard::new(state.active_jobs.clone());
+    info!(
+        session_id = %req.session_id,
+        shots_count = req.few_shots.len(),
+        "Baking session state"
+    );
+
+    let shots_ref: Vec<(&str, &str)> = req
+        .few_shots
+        .iter()
+        .map(|(u, a)| (u.as_str(), a.as_str()))
+        .collect();
+
+    let session_id = state
+        .backend
+        .bake_state(&req.session_id, &req.system, &shots_ref)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(OpenAiErrorBody::new(
+                    format!("Bake state failed: {e}"),
+                    "internal_error",
+                )),
+            )
+        })?;
+
+    Ok(Json(BakeResponse {
+        session_id,
+        baked_shots: req.few_shots.len(),
+    }))
 }
 
 async fn handle_health(State(state): State<AppState>) -> impl IntoResponse {

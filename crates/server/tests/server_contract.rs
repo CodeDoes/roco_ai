@@ -401,6 +401,30 @@ async fn fixture_round_trip_error() {
 }
 
 #[tokio::test]
+async fn bake_returns_200_or_500() {
+    let app = test_app(0);
+    let req_body = serde_json::to_string(&roco_protocol::BakeRequest {
+        session_id: "test-session".into(),
+        system: "System prompt".into(),
+        few_shots: vec![("user prompt".into(), "assistant reply".into())],
+    })
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::post("/v1/bake")
+                .header("Content-Type", "application/json")
+                .body(Body::from(req_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // MockBackend defaults to returning Err("bake_state not supported"), so status should be 500
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
 async fn unknown_route_returns_404() {
     let app = test_app(0);
     let response = app

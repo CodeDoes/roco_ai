@@ -8,6 +8,7 @@ name = "roco_infer_client"
 
 [dependencies]
 roco-engine = { path = "../engine" }
+roco-protocol = { path = "../protocol" }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 serde.workspace = true
 serde_json.workspace = true

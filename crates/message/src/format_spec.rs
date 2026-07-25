@@ -158,32 +158,15 @@ impl FormatSpec {
     }
 
     /// Build the prompt that frames `task` with `outline` and `wiki` context.
-    /// The prompt ends exactly where the model should begin generating —
-    /// the grammar then enforces the closing delimiters.
+    /// The prompt ends right before the model begins generating — the grammar
+    /// then enforces the format's opening and closing structural delimiters.
     pub fn build_prompt(&self, outline: &str, wiki: &str, task: &str) -> String {
         match self {
-            FormatSpec::Xml { think: true } => {
-                format!(
-                    "<task>{task}</task>\n<context>{outline}</context>\n<data>{wiki}</data>\nmid"
-                )
+            FormatSpec::Xml { .. } => {
+                format!("<task>{task}</task>\n<context>{outline}</context>\n<data>{wiki}</data>")
             }
-            FormatSpec::Xml { think: false } => {
-                format!("<task>{task}</task>\n<context>{outline}</context>\n<data>{wiki}</data>\n<write>")
-            }
-            FormatSpec::Marker { think: true } => {
-                format!("TASK: {task}\nCONTEXT: {outline}\nDATA: {wiki}\nTHINK:")
-            }
-            FormatSpec::Marker { think: false } => {
-                format!("TASK: {task}\nCONTEXT: {outline}\nDATA: {wiki}\nWRITE:")
-            }
-            FormatSpec::Separator { think: true } => {
-                format!("TASK: {task}\nCONTEXT: {outline}\nDATA: {wiki}\n---THINK---")
-            }
-            FormatSpec::Separator { think: false } => {
-                format!("TASK: {task}\nCONTEXT: {outline}\nDATA: {wiki}\n---CHAPTER---")
-            }
-            FormatSpec::Bracket => {
-                format!("TASK: {task}\nCONTEXT: {outline}\nDATA: {wiki}\n[THINK:")
+            FormatSpec::Marker { .. } | FormatSpec::Separator { .. } | FormatSpec::Bracket => {
+                format!("TASK: {task}\nCONTEXT: {outline}\nDATA: {wiki}")
             }
             FormatSpec::Prose => {
                 format!(
@@ -511,31 +494,31 @@ mod tests {
 
     #[test]
     fn build_prompt_ends_at_generation_point() {
-        // The prompt must end exactly where the grammar's root rule begins.
+        // The prompt must end right before the grammar's root rule begins generation.
         let outline = "Ch1: x";
         let wiki = "World: y";
         let task = "Write Ch1";
         assert!(FormatSpec::Xml { think: true }
             .build_prompt(outline, wiki, task)
-            .ends_with("mid"));
+            .ends_with("</data>"));
         assert!(FormatSpec::Xml { think: false }
             .build_prompt(outline, wiki, task)
-            .ends_with("<write>"));
+            .ends_with("</data>"));
         assert!(FormatSpec::Marker { think: true }
             .build_prompt(outline, wiki, task)
-            .ends_with("THINK:"));
+            .ends_with("DATA: World: y"));
         assert!(FormatSpec::Marker { think: false }
             .build_prompt(outline, wiki, task)
-            .ends_with("WRITE:"));
+            .ends_with("DATA: World: y"));
         assert!(FormatSpec::Separator { think: true }
             .build_prompt(outline, wiki, task)
-            .ends_with("---THINK---"));
+            .ends_with("DATA: World: y"));
         assert!(FormatSpec::Separator { think: false }
             .build_prompt(outline, wiki, task)
-            .ends_with("---CHAPTER---"));
+            .ends_with("DATA: World: y"));
         assert!(FormatSpec::Bracket
             .build_prompt(outline, wiki, task)
-            .ends_with("[THINK:"));
+            .ends_with("DATA: World: y"));
     }
 
     /// The unused rule constants would otherwise warn; reference them so

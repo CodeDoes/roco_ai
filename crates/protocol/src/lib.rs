@@ -227,6 +227,24 @@ impl OpenAiErrorBody {
     }
 }
 
+// ── Bake ──────────────────────────────────────────────────────────────────
+
+/// Request to bake a set of few-shot example pairs into a named session state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BakeRequest {
+    pub session_id: String,
+    #[serde(default)]
+    pub system: String,
+    pub few_shots: Vec<(String, String)>,
+}
+
+/// Response returned after successfully baking few-shot state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BakeResponse {
+    pub session_id: String,
+    pub baked_shots: usize,
+}
+
 // ── Health ────────────────────────────────────────────────────────────────
 
 /// Standard health-check response.
