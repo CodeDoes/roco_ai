@@ -1301,46 +1301,21 @@ pub fn cmd_story(extra: &[&str]) {
                     "text": ch_result.output,
                 }),
             };
-            let _val_result = agent
+            let val_result = agent
                 .dispatch_single(backend.as_ref(), &val_task, &ws)
                 .expect("validation failed");
 
-            // Self-correction loop with validation feedback
-            let val_path = ws.root().join("04-VALIDATION.md");
-            let (needs_revision, revision_feedback) = if let Some(val_content) = ReadTool
-                .call(json!({"path": val_path.to_string_lossy()}))
-                .ok()
-                .and_then(|v| v.get("content").and_then(|c| c.as_str().map(String::from)))
-            {
-                let chapter_header = format!("## Chapter {i}");
-                if let Some(start_idx) =
-                    val_content.find(&chapter_header)
-                {
-                    let segment = &val_content[start_idx..];
-                    let next_chapter_header = format!("## Chapter {}", i + 1);
-                    let segment = if let Some(end_idx) = segment.find(&next_chapter_header)
-                    {
-                        &segment[..end_idx]
-                    } else {
-                        segment
-                    };
-                    let needs = segment.contains("Quality: fail")
-                        || segment.contains("Quality: needs-work");
-                    // Extract issues and suggestion for retry feedback
-                    let feedback: String = segment
-                        .lines()
-                        .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
-                        .map(|l| l.to_string())
-                        .collect::<Vec<_>>()
-                        .join("
+            // Self-correction loop: extract feedback from validation output directly
+            let val_entry = &val_result.output;
+            let needs_revision = val_entry.contains("Quality: fail")
+                || val_entry.contains("Quality: needs-work");
+            let revision_feedback: String = val_entry
+                .lines()
+                .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>()
+                .join("
 ");
-                    (needs, feedback)
-                } else {
-                    (false, String::new())
-                }
-            } else {
-                (false, String::new())
-            };
 
             if needs_revision {
                 println!("  ⚠️  {} needs revision — retrying...", &chapter_label);
