@@ -42,17 +42,66 @@ fn main() {
         ),
         "gpu-check" => cmd::gpu::cmd_gpu_check(&extra),
         "jobs" | "inferd-jobs" | "inferd-status" => cmd::jobs::cmd_jobs(&extra),
+        "inferd" => {
+            if extra.first().copied() == Some("reload") {
+                #[cfg(feature = "net")]
+                cmd::server::cmd_inferd_reload(&extra[1..]);
+                #[cfg(not(feature = "net"))]
+                need_feature(
+                    "inferd reload",
+                    "net",
+                    "cargo build -p roco-cli --features net",
+                );
+            } else if extra.first().copied() == Some("jobs")
+                || extra.first().copied() == Some("status")
+            {
+                cmd::jobs::cmd_jobs(&extra[1..]);
+            } else {
+                #[cfg(feature = "net")]
+                cmd::server::cmd_server(&extra);
+                #[cfg(not(feature = "net"))]
+                need_feature("inferd", "net", "cargo run -p roco-inferd");
+            }
+        }
         "server" => {
-            #[cfg(feature = "net")]
-            cmd::server::cmd_server(&extra);
-            #[cfg(not(feature = "net"))]
-            need_feature("server", "net", "cargo run -p roco-inferd");
+            if extra.first().copied() == Some("reload") {
+                #[cfg(feature = "net")]
+                cmd::server::cmd_inferd_reload(&extra[1..]);
+                #[cfg(not(feature = "net"))]
+                need_feature(
+                    "server reload",
+                    "net",
+                    "cargo build -p roco-cli --features net",
+                );
+            } else {
+                #[cfg(feature = "net")]
+                cmd::server::cmd_server(&extra);
+                #[cfg(not(feature = "net"))]
+                need_feature("server", "net", "cargo run -p roco-inferd");
+            }
         }
         "gateway" => {
+            if extra.first().copied() == Some("reload") {
+                #[cfg(feature = "net")]
+                cmd::server::cmd_gateway_reload(&extra[1..]);
+                #[cfg(not(feature = "net"))]
+                need_feature(
+                    "gateway reload",
+                    "net",
+                    "cargo build -p roco-cli --features net",
+                );
+            } else {
+                #[cfg(feature = "net")]
+                cmd::server::cmd_gateway(&extra);
+                #[cfg(not(feature = "net"))]
+                need_feature("gateway", "net", "cargo build -p roco-cli --features net");
+            }
+        }
+        "reload" => {
             #[cfg(feature = "net")]
-            cmd::server::cmd_gateway(&extra);
+            cmd::server::cmd_reload(&extra);
             #[cfg(not(feature = "net"))]
-            need_feature("gateway", "net", "cargo build -p roco-cli --features net");
+            need_feature("reload", "net", "cargo build -p roco-cli --features net");
         }
         "gui" => {
             #[cfg(feature = "desktop")]

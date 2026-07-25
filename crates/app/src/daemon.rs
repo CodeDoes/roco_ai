@@ -341,6 +341,23 @@ pub fn stop_all() {
     eprintln!("Stopped.");
 }
 
+/// Reload the inference daemon by stopping any running process and starting a new one.
+pub fn reload_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
+    stop_inference();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    ensure_inference_daemon(roco_exe, port)
+}
+
+/// Reload the gateway daemon by stopping any running process and starting a new one.
+pub fn reload_gateway_daemon(_roco_exe: &PathBuf, port: u16) -> bool {
+    stop_gateway();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let log_path = log_path("gateway", port);
+    let pid_path = pid_path("gateway");
+    spawn_detached("gateway", &[], &log_path, &pid_path);
+    true
+}
+
 /// Entry point for the gateway when spawned as a daemon.
 /// Ensures the inference server is running before starting.
 pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate_limit: usize) {

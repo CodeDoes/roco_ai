@@ -36,11 +36,12 @@ header(){ echo -e "\n${BOLD}${CYAN}── $1 ──${RESET}"; }
 
 # ── Help ────────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: ./dev.sh [--no-watch|--stop|pet]"
+    echo "Usage: ./dev.sh [--watch|--no-watch|--stop|pet]"
     echo ""
-    echo "  (no args)   Start daemons + watch all crates for changes"
-    echo "  pet         Start daemons + watch + launch desktop pet"
-    echo "  --no-watch  Just start daemons, exit immediately"
+    echo "  (no args)   Start daemons (hot reload default: false, set hotreload=true in config or ROCO_HOTRELOAD=1)"
+    echo "  --watch     Force enable hot reload daemon watching"
+    echo "  --no-watch  Start daemons without watching"
+    echo "  pet         Start daemons + launch desktop pet"
     echo "  --stop      Stop all daemons and exit"
     exit 0
 fi
@@ -139,15 +140,24 @@ if [[ "${1:-}" == "pet" ]]; then
     ok "Pet launched (PID $PET_PID)"
 fi
 
-# ── 6. Hot reload (unless --no-watch) ────────────────────────────────────
-if [[ "${1:-}" == "--no-watch" ]]; then
+# ── 6. Hot reload check ──────────────────────────────────────────────────
+HOTRELOAD="${ROCO_HOTRELOAD:-false}"
+if [[ "${1:-}" == "--watch" || "${1:-}" == "--hotreload" || "${1:-}" == "--hot-reload" ]]; then
+    HOTRELOAD="true"
+fi
+if grep -qE "^\s*hotreload\s*=\s*true" .roco/config.toml 2>/dev/null || \
+   grep -qE "^\s*hotreload\s*=\s*true" ~/.config/roco/config.toml 2>/dev/null; then
+    HOTRELOAD="true"
+fi
+
+if [[ "${1:-}" == "--no-watch" || "$HOTRELOAD" != "true" ]]; then
     header "Daemons running. Press Ctrl+C to stop."
     info "Inference: http://127.0.0.1:8080"
     info "Gateway:   http://127.0.0.1:8000"
     info ""
-    info "Run ./dev.sh --stop to stop daemons."
+    info "Hot reload default is false. Set 'hotreload = true' in .roco/config.toml or export ROCO_HOTRELOAD=1 to enable."
+    info "Or run 'roco inferd reload' / 'roco gateway reload' to manually restart."
     echo ""
-    # Wait for Ctrl+C
     trap '' INT
     while true; do sleep 10; done
 else
@@ -158,7 +168,6 @@ else
     info "Press Ctrl+C to stop."
     echo ""
 
-    # cargo watch on all crate source trees
     cargo watch \
         --watch crates/ \
         --shell "./scripts/restart_dev_daemons.sh"
