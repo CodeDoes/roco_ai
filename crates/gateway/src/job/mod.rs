@@ -4,12 +4,11 @@
 //! accumulates tokens, and writes results to the workspace.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Job lifecycle states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,7 +72,12 @@ impl JobQueue {
     }
 
     /// Submit a new job. Returns the job ID immediately.
-    pub fn submit(&self, session_id: impl Into<String>, workspace_id: impl Into<String>, prompt: impl Into<String>) -> String {
+    pub fn submit(
+        &self,
+        session_id: impl Into<String>,
+        workspace_id: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> String {
         let id = format!("job-{}", uuid::Uuid::new_v4());
         let job = Job {
             id: id.clone(),
@@ -192,8 +196,7 @@ impl JobQueue {
     /// List all jobs for a session.
     pub fn list_for_session(&self, session_id: &str) -> Vec<Job> {
         let jobs = self.jobs.read();
-        jobs
-            .values()
+        jobs.values()
             .filter(|j| j.session_id == session_id)
             .cloned()
             .collect()
@@ -206,8 +209,10 @@ impl JobQueue {
         let to_remove: Vec<String> = jobs
             .iter()
             .filter(|(_, j)| {
-                matches!(j.status, JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled)
-                    && j.completed_at.map(|t| t < cutoff).unwrap_or(false)
+                matches!(
+                    j.status,
+                    JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled
+                ) && j.completed_at.map(|t| t < cutoff).unwrap_or(false)
             })
             .map(|(id, _)| id.clone())
             .collect();
@@ -224,5 +229,3 @@ fn now_secs() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
-
-

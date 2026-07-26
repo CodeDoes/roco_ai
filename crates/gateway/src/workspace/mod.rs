@@ -4,11 +4,11 @@
 //! All file operations go through the gateway, not directly to disk.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 /// A workspace managed by the gateway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,5 +127,3 @@ fn now_secs() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
-
-

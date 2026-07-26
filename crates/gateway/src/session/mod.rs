@@ -4,12 +4,11 @@
 //! disconnections. The gateway owns session lifecycle, not inferd.
 
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 /// Session lifecycle states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,5 +209,3 @@ mod tests {
         assert_eq!(mgr.get(&id).unwrap().status, SessionStatus::Archived);
     }
 }
-
-
