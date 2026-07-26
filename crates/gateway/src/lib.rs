@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 use axum::{
     extract::{Path, Request, State},
+    http::StatusCode,
     response::{IntoResponse, Response, Sse},
     routing::{delete, get, post},
     Json, Router as AxumRouter,
@@ -674,24 +675,31 @@ struct HealthResponse {
 
 async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
     // Check inferd health
-    let inferd_status = match state
+    let (status_code, inferd_status) = match state
         .inferd_client
         .get(format!("{}/health", state.inferd_url))
         .send()
         .await
     {
-        Ok(resp) if resp.status().is_success() => "healthy".to_string(),
-        _ => "unreachable".to_string(),
+        Ok(resp) if resp.status().is_success() => (StatusCode::OK, "healthy".to_string()),
+        _ => (StatusCode::SERVICE_UNAVAILABLE, "unreachable".to_string()),
     };
 
-    Json(HealthResponse {
-        status: "healthy".into(),
-        gateway: env!("CARGO_PKG_VERSION").into(),
-        inferd: inferd_status,
-        active_sessions: state.sessions.list_all().len(),
-        active_jobs: state.jobs.list_for_session("").len(), // TODO: fix this
-        workspaces: state.workspaces.list_all().len(),
-    })
+    (
+        status_code,
+        Json(HealthResponse {
+            status: if status_code == StatusCode::OK {
+                "healthy".into()
+            } else {
+                "degraded".into()
+            },
+            gateway: env!("CARGO_PKG_VERSION").into(),
+            inferd: inferd_status,
+            active_sessions: state.sessions.list_all().len(),
+            active_jobs: state.jobs.list_for_session("").len(), // TODO: fix this
+            workspaces: state.workspaces.list_all().len(),
+        }),
+    )
 }
 
 // ── Job Runner (background task) ───────────────────────────────────────
