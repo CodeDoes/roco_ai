@@ -239,7 +239,7 @@ case "$MODE" in
     ;;
   jobs|inferd)
     header "Inference Daemon (inferd) Jobs & Status"
-    curl -s http://localhost:8080/jobs 2>/dev/null | python3 -m json.tool 2>/dev/null || curl -s http://localhost:8080/health 2>/dev/null || echo "  ⚠ inferd is not reachable on http://localhost:8080"
+    curl -s http://localhost:18080/jobs 2>/dev/null | python3 -m json.tool 2>/dev/null || curl -s http://localhost:18080/health 2>/dev/null || echo "  ⚠ inferd is not reachable on http://localhost:18080"
     ;;
   summary|brief)
     summary

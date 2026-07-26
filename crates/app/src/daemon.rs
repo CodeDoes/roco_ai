@@ -3,13 +3,40 @@
 //! `roco gui` → auto-starts Gateway (if not running)
 //! Gateway → auto-starts Inference Server (if not running)
 //! All CLI commands use `ensure_backend()` instead of loading models directly.
+//!
+//! ## Dev vs production mode
+//!
+//! When running from a cargo workspace (`target/debug/` or `target/release/`),
+//! daemons are spawned via `cargo run -p <package>` so code changes are picked
+//! up automatically. In production (binary installed system-wide), daemons are
+//! assumed pre-installed and spawned directly.
 
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Default ports
+/// Detect if we're running from a Cargo workspace (development mode).
+///
+/// Checks whether `current_exe()` lives under `target/debug/` or
+/// `target/release/`. In dev mode, daemon spawning uses `cargo run`
+/// instead of direct binary execution, so code changes are reflected
+/// on every restart.
+fn is_dev_mode() -> bool {
+    if let Ok(exe) = std::env::current_exe() {
+        let path = exe.to_string_lossy();
+        path.contains("/target/debug/") || path.contains("/target/release/")
+    } else {
+        false
+    }
+}
+
+/// Default ports — using the 18xxx range to avoid conflicts with common
+/// services (8000 ← Python http.server, 8080 ← Tomcat/dev proxies).
+///
+/// Override with `ROCO_INFERD_PORT` / `ROCO_GATEWAY_PORT` env vars.
+const DEFAULT_INFERD_PORT: u16 = 18080;
+const DEFAULT_GATEWAY_PORT: u16 = 18000;
 /// Read a u16 port from an environment variable, returning `default` if unset or invalid.
 fn port_from_env(var: &str, default: u16) -> u16 {
     match std::env::var(var) {
@@ -23,17 +50,19 @@ fn port_from_env(var: &str, default: u16) -> u16 {
 
 /// Gateway port. Override with `ROCO_GATEWAY_PORT` env var.
 pub fn gateway_port() -> u16 {
-    port_from_env("ROCO_GATEWAY_PORT", 8000)
+    port_from_env("ROCO_GATEWAY_PORT", DEFAULT_GATEWAY_PORT)
 }
 
 /// Inference daemon port. Override with `ROCO_INFERD_PORT` env var.
 pub fn inferd_port() -> u16 {
-    port_from_env("ROCO_INFERD_PORT", 8080)
+    port_from_env("ROCO_INFERD_PORT", DEFAULT_INFERD_PORT)
 }
 
-pub const GATEWAY_PORT: u16 = 8000;
-pub const INFERENCE_PORT: u16 = 8080;
-pub const GATEWAY_TARGET: &str = "http://127.0.0.1:8080";
+/// Legacy constants kept for backwards compat — prefer `gateway_port()` /
+/// `inferd_port()` which respect env vars.
+pub const GATEWAY_PORT: u16 = 18000;
+pub const INFERENCE_PORT: u16 = 18080;
+pub const GATEWAY_TARGET: &str = "http://127.0.0.1:18080";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PID file management
@@ -290,20 +319,40 @@ pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]
         Err(_) => return false,
     };
 
-    match Command::new(exe)
-        .args(&args)
-        .stdin(std::process::Stdio::null())
-        .stdout(log_file)
-        .stderr(log_clone)
-        .spawn()
-    {
+    let cmd_result = if is_dev_mode() {
+        // Dev mode: use cargo run --bin roco -- <subcmd> <args>
+        // This picks up code changes automatically.
+        let mut cargo_args: Vec<&str> = vec!["run", "--bin", "roco", "--"];
+        cargo_args.extend(args.iter().map(|s| s.as_str()));
+        eprintln!(
+            "Dev mode: building + starting gateway via cargo run --bin roco -- {} ...",
+            args.join(" ")
+        );
+        Command::new("cargo")
+            .args(&cargo_args)
+            .stdin(std::process::Stdio::null())
+            .stdout(log_file)
+            .stderr(log_clone)
+            .spawn()
+    } else {
+        Command::new(exe)
+            .args(&args)
+            .stdin(std::process::Stdio::null())
+            .stdout(log_file)
+            .stderr(log_clone)
+            .spawn()
+    };
+
+    match cmd_result {
         Ok(child) => {
             let pid = child.id();
             if let Err(e) = std::fs::write(&pid_file_path, pid.to_string()) {
                 eprintln!("Warning: failed to write PID file: {e}");
             }
             eprintln!(
-                "Started {subcmd} (PID {pid}, log: {})",
+                "Started {} ({} PID {pid}, log: {})",
+                subcmd,
+                if is_dev_mode() { "cargo" } else { "process" },
                 log_file_path.display()
             );
             true
@@ -653,15 +702,15 @@ mod tests {
 
     #[test]
     fn test_log_paths() {
-        let p = log_path("server", 8080);
-        assert!(p.to_string_lossy().contains("server_8080.log"));
+        let p = log_path("server", 18080);
+        assert!(p.to_string_lossy().contains("server_18080.log"));
     }
 
     #[test]
     fn test_constants() {
-        assert_eq!(GATEWAY_PORT, 8000);
-        assert_eq!(INFERENCE_PORT, 8080);
-        assert_eq!(GATEWAY_TARGET, "http://127.0.0.1:8080");
+        assert_eq!(GATEWAY_PORT, 18000);
+        assert_eq!(INFERENCE_PORT, 18080);
+        assert_eq!(GATEWAY_TARGET, "http://127.0.0.1:18080");
     }
 
     // ── TokioBackend deadlock regression tests ────────────────────────────────

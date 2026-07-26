@@ -96,7 +96,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),
-            port: 8080,
+            port: 18080,
             hotreload: false,
         }
     }
@@ -106,7 +106,7 @@ impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),
-            port: 8000,
+            port: 18000,
             rate_limit: 60,
             hotreload: false,
         }
@@ -232,9 +232,9 @@ mod tests {
         assert!(cfg.model.path.is_none());
         assert!(cfg.model.vocab.is_none());
         assert_eq!(cfg.server.host, "127.0.0.1");
-        assert_eq!(cfg.server.port, 8080);
+        assert_eq!(cfg.server.port, 18080);
         assert_eq!(cfg.gateway.host, "127.0.0.1");
-        assert_eq!(cfg.gateway.port, 8000);
+        assert_eq!(cfg.gateway.port, 18000);
         assert_eq!(cfg.gateway.rate_limit, 60);
     }
 
@@ -274,7 +274,7 @@ mod tests {
         let cfg: RoCoConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.model.path.unwrap(), "/tmp/test.st");
         // Falls back to defaults
-        assert_eq!(cfg.server.port, 8080);
+        assert_eq!(cfg.server.port, 18080);
         assert_eq!(cfg.gateway.rate_limit, 60);
     }
 
@@ -386,7 +386,7 @@ mod tests {
         let content = r#"
             hotreload = true
             [server]
-            port = 8080
+            port = 18080
         "#;
         let parsed: RoCoConfig = toml::from_str(content).unwrap();
         assert!(parsed.is_hotreload_enabled());

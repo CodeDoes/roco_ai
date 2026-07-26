@@ -49,27 +49,27 @@ rm -f "$GATEWAY_PIDFILE"
 
 # Start inferd via cargo run
 echo -e "${BLUE}ℹ${RESET} Starting inferd..."
-cargo run -p roco-inferd -- --port 8080 >> "$ROCO_PID_DIR/inferd_8080.log" 2>&1 &
+cargo run -p roco-inferd -- --port 18080 >> "$ROCO_PID_DIR/inferd_18080.log" 2>&1 &
 INFERD_PID=$!
 echo "$INFERD_PID" > "$INFERD_PIDFILE"
 echo -e "${GREEN}✓${RESET} roco-inferd restarted (cargo PID $INFERD_PID)"
 
 # Start gateway via cargo run
 echo -e "${BLUE}ℹ${RESET} Starting gateway..."
-cargo run --bin roco -- gateway --detach >> "$ROCO_PID_DIR/gateway_8000.log" 2>&1 &
+cargo run --bin roco -- gateway --detach >> "$ROCO_PID_DIR/gateway_18000.log" 2>&1 &
 GATEWAY_PID=$!
 echo "$GATEWAY_PID" > "$GATEWAY_PIDFILE"
 echo -e "${GREEN}✓${RESET} roco gateway restarted (cargo PID $GATEWAY_PID)"
 
 # Brief health check
 sleep 1.5
-if curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${RESET} inferd healthy: http://127.0.0.1:8080/health"
+if curl -sf http://127.0.0.1:18080/health > /dev/null 2>&1; then
+    echo -e "${GREEN}✓${RESET} inferd healthy: http://127.0.0.1:18080/health"
 else
     echo -e "${YELLOW}⚠${RESET} inferd started, initializing model..."
 fi
-if curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${RESET} gateway healthy: http://127.0.0.1:8000/health"
+if curl -sf http://127.0.0.1:18000/health > /dev/null 2>&1; then
+    echo -e "${GREEN}✓${RESET} gateway healthy: http://127.0.0.1:18000/health"
 else
     echo -e "${YELLOW}⚠${RESET} gateway starting..."
 fi

@@ -92,13 +92,13 @@ if [[ "$HOTRELOAD" == "true" && "${1:-}" != "--no-watch" ]]; then
     trap cleanup EXIT INT TERM
 
     # Start inferd under cargo watch
-    cargo watch -w crates/ -x "run -p roco-inferd -- --port 8080" \
-        > "$ROCO_PID_DIR/inferd_8080.log" 2>&1 &
+    cargo watch -w crates/ -x "run -p roco-inferd -- --port 18080" \
+        > "$ROCO_PID_DIR/inferd_18080.log" 2>&1 &
     echo "$!" > "$INFERD_PIDFILE"
 
     # Start gateway under cargo watch
     cargo watch -w crates/ -x "run --bin roco -- gateway --detach" \
-        > "$ROCO_PID_DIR/gateway_8000.log" 2>&1 &
+        > "$ROCO_PID_DIR/gateway_18000.log" 2>&1 &
     echo "$!" > "$GATEWAY_PIDFILE"
 
     wait
@@ -117,14 +117,14 @@ if [[ -f "$INFERD_PIDFILE" ]]; then
         ok "Inference daemon already running (PID $OLD_PID)"
     else
         warn "Stale PID file, starting inferd..."
-        cargo run -p roco-inferd -- --port 8080 >> "$ROCO_PID_DIR/inferd_8080.log" 2>&1 &
+        cargo run -p roco-inferd -- --port 18080 >> "$ROCO_PID_DIR/inferd_18080.log" 2>&1 &
         CARGO_PID=$!
         echo "$CARGO_PID" > "$INFERD_PIDFILE"
         ok "Inferd starting via cargo run (cargo PID $CARGO_PID)"
     fi
 else
     info "Starting inference daemon via cargo run..."
-    cargo run -p roco-inferd -- --port 8080 >> "$ROCO_PID_DIR/inferd_8080.log" 2>&1 &
+    cargo run -p roco-inferd -- --port 18080 >> "$ROCO_PID_DIR/inferd_18080.log" 2>&1 &
     CARGO_PID=$!
     echo "$CARGO_PID" > "$INFERD_PIDFILE"
     ok "Inferd starting via cargo run (cargo PID $CARGO_PID)"
@@ -137,13 +137,13 @@ if [[ -f "$GATEWAY_PIDFILE" ]]; then
         ok "Gateway already running (PID $OLD_PID)"
     else
         warn "Stale PID file, starting gateway..."
-        cargo run --bin roco -- gateway --detach >> "$ROCO_PID_DIR/gateway_8000.log" 2>&1 &
+        cargo run --bin roco -- gateway --detach >> "$ROCO_PID_DIR/gateway_18000.log" 2>&1 &
         CARGO_PID=$!
         echo "$CARGO_PID" > "$GATEWAY_PIDFILE"
     fi
 else
     info "Starting gateway via cargo run..."
-    cargo run --bin roco -- gateway --detach >> "$ROCO_PID_DIR/gateway_8000.log" 2>&1 &
+    cargo run --bin roco -- gateway --detach >> "$ROCO_PID_DIR/gateway_18000.log" 2>&1 &
     CARGO_PID=$!
     echo "$CARGO_PID" > "$GATEWAY_PIDFILE"
 fi
@@ -152,13 +152,13 @@ sleep 2
 
 # ── Health check ────────────────────────────────────────────────────────
 header "Health check"
-if curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
-    ok "Inference server:  http://127.0.0.1:8080/health"
+if curl -sf http://127.0.0.1:18080/health > /dev/null 2>&1; then
+    ok "Inference server:  http://127.0.0.1:18080/health"
 else
     warn "Inference server not healthy yet (may still be loading model)"
 fi
-if curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
-    ok "Gateway:           http://127.0.0.1:8000/health"
+if curl -sf http://127.0.0.1:18000/health > /dev/null 2>&1; then
+    ok "Gateway:           http://127.0.0.1:18000/health"
 else
     warn "Gateway not healthy yet"
 fi
@@ -174,8 +174,8 @@ fi
 
 # ── Idle ────────────────────────────────────────────────────────────────
 header "Daemons running. Press Ctrl+C to stop."
-info "Inference: http://127.0.0.1:8080"
-info "Gateway:   http://127.0.0.1:8000"
+info "Inference: http://127.0.0.1:18080"
+info "Gateway:   http://127.0.0.1:18000"
 echo ""
 trap cleanup EXIT INT TERM
 while true; do sleep 10; done

@@ -33,10 +33,10 @@ ok()    { echo -e "${GREEN}✓${RESET} $1"; }
 header(){ echo -e "\n${CYAN}══ $1 ══${RESET}"; }
 ai()    { echo -e "${DIM}${1}${RESET}"; }
 
-API="http://127.0.0.1:8000/v1/completions"
+API="http://127.0.0.1:18000/v1/completions"
 
 # ── Ensure backend is running ───────────────────────────────────────────
-if ! curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
+if ! curl -sf http://127.0.0.1:18000/health >/dev/null 2>&1; then
     echo "Starting daemons..."
     RWKV_MODEL="models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st" \
         nohup ~/.cache/roco_target/release/roco-inferd > /tmp/roco-inferd.log 2>&1 &
@@ -47,7 +47,7 @@ if ! curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
 fi
 
 # ── Check health ────────────────────────────────────────────────────────
-if ! curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
+if ! curl -sf http://127.0.0.1:18000/health >/dev/null 2>&1; then
     echo "❌ Backend not available. Start it with:"
     echo "   RWKV_MODEL=models/...st ./dev.sh"
     exit 1

@@ -100,14 +100,14 @@ fn try_connect_backend() -> Option<std::sync::Arc<dyn roco_engine::ModelBackend>
         .build()
         .ok()?;
     let ok = rt.block_on(async {
-        reqwest::get("http://127.0.0.1:8000/health")
+        reqwest::get("http://127.0.0.1:18000/health")
             .await
             .map(|r| r.status().is_success())
             .unwrap_or(false)
     });
     if ok {
         Some(std::sync::Arc::new(roco_infer_client::RemoteBackend::new(
-            "http://127.0.0.1:8000".to_string(),
+            "http://127.0.0.1:18000".to_string(),
         )))
     } else {
         None
