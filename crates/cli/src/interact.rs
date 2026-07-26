@@ -196,7 +196,9 @@ fn run_interactive(
         io::stdout().flush()?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        if io::stdin().read_line(&mut input)? == 0 {
+            break;
+        }
         let input = input.trim().to_string();
 
         if input.is_empty() {
@@ -342,7 +344,9 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
         io::stdout().flush()?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        if io::stdin().read_line(&mut input)? == 0 {
+            break;
+        }
         let input = input.trim().to_string();
 
         if input.is_empty() {

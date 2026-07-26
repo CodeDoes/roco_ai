@@ -414,6 +414,10 @@ pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate
 pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     use roco_infer_client::RemoteBackend;
 
+    if std::env::var("ROCO_USE_MOCK_BACKEND").is_ok() {
+        return Arc::new(roco_engine::MockBackend::default());
+    }
+
     // If there's already a gateway running, connect instantly.
     if is_running("gateway", GATEWAY_PORT) {
         return Arc::new(RemoteBackend::new(format!(
@@ -433,7 +437,11 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
         .expect("failed to build runtime for daemon wait");
 
     // 1. Start and wait for inference server (roco-inferd)
-    ensure_inference_daemon(&exe, INFERENCE_PORT);
+    if !ensure_inference_daemon(&exe, INFERENCE_PORT) {
+        eprintln!("Error: roco-inferd binary not found. Build it with: cargo build -p roco-inferd");
+        std::process::exit(1);
+    }
+
     rt.block_on(wait_for_healthy(
         INFERENCE_PORT,
         Duration::from_secs(60),
@@ -472,7 +480,8 @@ pub struct TokioBackend {
 
 impl TokioBackend {
     pub fn new(inner: Arc<dyn roco_engine::ModelBackend>) -> Self {
-        let rt = tokio::runtime::Builder::new_current_thread()
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
             .enable_all()
             .build()
             .expect("failed to build TokioBackend runtime");
@@ -594,5 +603,15 @@ mod tests {
         assert_eq!(GATEWAY_PORT, 8000);
         assert_eq!(INFERENCE_PORT, 8080);
         assert_eq!(GATEWAY_TARGET, "http://127.0.0.1:8080");
+    }
+
+    #[test]
+    fn test_tokio_backend_executes_sync_completion_without_deadlock() {
+        use roco_engine::ModelBackend;
+        let mock = Arc::new(roco_engine::MockBackend::default());
+        let tokio_backend = TokioBackend::new(mock);
+        let req = roco_engine::CompletionRequest::new("sys", "test TokioBackend sync");
+        let res = futures::executor::block_on(tokio_backend.complete(req));
+        assert!(res.is_ok(), "TokioBackend should complete synchronously without deadlocking");
     }
 }

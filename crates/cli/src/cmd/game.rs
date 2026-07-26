@@ -76,7 +76,10 @@ pub fn cmd_game(extra: &[&str]) {
         io::stdout().flush().ok();
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input).ok();
+        match io::stdin().read_line(&mut input) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
         let input = input.trim().to_string();
 
         if input.is_empty() {

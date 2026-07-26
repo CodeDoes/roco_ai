@@ -6,6 +6,7 @@
 pub mod cmd;
 pub mod daemon;
 pub mod rich_output;
+pub mod test_harness;
 
 #[path = "interact.rs"]
 pub mod interact_cli;

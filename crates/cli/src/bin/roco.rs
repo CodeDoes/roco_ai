@@ -7,13 +7,28 @@ use roco_cli::cmd;
 use roco_cli::{help, parse_opt, run_cargo};
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    // Check for --mock flag to enable mock backend across all subcommands
+    if args.iter().any(|a| a == "--mock") {
+        std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
+    }
+
     // Load config before anything else so RWKV_MODEL / RWKV_VOCAB propagate.
     let cfg = roco_app::RoCoConfig::load();
     cfg.apply_to_environment();
-
-    let args: Vec<String> = std::env::args().collect();
-    let sub = args.get(1).map(|s| s.as_str()).unwrap_or("router");
-    let extra: Vec<&str> = args.iter().skip(2).map(|s| s.as_str()).collect();
+    let filtered_args: Vec<&str> = args
+        .iter()
+        .skip(1)
+        .map(|s| s.as_str())
+        .filter(|&s| s != "--mock")
+        .collect();
+    let sub = filtered_args.first().copied().unwrap_or("router");
+    let extra: Vec<&str> = if filtered_args.is_empty() {
+        vec![]
+    } else {
+        filtered_args[1..].to_vec()
+    };
 
     match sub {
         "eval" => cmd::eval::cmd_eval(&extra),

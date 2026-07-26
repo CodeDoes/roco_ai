@@ -17,12 +17,12 @@ tracing.workspace = true
 futures.workspace = true
 # MockBackend latency injection; cheap feature set
 tokio = { workspace = true, features = ["time", "signal"] }
+kbnf = "0.5.7"
+rand = "0.8"
+ahash = "0.8"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
-rand = "0.8"
 jsonschema = "0.18"
 schoolmarm = "0.1"
-kbnf = "0.5.7"
-ahash = "0.8"
 roco-bnf-engine = { path = "../bnf-engine" }

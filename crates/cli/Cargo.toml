@@ -60,6 +60,4 @@ serde_json.workspace = true
 anyhow.workspace = true
 futures.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
-
-[dev-dependencies]
 tempfile = "3.10"

@@ -71,6 +71,74 @@ pub trait ModelBackend: Send + Sync {
     ) -> BoxFuture<'a, Result<String, EngineError>>;
 }
 
+fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize) -> Option<String> {
+    use ahash::AHashMap;
+    use kbnf::engine_like::EngineLike;
+    use kbnf::{Config, Engine, Token, Vocabulary};
+    use rand::seq::SliceRandom;
+
+    let kbnf_str = crate::grammar::gbnf_to_kbnf(gbnf);
+    let tokens: Vec<&str> = vec![
+        "", "\n", " ", "\t", "\"", "\\", "{", "}", "[", "]", ":", ",", "-", ".",
+        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+        "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+        "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+        "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        "true", "false", "null", "result", "title", "chapter", "content",
+        "name", "summary", "quality", "pass", "fail", "issues", "suggestion",
+    ];
+
+    let mut id_to_token: AHashMap<u32, Token> = AHashMap::new();
+    let mut id_to_string: AHashMap<u32, String> = AHashMap::new();
+
+    for (id, &s) in tokens.iter().enumerate() {
+        if s.is_empty() {
+            continue;
+        }
+        let token_id = id as u32;
+        id_to_token.insert(token_id, Token(s.as_bytes().to_vec().into_boxed_slice()));
+        id_to_string.insert(token_id, s.to_string());
+    }
+
+    let vocab_obj = Vocabulary::new(id_to_token, id_to_string.clone()).ok()?;
+    let config = Config {
+        start_nonterminal: "root".to_string(),
+        ..Config::default()
+    };
+    let mut engine = Engine::with_config(&kbnf_str, vocab_obj, config).ok()?;
+
+    let mut rng = rand::thread_rng();
+    let mut out = String::new();
+
+    let steps = if max_tokens == 0 { 256 } else { max_tokens };
+    for _ in 0..steps {
+        engine.compute_allowed_token_ids();
+        if engine.is_finished() {
+            break;
+        }
+        let bitset = engine.allowed_token_ids_from_last_computation();
+        let allowed: Vec<u32> = (0..tokens.len() as u32)
+            .filter(|&id| !tokens[id as usize].is_empty() && bitset.contains(id as usize))
+            .collect();
+        if allowed.is_empty() {
+            break;
+        }
+        let chosen = *allowed.choose(&mut rng)?;
+        let tok_str = id_to_string.get(&chosen)?;
+        out.push_str(tok_str);
+        if engine.try_accept_new_token(chosen).is_err() {
+            break;
+        }
+    }
+
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
 /// Deterministic backend for tests / pre-model development.
 ///
 /// Supports simulated failures via `fail_count` — the first N calls will
@@ -133,6 +201,16 @@ impl ModelBackend for MockBackend {
     fn name(&self) -> &str {
         &self.name
     }
+    fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
+        let mut v: Vec<Vec<u8>> = vec![b"".to_vec()]; // Token 0: EOS sentinel
+        for b in [0x09u8, 0x0Au8, 0x0Du8] {
+            v.push(vec![b]);
+        }
+        for b in 0x20u8..=0x7Eu8 {
+            v.push(vec![b]);
+        }
+        Some(v)
+    }
     fn complete(
         &self,
         req: CompletionRequest,
@@ -152,8 +230,15 @@ impl ModelBackend for MockBackend {
                 return Err(EngineError::Backend("simulated failure".into()));
             }
             let snippet: String = req.prompt.chars().take(48).collect();
-            let result_text =
-                serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) }).to_string();
+
+            let bnf_walk_text = req
+                .grammar
+                .as_ref()
+                .and_then(|g| mock_random_walk_bnf(g, req.max_tokens));
+
+            let result_text = bnf_walk_text.unwrap_or_else(|| {
+                serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) }).to_string()
+            });
             let parsed = serde_json::from_str(&result_text).ok();
 
             // Invoke on_token for streaming simulation.
