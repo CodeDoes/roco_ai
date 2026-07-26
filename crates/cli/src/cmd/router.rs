@@ -140,6 +140,9 @@ fn detect_intent(
     available: &[Intent],
     mode_hint: &str,
 ) -> (Intent, String) {
+    print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+    io::stdout().flush().ok();
+
     let prompt = intent_detection_prompt(user_message, available, mode_hint);
 
     let request = roco_engine::CompletionRequest {
@@ -162,7 +165,7 @@ fn detect_intent(
         });
     let fallback = || (chat_intent.clone(), user_message.to_string());
 
-    match futures::executor::block_on(backend.complete(request)) {
+    let res = match futures::executor::block_on(backend.complete(request)) {
         Ok(resp) => {
             let text = resp.text.trim().to_string();
             if let Some(json_str) = extract_json(&text) {
@@ -176,14 +179,22 @@ fn detect_intent(
                     // Find the matching intent
                     let matched = available.iter().find(|i| i.id == intent_id).cloned();
                     if let Some(intent) = matched {
-                        return (intent, prompt);
+                        (intent, prompt)
+                    } else {
+                        fallback()
                     }
+                } else {
+                    fallback()
                 }
+            } else {
+                fallback()
             }
-            fallback()
         }
         Err(_) => fallback(),
-    }
+    };
+    print!("\r\x1b[K");
+    io::stdout().flush().ok();
+    res
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -364,16 +375,27 @@ fn generate_response(
         _ => 1024,
     };
 
+    print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+    io::stdout().flush().ok();
+
+    let printed_first = std::sync::atomic::AtomicBool::new(false);
     let request = roco_engine::CompletionRequest {
         system,
         prompt,
         temperature: 0.8,
         max_tokens,
         prefill,
+        on_token: Some(Box::new(move |token: &str| {
+            if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                print!("\r\x1b[K\n");
+            }
+            print!("{token}");
+            io::stdout().flush().ok();
+        })),
         ..Default::default()
     };
 
-    match futures::executor::block_on(backend.complete(request)) {
+    let resp = match futures::executor::block_on(backend.complete(request)) {
         Ok(resp) => {
             let text = resp.text.trim().to_string();
             if mode == Mode::Html {
@@ -383,7 +405,10 @@ fn generate_response(
             }
         }
         Err(e) => format!("[Error: {e}]"),
-    }
+    };
+    print!("\r\x1b[K");
+    io::stdout().flush().ok();
+    resp
 }
 
 /// Get the system prompt for a given mode.

@@ -173,6 +173,10 @@ pub fn cmd_game(extra: &[&str]) {
         }
 
         // Regular action — process through game master
+        print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+        io::stdout().flush().ok();
+
+        let printed_first = std::sync::atomic::AtomicBool::new(false);
         let request = roco_engine::CompletionRequest {
             system: system_prompt.clone(),
             prompt: format!(
@@ -182,11 +186,20 @@ pub fn cmd_game(extra: &[&str]) {
             temperature: 0.85,
             max_tokens: 500,
             prefill: Some(" thinking response".into()),
+            on_token: Some(Box::new(move |token: &str| {
+                if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    print!("\r\x1b[K\n");
+                }
+                print!("{token}");
+                io::stdout().flush().ok();
+            })),
             ..Default::default()
         };
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(resp) => {
+                print!("\r\x1b[K");
+                io::stdout().flush().ok();
                 let text = resp.text.trim().to_string();
                 println!("\n{}", text);
             }

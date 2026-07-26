@@ -161,18 +161,30 @@ pub fn cmd_coder(extra: &[&str]) {
         r::dim("───");
         println!("{}", input);
         r::header("Assistant");
+        print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+        io::stdout().flush().ok();
 
+        let printed_first = std::sync::atomic::AtomicBool::new(false);
         let request = roco_engine::CompletionRequest {
             system: system_prompt.clone(),
             prompt: build_coder_prompt(&history, &input),
             temperature: 0.5,
             max_tokens: 2048,
             prefill: Some(" thinking".into()),
+            on_token: Some(Box::new(move |token: &str| {
+                if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    print!("\r\x1b[K\n");
+                }
+                print!("{token}");
+                io::stdout().flush().ok();
+            })),
             ..Default::default()
         };
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(resp) => {
+                print!("\r\x1b[K");
+                io::stdout().flush().ok();
                 let text = resp.text.trim().to_string();
                 history.push(Message {
                     role: "user".into(),

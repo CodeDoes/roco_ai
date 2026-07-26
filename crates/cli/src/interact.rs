@@ -233,17 +233,30 @@ fn run_interactive(
 
         // Agent response
         r::header("AI");
+        print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+        io::stdout().flush()?;
+
+        let printed_first = std::sync::atomic::AtomicBool::new(false);
         let request = roco_engine::CompletionRequest {
             system: "You are a creative writing assistant.".into(),
             prompt: input.clone(),
             temperature: 0.8,
             max_tokens: 1024,
             prefill: Some("<think></think>".into()),
+            on_token: Some(Box::new(move |token: &str| {
+                if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    print!("\r\x1b[K\n");
+                }
+                print!("{token}");
+                io::stdout().flush().ok();
+            })),
             ..Default::default()
         };
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(response) => {
+                print!("\r\x1b[K");
+                io::stdout().flush().ok();
                 let text = response.text.trim().to_string();
                 r::dim(&format!("─ {} characters ─", text.len()));
                 println!("{}", text);
