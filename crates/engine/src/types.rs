@@ -6,6 +6,84 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Typed string wrapper for validated prompt text.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct PromptText(pub String);
+
+impl PromptText {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for PromptText {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for PromptText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<&str> for PromptText {
+    fn from(s: &str) -> Self {
+        PromptText(s.to_string())
+    }
+}
+
+impl From<String> for PromptText {
+    fn from(s: String) -> Self {
+        PromptText(s)
+    }
+}
+
+/// Typed string wrapper for session and state cache identifiers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct StateKey(pub String);
+
+impl StateKey {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for StateKey {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for StateKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<&str> for StateKey {
+    fn from(s: &str) -> Self {
+        StateKey(s.to_string())
+    }
+}
+
+impl From<String> for StateKey {
+    fn from(s: String) -> Self {
+        StateKey(s)
+    }
+}
+
 /// Callback invoked for each token emitted during streaming generation.
 pub type OnToken = Option<Box<dyn Fn(&str) + Send + Sync>>;
 
