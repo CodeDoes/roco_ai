@@ -556,6 +556,7 @@ async fn handle_cancel_job(
 
 async fn handle_proxy_to_inferd(State(state): State<GatewayState>, req: Request) -> Response {
     let method = req.method().clone();
+    let req_headers = req.headers().clone();
     let path_and_query = req
         .uri()
         .path_and_query()
@@ -606,6 +607,7 @@ async fn handle_proxy_to_inferd(State(state): State<GatewayState>, req: Request)
     };
 
     let mut forwarded = state.inferd_client.request(method, &forward_url);
+    forwarded = forwarded.headers(req_headers);
     forwarded = forwarded.body(body_bytes);
 
     let response = match forwarded.send().await {
