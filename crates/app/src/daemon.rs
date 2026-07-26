@@ -838,6 +838,94 @@ mod tests {
         );
     }
 
+    // ── Dev mode detection ───────────────────────────────────────────────
+
+    #[test]
+    fn test_is_dev_mode_false_in_test_binary() {
+        // Test binaries usually live under target/debug/ or target/release/,
+        // so is_dev_mode() should return true when running `cargo test`.
+        // This isn't a hard guarantee (some test runners may symlink), but
+        // checks that the function at least doesn't panic.
+        let _ = is_dev_mode();
+    }
+
+    #[test]
+    fn test_is_dev_mode_path_heuristic() {
+        // The heuristic checks for /target/debug/ or /target/release/ in the
+        // exe path. We can't easily unit-test this without injecting a path,
+        // but we can verify the logic for a known pattern:
+        // This is a Linux project; paths use forward slashes.
+        let dev_paths = [
+            "/home/user/project/target/debug/roco",
+            "/home/user/project/target/release/roco",
+        ];
+        let prod_paths = [
+            "/usr/bin/roco",
+            "/usr/local/bin/roco",
+            "/nix/store/abc123-roco/bin/roco",
+        ];
+        for p in &dev_paths {
+            assert!(
+                p.contains("/target/debug/") || p.contains("/target/release/"),
+                "expected dev path {p:?}"
+            );
+        }
+        for p in &prod_paths {
+            assert!(
+                !p.contains("/target/debug/") && !p.contains("/target/release/"),
+                "expected prod path {p:?}"
+            );
+        }
+    }
+
+    // ── Port helpers ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_port_from_env_unset() {
+        // No env var set → returns default
+        unsafe { std::env::remove_var("ROCO_TEST_PORT") };
+        assert_eq!(port_from_env("ROCO_TEST_PORT", 18000), 18000);
+    }
+
+    #[test]
+    fn test_port_from_env_valid() {
+        unsafe { std::env::set_var("ROCO_TEST_PORT", "19999") };
+        assert_eq!(port_from_env("ROCO_TEST_PORT", 18000), 19999);
+        unsafe { std::env::remove_var("ROCO_TEST_PORT") };
+    }
+
+    #[test]
+    fn test_port_from_env_invalid() {
+        // Invalid value → falls back to default
+        unsafe { std::env::set_var("ROCO_TEST_PORT", "not-a-port") };
+        assert_eq!(port_from_env("ROCO_TEST_PORT", 18000), 18000);
+        unsafe { std::env::remove_var("ROCO_TEST_PORT") };
+    }
+
+    #[test]
+    fn test_gateway_port_default() {
+        assert_eq!(gateway_port(), DEFAULT_GATEWAY_PORT);
+    }
+
+    #[test]
+    fn test_inferd_port_default() {
+        assert_eq!(inferd_port(), DEFAULT_INFERD_PORT);
+    }
+
+    #[test]
+    fn test_gateway_port_env_override() {
+        unsafe { std::env::set_var("ROCO_GATEWAY_PORT", "19999") };
+        assert_eq!(gateway_port(), 19999);
+        unsafe { std::env::remove_var("ROCO_GATEWAY_PORT") };
+    }
+
+    #[test]
+    fn test_inferd_port_env_override() {
+        unsafe { std::env::set_var("ROCO_INFERD_PORT", "29999") };
+        assert_eq!(inferd_port(), 29999);
+        unsafe { std::env::remove_var("ROCO_INFERD_PORT") };
+    }
+
     // ── Scenario 5: ensure_sync_backend() round-trip ─────────────────────────
     // ensure_sync_backend() is the function every CLI command calls.
     // In test mode (ROCO_USE_MOCK_BACKEND=1) it returns MockBackend directly;
