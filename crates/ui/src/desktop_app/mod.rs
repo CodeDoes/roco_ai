@@ -67,7 +67,7 @@ pub struct RocoDesktopApp {
 
     // Layout
     left_panel_open: bool,
-    right_panel_tool: Option<RightPanelTool>,
+    pub right_panel_tool: Option<RightPanelTool>,
 
     // Status
     status_message: String,
@@ -349,7 +349,7 @@ impl RocoDesktopApp {
     }
 
     /// Handle a file tree action
-    fn handle_file_tree_action(&mut self, action: FileTreeAction) {
+    pub fn handle_file_tree_action(&mut self, action: FileTreeAction) {
         match action {
             FileTreeAction::OpenFile(path) => {
                 self.status_message = format!("Opened: {}", path.display());

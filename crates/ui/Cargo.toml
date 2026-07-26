@@ -38,6 +38,7 @@ roco-infer-client = { path = "../infer-client" }
 reqwest = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile = "3.10"
 
 [features]
 default = []
