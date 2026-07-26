@@ -20,8 +20,15 @@ pub mod story_routes;
 
 use std::process::Command;
 
-/// Parse `--flag value` from a free-form argv slice.
+/// Parse a named option from args, supporting both `--key=value` and
+/// `--key value` (separate arg) formats. Returns `None` if not present.
 pub fn parse_opt<'a>(name: &str, args: &'a [&str]) -> Option<&'a str> {
+    // Try `--key=value` first (single arg with = separator)
+    let eq_prefix = format!("{}=", name);
+    if let Some(arg) = args.iter().find(|a| a.starts_with(&eq_prefix)) {
+        return Some(&arg[name.len() + 1..]);
+    }
+    // Try `--key` with value in next arg (separate args)
     args.windows(2)
         .find_map(|w| if w[0] == name { Some(w[1]) } else { None })
 }
