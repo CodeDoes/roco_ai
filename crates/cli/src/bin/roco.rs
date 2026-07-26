@@ -65,59 +65,75 @@ fn main() {
         ),
         "gpu-check" => cmd::gpu::cmd_gpu_check(&extra),
         "jobs" | "inferd-jobs" | "inferd-status" => cmd::jobs::cmd_jobs(&extra),
-        "inferd" => {
-            if extra.first().copied() == Some("reload") {
-                #[cfg(feature = "net")]
-                cmd::server::cmd_inferd_reload(&extra[1..]);
-                #[cfg(not(feature = "net"))]
-                need_feature(
-                    "inferd reload",
-                    "net",
-                    "cargo build -p roco-cli --features net",
-                );
-            } else if extra.first().copied() == Some("jobs")
-                || extra.first().copied() == Some("status")
-            {
-                cmd::jobs::cmd_jobs(&extra[1..]);
-            } else {
-                #[cfg(feature = "net")]
-                cmd::server::cmd_server(&extra);
-                #[cfg(not(feature = "net"))]
-                need_feature("inferd", "net", "cargo run -p roco-inferd");
-            }
-        }
-        "server" => {
-            if extra.first().copied() == Some("reload") {
-                #[cfg(feature = "net")]
-                cmd::server::cmd_inferd_reload(&extra[1..]);
-                #[cfg(not(feature = "net"))]
-                need_feature(
-                    "server reload",
-                    "net",
-                    "cargo build -p roco-cli --features net",
-                );
-            } else {
-                #[cfg(feature = "net")]
-                cmd::server::cmd_server(&extra);
-                #[cfg(not(feature = "net"))]
-                need_feature("server", "net", "cargo run -p roco-inferd");
+        "inferd" | "server" => {
+            let sub_cmd = extra.first().copied();
+            match sub_cmd {
+                Some("stop") => {
+                    roco_cli::daemon::stop_inference();
+                }
+                Some("start") => {
+                    let exe = std::env::current_exe().expect("exe");
+                    if roco_cli::daemon::ensure_inference_daemon(&exe, roco_cli::daemon::INFERENCE_PORT) {
+                        println!("✓ roco-inferd started on port {}.", roco_cli::daemon::INFERENCE_PORT);
+                    }
+                }
+                Some("restart") | Some("reload") => {
+                    #[cfg(feature = "net")]
+                    cmd::server::cmd_inferd_reload(&extra[1..]);
+                    #[cfg(not(feature = "net"))]
+                    need_feature(
+                        "inferd reload",
+                        "net",
+                        "cargo build -p roco-cli --features net",
+                    );
+                }
+                Some("status") | Some("jobs") => {
+                    cmd::jobs::cmd_jobs(&extra[1..]);
+                }
+                _ => {
+                    #[cfg(feature = "net")]
+                    cmd::server::cmd_server(&extra);
+                    #[cfg(not(feature = "net"))]
+                    need_feature("inferd", "net", "cargo run -p roco-inferd");
+                }
             }
         }
         "gateway" => {
-            if extra.first().copied() == Some("reload") {
-                #[cfg(feature = "net")]
-                cmd::server::cmd_gateway_reload(&extra[1..]);
-                #[cfg(not(feature = "net"))]
-                need_feature(
-                    "gateway reload",
-                    "net",
-                    "cargo build -p roco-cli --features net",
-                );
-            } else {
-                #[cfg(feature = "net")]
-                cmd::server::cmd_gateway(&extra);
-                #[cfg(not(feature = "net"))]
-                need_feature("gateway", "net", "cargo build -p roco-cli --features net");
+            let sub_cmd = extra.first().copied();
+            match sub_cmd {
+                Some("stop") => {
+                    roco_cli::daemon::stop_gateway();
+                }
+                Some("start") => {
+                    let exe = std::env::current_exe().expect("exe");
+                    if roco_cli::daemon::ensure_daemon(&exe, "gateway", roco_cli::daemon::GATEWAY_PORT, &["--detach"]) {
+                        println!("✓ Gateway started on port {}.", roco_cli::daemon::GATEWAY_PORT);
+                    }
+                }
+                Some("restart") | Some("reload") => {
+                    #[cfg(feature = "net")]
+                    cmd::server::cmd_gateway_reload(&extra[1..]);
+                    #[cfg(not(feature = "net"))]
+                    need_feature(
+                        "gateway reload",
+                        "net",
+                        "cargo build -p roco-cli --features net",
+                    );
+                }
+                Some("status") => {
+                    let running = roco_cli::daemon::is_running("gateway", roco_cli::daemon::GATEWAY_PORT);
+                    if running {
+                        println!("✓ Gateway is running on port {}.", roco_cli::daemon::GATEWAY_PORT);
+                    } else {
+                        println!("✗ Gateway is not running on port {}.", roco_cli::daemon::GATEWAY_PORT);
+                    }
+                }
+                _ => {
+                    #[cfg(feature = "net")]
+                    cmd::server::cmd_gateway(&extra);
+                    #[cfg(not(feature = "net"))]
+                    need_feature("gateway", "net", "cargo build -p roco-cli --features net");
+                }
             }
         }
         "reload" => {
@@ -137,7 +153,12 @@ fn main() {
             );
         }
         "stop" => {
-            roco_cli::daemon::stop_all();
+            let sub_cmd = extra.first().copied();
+            match sub_cmd {
+                Some("gateway") => roco_cli::daemon::stop_gateway(),
+                Some("inferd") | Some("server") => roco_cli::daemon::stop_inference(),
+                _ => roco_cli::daemon::stop_all(),
+            }
         }
         "story-mode" | "sm" => {
             let story_name = parse_opt("--story", &extra);
