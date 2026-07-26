@@ -154,7 +154,9 @@ fn detect_intent(
         system: "You classify user intent into exactly one category and extract their request. Output only JSON.".into(),
         prompt,
         temperature: 0.1,
-        max_tokens: 200,
+        max_tokens: 80,
+        prefill: Some("{\"intent\":".into()),
+        thinking: false,
         ..Default::default()
     };
 
@@ -355,7 +357,6 @@ pub fn cmd_router(extra: &[&str]) {
 
         let text = generate_response(&*backend, current_mode, &history, &extracted);
         add_history(&mut history, "assistant", &text);
-        println!("\n{}", text);
     }
 }
 
@@ -399,7 +400,8 @@ fn generate_response(
     );
     io::stdout().flush().ok();
 
-    let printed_first = std::sync::atomic::AtomicBool::new(false);
+    let printed_first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let pf = std::sync::Arc::clone(&printed_first);
     let request = roco_engine::CompletionRequest {
         system,
         prompt,
@@ -407,7 +409,7 @@ fn generate_response(
         max_tokens,
         prefill,
         on_token: Some(Box::new(move |token: &str| {
-            if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            if !pf.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 print!("\r\x1b[K\n");
             }
             print!("{token}");
@@ -427,7 +429,12 @@ fn generate_response(
         }
         Err(e) => format!("[Error: {e}]"),
     };
-    print!("\r\x1b[K");
+    if printed_first.load(std::sync::atomic::Ordering::Relaxed) {
+        println!();
+    } else {
+        print!("\r\x1b[K");
+        println!("{resp}");
+    }
     io::stdout().flush().ok();
     resp
 }
@@ -672,8 +679,15 @@ fn handle_command(cmd: &str, mode: &mut Mode, history: &mut Vec<HistoryEntry>) -
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Extract a JSON object from text that might have surrounding content.
+/// Extract a JSON object from text that might have surrounding content or prefill.
 fn extract_json(text: &str) -> Option<String> {
+    let text = text.trim();
+    let text = if !text.starts_with('{') && text.contains("\"prompt\"") {
+        format!("{{\"intent\":{text}")
+    } else {
+        text.to_string()
+    };
+
     let start = text.find('{')?;
     let end = text.rfind('}')?;
     if end > start {

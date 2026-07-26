@@ -241,7 +241,8 @@ fn run_interactive(
         );
         io::stdout().flush()?;
 
-        let printed_first = std::sync::atomic::AtomicBool::new(false);
+        let printed_first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pf = std::sync::Arc::clone(&printed_first);
         let request = roco_engine::CompletionRequest {
             system: "You are a creative writing assistant.".into(),
             prompt: input.clone(),
@@ -249,7 +250,7 @@ fn run_interactive(
             max_tokens: 1024,
             prefill: Some("<think></think>".into()),
             on_token: Some(Box::new(move |token: &str| {
-                if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                if !pf.swap(true, std::sync::atomic::Ordering::Relaxed) {
                     print!("\r\x1b[K\n");
                 }
                 print!("{token}");
@@ -260,11 +261,15 @@ fn run_interactive(
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(response) => {
-                print!("\r\x1b[K");
-                io::stdout().flush().ok();
                 let text = response.text.trim().to_string();
+                if printed_first.load(std::sync::atomic::Ordering::Relaxed) {
+                    println!();
+                } else {
+                    print!("\r\x1b[K");
+                    println!("{text}");
+                }
+                io::stdout().flush().ok();
                 r::dim(&format!("─ {} characters ─", text.len()));
-                println!("{}", text);
                 state.add_message("assistant", &text);
 
                 // Pacing: check if we should pause

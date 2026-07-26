@@ -181,7 +181,8 @@ pub fn cmd_game(extra: &[&str]) {
         );
         io::stdout().flush().ok();
 
-        let printed_first = std::sync::atomic::AtomicBool::new(false);
+        let printed_first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pf = std::sync::Arc::clone(&printed_first);
         let request = roco_engine::CompletionRequest {
             system: system_prompt.clone(),
             prompt: format!(
@@ -192,7 +193,7 @@ pub fn cmd_game(extra: &[&str]) {
             max_tokens: 500,
             prefill: Some(" thinking response".into()),
             on_token: Some(Box::new(move |token: &str| {
-                if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                if !pf.swap(true, std::sync::atomic::Ordering::Relaxed) {
                     print!("\r\x1b[K\n");
                 }
                 print!("{token}");
@@ -203,10 +204,14 @@ pub fn cmd_game(extra: &[&str]) {
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(resp) => {
-                print!("\r\x1b[K");
-                io::stdout().flush().ok();
                 let text = resp.text.trim().to_string();
-                println!("\n{}", text);
+                if printed_first.load(std::sync::atomic::Ordering::Relaxed) {
+                    println!();
+                } else {
+                    print!("\r\x1b[K");
+                    println!("{text}");
+                }
+                io::stdout().flush().ok();
             }
             Err(e) => {
                 r::error(&format!("The game master is thinking... Error: {e}"));

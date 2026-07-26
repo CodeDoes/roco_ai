@@ -169,7 +169,8 @@ pub fn cmd_coder(extra: &[&str]) {
         );
         io::stdout().flush().ok();
 
-        let printed_first = std::sync::atomic::AtomicBool::new(false);
+        let printed_first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pf = std::sync::Arc::clone(&printed_first);
         let request = roco_engine::CompletionRequest {
             system: system_prompt.clone(),
             prompt: build_coder_prompt(&history, &input),
@@ -177,7 +178,7 @@ pub fn cmd_coder(extra: &[&str]) {
             max_tokens: 2048,
             prefill: Some(" thinking".into()),
             on_token: Some(Box::new(move |token: &str| {
-                if !printed_first.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                if !pf.swap(true, std::sync::atomic::Ordering::Relaxed) {
                     print!("\r\x1b[K\n");
                 }
                 print!("{token}");
@@ -188,9 +189,14 @@ pub fn cmd_coder(extra: &[&str]) {
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(resp) => {
-                print!("\r\x1b[K");
-                io::stdout().flush().ok();
                 let text = resp.text.trim().to_string();
+                if printed_first.load(std::sync::atomic::Ordering::Relaxed) {
+                    println!();
+                } else {
+                    print!("\r\x1b[K");
+                    println!("{text}");
+                }
+                io::stdout().flush().ok();
                 history.push(Message {
                     role: "user".into(),
                     content: input,

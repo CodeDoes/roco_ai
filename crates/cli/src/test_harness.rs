@@ -304,4 +304,12 @@ impl ScriptedTuiSession {
             .with_stdin_lines(&self.commands)
             .run_binary(args)
     }
+
+    pub fn run_default_cli(&self) -> CliTestResult {
+        let args: Vec<&str> = vec![];
+        self.runner
+            .clone()
+            .with_stdin_lines(&self.commands)
+            .run_binary(args)
+    }
 }

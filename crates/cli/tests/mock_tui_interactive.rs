@@ -126,3 +126,13 @@ fn test_interactive_router_mode_switching() {
     res.assert_stdout_contains("Switched to adventure mode.");
     res.assert_stdout_contains("Goodbye!");
 }
+
+#[test]
+fn test_interactive_router_hi_turn_and_quit() {
+    let session = ScriptedTuiSession::new().type_line("hi").type_line(":q");
+
+    let res = session.run_default_cli();
+    res.assert_success();
+    res.assert_stdout_contains("RoCo AI — Mode Router");
+    res.assert_stdout_contains("💬 Chat >");
+}
