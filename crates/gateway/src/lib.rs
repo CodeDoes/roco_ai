@@ -23,7 +23,6 @@ use axum::{
     routing::{delete, get, post},
     Json, Router as AxumRouter,
 };
-use futures::StreamExt;
 use parking_lot::Mutex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -171,9 +170,7 @@ async fn job_worker(state: GatewayState) {
                 // Write token to workspace file for persistence
                 if let Some(job) = state.jobs.get(&job_id) {
                     let path = format!("jobs/{}/output.md", job_id);
-                    let _ = state
-                        .workspaces
-                        .write_file(&job.workspace_id, &path, &token);
+                    let _ = state.workspaces.write_file(&job.workspace_id, &path, &token);
                 }
             }
             Ok(JobEvent::Completed { job_id }) => {
@@ -268,11 +265,9 @@ async fn handle_bake_session(
                 (axum::http::StatusCode::BAD_GATEWAY, "Inferd bake failed").into_response()
             }
         }
-        Err(e) => (
-            axum::http::StatusCode::BAD_GATEWAY,
-            format!("Inferd unreachable: {e}"),
-        )
-            .into_response(),
+        Err(e) => {
+            (axum::http::StatusCode::BAD_GATEWAY, format!("Inferd unreachable: {e}")).into_response()
+        }
     }
 }
 
@@ -288,12 +283,8 @@ struct CompleteRequest {
     grammar: Option<String>,
 }
 
-fn default_temperature() -> f32 {
-    0.7
-}
-fn default_max_tokens() -> usize {
-    512
-}
+fn default_temperature() -> f32 { 0.7 }
+fn default_max_tokens() -> usize { 512 }
 
 async fn handle_complete_session(
     State(state): State<GatewayState>,
@@ -343,11 +334,9 @@ async fn handle_complete_session(
                 });
                 Json(serde_json::json!({ "text": text })).into_response()
             }
-            Err(e) => (
-                axum::http::StatusCode::BAD_GATEWAY,
-                format!("Inferd error: {e}"),
-            )
-                .into_response(),
+            Err(e) => {
+                (axum::http::StatusCode::BAD_GATEWAY, format!("Inferd error: {e}")).into_response()
+            }
         }
     }
 }
@@ -385,8 +374,7 @@ async fn handle_get_session_status(
             "status": session.status,
             "token_count": session.accumulated_tokens.len(),
             "baked_shots": session.baked_shots,
-        }))
-        .into_response(),
+        })).into_response(),
         None => (axum::http::StatusCode::NOT_FOUND, "Session not found").into_response(),
     }
 }
@@ -413,9 +401,7 @@ async fn handle_create_workspace(
     State(state): State<GatewayState>,
     Json(req): Json<CreateWorkspaceRequest>,
 ) -> impl IntoResponse {
-    let id = req
-        .id
-        .unwrap_or_else(|| format!("ws-{}", uuid::Uuid::new_v4()));
+    let id = req.id.unwrap_or_else(|| format!("ws-{}", uuid::Uuid::new_v4()));
     match state.workspaces.create(&id) {
         Ok(ws) => Json(ws).into_response(),
         Err(e) => (axum::http::StatusCode::BAD_REQUEST, e).into_response(),
@@ -554,7 +540,10 @@ async fn handle_cancel_job(
 
 // ── Inferd Proxy (fallback) ──────────────────────────────────────────────
 
-async fn handle_proxy_to_inferd(State(state): State<GatewayState>, req: Request) -> Response {
+async fn handle_proxy_to_inferd(
+    State(state): State<GatewayState>,
+    req: Request,
+) -> Response {
     let method = req.method().clone();
     let path_and_query = req
         .uri()
@@ -637,10 +626,7 @@ async fn handle_proxy_to_inferd(State(state): State<GatewayState>, req: Request)
     let elapsed = start.elapsed();
     info!(
         "{} {} → {} ({:?})",
-        client_ip,
-        path_and_query,
-        status.as_u16(),
-        elapsed
+        client_ip, path_and_query, status.as_u16(), elapsed
     );
 
     let mut builder = Response::builder().status(status);
@@ -649,16 +635,14 @@ async fn handle_proxy_to_inferd(State(state): State<GatewayState>, req: Request)
             builder = builder.header(key, value);
         }
     }
-    builder
-        .body(axum::body::Body::from(body))
-        .unwrap_or_else(|e| {
-            warn!("Failed to build response: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to build response",
-            )
-                .into_response()
-        })
+    builder.body(axum::body::Body::from(body)).unwrap_or_else(|e| {
+        warn!("Failed to build response: {}", e);
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to build response",
+        )
+            .into_response()
+    })
 }
 
 // ── Health ───────────────────────────────────────────────────────────────
@@ -675,12 +659,7 @@ struct HealthResponse {
 
 async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
     // Check inferd health
-    let inferd_status = match state
-        .inferd_client
-        .get(format!("{}/health", state.inferd_url))
-        .send()
-        .await
-    {
+    let inferd_status = match state.inferd_client.get(format!("{}/health", state.inferd_url)).send().await {
         Ok(resp) if resp.status().is_success() => "healthy".to_string(),
         _ => "unreachable".to_string(),
     };
@@ -704,9 +683,7 @@ async fn run_job_on_inferd(state: GatewayState, job_id: String) {
     };
 
     state.jobs.start(&job_id);
-    state
-        .sessions
-        .set_status(&job.session_id, SessionStatus::Generating);
+    state.sessions.set_status(&job.session_id, SessionStatus::Generating);
 
     let url = format!("{}/complete", state.inferd_url);
     let body = serde_json::json!({
@@ -721,6 +698,7 @@ async fn run_job_on_inferd(state: GatewayState, job_id: String) {
     match state.inferd_client.post(&url).json(&body).send().await {
         Ok(resp) => {
             let mut stream = resp.bytes_stream();
+            use futures_util::StreamExt;
             while let Some(chunk) = stream.next().await {
                 match chunk {
                     Ok(bytes) => {
@@ -728,14 +706,10 @@ async fn run_job_on_inferd(state: GatewayState, job_id: String) {
                             // Parse SSE format: data: {...}
                             for line in text.lines() {
                                 if let Some(json_str) = line.strip_prefix("data: ") {
-                                    if let Ok(event) =
-                                        serde_json::from_str::<serde_json::Value>(json_str)
-                                    {
+                                    if let Ok(event) = serde_json::from_str::<serde_json::Value>(json_str) {
                                         if let Some(token) = event["choices"][0]["text"].as_str() {
                                             state.jobs.append_token(&job_id, token);
-                                            state
-                                                .sessions
-                                                .append_tokens(&job.session_id, vec![token.into()]);
+                                            state.sessions.append_tokens(&job.session_id, vec![token.into()]);
                                         }
                                     }
                                 }
@@ -744,25 +718,19 @@ async fn run_job_on_inferd(state: GatewayState, job_id: String) {
                     }
                     Err(e) => {
                         state.jobs.fail(&job_id, format!("stream error: {e}"));
-                        state
-                            .sessions
-                            .set_status(&job.session_id, SessionStatus::Error);
+                        state.sessions.set_status(&job.session_id, SessionStatus::Error);
                         return;
                     }
                 }
             }
             state.jobs.complete(&job_id);
-            state
-                .sessions
-                .set_status(&job.session_id, SessionStatus::Completed);
+            state.sessions.set_status(&job.session_id, SessionStatus::Completed);
         }
         Err(e) => {
-            state
-                .jobs
-                .fail(&job_id, format!("inferd request failed: {e}"));
-            state
-                .sessions
-                .set_status(&job.session_id, SessionStatus::Error);
+            state.jobs.fail(&job_id, format!("inferd request failed: {e}"));
+            state.sessions.set_status(&job.session_id, SessionStatus::Error);
         }
     }
 }
+
+

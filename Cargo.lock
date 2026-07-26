@@ -4485,7 +4485,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "axum",
- "futures",
+ "futures-util",
  "parking_lot",
  "reqwest",
  "roco-engine",
