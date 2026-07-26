@@ -142,8 +142,7 @@ impl Default for MockCliRunner {
 impl MockCliRunner {
     /// Create a new CLI test runner with an isolated temp directory.
     pub fn new() -> Self {
-        let temp_dir =
-            Arc::new(TempDir::new().expect("failed to create temp dir for test runner"));
+        let temp_dir = Arc::new(TempDir::new().expect("failed to create temp dir for test runner"));
         let mut env_vars = HashMap::new();
         env_vars.insert("ROCO_USE_MOCK_BACKEND".to_string(), "1".to_string());
         env_vars.insert("RWKV_MODEL".to_string(), "mock-model".to_string());

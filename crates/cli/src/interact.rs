@@ -233,7 +233,12 @@ fn run_interactive(
 
         // Agent response
         r::header("AI");
-        print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+        print!(
+            "{}{}  Thinking... [Gateway]{}\r",
+            r::Colors::DIM,
+            r::Colors::CYAN,
+            r::Colors::RESET
+        );
         io::stdout().flush()?;
 
         let printed_first = std::sync::atomic::AtomicBool::new(false);

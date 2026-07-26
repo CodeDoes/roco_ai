@@ -32,7 +32,11 @@ fn test_cli_gpu_check_and_jobs() {
 fn test_cli_interact_prompt_mode() {
     let runner = MockCliRunner::new();
 
-    let res = runner.run_binary(["interact", "--prompt", "A futuristic cyberpunk detective story"]);
+    let res = runner.run_binary([
+        "interact",
+        "--prompt",
+        "A futuristic cyberpunk detective story",
+    ]);
     res.assert_success();
     res.assert_stdout_contains("Prompt: A futuristic cyberpunk detective story");
     res.assert_stdout_contains("Session saved:");
@@ -40,7 +44,10 @@ fn test_cli_interact_prompt_mode() {
     let session = res.assert_latest_session();
     assert_eq!(session.messages.len(), 2);
     assert_eq!(session.messages[0].role, "user");
-    assert_eq!(session.messages[0].content, "A futuristic cyberpunk detective story");
+    assert_eq!(
+        session.messages[0].content,
+        "A futuristic cyberpunk detective story"
+    );
     assert_eq!(session.messages[1].role, "assistant");
     assert!(!session.messages[1].content.is_empty());
 }
@@ -127,8 +134,16 @@ fn test_cli_export_command() {
     // Create a dummy workspace file
     let ws_dir = runner.working_dir().join("test_story");
     std::fs::create_dir_all(&ws_dir).unwrap();
-    std::fs::write(ws_dir.join("01-OUTLINE.md"), "# Test Title\n\n## Chapter 1: Begin\nSummary").unwrap();
-    std::fs::write(ws_dir.join("03-CHAPTER_1.md"), "# Chapter 1\n\nOnce upon a time in a test.").unwrap();
+    std::fs::write(
+        ws_dir.join("01-OUTLINE.md"),
+        "# Test Title\n\n## Chapter 1: Begin\nSummary",
+    )
+    .unwrap();
+    std::fs::write(
+        ws_dir.join("03-CHAPTER_1.md"),
+        "# Chapter 1\n\nOnce upon a time in a test.",
+    )
+    .unwrap();
 
     let out_file = runner.working_dir().join("exported.html");
     let res = runner.run_binary([

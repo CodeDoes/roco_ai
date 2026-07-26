@@ -140,7 +140,12 @@ fn detect_intent(
     available: &[Intent],
     mode_hint: &str,
 ) -> (Intent, String) {
-    print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+    print!(
+        "{}{}  Thinking... [Gateway]{}\r",
+        r::Colors::DIM,
+        r::Colors::CYAN,
+        r::Colors::RESET
+    );
     io::stdout().flush().ok();
 
     let prompt = intent_detection_prompt(user_message, available, mode_hint);
@@ -292,7 +297,10 @@ pub fn cmd_router(extra: &[&str]) {
         if intent.target_mode != current_mode {
             roco_app::agent_journal::AgentJournal::action(
                 "router",
-                &format!("Mode switch: {:?} -> {:?}", current_mode, intent.target_mode),
+                &format!(
+                    "Mode switch: {:?} -> {:?}",
+                    current_mode, intent.target_mode
+                ),
             );
             let transition = match intent.target_mode {
                 Mode::Adventure => "\n🎮 Switching to adventure mode!",
@@ -383,7 +391,12 @@ fn generate_response(
         _ => 1024,
     };
 
-    print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+    print!(
+        "{}{}  Thinking... [Gateway]{}\r",
+        r::Colors::DIM,
+        r::Colors::CYAN,
+        r::Colors::RESET
+    );
     io::stdout().flush().ok();
 
     let printed_first = std::sync::atomic::AtomicBool::new(false);

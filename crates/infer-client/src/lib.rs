@@ -254,19 +254,16 @@ async fn remote_complete(
         builder = builder.header(k, v);
     }
 
-    let resp = builder
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                target: "roco_infer_client",
-                url = %url,
-                elapsed_ms = start_time.elapsed().as_millis(),
-                err = %e,
-                "Remote completion HTTP request failed"
-            );
-            EngineError::Backend(format!("inference API request failed: {e}"))
-        })?;
+    let resp = builder.send().await.map_err(|e| {
+        tracing::error!(
+            target: "roco_infer_client",
+            url = %url,
+            elapsed_ms = start_time.elapsed().as_millis(),
+            err = %e,
+            "Remote completion HTTP request failed"
+        );
+        EngineError::Backend(format!("inference API request failed: {e}"))
+    })?;
 
     if !resp.status().is_success() {
         let status = resp.status();

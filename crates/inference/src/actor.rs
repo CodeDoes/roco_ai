@@ -669,7 +669,7 @@ impl RwkvActor {
                 let b = web_rwkv::runtime::v4::Bundle::<f16>::new(m, 1);
                 let s = b.state();
                 let init = s.init();
-                let r = TokioRuntime::new(b).await;
+                let r = TokioRuntime::<web_rwkv::runtime::infer::Rnn>::new(b).await;
                 (r, AnyState::V4(Box::new(s)), init)
             }
             ModelVersion::V5 => {
@@ -677,7 +677,7 @@ impl RwkvActor {
                 let b = web_rwkv::runtime::v5::Bundle::<f16>::new(m, 1);
                 let s = b.state();
                 let init = s.init();
-                let r = TokioRuntime::new(b).await;
+                let r = TokioRuntime::<web_rwkv::runtime::infer::Rnn>::new(b).await;
                 (r, AnyState::V5(Box::new(s)), init)
             }
             ModelVersion::V6 => {
@@ -685,7 +685,7 @@ impl RwkvActor {
                 let b = web_rwkv::runtime::v6::Bundle::<f16>::new(m, 1);
                 let s = b.state();
                 let init = s.init();
-                let r = TokioRuntime::new(b).await;
+                let r = TokioRuntime::<web_rwkv::runtime::infer::Rnn>::new(b).await;
                 (r, AnyState::V6(Box::new(s)), init)
             }
             ModelVersion::V7 => {
@@ -693,7 +693,7 @@ impl RwkvActor {
                 let b = v7::Bundle::<f16>::new(m, 1);
                 let s = b.state();
                 let init = s.init();
-                let r = TokioRuntime::new(b).await;
+                let r = TokioRuntime::<web_rwkv::runtime::infer::Rnn>::new(b).await;
                 (r, AnyState::V7(Box::new(s)), init)
             }
         };

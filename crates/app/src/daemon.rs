@@ -612,6 +612,9 @@ mod tests {
         let tokio_backend = TokioBackend::new(mock);
         let req = roco_engine::CompletionRequest::new("sys", "test TokioBackend sync");
         let res = futures::executor::block_on(tokio_backend.complete(req));
-        assert!(res.is_ok(), "TokioBackend should complete synchronously without deadlocking");
+        assert!(
+            res.is_ok(),
+            "TokioBackend should complete synchronously without deadlocking"
+        );
     }
 }

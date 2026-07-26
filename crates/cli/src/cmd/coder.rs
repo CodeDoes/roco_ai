@@ -161,7 +161,12 @@ pub fn cmd_coder(extra: &[&str]) {
         r::dim("───");
         println!("{}", input);
         r::header("Assistant");
-        print!("{}{}  Thinking... [Gateway]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+        print!(
+            "{}{}  Thinking... [Gateway]{}\r",
+            r::Colors::DIM,
+            r::Colors::CYAN,
+            r::Colors::RESET
+        );
         io::stdout().flush().ok();
 
         let printed_first = std::sync::atomic::AtomicBool::new(false);
