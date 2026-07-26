@@ -65,10 +65,10 @@ impl PacingChoice {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Conversation State (uses shared roco_chat_common)
+// Conversation State (uses shared roco_protocol)
 // ═════════════════════════════════════════════════════════════════════════════
 
-use roco_chat_common::ConversationState;
+use roco_protocol::ConversationState;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Running the interactive CLI

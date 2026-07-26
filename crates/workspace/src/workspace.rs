@@ -2,8 +2,6 @@ use parking_lot::RwLock;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use roco_tools::Tool;
-
 use crate::error::WorkspaceError;
 
 /// The kind of workspace, distinguishing sandbox purposes.
@@ -225,20 +223,6 @@ impl Workspace {
         }
 
         Ok(norm)
-    }
-
-    /// Build the workspace-scoped tool set: read / write / edit / search /
-    /// list / bash, all confined to this workspace boundary.
-    pub fn scoped_tools(ws: std::sync::Arc<Workspace>) -> Vec<std::sync::Arc<dyn Tool>> {
-        vec![
-            std::sync::Arc::new(crate::tools::WorkspaceReadTool { ws: ws.clone() }),
-            std::sync::Arc::new(crate::tools::WorkspaceWriteTool { ws: ws.clone() }),
-            std::sync::Arc::new(crate::tools::WorkspaceEditTool { ws: ws.clone() }),
-            std::sync::Arc::new(crate::tools::WorkspaceSearchTool { ws: ws.clone() }),
-            std::sync::Arc::new(crate::tools::WorkspaceGrepTool { ws: ws.clone() }),
-            std::sync::Arc::new(crate::tools::WorkspaceListTool { ws: ws.clone() }),
-            std::sync::Arc::new(crate::tools::WorkspaceBashTool { ws }),
-        ]
     }
 
     /// Garbage collect temporary workspace files/folders older than `max_age`.
@@ -565,43 +549,6 @@ mod tests {
             ws.resolve(&abs).is_err(),
             "absolute path outside root must be rejected"
         );
-    }
-
-    #[test]
-    fn read_tool_blocks_traversal_escape() {
-        let ws = temp();
-        let secret = plant_secret_outside(&ws);
-        defer_delete(&secret);
-
-        let tools = Workspace::scoped_tools(std::sync::Arc::new(ws));
-        let read = tools.iter().find(|t| t.name() == "read").unwrap();
-        let rel = format!("../{}", secret.file_name().unwrap().to_string_lossy());
-        let res = read.call(serde_json::json!({ "path": rel }));
-        assert!(res.is_err(), "read tool must reject traversal escape");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn escape_via_symlink_is_blocked() {
-        use std::os::unix::fs::symlink;
-        let ws = temp();
-        let secret = plant_secret_outside(&ws);
-        defer_delete(&secret);
-
-        // Create a symlink *inside* the workspace that points at the parent
-        // directory containing the secret, then try to read the secret through
-        // it. Canonical containment in `resolve` must catch this.
-        let link = ws.root().join("escape_link");
-        symlink(secret.parent().unwrap(), &link).unwrap();
-
-        let tools = Workspace::scoped_tools(std::sync::Arc::new(ws));
-        let read = tools.iter().find(|t| t.name() == "read").unwrap();
-        let target = format!(
-            "escape_link/{}",
-            secret.file_name().unwrap().to_string_lossy()
-        );
-        let res = read.call(serde_json::json!({ "path": target }));
-        assert!(res.is_err(), "read tool must reject symlink escape");
     }
 
     #[test]

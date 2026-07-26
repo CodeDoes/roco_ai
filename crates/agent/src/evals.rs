@@ -14,8 +14,8 @@
 //! understanding of narrative quality.
 
 use crate::util::{lazy_bake, session_structured, EVAL_SESSION};
+use roco_engine::grammar::{schema_to_gbnf, Schema};
 use roco_engine::ModelBackend;
-use roco_grammar::{schema_to_gbnf, Schema};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

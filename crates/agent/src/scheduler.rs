@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use crate::tools::{Tool, ToolError};
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_tools::{Tool, ToolError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

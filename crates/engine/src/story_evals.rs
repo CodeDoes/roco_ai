@@ -157,7 +157,7 @@ pub async fn eval_outline<B: ModelBackend + Send + Sync>(
     };
 
     // Attempt to parse JSON
-    let cleaned = roco_grammar::strategies::strip_code_fences(&text);
+    let cleaned = crate::grammar::strategies::strip_code_fences(&text);
     match serde_json::from_str::<EvalOutline>(&cleaned) {
         Ok(outline) => {
             // Check: title exists and is non-empty
@@ -332,7 +332,7 @@ pub async fn eval_worldbuilding<B: ModelBackend + Send + Sync>(
         }
     };
 
-    let cleaned = roco_grammar::strategies::strip_code_fences(&text);
+    let cleaned = crate::grammar::strategies::strip_code_fences(&text);
     match serde_json::from_str::<EvalWiki>(&cleaned) {
         Ok(wiki) => {
             // Check: at least one character
@@ -528,7 +528,7 @@ pub async fn eval_chapter_write<B: ModelBackend + Send + Sync>(
 
     // The chapter writer can output either JSON (with content field) or raw prose
     // Attempt JSON parse first, fall back to treating the whole output as content
-    let cleaned = roco_grammar::strategies::strip_code_fences(&text);
+    let cleaned = crate::grammar::strategies::strip_code_fences(&text);
     let (title, content) = match serde_json::from_str::<serde_json::Value>(&cleaned) {
         Ok(val) => {
             let t = val
@@ -713,7 +713,7 @@ pub async fn eval_validation<B: ModelBackend + Send + Sync>(
         }
     };
 
-    let cleaned = roco_grammar::strategies::strip_code_fences(&text);
+    let cleaned = crate::grammar::strategies::strip_code_fences(&text);
     match serde_json::from_str::<EvalValidation>(&cleaned) {
         Ok(val) => {
             // Check: quality field is one of the expected values
@@ -874,7 +874,7 @@ pub async fn eval_revising<B: ModelBackend + Send + Sync>(
         }
     };
 
-    let cleaned = roco_grammar::strategies::strip_code_fences(&text);
+    let cleaned = crate::grammar::strategies::strip_code_fences(&text);
     let content = match serde_json::from_str::<serde_json::Value>(&cleaned) {
         Ok(val) => val
             .get("content")
@@ -1067,7 +1067,7 @@ pub async fn eval_mode_selection<B: ModelBackend + Send + Sync>(
         }
     };
 
-    let cleaned = roco_grammar::strategies::strip_code_fences(&text);
+    let cleaned = crate::grammar::strategies::strip_code_fences(&text);
     match serde_json::from_str::<EvalModeSelection>(&cleaned) {
         Ok(sel) => {
             // Check: mode matches expected

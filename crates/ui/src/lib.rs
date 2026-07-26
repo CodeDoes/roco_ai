@@ -35,7 +35,7 @@ pub use change_timeline::*;
 mod link_graph;
 pub use link_graph::*;
 
-pub use roco_chat_common::{ConversationMessage, ConversationState};
+pub use roco_protocol::{ConversationMessage, ConversationState};
 
 // Desktop Pet — transparent always-on-top companion
 mod pet;

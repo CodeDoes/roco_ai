@@ -8,10 +8,9 @@
 
 use std::sync::Arc;
 
-use roco_tools::{Tool, ToolError};
+use crate::tools::{Tool, ToolError};
+use roco_workspace::Workspace;
 use serde_json::Value;
-
-use crate::workspace::Workspace;
 
 fn arg_str(args: &Value, key: &str) -> Result<String, ToolError> {
     args.get(key)
@@ -392,10 +391,22 @@ impl Tool for WorkspaceBashTool {
     }
 }
 
+pub fn scoped_workspace_tools(ws: Arc<Workspace>) -> Vec<Arc<dyn Tool>> {
+    vec![
+        Arc::new(WorkspaceReadTool { ws: ws.clone() }),
+        Arc::new(WorkspaceWriteTool { ws: ws.clone() }),
+        Arc::new(WorkspaceEditTool { ws: ws.clone() }),
+        Arc::new(WorkspaceSearchTool { ws: ws.clone() }),
+        Arc::new(WorkspaceGrepTool { ws: ws.clone() }),
+        Arc::new(WorkspaceListTool { ws: ws.clone() }),
+        Arc::new(WorkspaceBashTool { ws }),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::WorkspaceKind;
+    use roco_workspace::WorkspaceKind;
 
     fn make_ws() -> Arc<Workspace> {
         Arc::new(Workspace::temp(WorkspaceKind::Temp).unwrap())
@@ -404,7 +415,7 @@ mod tests {
     #[test]
     fn read_write_roundtrip_stays_in_workspace() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
         let r = write
             .call(serde_json::json!({"path": "a/b.txt", "content": "hello"}))
@@ -420,7 +431,7 @@ mod tests {
     #[test]
     fn read_outside_workspace_is_rejected() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let read = tools.iter().find(|t| t.name() == "read").unwrap();
         let r = read.call(serde_json::json!({"path": "../../etc/passwd"}));
         assert!(r.is_err(), "escape attempt must be rejected");
@@ -429,7 +440,7 @@ mod tests {
     #[test]
     fn edit_replaces_text() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
         write
             .call(serde_json::json!({"path": "f.txt", "content": "foo bar foo"}))
@@ -447,7 +458,7 @@ mod tests {
     #[test]
     fn search_finds_pattern() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
         write
             .call(serde_json::json!({"path": "x.txt", "content": "needle here\nsomething else"}))
@@ -463,7 +474,7 @@ mod tests {
     #[test]
     fn grep_finds_pattern_with_regex() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
         write
             .call(
@@ -480,7 +491,7 @@ mod tests {
     #[test]
     fn list_returns_entries() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let write = tools.iter().find(|t| t.name() == "write").unwrap();
         write
             .call(serde_json::json!({"path": "one.txt", "content": "x"}))
@@ -497,7 +508,7 @@ mod tests {
     #[test]
     fn bash_runs_in_workspace_cwd() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let bash = tools.iter().find(|t| t.name() == "bash").unwrap();
         let r = bash.call(serde_json::json!({"command": "pwd"})).unwrap();
         assert!(r["stdout"].as_str().unwrap().contains("roco-ws"));
@@ -506,7 +517,7 @@ mod tests {
     #[test]
     fn bash_rejects_destructive_command() {
         let ws = make_ws();
-        let tools = Workspace::scoped_tools(ws.clone());
+        let tools = scoped_workspace_tools(ws.clone());
         let bash = tools.iter().find(|t| t.name() == "bash").unwrap();
         let r = bash.call(serde_json::json!({"command": "rm -rf /"}));
         assert!(r.is_err(), "destructive command must be blocked");

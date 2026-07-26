@@ -12,13 +12,13 @@
 
 use std::sync::Arc;
 
+use crate::tools::{
+    all_tools, parse_assistant_response, AssistantSegment, Tool, ToolCall, ToolRegistry,
+};
 use async_trait::async_trait;
 use roco_engine::{CompletionRequest, ModelBackend, TokenUsage};
-use roco_message::{
+use roco_protocol::{
     assistant_response_gbnf, error::complete_with_retry, error::RetryConfig, MessageFormatOptions,
-};
-use roco_tools::{
-    all_tools, parse_assistant_response, AssistantSegment, Tool, ToolCall, ToolRegistry,
 };
 
 use crate::base::BaseAgent;
@@ -361,7 +361,7 @@ impl Agent {
             .await
             .map_err(|e| AgentError::BackendError(e.to_string()))?;
         let text = resp.text.clone();
-        let calls = roco_tools::extract_tool_calls(&text);
+        let calls = crate::tools::extract_tool_calls(&text);
         let success = !calls.is_empty() || !text.trim().is_empty();
         Ok(SubtaskOutput {
             subtask_id: subtask.id.clone(),
@@ -500,8 +500,8 @@ mod tests {
         let sess = Arc::new(SessionStore::new(std::env::temp_dir().join("roco-test")));
         let sched = Arc::new(Scheduler::new());
 
-        let mut tools = roco_tools::all_tools();
-        tools.extend(Workspace::scoped_tools(ws));
+        let mut tools = crate::tools::all_tools();
+        tools.extend(crate::tools::scoped_workspace_tools(ws));
         tools.extend(MemoryStore::scoped_tools(mem.clone()));
         tools.extend(SessionStore::scoped_tools(sess.clone()));
         tools.extend(Scheduler::scoped_tools(sched.clone()));

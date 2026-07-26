@@ -274,7 +274,7 @@ impl StoryIdeaGenerator {
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
-        let cleaned = roco_grammar::strategies::clean_json_output(&text);
+        let cleaned = roco_engine::grammar::strategies::clean_json_output(&text);
         let response: BrainstormResponse = serde_json::from_str(&cleaned)
             .map_err(|e| format!("parse error: {e}\nraw: {text}\ncleaned: {cleaned}"))?;
 
@@ -354,7 +354,7 @@ impl StoryIdeaGenerator {
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
-        let cleaned = roco_grammar::strategies::clean_json_output(&text);
+        let cleaned = roco_engine::grammar::strategies::clean_json_output(&text);
         serde_json::from_str::<StoryIdea>(&cleaned)
             .map_err(|e| format!("parse error: {e}\nraw: {text}\ncleaned: {cleaned}"))
     }

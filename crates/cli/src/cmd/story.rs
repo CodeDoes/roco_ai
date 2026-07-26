@@ -21,8 +21,8 @@ use roco_agent::mechanistic::{
 };
 use roco_engine::{CompletionRequest, ModelBackend};
 
-use roco_grammar::{Schema, StrategyKind, StrategySelector};
-use roco_tools::{ReadTool, Tool, WriteTool};
+use roco_agent::tools::{ReadTool, Tool, WriteTool};
+use roco_engine::grammar::{Schema, StrategyKind, StrategySelector};
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Deserializer};
 use serde_json::json;

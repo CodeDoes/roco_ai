@@ -11,7 +11,6 @@ roco-engine = { path = "../engine" }
 roco-app = { path = "../app" }
 roco-bnf-engine = { path = "../bnf-engine" }
 roco-session = { path = "../session" }
-roco-message = { path = "../message" }
 roco-protocol = { path = "../protocol" }
 tokio = { workspace = true, features = [
     "macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time",

@@ -132,7 +132,6 @@ impl RwkvBackend {
 impl RwkvBackend {
     /// Get the model's vocabulary bytes (token_id → raw bytes).
     /// Used by the application layer to create `BnfMask` instances.
-    #[cfg(feature = "grammar")]
     pub fn vocab_bytes(&self) -> Result<Vec<Vec<u8>>, EngineError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let tx = self

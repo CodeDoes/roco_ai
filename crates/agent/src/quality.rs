@@ -14,8 +14,8 @@
 //! This leverages the model's understanding to evaluate quality.
 
 use crate::util::{lazy_bake, session_structured, CRITIQUE_SESSION};
+use roco_engine::grammar::{schema_to_gbnf, Schema};
 use roco_engine::ModelBackend;
-use roco_grammar::{schema_to_gbnf, Schema};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

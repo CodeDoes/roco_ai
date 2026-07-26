@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 roco-agent = { path = "../agent" }
 roco-app = { path = "../app", package = "roco-app" }
-roco-chat-common = { path = "../chat-common" }
+roco-protocol = { path = "../protocol" }
 roco-engine = { path = "../engine" }
 futures = { workspace = true }
 # accesskit is useful but expensive to compile; keep it (a11y) but drop unused

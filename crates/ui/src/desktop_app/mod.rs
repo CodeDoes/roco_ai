@@ -33,8 +33,8 @@ use eframe::egui;
 use egui::{CentralPanel, Context, Layout, RichText, SidePanel, TopBottomPanel};
 use roco_agent::interaction::{HumanAction, InteractionMode, InteractionState};
 use roco_app::{AppContext, AppError, AppResult, WorkspaceKind};
-use roco_chat_common::{ConversationMessage, ConversationState};
 use roco_engine::{CompletionRequest, ModelBackend};
+use roco_protocol::{ConversationMessage, ConversationState};
 use std::path::PathBuf;
 use std::sync::Arc;
 

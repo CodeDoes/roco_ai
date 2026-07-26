@@ -90,12 +90,12 @@ impl StoryGrammar {
     }
 }
 
-const CHAPTER_PROSE: &str = include_str!("../../../GBNF/chapter_prose.bnf");
-const OUTLINE: &str = include_str!("../../../GBNF/outline.bnf");
-const WIKI: &str = include_str!("../../../GBNF/wiki.bnf");
-const VALIDATION_REPORT: &str = include_str!("../../../GBNF/validation_report.bnf");
-const SYNOPSIS: &str = include_str!("../../../GBNF/synopsis.bnf");
-const FILL_IN_MIDDLE: &str = include_str!("../../../GBNF/fill_in_middle.bnf");
+const CHAPTER_PROSE: &str = include_str!("../../../../GBNF/chapter_prose.bnf");
+const OUTLINE: &str = include_str!("../../../../GBNF/outline.bnf");
+const WIKI: &str = include_str!("../../../../GBNF/wiki.bnf");
+const VALIDATION_REPORT: &str = include_str!("../../../../GBNF/validation_report.bnf");
+const SYNOPSIS: &str = include_str!("../../../../GBNF/synopsis.bnf");
+const FILL_IN_MIDDLE: &str = include_str!("../../../../GBNF/fill_in_middle.bnf");
 
 #[cfg(test)]
 mod tests {

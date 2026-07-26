@@ -1,7 +1,7 @@
 //! Subtask types for the agent planning/execution system.
 
+use crate::tools::ToolCall;
 use roco_engine::TokenUsage;
-use roco_tools::ToolCall;
 
 /// A unit of work within the agent's plan.
 #[derive(Debug, Clone)]

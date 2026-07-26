@@ -8,7 +8,6 @@ name = "roco_workspace"
 
 [dependencies]
 roco-engine = { path = "../engine" }
-roco-tools = { path = "../tools" }
 serde.workspace = true
 parking_lot.workspace = true
 serde_json.workspace = true

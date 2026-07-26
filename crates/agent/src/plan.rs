@@ -9,9 +9,9 @@
 
 use std::collections::HashMap;
 
+use crate::tools::ToolRegistry;
 use futures::future::join_all;
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_tools::ToolRegistry;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -373,7 +373,7 @@ pub struct StepOutcome {
 
 /// Generate a strict GBNF grammar for our Plan structure using `roco-grammar`.
 pub fn plan_grammar() -> String {
-    use roco_grammar::{schema_to_gbnf, Schema};
+    use roco_engine::grammar::{schema_to_gbnf, Schema};
     let step_schema = Schema::object()
         .prop("id", Schema::string())
         .prop("description", Schema::string())

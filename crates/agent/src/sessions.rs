@@ -18,8 +18,8 @@ use parking_lot::RwLock;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::tools::{Tool, ToolError};
 use roco_session::SessionStore as RoCoSessionStore;
-use roco_tools::{Tool, ToolError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -340,7 +340,7 @@ impl SessionStore {
     }
 
     /// The `search_sessions` tool bound to this store.
-    pub fn scoped_tools(store: Arc<SessionStore>) -> Vec<Arc<dyn roco_tools::Tool>> {
+    pub fn scoped_tools(store: Arc<SessionStore>) -> Vec<Arc<dyn crate::tools::Tool>> {
         vec![Arc::new(SessionSearchTool { store })]
     }
 }

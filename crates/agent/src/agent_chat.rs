@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use roco_tools::Tool;
+use crate::tools::Tool;
 use roco_workspace::{Workspace, WorkspaceKind};
 
 use roco_engine::ModelBackend;
@@ -71,8 +71,8 @@ impl AgentChatSession {
     /// Build the combined tool set: built-in tools + workspace-scoped tools +
     /// persistent memory + searchable session history + scheduler.
     pub fn build_tools(&self) -> Vec<Arc<dyn Tool>> {
-        let mut tools = roco_tools::all_tools();
-        tools.extend(Workspace::scoped_tools(self.workspace.clone()));
+        let mut tools = crate::tools::all_tools();
+        tools.extend(crate::tools::scoped_workspace_tools(self.workspace.clone()));
         tools.extend(MemoryStore::scoped_tools(self.memory.clone()));
         tools.extend(SessionStore::scoped_tools(self.sessions.clone()));
         tools.extend(Scheduler::scoped_tools(self.scheduler.clone()));

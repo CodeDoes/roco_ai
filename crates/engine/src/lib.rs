@@ -7,6 +7,7 @@
 pub mod backend;
 pub mod cases;
 pub mod eval;
+pub mod grammar;
 pub mod story_evals;
 pub mod types;
 pub mod util;
@@ -14,7 +15,6 @@ pub mod util;
 pub use backend::*;
 pub use cases::*;
 pub use eval::*;
-pub use types::*;
-
-pub use roco_grammar::Schema;
+pub use grammar::*;
 pub use types::BnfMask;
+pub use types::*;

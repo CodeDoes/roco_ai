@@ -53,7 +53,7 @@ pub struct StrategySelector {
 }
 
 impl StrategySelector {
-    pub fn new(kind: StrategyKind, schema: roco_grammar::Schema, system_hint: impl Into<String>) -> Self {
+    pub fn new(kind: StrategyKind, schema: roco_engine::grammar::Schema, system_hint: impl Into<String>) -> Self {
         Self {
             kind,
             schema_json: schema.to_json(),
@@ -63,7 +63,7 @@ impl StrategySelector {
 
     pub fn grammar(&self) -> String {
         if self.kind == StrategyKind::Grammar {
-            roco_grammar::schema_to_gbnf("root", &self.schema_json)
+            roco_engine::grammar::schema_to_gbnf("root", &self.schema_json)
                 .unwrap_or_default()
         } else {
             String::new()

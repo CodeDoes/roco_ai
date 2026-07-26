@@ -15,6 +15,12 @@
 use roco_engine::CompletionRequest;
 use serde::{Deserialize, Serialize};
 
+pub mod chat_common;
+pub mod message;
+
+pub use chat_common::*;
+pub use message::*;
+
 // ── Request types ──────────────────────────────────────────────────────────
 
 /// OpenAI-compatible completion request, with RoCo-specific extensions.

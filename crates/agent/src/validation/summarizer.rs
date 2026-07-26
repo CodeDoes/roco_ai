@@ -11,8 +11,8 @@
 //! println!("{}", summary.synopsis);
 //! ```
 
+use roco_engine::grammar::Schema;
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_grammar::Schema;
 use serde::{Deserialize, Serialize};
 
 /// Complete story summary combining classic data and inference-backed content.
@@ -193,7 +193,7 @@ impl StorySummarizer {
         let result: Result<SynopsisResponse, String> = match completion_result {
             Ok(response) => {
                 let text = response.text;
-                let cleaned = roco_grammar::strategies::clean_json_output(&text);
+                let cleaned = roco_engine::grammar::strategies::clean_json_output(&text);
                 serde_json::from_str::<SynopsisResponse>(&cleaned)
                     .map_err(|e| format!("parse error: {e}\nraw: {text}\ncleaned: {cleaned}"))
             }

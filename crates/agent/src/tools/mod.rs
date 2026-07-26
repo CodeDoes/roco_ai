@@ -8,12 +8,14 @@ pub mod builtins;
 pub mod parse;
 pub mod registry;
 pub mod tool;
+pub mod workspace_tools;
 
 pub use builtins::*;
 pub use parse::*;
 pub use registry::ToolRegistry;
 pub use tool::Tool;
 pub use tool::ToolError;
+pub use workspace_tools::*;
 
 #[cfg(test)]
 mod tests;

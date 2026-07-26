@@ -2,14 +2,10 @@
 members = [
     "crates/bnf-engine",
     "crates/engine",
-    "crates/grammar",
     "crates/inference",
-    "crates/message",
     "crates/session",
-    "crates/tools",
     "crates/workspace",
     "crates/agent",
-    "crates/chat-common",
     "crates/cli",
     "crates/server",
     "crates/gateway",
@@ -18,7 +14,6 @@ members = [
     "crates/ui",
     "crates/app",
     "crates/protocol",
-    "crates/validation",
 ]
 # Fast default path: NO wgpu/web-rwkv (inference/inferd) and NO egui (ui).
 # Local GPU daemon:  cargo build -p roco-inferd

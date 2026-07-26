@@ -10,8 +10,8 @@
 //! Designed for fast, local inference with small models.
 
 use crate::util::{lazy_bake, session_structured, WRITING_ANALYSIS_SESSION};
+use roco_engine::grammar::{schema_to_gbnf, Schema};
 use roco_engine::ModelBackend;
-use roco_grammar::{schema_to_gbnf, Schema};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

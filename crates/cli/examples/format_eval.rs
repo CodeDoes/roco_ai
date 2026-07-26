@@ -7,7 +7,7 @@
 //!
 //! This collapses the old `format_compare.rs` (8 hand-written format
 //! variants) and `state_tune_eval.rs` (baked vs unbaked, JSON vs prose)
-//! into one runner that shares a single source of truth: `roco_message::FormatSpec`.
+//! into one runner that shares a single source of truth: `roco_protocol::FormatSpec`.
 //!
 //! # Axes
 //!
@@ -44,7 +44,7 @@ use std::time::Instant;
 use roco_engine::backend::ModelBackend;
 use roco_engine::types::CompletionRequest;
 use roco_infer_client::RemoteBackend;
-use roco_message::{format_followed, has_think_contamination, FormatSpec};
+use roco_protocol::{format_followed, has_think_contamination, FormatSpec};
 
 // ═════════════════════════════════════════════════════════════════════════
 // Story data — one fixed task so every format faces the same problem

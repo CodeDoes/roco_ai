@@ -5,15 +5,10 @@
 //! enforce the boundary.
 
 pub mod error;
-pub mod tools;
 pub mod version;
 pub mod workspace;
 
 pub use error::WorkspaceError;
-pub use tools::{
-    WorkspaceBashTool, WorkspaceEditTool, WorkspaceListTool, WorkspaceReadTool,
-    WorkspaceSearchTool, WorkspaceWriteTool,
-};
 pub use workspace::blocked_command_reason;
 pub use workspace::Workspace;
 pub use workspace::WorkspaceKind;

@@ -9,7 +9,7 @@
 
 use std::cmp::Ordering;
 
-use roco_tools::ToolRegistry;
+use crate::tools::ToolRegistry;
 
 /// Select tool names relevant to `task` (plus optional `context`), best-first.
 ///
@@ -58,11 +58,11 @@ pub fn select_relevant(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roco_tools::ToolRegistry;
+    use crate::tools::ToolRegistry;
 
     fn registry() -> ToolRegistry {
         let mut r = ToolRegistry::new();
-        for t in roco_tools::all_tools() {
+        for t in crate::tools::all_tools() {
             r.register(t);
         }
         r

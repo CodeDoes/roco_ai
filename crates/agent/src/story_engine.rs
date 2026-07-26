@@ -29,8 +29,8 @@
 use crate::util::{
     lazy_bake, session_structured, CHAPTER_SESSION, CONTINUE_SESSION, OUTLINE_SESSION,
 };
+use roco_engine::grammar::{schema_to_gbnf, Schema};
 use roco_engine::ModelBackend;
-use roco_grammar::{schema_to_gbnf, Schema};
 use roco_workspace::{Workspace, WorkspaceKind};
 use serde::{Deserialize, Serialize};
 

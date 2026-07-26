@@ -9,8 +9,8 @@
 //! The agent parses this into structured directives that can be applied.
 
 use crate::util::structured_complete;
+use roco_engine::grammar::{schema_to_gbnf, Schema};
 use roco_engine::ModelBackend;
-use roco_grammar::{schema_to_gbnf, Schema};
 use serde::{Deserialize, Serialize};
 
 // ═════════════════════════════════════════════════════════════════════════════

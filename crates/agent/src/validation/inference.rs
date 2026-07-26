@@ -6,8 +6,8 @@
 //! - Critique and revision suggestions
 //! - Natural language feedback
 
+use roco_engine::grammar::Schema;
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_grammar::Schema;
 use serde::Deserialize;
 
 use super::{ValidationCheck, ValidationSeverity, ValidationSource};
@@ -332,7 +332,7 @@ impl CritiqueResult {
     }
 
     fn grammar() -> String {
-        roco_grammar::schema_to_gbnf("root", Self::schema().to_json())
+        roco_engine::grammar::schema_to_gbnf("root", Self::schema().to_json())
             .expect("CritiqueResult schema is valid")
     }
 }
@@ -355,7 +355,7 @@ impl InstructionPerformance {
     }
 
     fn grammar() -> String {
-        roco_grammar::schema_to_gbnf("root", Self::schema().to_json())
+        roco_engine::grammar::schema_to_gbnf("root", Self::schema().to_json())
             .expect("InstructionPerformance schema is valid")
     }
 }
@@ -363,12 +363,12 @@ impl InstructionPerformance {
 // ── Parsing helpers ──────────────────────────────────────────────────────
 
 fn parse_critique_result(text: &str) -> Result<CritiqueResult, String> {
-    let cleaned = roco_grammar::strategies::clean_json_output(text);
+    let cleaned = roco_engine::grammar::strategies::clean_json_output(text);
     serde_json::from_str::<CritiqueResult>(&cleaned).map_err(|e| format!("JSON parse error: {e}"))
 }
 
 fn parse_instruction_performance(text: &str) -> Result<InstructionPerformance, String> {
-    let cleaned = roco_grammar::strategies::clean_json_output(text);
+    let cleaned = roco_engine::grammar::strategies::clean_json_output(text);
     serde_json::from_str::<InstructionPerformance>(&cleaned)
         .map_err(|e| format!("JSON parse error: {e}"))
 }

@@ -1,7 +1,7 @@
 //! Story mode — interactive story writing assistant.
 //!
 //! This is the CLI entry point for story mode. It wraps
-//! `roco_validation::agent::StoryModeAgent` and provides a REPL-like
+//! `roco_agent::validation::agent::StoryModeAgent` and provides a REPL-like
 //! interface where the user can:
 //!
 //! - Lock into a story workspace
@@ -28,8 +28,8 @@
 //! - `/unlock`
 //! - `/help`
 
-use roco_validation::agent::StoryModeAgent;
-use roco_validation::intent::print_slash_help;
+use roco_agent::validation::agent::StoryModeAgent;
+use roco_agent::validation::intent::print_slash_help;
 
 use crate::daemon;
 

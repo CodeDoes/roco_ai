@@ -7,7 +7,7 @@ edition = "2021"
 roco-engine = { path = "../engine" }
 roco-session = { path = "../session" }
 roco-workspace = { path = "../workspace" }
-roco-message = { path = "../message" }
+roco-protocol = { path = "../protocol" }
 roco-infer-client = { path = "../infer-client" }
 
 tokio = { workspace = true }

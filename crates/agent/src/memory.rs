@@ -2,7 +2,7 @@
 //!
 //! Provides a [`MemoryStore`] that persists facts / notes / preferences so
 //! the agent can recall them across sessions. Memory is exposed to the model
-//! as two [`roco_tools::Tool`]s — `remember` and `recall` — so an agent run
+//! as two [`crate::tools::Tool`]s — `remember` and `recall` — so an agent run
 //! can read and write its own long-term context. This satisfies
 //! `goals/agent/memory.md`.
 //!
@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use roco_tools::{Tool, ToolError};
+use crate::tools::{Tool, ToolError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

@@ -6,7 +6,13 @@
 //!
 //! Both take human input, produce human output, and may use tools (read/write/edit
 //! files) in a sandboxed workspace. Built on top of [`roco_engine::ModelBackend`]
-//! for inference and [`roco_tools::Tool`] for actions.
+//! for inference and [`crate::tools::Tool`] for actions.
+
+pub mod tools;
+pub mod validation;
+
+pub use tools::*;
+pub use validation::*;
 
 pub mod agent_chat;
 pub mod base;

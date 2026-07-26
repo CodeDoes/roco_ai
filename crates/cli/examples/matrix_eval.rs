@@ -8,7 +8,7 @@
 
 use roco_engine::{CompletionRequest, ModelBackend};
 use roco_infer_client::RemoteBackend;
-use roco_message::FormatSpec;
+use roco_protocol::FormatSpec;
 use std::env;
 use std::time::Instant;
 

@@ -440,7 +440,7 @@ pub fn message_eval_cases() -> Vec<EvalCase> {
 // per-token stop-conditions are a belt-and-suspenders backstop.
 pub fn fim_eval_cases() -> Vec<EvalCase> {
     use crate::eval::{EvalCase, EvalCategory};
-    use roco_grammar::grammar_library::StoryGrammar;
+    use crate::grammar::grammar_library::StoryGrammar;
 
     // Prose grammar that terminates at the stop token (see GBNF/fill_in_middle.bnf).
     let fim_grammar = StoryGrammar::FillInMiddle.source().to_string();

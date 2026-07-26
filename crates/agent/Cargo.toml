@@ -8,11 +8,9 @@ name = "roco_agent"
 
 [dependencies]
 roco-engine = { path = "../engine" }
-roco-message = { path = "../message" }
-roco-tools = { path = "../tools" }
+roco-protocol = { path = "../protocol" }
 roco-session = { path = "../session" }
 roco-workspace = { path = "../workspace" }
-roco-grammar = { path = "../grammar" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
@@ -21,6 +19,10 @@ tracing.workspace = true
 thiserror.workspace = true
 futures.workspace = true
 async-trait.workspace = true
+regex = "1"
+walkdir = "2"
+dirs-next = "2.0"
+tempfile = "3.10"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

@@ -9,8 +9,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use roco_engine::grammar::Schema;
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_grammar::Schema;
 use serde::Deserialize;
 
 use super::{ValidationCheck, ValidationSeverity, ValidationSource};
@@ -232,7 +232,7 @@ impl WikiValidator {
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
-        let cleaned = roco_grammar::strategies::clean_json_output(&text);
+        let cleaned = roco_engine::grammar::strategies::clean_json_output(&text);
         let result: WikiInferenceResult = serde_json::from_str(&cleaned)
             .map_err(|e| format!("parse error: {e}\nraw: {text}\ncleaned: {cleaned}"))?;
 
@@ -628,7 +628,7 @@ impl WikiInferenceResult {
     }
 
     fn grammar() -> String {
-        roco_grammar::schema_to_gbnf("root", Self::schema().to_json())
+        roco_engine::grammar::schema_to_gbnf("root", Self::schema().to_json())
             .expect("WikiInferenceResult schema is valid")
     }
 }
