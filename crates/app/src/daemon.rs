@@ -76,8 +76,12 @@ pub fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &PathBuf, pid_path
     // Marker so the child does not re-detach.
     child_args.push(format!("--_child-{subcmd}"));
 
-    let log_file = std::fs::File::create(log_path)
-        .unwrap_or_else(|e| panic!("failed to create log {}: {e}", log_path.display()));
+    // Append to existing log (don't truncate on re-start)
+    let log_file = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(log_path)
+        .unwrap_or_else(|e| panic!("failed to open log {}: {e}", log_path.display()));
     let log_clone = log_file
         .try_clone()
         .unwrap_or_else(|e| panic!("failed to clone log handle: {e}"));
@@ -136,15 +140,19 @@ pub fn is_running(name: &str, port: u16) -> bool {
         Err(_) => return true,
     };
     
-    // Process is alive. Treat as running if healthy or starting.
-    let _ = rt.block_on(async {
-        reqwest::get(&url)
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
+    // Process is alive. Require a successful health response within 3s.
+    // A failing health check means it's either a different process that
+    // reused the PID, or our daemon has crashed after the fork.
+    let healthy = rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .ok()?;
+        let resp = client.get(&url).send().await.ok()?;
+        Some(resp.status().is_success())
     });
 
-    true
+    healthy.unwrap_or(false)
 }
 
 /// Locate the `roco-inferd` binary (sibling of current exe, then PATH).
@@ -184,16 +192,21 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
         let log_file_path = log_path("inferd", port);
         let pid_file_path = pid_path("inferd");
         let _ = std::fs::remove_file(&pid_file_path);
-        let log_file = match std::fs::File::create(&log_file_path) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!(
-                    "Warning: failed to create log {}: {e}",
-                    log_file_path.display()
-                );
-                return false;
-            }
-        };
+        // Append to existing log (don't truncate on re-start)
+    let log_file = match std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&log_file_path)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to open log {}: {e}",
+                log_file_path.display()
+            );
+            return false;
+        }
+    };
         let log_clone = match log_file.try_clone() {
             Ok(c) => c,
             Err(_) => return false,
@@ -257,12 +270,16 @@ pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]
     args.extend(extra_args.iter().map(|s| s.to_string()));
     args.push(format!("--port={}", port));
 
-    // stdout/stderr → log file
-    let log_file = match std::fs::File::create(&log_file_path) {
+    // stdout/stderr → log file (append, don't truncate on re-start)
+    let log_file = match std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&log_file_path)
+    {
         Ok(f) => f,
         Err(e) => {
             eprintln!(
-                "Warning: failed to create log file {}: {e}",
+                "Warning: failed to open log file {}: {e}",
                 log_file_path.display()
             );
             return false;
@@ -423,9 +440,12 @@ pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate
     let log_path = log_path("gateway", port);
     let pid_path = pid_path("gateway");
 
-    // Redirect stdio
-    let log_file = std::fs::File::create(&log_path)
-        .unwrap_or_else(|e| panic!("failed to create log file {}: {e}", log_path.display()));
+    // Redirect stdio (append, don't truncate on re-start)
+    let log_file = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&log_path)
+        .unwrap_or_else(|e| panic!("failed to open log file {}: {e}", log_path.display()));
     let log_clone = log_file
         .try_clone()
         .expect("failed to clone log file handle");
