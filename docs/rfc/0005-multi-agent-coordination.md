@@ -1,3 +1,8 @@
 # RFC 0005: Multi-Agent Coordination Protocol
 Status: Speculative / Experimental
-Defines inter-agent message passing via Context objects. Each agent exposes DomainHarness. A meta-agent (aggregate domain) selects sub-agents based on input classification. Rollback cascades: if sub-agent fails, meta-agent rolls back its selection state and retries with alternate agent. Sandbox isolation ensures tool access is scoped per agent.
+
+## Inter-Agent Protocol Specs
+- Meta-Agent (`aggregate` domain) receives request and routes to target `DomainHarness`.
+- State sharing occurs via immutable `Context` snapshot passing.
+- Cascading Rollback: If sub-agent fails verification after `max_attempts`, meta-agent rolls back selection state and re-routes request to secondary agent.
+- Sandbox Scoping: Each sub-agent gets a distinct `Sandbox` instance with scoped directory paths.

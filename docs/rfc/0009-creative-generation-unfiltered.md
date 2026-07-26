@@ -1,3 +1,7 @@
-# RFC 0009: Unfiltered Creative Generation Pipeline
-Status: Policy / Ethical Note
-Local inference removes corporate moderation filters. User explicitly accepts responsibility for generated content. System does not enforce content filters at inference layer; filters may be applied via Verifier (forbidden_words) but user can override by providing custom Verifier config. Recommended for personal art, fiction, and private roleplay only.
+# RFC 0009: Unfiltered Local Creative Generation
+Status: Policy & Implementation Note
+
+## Design Principles
+- Local inference eliminates external commercial content filtering and telemetry.
+- Quality and formatting validation managed deterministically via `Verifier` rules (e.g. `forbidden_words`, outline structure checks) rather than model-level refusal prompts.
+- Users maintain full control over `Verifier` parameters for creative fiction, roleplay, and worldbuilding tools.

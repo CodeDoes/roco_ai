@@ -1,5 +1,7 @@
-# RFC 0004: Harness Engineering Dominates Weight Updates
-Status: Evidence-Based
-Claim: Harness quality gap = +15-25% task accuracy. Fine-tuning gap on same weights = <5% for large models. Fine-tuning only justified for sub-8B models requiring strict DSL output to save prompt token overhead.
-Evidence: SWE-bench verified variance 34-48% across harnesses. Execution environment benchmarking shows 25+ point swings from context compaction and retry policies alone.
-Recommendation: Invest in sandbox execution loops, stuck-state detection, strict schema enforcement (MCP), and sub-agent isolation rather than retraining.
+# RFC 0004: Harness Engineering vs Weight Updates
+Status: Architectural Finding
+
+## Empirical Benchmarks & Trade-Offs
+- **Harness Engineering Gap:** +15-25% task accuracy delta achieved purely through retry loops, structured schema (kbnf/GBNF), context compaction, and verifiers.
+- **Fine-Tuning Delta:** <5% accuracy improvement on equivalent model sizes (>3B). Fine-tuning is only cost-effective for sub-3B models requiring fixed DSL output formats to reduce prompt token overhead.
+- **Recommendation:** Prioritize stuck-state detection, deterministic tool sandboxing, and token-level BNF grammar constraints over weight retraining.

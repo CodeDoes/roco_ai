@@ -1,3 +1,8 @@
-# RFC 0011: Desktop Pet State Machine
+# RFC 0011: Desktop Pet Widget State Machine
 Status: Experimental
-States: SLEEP, AWAKE, CURIOUS, BORED, EXCITED. Transitions triggered by user mouse movement frequency and session duration. Pet runs as persistent ui widget using roco_ui crate. Inference called only when pet is AWAKE (resource conservation). Memory retains last 10 user interactions.
+
+## State Machine Specs
+- **States:** `SLEEP`, `AWAKE`, `CURIOUS`, `BORED`, `EXCITED`.
+- **Triggers:** Idle timer, user interaction frequency, session duration.
+- **Resource Management:** LLM inference called ONLY in `AWAKE` and `CURIOUS` states to minimize GPU/CPU utilization.
+- **Memory Window:** Retains last 10 interactions in persistent state buffer.

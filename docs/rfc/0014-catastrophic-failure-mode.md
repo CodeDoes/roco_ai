@@ -1,3 +1,8 @@
-# RFC 0014: Catastrophic Failure Modes
+# RFC 0014: Catastrophic Failure Mode Handling
 Status: Safety Critical
-If MockBackend returns empty string: agent.verify fails immediately. If rollback attempts exceed max_retries: StackResult.success = false. If Sandbox detects path escape: returns Err immediately without file access. If Context.memory exceeds 100 entries: oldest entry dropped (LRU). System never crashes on mock failure.
+
+## Failure Mitigation Matrix
+- **Empty Model Response:** Immediate `Verifier` failure; triggers rollback.
+- **Max Retries Exceeded:** Halts execution loop cleanly; sets `StackResult.success = false` without crashing process.
+- **Path Escape Attempt:** `Sandbox` returns `Err("path escape blocked")` immediately.
+- **Context Buffer Overflow:** LRU eviction policy drops oldest entry when `Context.memory > 100`.

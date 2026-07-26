@@ -1,3 +1,8 @@
-# RFC 0010: Air-Gapped RAG Architecture
-Status: Design
-Personal documents never leave machine. Session store writes to .roco/ directory only. Vector embeddings (if added) compute locally. No cloud vector DB permitted. Context.memory contains only user-approved snippets. MemoryStore implements RecallTool and RememberTool with explicit user consent per entry.
+# RFC 0010: Privacy-Preserving Local RAG Architecture
+Status: Design & Implemented Baseline
+
+## Architecture Specs
+- **Local Persistence:** Session history and vector/text memory stored exclusively under workspace directory (`.roco/`).
+- **Air-Gapped Context:** `Context.memory` stores only locally parsed snippets.
+- **Explicit Consent Tools:** Memory modifications require explicit tool execution (`RecallTool`, `RememberTool`) with explicit user-per-entry scope.
+- Cloud vector database dependencies prohibited.
