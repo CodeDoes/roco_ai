@@ -260,6 +260,12 @@ fn main() {
             );
         }
 
+        // ── Version ─────────────────────────────────────────────────────
+        "version" | "--version" => {
+            eprintln!("RoCo AI v{} — collaborative writing assistant", env!("CARGO_PKG_VERSION"));
+            std::process::exit(0);
+        }
+
         // ── Router (default — no subcommand or unknown) ──────────────────
         "router" => cmd::router::cmd_router(&extra),
 

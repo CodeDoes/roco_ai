@@ -10,8 +10,9 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RESET='\033[0m'
 
-INFERD_PIDFILE="/tmp/roco/inferd.pid"
-GATEWAY_PIDFILE="/tmp/roco/gateway.pid"
+ROCO_PID_DIR="${ROCO_PID_DIR:-/tmp/roco}"
+INFERD_PIDFILE="$ROCO_PID_DIR/inferd.pid"
+GATEWAY_PIDFILE="$ROCO_PID_DIR/gateway.pid"
 
 echo -e "${BLUE}ℹ${RESET} Rebuilding binaries (roco-inferd, roco CLI & gateway)..."
 
@@ -25,7 +26,7 @@ if cargo build --release -p roco-inferd 2>&1 && cargo build -p roco-cli --featur
             kill "$PID" 2>/dev/null || true
             sleep 0.5
         fi
-        rm -f "$INFERD_PIDFILE" "/tmp/roco/server.pid"
+        rm -f "$INFERD_PIDFILE" "$ROCO_PID_DIR/server.pid"
     fi
     pkill -f "roco-inferd" 2>/dev/null || true
 
@@ -41,16 +42,16 @@ if cargo build --release -p roco-inferd 2>&1 && cargo build -p roco-cli --featur
     pkill -f "roco gateway" 2>/dev/null || true
 
     # Start roco-inferd
-    mkdir -p /tmp/roco
+    mkdir -p "$ROCO_PID_DIR"
     TARGET_DIR="${CARGO_TARGET_DIR:-target}"
-    "${TARGET_DIR}/release/roco-inferd" --port 8080 > /tmp/roco/inferd_8080.log 2>&1 &
+    "${TARGET_DIR}/release/roco-inferd" --port 8080 > "$ROCO_PID_DIR/inferd_8080.log" 2>&1 &
     INFERD_PID=$!
     echo "$INFERD_PID" > "$INFERD_PIDFILE"
-    echo "$INFERD_PID" > "/tmp/roco/server.pid"
+    echo "$INFERD_PID" > "$ROCO_PID_DIR/server.pid"
     echo -e "${GREEN}✓ roco-inferd restarted (PID $INFERD_PID)${RESET}"
 
     # Start gateway
-    "${TARGET_DIR}/debug/roco" gateway --detach > /tmp/roco/gateway_8000.log 2>&1 || true
+    "${TARGET_DIR}/debug/roco" gateway --detach > "$ROCO_PID_DIR/gateway_8000.log" 2>&1 || true
     echo -e "${GREEN}✓ roco gateway restarted.${RESET}"
 
     # Brief health check

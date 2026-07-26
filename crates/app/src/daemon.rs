@@ -10,6 +10,27 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Default ports
+/// Read a u16 port from an environment variable, returning `default` if unset or invalid.
+fn port_from_env(var: &str, default: u16) -> u16 {
+    match std::env::var(var) {
+        Ok(v) => v.parse::<u16>().unwrap_or_else(|_| {
+            eprintln!("Warning: ${var}={v} is not a valid port, using {default}");
+            default
+        }),
+        Err(_) => default,
+    }
+}
+
+/// Gateway port. Override with `ROCO_GATEWAY_PORT` env var.
+pub fn gateway_port() -> u16 {
+    port_from_env("ROCO_GATEWAY_PORT", 8000)
+}
+
+/// Inference daemon port. Override with `ROCO_INFERD_PORT` env var.
+pub fn inferd_port() -> u16 {
+    port_from_env("ROCO_INFERD_PORT", 8080)
+}
+
 pub const GATEWAY_PORT: u16 = 8000;
 pub const INFERENCE_PORT: u16 = 8080;
 pub const GATEWAY_TARGET: &str = "http://127.0.0.1:8080";
@@ -19,7 +40,10 @@ pub const GATEWAY_TARGET: &str = "http://127.0.0.1:8080";
 // ═════════════════════════════════════════════════════════════════════════════
 
 fn pid_dir() -> PathBuf {
-    std::env::temp_dir().join("roco")
+    match std::env::var("ROCO_PID_DIR") {
+        Ok(dir) => PathBuf::from(dir),
+        Err(_) => std::env::temp_dir().join("roco"),
+    }
 }
 
 fn pid_path(name: &str) -> PathBuf {
@@ -348,13 +372,19 @@ pub fn stop_gateway() {
 
 /// Stop both daemons: server first, then gateway.
 pub fn stop_all() {
+    let had_inferd = read_pid("inferd").or_else(|| read_pid("server")).is_some();
+    let had_gateway = read_pid("gateway").is_some();
     // Server first — gateway depends on it. Give it a moment.
     stop_inference();
     std::thread::sleep(std::time::Duration::from_millis(500));
     stop_gateway();
     // Wait briefly for processes to exit
     std::thread::sleep(std::time::Duration::from_millis(500));
-    eprintln!("Stopped.");
+    if had_inferd || had_gateway {
+        eprintln!("Stopped.");
+    } else {
+        eprintln!("No daemons were running.");
+    }
 }
 
 /// Reload the inference daemon by stopping any running process and starting a new one.
@@ -379,8 +409,8 @@ pub fn reload_gateway_daemon(_roco_exe: &PathBuf, port: u16) -> bool {
 pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate_limit: usize) {
     let exe = std::env::current_exe().expect("failed to get current exe path");
 
-    // Ensure inference server is running
-    ensure_inference_daemon(&exe, INFERENCE_PORT);
+    // Ensure inference server is running (respects $ROCO_INFERD_PORT)
+    ensure_inference_daemon(&exe, inferd_port());
 
     // Build args for the gateway (without --detach, as we're already the child)
     let args = vec![
@@ -434,11 +464,12 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
         return Arc::new(roco_engine::MockBackend::default());
     }
 
+    let gp = gateway_port();
     // If there's already a gateway running, connect instantly.
-    if is_running("gateway", GATEWAY_PORT) {
+    if is_running("gateway", gp) {
         return Arc::new(RemoteBackend::new(format!(
             "http://127.0.0.1:{}",
-            GATEWAY_PORT
+            gp
         )));
     }
 
@@ -452,9 +483,9 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
         .expect("failed to build runtime for daemon wait");
 
     // Start and wait for Gateway
-    ensure_daemon(&exe, "gateway", GATEWAY_PORT, &["--detach"]);
+    ensure_daemon(&exe, "gateway", gp, &["--detach"]);
     rt.block_on(wait_for_healthy(
-        GATEWAY_PORT,
+        gp,
         Duration::from_secs(90),
         "Gateway",
     ))
@@ -465,7 +496,7 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
 
     Arc::new(RemoteBackend::new(format!(
         "http://127.0.0.1:{}",
-        GATEWAY_PORT
+        gp
     )))
 }
 

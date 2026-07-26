@@ -18,6 +18,18 @@ set -euo pipefail
 ROCO_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROCO_DIR"
 
+# PID/log directory — respects $ROCO_PID_DIR, falls back to /tmp/roco
+ROCO_PID_DIR="${ROCO_PID_DIR:-/tmp/roco}"
+cleanup() {
+    echo ""
+    echo "Shutting down daemons..."
+    pkill -f "roco-inferd" 2>/dev/null || true
+    pkill -f "roco gateway" 2>/dev/null || true
+    pkill -f "cargo watch" 2>/dev/null || true
+    rm -f "$ROCO_PID_DIR"/inferd.pid "$ROCO_PID_DIR"/gateway.pid "$ROCO_PID_DIR"/server.pid 2>/dev/null || true
+    echo "Done."
+}
+
 # ── Colors ──────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -75,8 +87,8 @@ fi
 header "Starting daemons"
 
 # Check if already running
-INFERD_PIDFILE="/tmp/roco/inferd.pid"
-GATEWAY_PIDFILE="/tmp/roco/gateway.pid"
+INFERD_PIDFILE="$ROCO_PID_DIR/inferd.pid"
+GATEWAY_PIDFILE="$ROCO_PID_DIR/gateway.pid"
 
 if [[ -f "$INFERD_PIDFILE" ]]; then
     PID=$(cat "$INFERD_PIDFILE")
@@ -159,7 +171,7 @@ if [[ "${1:-}" == "--no-watch" || "$HOTRELOAD" != "true" ]]; then
     info "Hot reload default is false. Set 'hotreload = true' in .roco/config.toml or export ROCO_HOTRELOAD=1 to enable."
     info "Or run 'roco inferd reload' / 'roco gateway reload' to manually restart."
     echo ""
-    trap '' INT
+    trap cleanup EXIT INT TERM
     while true; do sleep 10; done
 else
     header "Hot reload enabled — watching for changes"

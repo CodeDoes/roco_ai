@@ -66,6 +66,7 @@ pub fn help(sub: Option<&str>) {
         Some("gpu-check") => help_gpu_check(),
         Some("reload") => help_reload(),
         Some("jobs") => help_jobs(),
+        Some("version") | Some("--version") => help_version(),
         _ => help_root(),
     }
 }
@@ -96,7 +97,8 @@ fn help_root() {
     eprintln!("  pet          Desktop pet (--features desktop)");
     eprintln!("  rwkv         Smoke-test the RWKV backend");
     eprintln!("  grammar      Grammar-constrained decode test");
-    eprintln!("  gpu-check    Show Vulkan device + model info\n");
+    eprintln!("  gpu-check    Show Vulkan device + model info");
+    eprintln!("  version      Show version\n");
     eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_CONFIG / ~/.config/roco/config.toml");
     std::process::exit(0);
 }
@@ -247,6 +249,14 @@ fn help_reload() {
     eprintln!("Usage:");
     eprintln!("  roco reload              Stop and restart both daemons\n");
     eprintln!("Note: This rebuilds nothing. Use `./dev.sh --watch` for auto-rebuild on change.\n");
+    std::process::exit(0);
+}
+
+fn help_version() {
+    eprintln!("roco version — Show version info\n");
+    eprintln!("Usage:");
+    eprintln!("  roco version       Show version");
+    eprintln!("  roco --version     Show version\n");
     std::process::exit(0);
 }
 

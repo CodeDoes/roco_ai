@@ -32,13 +32,13 @@ pub fn run(
     let story_dir = story_dir.as_ref();
     if !story_dir.exists() || !story_dir.is_dir() {
         eprintln!("Story directory does not exist: {story_dir:?}");
-        std::process::exit(2);
+        std::process::exit(1);
     }
     let fmt = format_hint.unwrap_or("md");
     let mut chapters = Vec::new();
     for ent in fs::read_dir(story_dir).unwrap_or_else(|e| {
         eprintln!("failed to read story dir: {e}");
-        std::process::exit(2);
+        std::process::exit(1);
     }) {
         let ent = ent.unwrap();
         let p = ent.path();
@@ -63,7 +63,7 @@ pub fn run(
     chapters.sort_by_key(|c| c.0);
     if chapters.is_empty() {
         eprintln!("No chapters found under 03-CHAPTER_*.md in {story_dir:?}");
-        std::process::exit(2);
+        std::process::exit(1);
     }
 
     let title = story_dir
@@ -333,7 +333,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("README.md"), "no chapters here").unwrap();
-        // `run` calls `std::process::exit(2)` on missing chapters, so we
+        // `run` calls `std::process::exit(1)` on missing chapters, so we
         // can only assert on the *helpers* (`render_*` and `clean`).
         let mut out = String::new();
         let ch: Vec<(usize, String, String)> = vec![];
