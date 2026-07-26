@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# === restart_dev_daemons.sh — Manual restart for dev daemons ===
+#
+# Kills any running inferd + gateway and re-starts them via `cargo run`.
+# Used by `cargo watch` in the old watch mode, or standalone for manual restart.
+#
+# Usage:
+#   ./scripts/restart_dev_daemons.sh
+
 set -euo pipefail
 
 ROCO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -11,62 +19,57 @@ YELLOW='\033[1;33m'
 RESET='\033[0m'
 
 ROCO_PID_DIR="${ROCO_PID_DIR:-/tmp/roco}"
+mkdir -p "$ROCO_PID_DIR"
+
 INFERD_PIDFILE="$ROCO_PID_DIR/inferd.pid"
 GATEWAY_PIDFILE="$ROCO_PID_DIR/gateway.pid"
 
-echo -e "${BLUE}ℹ${RESET} Rebuilding binaries (roco-inferd, roco CLI & gateway)..."
+echo -e "${BLUE}ℹ${RESET} Restarting dev daemons via cargo run..."
 
-if cargo build --release -p roco-inferd 2>&1 && cargo build -p roco-cli --features desktop,net 2>&1; then
-    echo -e "${GREEN}✓ Build succeeded.${RESET} Restarting daemons..."
-
-    # Stop running inferd process
-    if [[ -f "$INFERD_PIDFILE" ]]; then
-        PID=$(cat "$INFERD_PIDFILE" 2>/dev/null || true)
-        if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
-            kill "$PID" 2>/dev/null || true
-            sleep 0.5
-        fi
-        rm -f "$INFERD_PIDFILE" "$ROCO_PID_DIR/server.pid"
+# Kill old processes
+if [[ -f "$INFERD_PIDFILE" ]]; then
+    OLD=$(cat "$INFERD_PIDFILE" 2>/dev/null || true)
+    if [[ -n "$OLD" ]] && kill -0 "$OLD" 2>/dev/null; then
+        kill "$OLD" 2>/dev/null || true
+        sleep 0.5
     fi
-    pkill -f "roco-inferd" 2>/dev/null || true
+fi
+pkill -f "roco-inferd" 2>/dev/null || true
+rm -f "$INFERD_PIDFILE" "$ROCO_PID_DIR/server.pid"
 
-    # Stop running gateway process
-    if [[ -f "$GATEWAY_PIDFILE" ]]; then
-        PID=$(cat "$GATEWAY_PIDFILE" 2>/dev/null || true)
-        if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
-            kill "$PID" 2>/dev/null || true
-            sleep 0.5
-        fi
-        rm -f "$GATEWAY_PIDFILE"
+if [[ -f "$GATEWAY_PIDFILE" ]]; then
+    OLD=$(cat "$GATEWAY_PIDFILE" 2>/dev/null || true)
+    if [[ -n "$OLD" ]] && kill -0 "$OLD" 2>/dev/null; then
+        kill "$OLD" 2>/dev/null || true
+        sleep 0.5
     fi
-    pkill -f "roco gateway" 2>/dev/null || true
+fi
+pkill -f "roco.*gateway" 2>/dev/null || true
+rm -f "$GATEWAY_PIDFILE"
 
-    # Start roco-inferd
-    mkdir -p "$ROCO_PID_DIR"
-    TARGET_DIR="${CARGO_TARGET_DIR:-target}"
-    "${TARGET_DIR}/release/roco-inferd" --port 8080 > "$ROCO_PID_DIR/inferd_8080.log" 2>&1 &
-    INFERD_PID=$!
-    echo "$INFERD_PID" > "$INFERD_PIDFILE"
-    echo "$INFERD_PID" > "$ROCO_PID_DIR/server.pid"
-    echo -e "${GREEN}✓ roco-inferd restarted (PID $INFERD_PID)${RESET}"
+# Start inferd via cargo run
+echo -e "${BLUE}ℹ${RESET} Starting inferd..."
+cargo run -p roco-inferd -- --port 8080 >> "$ROCO_PID_DIR/inferd_8080.log" 2>&1 &
+INFERD_PID=$!
+echo "$INFERD_PID" > "$INFERD_PIDFILE"
+echo -e "${GREEN}✓${RESET} roco-inferd restarted (cargo PID $INFERD_PID)"
 
-    # Start gateway
-    "${TARGET_DIR}/debug/roco" gateway --detach > "$ROCO_PID_DIR/gateway_8000.log" 2>&1 || true
-    echo -e "${GREEN}✓ roco gateway restarted.${RESET}"
+# Start gateway via cargo run
+echo -e "${BLUE}ℹ${RESET} Starting gateway..."
+cargo run --bin roco -- gateway --detach >> "$ROCO_PID_DIR/gateway_8000.log" 2>&1 &
+GATEWAY_PID=$!
+echo "$GATEWAY_PID" > "$GATEWAY_PIDFILE"
+echo -e "${GREEN}✓${RESET} roco gateway restarted (cargo PID $GATEWAY_PID)"
 
-    # Brief health check
-    sleep 1.5
-    if curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ inferd healthy: http://127.0.0.1:8080/health${RESET}"
-    else
-        echo -e "${YELLOW}⚠ inferd started, initializing model...${RESET}"
-    fi
-
-    if curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ gateway healthy: http://127.0.0.1:8000/health${RESET}"
-    else
-        echo -e "${YELLOW}⚠ gateway starting...${RESET}"
-    fi
+# Brief health check
+sleep 1.5
+if curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
+    echo -e "${GREEN}✓${RESET} inferd healthy: http://127.0.0.1:8080/health"
 else
-    echo -e "${RED}✗ Build failed. Keeping existing daemons running.${RESET}"
+    echo -e "${YELLOW}⚠${RESET} inferd started, initializing model..."
+fi
+if curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
+    echo -e "${GREEN}✓${RESET} gateway healthy: http://127.0.0.1:8000/health"
+else
+    echo -e "${YELLOW}⚠${RESET} gateway starting..."
 fi
