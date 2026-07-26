@@ -4,7 +4,7 @@
 //! so this file stays small and cheap to recompile.
 
 use roco_cli::cmd;
-use roco_cli::{help, parse_opt, run_cargo};
+use roco_cli::{has_help_flag, help, parse_opt, run_cargo};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -39,58 +39,84 @@ fn main() {
     );
 
     match sub {
-        "eval" => cmd::eval::cmd_eval(&extra),
-        "bless" => cmd::eval::cmd_bless(&extra),
-        "rwkv" => run_cargo(
-            "run",
-            &[
-                "-p",
-                "roco-inference",
-                "--example",
-                "rwkv_test",
-                "--release",
-            ],
-            &extra,
-        ),
-        "grammar" => run_cargo(
-            "run",
-            &[
-                "-p",
-                "roco-inference",
-                "--example",
-                "grammar_smoke",
-                "--release",
-            ],
-            &extra,
-        ),
-        "gpu-check" => cmd::gpu::cmd_gpu_check(&extra),
-        "jobs" | "inferd-jobs" | "inferd-status" => cmd::jobs::cmd_jobs(&extra),
+        // ── Help — always show help when asked ────────────────────────────
+        "help" | "--help" | "-h" => {
+            let topic = extra.first().filter(|&&t| !t.starts_with('-')).copied();
+            help(topic);
+        }
+
+        // ── Evaluations ──────────────────────────────────────────────────
+        "eval" => {
+            if has_help_flag(&extra) { help(Some("eval")); }
+            cmd::eval::cmd_eval(&extra);
+        }
+        "bless" => {
+            if has_help_flag(&extra) { help(Some("eval")); }
+            cmd::eval::cmd_bless(&extra);
+        }
+
+        // ── RWKV backend smoke tests ─────────────────────────────────────
+        "rwkv" => {
+            if has_help_flag(&extra) { help(Some("rwkv")); }
+            run_cargo(
+                "run",
+                &["-p", "roco-inference", "--example", "rwkv_test", "--release"],
+                &extra,
+            );
+        }
+        "grammar" => {
+            if has_help_flag(&extra) { help(Some("grammar")); }
+            run_cargo(
+                "run",
+                &["-p", "roco-inference", "--example", "grammar_smoke", "--release"],
+                &extra,
+            );
+        }
+
+        // ── GPU / Jobs ───────────────────────────────────────────────────
+        "gpu-check" => {
+            if has_help_flag(&extra) { help(Some("gpu-check")); }
+            cmd::gpu::cmd_gpu_check(&extra);
+        }
+        "jobs" | "inferd-jobs" | "inferd-status" => {
+            if has_help_flag(&extra) { help(Some("jobs")); }
+            cmd::jobs::cmd_jobs(&extra);
+        }
+
+        // ── Inference daemon control ─────────────────────────────────────
         "inferd" | "server" => {
+            // --help / -h anywhere in args -> show help
+            if has_help_flag(&extra) {
+                help(Some("inferd"));
+            }
             let sub_cmd = extra.first().copied();
             match sub_cmd {
-                Some("stop") => {
-                    roco_cli::daemon::stop_inference();
-                }
                 Some("start") => {
                     let exe = std::env::current_exe().expect("exe");
                     if roco_cli::daemon::ensure_inference_daemon(&exe, roco_cli::daemon::INFERENCE_PORT) {
                         println!("✓ roco-inferd started on port {}.", roco_cli::daemon::INFERENCE_PORT);
                     }
                 }
+                Some("stop") => {
+                    roco_cli::daemon::stop_inference();
+                }
                 Some("restart") | Some("reload") => {
                     #[cfg(feature = "net")]
                     cmd::server::cmd_inferd_reload(&extra[1..]);
                     #[cfg(not(feature = "net"))]
-                    need_feature(
-                        "inferd reload",
-                        "net",
-                        "cargo build -p roco-cli --features net",
-                    );
+                    need_feature("inferd reload", "net", "cargo build -p roco-cli --features net");
                 }
                 Some("status") | Some("jobs") => {
                     cmd::jobs::cmd_jobs(&extra[1..]);
                 }
+                Some("help") => {
+                    help(Some("inferd"));
+                }
                 _ => {
+                    // No recognized subcommand: pass through to cmd_server
+                    // which handles flags like --port, --story, --stdio-lsp, --detach.
+                    // This preserves backward compat with `roco server --story ...`
+                    // and direct flag-based invocations.
                     #[cfg(feature = "net")]
                     cmd::server::cmd_server(&extra);
                     #[cfg(not(feature = "net"))]
@@ -98,27 +124,29 @@ fn main() {
                 }
             }
         }
+
+        // ── Gateway control ──────────────────────────────────────────────
         "gateway" => {
+            // --help / -h anywhere in args -> show help
+            if has_help_flag(&extra) {
+                help(Some("gateway"));
+            }
             let sub_cmd = extra.first().copied();
             match sub_cmd {
-                Some("stop") => {
-                    roco_cli::daemon::stop_gateway();
-                }
                 Some("start") => {
                     let exe = std::env::current_exe().expect("exe");
                     if roco_cli::daemon::ensure_daemon(&exe, "gateway", roco_cli::daemon::GATEWAY_PORT, &["--detach"]) {
                         println!("✓ Gateway started on port {}.", roco_cli::daemon::GATEWAY_PORT);
                     }
                 }
+                Some("stop") => {
+                    roco_cli::daemon::stop_gateway();
+                }
                 Some("restart") | Some("reload") => {
                     #[cfg(feature = "net")]
                     cmd::server::cmd_gateway_reload(&extra[1..]);
                     #[cfg(not(feature = "net"))]
-                    need_feature(
-                        "gateway reload",
-                        "net",
-                        "cargo build -p roco-cli --features net",
-                    );
+                    need_feature("gateway reload", "net", "cargo build -p roco-cli --features net");
                 }
                 Some("status") => {
                     let running = roco_cli::daemon::is_running("gateway", roco_cli::daemon::GATEWAY_PORT);
@@ -128,7 +156,13 @@ fn main() {
                         println!("✗ Gateway is not running on port {}.", roco_cli::daemon::GATEWAY_PORT);
                     }
                 }
+                Some("help") => {
+                    help(Some("gateway"));
+                }
                 _ => {
+                    // No recognized subcommand: pass through to cmd_gateway
+                    // which handles flags like --detach, --port, --target.
+                    // This preserves backward compat with `roco gateway --detach`.
                     #[cfg(feature = "net")]
                     cmd::server::cmd_gateway(&extra);
                     #[cfg(not(feature = "net"))]
@@ -136,23 +170,23 @@ fn main() {
                 }
             }
         }
+
+        // ── Reload both daemons ──────────────────────────────────────────
         "reload" => {
+            if has_help_flag(&extra) {
+                help(Some("reload"));
+            }
             #[cfg(feature = "net")]
             cmd::server::cmd_reload(&extra);
             #[cfg(not(feature = "net"))]
             need_feature("reload", "net", "cargo build -p roco-cli --features net");
         }
-        "gui" => {
-            #[cfg(feature = "desktop")]
-            cmd::desktop::cmd_gui(&extra);
-            #[cfg(not(feature = "desktop"))]
-            need_feature(
-                "gui",
-                "desktop",
-                "cargo build -p roco-cli --features desktop",
-            );
-        }
+
+        // ── Stop daemons (NEVER starts anything) ─────────────────────────
         "stop" => {
+            if has_help_flag(&extra) {
+                help(Some("stop"));
+            }
             let sub_cmd = extra.first().copied();
             match sub_cmd {
                 Some("gateway") => roco_cli::daemon::stop_gateway(),
@@ -160,10 +194,29 @@ fn main() {
                 _ => roco_cli::daemon::stop_all(),
             }
         }
+
+        // ── Desktop GUI ──────────────────────────────────────────────────
+        "gui" => {
+            if has_help_flag(&extra) { help(Some("gui")); }
+            #[cfg(feature = "desktop")]
+            cmd::desktop::cmd_gui(&extra);
+            #[cfg(not(feature = "desktop"))]
+            need_feature("gui", "desktop", "cargo build -p roco-cli --features desktop");
+        }
+
+        // ── Desktop pet ──────────────────────────────────────────────────
+        "pet" => {
+            if has_help_flag(&extra) { help(Some("pet")); }
+            cmd::pet::cmd_pet(&extra);
+        }
+
+        // ── Story mode (interactive writing assistant) ───────────────────
         "story-mode" | "sm" => {
+            if has_help_flag(&extra) { help(Some("story")); }
             let story_name = parse_opt("--story", &extra);
             let command = extra.first().copied();
             match command {
+                Some("help") => help(Some("story")),
                 Some(cmd) if !cmd.starts_with("--") => {
                     cmd::story_mode::run_story_command(story_name, cmd);
                 }
@@ -172,23 +225,50 @@ fn main() {
                 }
             }
         }
-        "story" => cmd::story::cmd_story(&extra),
-        "game" => cmd::game::cmd_game(&extra),
-        "html" => cmd::html::cmd_html(&extra),
-        "code" => cmd::coder::cmd_coder(&extra),
-        "interact" => cmd::interact::cmd_interact(&extra),
-        "coder" => cmd::coder::cmd_coder(&extra),
+
+        // ── Structured story pipeline ────────────────────────────────────
+        "story" => {
+            if has_help_flag(&extra) { help(Some("story")); }
+            cmd::story::cmd_story(&extra);
+        }
+
+        // ── Game / HTML / Code / Interact ────────────────────────────────
+        "game" => {
+            if has_help_flag(&extra) { help(Some("game")); }
+            cmd::game::cmd_game(&extra);
+        }
+        "html" => {
+            if has_help_flag(&extra) { help(Some("html")); }
+            cmd::html::cmd_html(&extra);
+        }
+        "code" | "coder" => {
+            if has_help_flag(&extra) { help(Some("code")); }
+            cmd::coder::cmd_coder(&extra);
+        }
+        "interact" => {
+            if has_help_flag(&extra) { help(Some("interact")); }
+            cmd::interact::cmd_interact(&extra);
+        }
+
+        // ── Export ───────────────────────────────────────────────────────
         "export" => {
+            if has_help_flag(&extra) { help(Some("export")); }
             cmd::export::run(
                 extra.first().copied().unwrap_or("."),
                 parse_opt("--format", &extra),
                 parse_opt("--output", &extra),
             );
         }
-        "help" | "--help" | "-h" => help(None),
-        "pet" => cmd::pet::cmd_pet(&extra),
+
+        // ── Router (default — no subcommand or unknown) ──────────────────
         "router" => cmd::router::cmd_router(&extra),
+
+        // ── Unknown subcommand ───────────────────────────────────────────
         _ => {
+            // If the user typed something like "roco unknown --help", show help.
+            if has_help_flag(&extra) {
+                help(None);
+            }
             // Unknown subcommand → route through mode router with that text as prompt.
             let mut args_with_prompt = vec![sub];
             args_with_prompt.extend(extra.iter().copied());

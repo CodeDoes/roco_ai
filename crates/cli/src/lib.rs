@@ -41,35 +41,218 @@ pub fn run_cargo_get_code(cmd: &str, args: &[&str], extra: &[&str]) -> i32 {
     c.status().map(|s| s.code().unwrap_or(1)).unwrap_or(1)
 }
 
-/// Print top-level CLI help.
-pub fn help(_sub: Option<&str>) {
+/// Check if `--help` or `-h` appears in the argument list.
+pub fn has_help_flag(args: &[&str]) -> bool {
+    args.iter().any(|&a| a == "--help" || a == "-h")
+}
+
+/// Print help for a specific subcommand, or the top-level help.
+pub fn help(sub: Option<&str>) {
+    match sub {
+        Some("inferd") | Some("server") => help_inferd(),
+        Some("gateway") => help_gateway(),
+        Some("stop") => help_stop(),
+        Some("story") | Some("story-mode") | Some("sm") => help_story(),
+        Some("interact") => help_interact(),
+        Some("eval") | Some("bless") => help_eval(),
+        Some("gui") => help_gui(),
+        Some("pet") => help_pet(),
+        Some("export") => help_export(),
+        Some("game") => help_game(),
+        Some("html") => help_html(),
+        Some("code") | Some("coder") => help_code(),
+        Some("rwkv") => help_rwkv(),
+        Some("grammar") => help_grammar(),
+        Some("gpu-check") => help_gpu_check(),
+        Some("reload") => help_reload(),
+        Some("jobs") => help_jobs(),
+        _ => help_root(),
+    }
+}
+
+fn help_root() {
     eprintln!("RoCo AI — Collaborative Writing Assistant\n");
     eprintln!("Usage:");
     eprintln!("  roco                                 Start interactive chat (natural language)");
     eprintln!("  roco <prompt>                        Chat with a starting prompt");
-    eprintln!("  roco <subcommand> [args]             Run a specific command\n");
-    eprintln!("Subcommands:");
-    eprintln!("  interact [--interactive] [--prompt PROMPT] [--resume SESSION] [--pace MODE]");
-    eprintln!("                                  Interactive CLI with pacing (default)");
-    eprintln!("  interact --list-sessions           List saved sessions");
-    eprintln!("  story <prompt> [--strategy S] [--max-tokens T] Structured short story");
-    eprintln!("  story-mode [--story STORY] [command]  Interactive story writing assistant");
-    eprintln!("  sm         Alias for story-mode");
-    eprintln!("  game [scenario]                 Adventure game mode (interactive fiction)");
-    eprintln!("  html [--port PORT]                Live HTML canvas — agent responds in HTML, served via local web server");
-    eprintln!("  code <question> [--lang LANG]   AI coding assistant");
-    eprintln!("  gui                               Desktop GUI (--features desktop)");
-    eprintln!(
-        "  server [...]                      HTTP surface (--features net); GPU via roco-inferd"
-    );
-    eprintln!("  gateway [...]                     API gateway (--features net)");
-    eprintln!("  stop                              Stop background inference + gateway");
-    eprintln!("  export <story-dir> [--format md|html|txt] [--output PATH]");
-    eprintln!("  eval [--output PATH]              Run evals, save snapshot");
-    eprintln!("  bless [--snapshot PATH]            Bless snapshot as new oracle");
-    eprintln!("  rwkv                              Smoke-test the RWKV backend");
-    eprintln!("  grammar                           Grammar-constrained decode");
-    eprintln!("  gpu-check [--json|-j]              Show Vulkan + model info\n");
+    eprintln!("  roco <subcommand> [args]             Run a specific command");
+    eprintln!("  roco <subcommand> --help             Show help for a specific command\n");
+    eprintln!("Commands:");
+    eprintln!("  interact     Interactive CLI with pacing (default mode)");
+    eprintln!("  story        Structured short story from premise");
+    eprintln!("  story-mode   Interactive story writing assistant");
+    eprintln!("  sm           Alias for story-mode");
+    eprintln!("  game         Adventure game mode (interactive fiction)");
+    eprintln!("  html         Live HTML canvas");
+    eprintln!("  code         AI coding assistant");
+    eprintln!("  eval         Run evaluations");
+    eprintln!("  bless        Bless snapshot as new oracle");
+    eprintln!("  export       Export a finished story");
+    eprintln!("  inferd       Inference daemon control (start/stop/restart/status)");
+    eprintln!("  gateway      API gateway control (start/stop/restart/status)");
+    eprintln!("  stop         Stop background daemons");
+    eprintln!("  jobs         Show daemon status and active jobs");
+    eprintln!("  gui          Desktop GUI (--features desktop)");
+    eprintln!("  pet          Desktop pet (--features desktop)");
+    eprintln!("  rwkv         Smoke-test the RWKV backend");
+    eprintln!("  grammar      Grammar-constrained decode test");
+    eprintln!("  gpu-check    Show Vulkan device + model info\n");
     eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_CONFIG / ~/.config/roco/config.toml");
+    std::process::exit(0);
+}
+
+fn help_inferd() {
+    eprintln!("roco inferd — Inference daemon control\n");
+    eprintln!("Usage:");
+    eprintln!("  roco inferd start      Start inference daemon (roco-inferd)");
+    eprintln!("  roco inferd stop       Stop inference daemon");
+    eprintln!("  roco inferd restart    Restart inference daemon");
+    eprintln!("  roco inferd status     Show inference daemon status");
+    eprintln!("  roco inferd reload     Reload (stop + start) inference daemon\n");
+    eprintln!("The inference daemon (roco-inferd) loads the RWKV model on GPU");
+    eprintln!("and serves the completion API. It is auto-started by gateway");
+    eprintln!("and other commands that need it.\n");
+    eprintln!("Requires: --features net");
+    std::process::exit(0);
+}
+
+fn help_gateway() {
+    eprintln!("roco gateway — API gateway control\n");
+    eprintln!("Usage:");
+    eprintln!("  roco gateway start      Start gateway");
+    eprintln!("  roco gateway stop       Stop gateway");
+    eprintln!("  roco gateway restart    Restart gateway");
+    eprintln!("  roco gateway status     Show gateway status");
+    eprintln!("  roco gateway reload     Reload (stop + start) gateway\n");
+    eprintln!("The gateway is a HTTP reverse proxy that routes requests to");
+    eprintln!("the inference daemon and story engine.\n");
+    eprintln!("Requires: --features net");
+    std::process::exit(0);
+}
+
+fn help_stop() {
+    eprintln!("roco stop — Stop background daemons\n");
+    eprintln!("Usage:");
+    eprintln!("  roco stop              Stop all daemons (inferd + gateway)");
+    eprintln!("  roco stop inferd       Stop inference daemon only");
+    eprintln!("  roco stop gateway      Stop gateway only\n");
+    eprintln!("Note: stop only stops running daemons. It never starts anything.");
+    std::process::exit(0);
+}
+
+fn help_story() {
+    eprintln!("roco story — Structured short story pipeline\n");
+    eprintln!("Usage:");
+    eprintln!("  roco story <premise>           Generate a story from a premise");
+    eprintln!("  roco story <premise> --strategy <s>  Strategy: meticulous|collaborative|fast");
+    eprintln!("  roco story <premise> --max-tokens <n>  Max tokens per chapter\n");
+    std::process::exit(0);
+}
+
+fn help_interact() {
+    eprintln!("roco interact — Interactive chat REPL\n");
+    eprintln!("Usage:");
+    eprintln!("  roco interact                       Start interactive chat");
+    eprintln!("  roco interact --prompt <text>        Chat with starting prompt");
+    eprintln!("  roco interact --resume <session>     Resume a saved session");
+    eprintln!("  roco interact --list-sessions        List saved sessions");
+    eprintln!("  roco interact --pace <mode>          Pacing: auto|careful|rolling|planning\n");
+    std::process::exit(0);
+}
+
+fn help_eval() {
+    eprintln!("roco eval / bless — Evaluation suite\n");
+    eprintln!("Usage:");
+    eprintln!("  roco eval [--output PATH]       Run evals, save snapshot");
+    eprintln!("  roco bless [--snapshot PATH]    Bless a snapshot as new oracle\n");
+    std::process::exit(0);
+}
+
+fn help_gui() {
+    eprintln!("roco gui — Desktop GUI\n");
+    eprintln!("Usage:");
+    eprintln!("  roco gui                Launch the desktop GUI\n");
+    eprintln!("Requires: --features desktop");
+    std::process::exit(0);
+}
+
+fn help_pet() {
+    eprintln!("roco pet — Desktop pet\n");
+    eprintln!("Usage:");
+    eprintln!("  roco pet                Launch desktop pet");
+    eprintln!("  roco pet stop           Stop running pet");
+    eprintln!("  roco pet --hide         Start hidden (tray only)");
+    eprintln!("  roco pet --install      Install .desktop file + auto-start");
+    eprintln!("  roco pet --uninstall    Remove .desktop file\n");
+    eprintln!("Requires: --features desktop");
+    std::process::exit(0);
+}
+
+fn help_export() {
+    eprintln!("roco export — Export a finished story\n");
+    eprintln!("Usage:");
+    eprintln!("  roco export <story-dir> [--format md|html|txt] [--output PATH]\n");
+    std::process::exit(0);
+}
+
+fn help_game() {
+    eprintln!("roco game — Adventure game mode\n");
+    eprintln!("Usage:");
+    eprintln!("  roco game                   Start interactive fiction game master");
+    eprintln!("  roco game <scenario>        Start with a specific scenario\n");
+    std::process::exit(0);
+}
+
+fn help_html() {
+    eprintln!("roco html — Live HTML canvas\n");
+    eprintln!("Usage:");
+    eprintln!("  roco html                          Start interactive HTML session");
+    eprintln!("  roco html <prompt>                 Start with an initial prompt");
+    eprintln!("  roco html --port <port>            Custom port (default: 9090)\n");
+    std::process::exit(0);
+}
+
+fn help_code() {
+    eprintln!("roco code — AI coding assistant\n");
+    eprintln!("Usage:");
+    eprintln!("  roco code <question>                Ask a coding question");
+    eprintln!("  roco code <question> --lang <lang>  Specify language (rust, python, ts, etc.)\n");
+    std::process::exit(0);
+}
+
+fn help_rwkv() {
+    eprintln!("roco rwkv — Smoke-test the RWKV backend\n");
+    eprintln!("Usage:");
+    eprintln!("  roco rwkv [extra args...]     Run the RWKV backend smoke test\n");
+    std::process::exit(0);
+}
+
+fn help_grammar() {
+    eprintln!("roco grammar — Grammar-constrained decode test\n");
+    eprintln!("Usage:");
+    eprintln!("  roco grammar [extra args...]  Run the grammar-constrained decode test\n");
+    std::process::exit(0);
+}
+
+fn help_gpu_check() {
+    eprintln!("roco gpu-check — Show Vulkan device + model info\n");
+    eprintln!("Usage:");
+    eprintln!("  roco gpu-check                Show Vulkan devices, model, vocab status");
+    eprintln!("  roco gpu-check --json         Output as JSON\n");
+    std::process::exit(0);
+}
+
+fn help_reload() {
+    eprintln!("roco reload — Reload both inferd and gateway daemons\n");
+    eprintln!("Usage:");
+    eprintln!("  roco reload              Stop and restart both daemons\n");
+    eprintln!("Note: This rebuilds nothing. Use `./dev.sh --watch` for auto-rebuild on change.\n");
+    std::process::exit(0);
+}
+
+fn help_jobs() {
+    eprintln!("roco jobs — Show daemon status and active jobs\n");
+    eprintln!("Usage:");
+    eprintln!("  roco jobs                 Show inference daemon health and active jobs\n");
     std::process::exit(0);
 }
