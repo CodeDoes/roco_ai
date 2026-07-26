@@ -341,8 +341,8 @@ async fn vocab_route_returns_not_implemented_for_mock() {
         .oneshot(Request::get("/vocab").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    // MockBackend returns None for vocab_bytes, so /vocab returns 501
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    // MockBackend returns mock vocab bytes, so /vocab returns 200 OK
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

@@ -18,6 +18,10 @@ pub fn cmd_gateway(extra: &[&str]) {
     let target = parse_opt("--target", extra).unwrap_or("http://127.0.0.1:8080");
     let limit_str = parse_opt("--rate-limit", extra).unwrap_or("60");
     let limit = limit_str.parse::<usize>().unwrap_or(60);
+    let ws_dir_str = parse_opt("--workspace", extra)
+        .or_else(|| parse_opt("-w", extra))
+        .unwrap_or("./workspaces");
+    let ws_dir = PathBuf::from(ws_dir_str);
 
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
     let is_child = extra.iter().any(|&a| a == "--_child-gateway");
@@ -43,7 +47,7 @@ pub fn cmd_gateway(extra: &[&str]) {
         .expect("Failed to build Tokio runtime");
 
     rt.block_on(async {
-        let gateway = Gateway::new(host.to_string(), port, target.to_string(), limit);
+        let gateway = Gateway::new(host.to_string(), port, target.to_string(), ws_dir, limit);
         println!(
             "Starting API Gateway on {host}:{port} targeting {target} (limit: {limit}/min)..."
         );
