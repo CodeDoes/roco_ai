@@ -140,14 +140,6 @@ fn detect_intent(
     available: &[Intent],
     mode_hint: &str,
 ) -> (Intent, String) {
-    print!(
-        "{}{}  Thinking... [Gateway]{}\r",
-        r::Colors::DIM,
-        r::Colors::CYAN,
-        r::Colors::RESET
-    );
-    io::stdout().flush().ok();
-
     let prompt = intent_detection_prompt(user_message, available, mode_hint);
 
     let request = roco_engine::CompletionRequest {
@@ -190,7 +182,7 @@ fn detect_intent(
                             "router",
                             &format!("Intent detected: {} -> prompt: \"{}\"", intent.id, prompt),
                         );
-                        (intent, prompt)
+                        (intent, r::clean_response(&prompt))
                     } else {
                         fallback()
                     }
@@ -393,15 +385,16 @@ fn generate_response(
     };
 
     print!(
-        "{}{}  Thinking... [Gateway]{}\r",
+        "{}{}  ...{}\r",
         r::Colors::DIM,
         r::Colors::CYAN,
         r::Colors::RESET
     );
     io::stdout().flush().ok();
 
-    let printed_first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let pf = std::sync::Arc::clone(&printed_first);
+    // Buffer streaming tokens; clean_response post-processes the final text.
+    let streamed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let streamed_cb = std::sync::Arc::clone(&streamed);
     let request = roco_engine::CompletionRequest {
         system,
         prompt,
@@ -409,32 +402,26 @@ fn generate_response(
         max_tokens,
         prefill,
         on_token: Some(Box::new(move |token: &str| {
-            if !pf.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                print!("\r\x1b[K\n");
+            if let Ok(mut buf) = streamed_cb.lock() {
+                buf.push_str(token);
             }
-            print!("{token}");
-            io::stdout().flush().ok();
         })),
         ..Default::default()
     };
 
     let resp = match futures::executor::block_on(backend.complete(request)) {
         Ok(resp) => {
-            let text = resp.text.trim().to_string();
+            let raw = r::clean_response(&resp.text);
             if mode == Mode::Html {
-                sanitize_html(&text)
+                sanitize_html(&raw)
             } else {
-                text
+                raw
             }
         }
         Err(e) => format!("[Error: {e}]"),
     };
-    if printed_first.load(std::sync::atomic::Ordering::Relaxed) {
-        println!();
-    } else {
-        print!("\r\x1b[K");
-        println!("{resp}");
-    }
+    print!("\r\x1b[K");
+    println!("{resp}");
     io::stdout().flush().ok();
     resp
 }

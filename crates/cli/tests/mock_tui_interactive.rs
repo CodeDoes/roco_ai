@@ -11,7 +11,7 @@ fn test_interactive_pacing_planning_mode() {
 
     let res = session.run_subcommand("interact", &["--pace", "planning"]);
     res.assert_success();
-    res.assert_stdout_contains("RoCo AI — Interactive");
+    res.assert_stdout_contains("RoCo AI — Chat");
     res.assert_stdout_contains("Session saved. Goodbye!");
 
     let saved_session = res.assert_latest_session();

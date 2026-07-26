@@ -106,7 +106,7 @@ fn run_prompt(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow::
 
     let request = roco_engine::CompletionRequest {
         system: "You are a creative writing assistant. Respond with vivid, engaging prose.".into(),
-        prompt: prompt.to_string(),
+        prompt: format!("User: {}\nAssistant:", prompt),
         temperature: 0.8,
         max_tokens: 1024,
         prefill: Some("<think></think>".into()),
@@ -116,7 +116,7 @@ fn run_prompt(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow::
     let response = futures::executor::block_on(backend.complete(request))
         .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?;
 
-    let text = response.text.trim().to_string();
+    let text = r::clean_response(&response.text);
     println!("\n{}", text);
     state.add_message("assistant", &text);
 
@@ -146,8 +146,8 @@ fn run_interactive(
 
     let mut state = ConversationState::new(session_id.clone(), pacing.label());
 
-    r::header("RoCo AI — Interactive");
-    r::dim("  Just type your story idea.  :h for help, :q to quit.\n");
+    r::header("RoCo AI — Chat");
+    r::dim("  Type your message and press Enter.  :h for help, :q to quit.\n");
 
     let mut current_pacing = pacing.to_interaction_mode();
     let mut interaction = InteractionState::new(current_pacing.clone(), 0);
@@ -155,11 +155,10 @@ fn run_interactive(
     // If an initial prompt was provided, send it immediately
     if let Some(ref initial) = initial_prompt {
         state.add_message("user", initial);
-        r::header("User");
-        r::header("AI");
+        let context0 = format!("User: {}\nAssistant:", initial);
         let request = roco_engine::CompletionRequest {
-            system: "You are a creative writing assistant.".into(),
-            prompt: initial.clone(),
+            system: "You are RoCo AI, a helpful creative writing assistant. Be concise and engaging.".into(),
+            prompt: context0,
             temperature: 0.8,
             max_tokens: 1024,
             prefill: Some("<think></think>".into()),
@@ -167,9 +166,8 @@ fn run_interactive(
         };
         match futures::executor::block_on(backend.complete(request)) {
             Ok(response) => {
-                let text = response.text.trim().to_string();
-                r::dim(&format!("─ {} characters ─", text.len()));
-                println!("{}", text);
+                let text = r::clean_response(&response.text);
+                println!("{}RoCo:{} {}", r::Colors::CYAN, r::Colors::RESET, text);
                 state.add_message("assistant", &text);
                 interaction.tasks_completed += 1;
             }
@@ -184,15 +182,7 @@ fn run_interactive(
     }
 
     loop {
-        // Show prompt
-        let pacing_label = match &current_pacing {
-            InteractionMode::FullControl => "careful",
-            InteractionMode::ModerateControl { .. } => "rolling",
-            InteractionMode::NoControl => "planning",
-            InteractionMode::GoHam => "auto",
-        };
-
-        print!("\n{}{} > ", r::Colors::DIM, pacing_label,);
+        print!("\n{}You:{} ", r::Colors::BOLD, r::Colors::RESET);
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -221,55 +211,47 @@ fn run_interactive(
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?
             {
-                // Command signaled quit
                 break;
             }
             continue;
         }
 
-        // User message
+        // Build conversation context and record user turn
+        let context = build_chat_context(&state.messages, &input);
         state.add_message("user", &input);
-        r::header("User");
 
-        // Agent response
-        r::header("AI");
         print!(
-            "{}{}  Thinking... [Gateway]{}\r",
+            "{}{}  ...{}\r",
             r::Colors::DIM,
             r::Colors::CYAN,
             r::Colors::RESET
         );
         io::stdout().flush()?;
 
-        let printed_first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let pf = std::sync::Arc::clone(&printed_first);
+        let roco_prefix = format!("{}RoCo:{} ", r::Colors::CYAN, r::Colors::RESET);
+        // Buffer streaming tokens; clean_response post-processes the final text.
+        let streamed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let streamed_cb = std::sync::Arc::clone(&streamed);
         let request = roco_engine::CompletionRequest {
-            system: "You are a creative writing assistant.".into(),
-            prompt: input.clone(),
+            system: "You are RoCo AI, a helpful creative writing assistant. Be concise and engaging.".into(),
+            prompt: context,
             temperature: 0.8,
             max_tokens: 1024,
             prefill: Some("<think></think>".into()),
             on_token: Some(Box::new(move |token: &str| {
-                if !pf.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                    print!("\r\x1b[K\n");
+                if let Ok(mut buf) = streamed_cb.lock() {
+                    buf.push_str(token);
                 }
-                print!("{token}");
-                io::stdout().flush().ok();
             })),
             ..Default::default()
         };
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(response) => {
-                let text = response.text.trim().to_string();
-                if printed_first.load(std::sync::atomic::Ordering::Relaxed) {
-                    println!();
-                } else {
-                    print!("\r\x1b[K");
-                    println!("{text}");
-                }
+                let text = r::clean_response(&response.text);
+                print!("\r\x1b[K");
+                println!("{}{}", roco_prefix, text);
                 io::stdout().flush().ok();
-                r::dim(&format!("─ {} characters ─", text.len()));
                 state.add_message("assistant", &text);
 
                 // Pacing: check if we should pause
@@ -280,7 +262,7 @@ fn run_interactive(
                 );
 
                 if should_pause {
-                    r::info("\n--- [a]ccept  [s]kip  [r]evise  [q]uit ---");
+                    r::dim("  [a]ccept  [s]kip  [q]uit");
                     interaction.waiting_for_human = true;
                 }
             }
@@ -356,14 +338,7 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
     let mut interaction = InteractionState::new(current_pacing.clone(), new_state.messages.len());
 
     loop {
-        let pacing_label = match &current_pacing {
-            InteractionMode::FullControl => "careful",
-            InteractionMode::ModerateControl { .. } => "rolling",
-            InteractionMode::NoControl => "planning",
-            InteractionMode::GoHam => "auto",
-        };
-
-        print!("\n{}{} > ", r::Colors::DIM, pacing_label,);
+        print!("\n{}You:{} ", r::Colors::BOLD, r::Colors::RESET);
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -396,15 +371,13 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
             continue;
         }
 
-        // User message
+        // Build conversation context and record user turn
+        let context = build_chat_context(&new_state.messages, &input);
         new_state.add_message("user", &input);
-        r::header("User");
 
-        // Agent response
-        r::header("AI");
         let request = roco_engine::CompletionRequest {
-            system: "You are a creative writing assistant.".into(),
-            prompt: input.clone(),
+            system: "You are RoCo AI, a helpful creative writing assistant. Be concise and engaging.".into(),
+            prompt: context,
             temperature: 0.8,
             max_tokens: 1024,
             prefill: Some("<think></think>".into()),
@@ -413,9 +386,8 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(response) => {
-                let text = response.text.trim().to_string();
-                r::dim(&format!("─ {} characters ─", text.len()));
-                println!("{}", text);
+                let text = r::clean_response(&response.text);
+                println!("{}RoCo:{} {}", r::Colors::CYAN, r::Colors::RESET, text);
                 new_state.add_message("assistant", &text);
                 interaction.tasks_completed += 1;
 
@@ -425,7 +397,7 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
                 );
 
                 if should_pause {
-                    r::info("\n--- [a]ccept  [s]kip  [r]evise  [q]uit ---");
+                    r::dim("  [a]ccept  [s]kip  [q]uit");
                     interaction.waiting_for_human = true;
                 }
             }
@@ -620,6 +592,24 @@ fn handle_command(
 // ═════════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═════════════════════════════════════════════════════════════════════════════
+
+/// Build a prompt that includes recent conversation history so the model has context.
+fn build_chat_context(messages: &[roco_protocol::ConversationMessage], new_input: &str) -> String {
+    let mut ctx = String::new();
+    // Include up to the last 8 turns (4 exchanges)
+    let recent: Vec<_> = messages.iter().rev().take(8).rev().collect();
+    for msg in &recent {
+        let label = match msg.role.as_str() {
+            "user" => "User",
+            "assistant" | "ai" => "Assistant",
+            _ => continue,
+        };
+        let preview: String = msg.content.chars().take(300).collect();
+        ctx.push_str(&format!("{label}: {preview}\n"));
+    }
+    ctx.push_str(&format!("User: {new_input}\nAssistant:"));
+    ctx
+}
 
 /// Get the directory where session files are stored
 fn get_sessions_dir() -> PathBuf {

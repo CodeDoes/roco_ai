@@ -507,17 +507,24 @@ impl roco_engine::ModelBackend for TokioBackend {
     > {
         let inner = self.inner.clone();
         let rt_handle = self.rt.handle().clone();
-        Box::pin(async move {
-            // Spawn the actual work on the dedicated tokio runtime so reqwest
-            // has a context. Then await the JoinHandle from the caller's
-            // executor (which may be futures::executor::block_on).
-            rt_handle
-                .spawn(async move { inner.complete(req).await })
-                .await
+        // `futures::executor::block_on` parks the calling thread and polls the
+        // returned future inline — it provides NO tokio reactor on that thread.
+        // Awaiting a `JoinHandle` inside an `async move {}` polled by block_on
+        // therefore deadlocks: the join handle needs a reactor to get woken up,
+        // but block_on never installs one.
+        //
+        // Fix: do the actual async work synchronously on the dedicated tokio
+        // runtime via `block_on` (which DOES run a reactor), then return the
+        // result wrapped in a ready future.  This is safe because block_on is
+        // called on a fresh thread-scope thread, never inside the rt itself.
+        let result = std::thread::scope(|s| {
+            s.spawn(|| rt_handle.block_on(inner.complete(req)))
+                .join()
                 .unwrap_or(Err(roco_engine::EngineError::Backend(
-                    "TokioBackend runtime shut down".into(),
+                    "TokioBackend thread panicked".into(),
                 )))
-        })
+        });
+        Box::pin(futures::future::ready(result))
     }
 
     fn save_state(
@@ -554,25 +561,25 @@ impl roco_engine::ModelBackend for TokioBackend {
             .iter()
             .map(|(u, a)| (u.to_string(), a.to_string()))
             .collect();
-        Box::pin(async move {
-            rt_handle
-                .spawn(async move {
-                    inner
-                        .bake_state(
-                            &session_id,
-                            &system,
-                            &few_shots
-                                .iter()
-                                .map(|(u, a)| (u.as_str(), a.as_str()))
-                                .collect::<Vec<_>>(),
-                        )
-                        .await
-                })
-                .await
-                .unwrap_or(Err(roco_engine::EngineError::Backend(
-                    "TokioBackend runtime shut down".into(),
-                )))
-        })
+        // Same fix as complete(): run synchronously on the dedicated runtime
+        // via block_on on a scoped thread to avoid the JoinHandle deadlock.
+        let result = std::thread::scope(|s| {
+            s.spawn(|| {
+                rt_handle.block_on(inner.bake_state(
+                    &session_id,
+                    &system,
+                    &few_shots
+                        .iter()
+                        .map(|(u, a)| (u.as_str(), a.as_str()))
+                        .collect::<Vec<_>>(),
+                ))
+            })
+            .join()
+            .unwrap_or(Err(roco_engine::EngineError::Backend(
+                "TokioBackend bake_state thread panicked".into(),
+            )))
+        });
+        Box::pin(futures::future::ready(result))
     }
 }
 
@@ -585,6 +592,8 @@ pub fn ensure_sync_backend() -> Arc<dyn roco_engine::ModelBackend> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use roco_engine::ModelBackend;
+    use std::time::Duration;
 
     #[test]
     fn test_pid_paths() {
@@ -605,16 +614,182 @@ mod tests {
         assert_eq!(GATEWAY_TARGET, "http://127.0.0.1:8080");
     }
 
+    // ── TokioBackend deadlock regression tests ────────────────────────────────
+    //
+    // These tests exist specifically to catch the class of bug where
+    // `TokioBackend::complete` deadlocks when called from
+    // `futures::executor::block_on` (no surrounding tokio reactor on the
+    // calling thread).  The old implementation did:
+    //
+    //   Box::pin(async move { rt_handle.spawn(work).await })
+    //
+    // `futures::executor::block_on` polls that future inline on the calling
+    // thread with no tokio reactor installed.  `JoinHandle::await` needs a
+    // reactor to receive its wakeup, so it never completes — infinite hang.
+    //
+    // The fix: run the work synchronously on a scoped thread via
+    // `rt_handle.block_on(...)`, then return `futures::future::ready(result)`.
+    // A ready future needs no reactor; block_on polls it once and returns.
+    //
+    // Every test below uses a 2-second timeout enforced by a watcher thread.
+    // If any call hangs the watcher kills the process, making the failure
+    // visible as a timeout rather than an infinite hang.
+
+    /// Run `f` on a fresh thread; panic if it doesn't finish within `timeout`.
+    /// This is the regression harness — if the deadlock regresses, the test
+    /// fails with "TokioBackend deadlocked" rather than hanging the suite.
+    fn assert_completes_within<F, R>(label: &str, timeout: Duration, f: F) -> R
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = f();
+            let _ = tx.send(result);
+        });
+        rx.recv_timeout(timeout)
+            .unwrap_or_else(|_| panic!("{label}: TokioBackend deadlocked (exceeded {timeout:?})"))
+    }
+
+    fn make_backend() -> TokioBackend {
+        TokioBackend::new(Arc::new(roco_engine::MockBackend::default()))
+    }
+
+    // ── Scenario 1: called from futures::executor::block_on (no tokio runtime) ─
+    // This is the exact production call path: router.rs calls
+    // `futures::executor::block_on(backend.complete(req))` on the main thread.
+
     #[test]
-    fn test_tokio_backend_executes_sync_completion_without_deadlock() {
-        use roco_engine::ModelBackend;
-        let mock = Arc::new(roco_engine::MockBackend::default());
-        let tokio_backend = TokioBackend::new(mock);
-        let req = roco_engine::CompletionRequest::new("sys", "test TokioBackend sync");
-        let res = futures::executor::block_on(tokio_backend.complete(req));
-        assert!(
-            res.is_ok(),
-            "TokioBackend should complete synchronously without deadlocking"
+    fn tokio_backend_complete_via_futures_block_on_no_surrounding_runtime() {
+        assert_completes_within(
+            "complete via futures::executor::block_on",
+            Duration::from_secs(2),
+            || {
+                let backend = make_backend();
+                let req = roco_engine::CompletionRequest::new("sys", "hello");
+                let res = futures::executor::block_on(backend.complete(req));
+                assert!(res.is_ok(), "expected Ok, got {res:?}");
+                res.unwrap().text
+            },
         );
+    }
+
+    // ── Scenario 2: called from inside a tokio::test runtime ─────────────────
+    // Guards against the inverse: TokioBackend must also work when the caller
+    // IS inside a tokio runtime (e.g. async agent code calling complete).
+    // We construct and run the backend on a blocking thread so that
+    // TokioBackend's inner runtime is dropped outside the async context
+    // (tokio forbids dropping a Runtime from within an async context).
+
+    #[tokio::test]
+    async fn tokio_backend_complete_from_inside_tokio_runtime() {
+        let res = tokio::task::spawn_blocking(|| {
+            let backend = make_backend();
+            let req = roco_engine::CompletionRequest::new("sys", "hello from tokio");
+            futures::executor::block_on(backend.complete(req))
+        })
+        .await
+        .expect("blocking task panicked")
+        .expect("completion failed");
+        assert!(!res.text.is_empty());
+    }
+
+    // ── Scenario 3: concurrent calls from futures::executor::block_on ─────────
+    // Verifies the scoped-thread approach doesn't serialise badly or deadlock
+    // under concurrent load.
+
+    #[test]
+    fn tokio_backend_complete_concurrent_block_on_calls() {
+        let backend = Arc::new(make_backend());
+        let handles: Vec<_> = (0..4)
+            .map(|i| {
+                let b = backend.clone();
+                std::thread::spawn(move || {
+                    let req = roco_engine::CompletionRequest::new("sys", &format!("msg {i}"));
+                    futures::executor::block_on(b.complete(req))
+                })
+            })
+            .collect();
+        for h in handles {
+            let res = h
+                .join()
+                .expect("thread panicked")
+                .expect("completion failed");
+            assert!(!res.text.is_empty());
+        }
+    }
+
+    // ── Scenario 4: bake_state via futures::executor::block_on ───────────────
+    // bake_state had the same spawn().await bug.
+
+    #[test]
+    fn tokio_backend_bake_state_via_futures_block_on_no_surrounding_runtime() {
+        assert_completes_within(
+            "bake_state via futures::executor::block_on",
+            Duration::from_secs(2),
+            || {
+                let backend = make_backend();
+                let res = futures::executor::block_on(
+                    backend.bake_state("sess-1", "system prompt", &[("hi", "hello")]),
+                );
+                // MockBackend returns Ok for bake_state; we just care it doesn't hang.
+                let _ = res; // Ok or Err, not deadlocked
+            },
+        );
+    }
+
+    // ── Scenario 5: ensure_sync_backend() round-trip ─────────────────────────
+    // ensure_sync_backend() is the function every CLI command calls.
+    // In test mode (ROCO_USE_MOCK_BACKEND=1) it returns MockBackend directly;
+    // verify it completes without deadlock via block_on either way.
+
+    #[test]
+    fn ensure_sync_backend_mock_completes_via_block_on() {
+        // Force mock mode so this test never tries to spawn a real daemon.
+        std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
+        let backend = ensure_sync_backend();
+        let req = roco_engine::CompletionRequest::new("sys", "smoke test");
+        assert_completes_within(
+            "ensure_sync_backend via block_on",
+            Duration::from_secs(2),
+            move || {
+                let res = futures::executor::block_on(backend.complete(req));
+                assert!(res.is_ok(), "expected Ok from mock sync backend");
+            },
+        );
+    }
+
+    // ── Scenario 6: the old broken implementation would deadlock here ─────────
+    // This is the minimal reproduction of the original bug.
+    // The old code: Box::pin(async move { rt_handle.spawn(work).await })
+    // When polled by futures::executor::block_on:
+    //   - block_on parks the calling thread
+    //   - spawn queues work on the background runtime (fine)
+    //   - JoinHandle::await needs a tokio waker; block_on provides none
+    //   - JoinHandle::await never wakes up -> infinite block
+    //
+    // The fixed code returns futures::future::ready(result) which polls
+    // to completion in a single synchronous step, needing no reactor.
+
+    #[test]
+    fn tokio_backend_result_is_immediately_ready_no_reactor_needed() {
+        use std::future::Future;
+        let backend = make_backend();
+        let req = roco_engine::CompletionRequest::new("sys", "ready check");
+        // complete() must return a future that is Poll::Ready on the very
+        // first poll — no waker, no reactor involvement required.
+        let mut future = backend.complete(req);
+        let waker = futures::task::noop_waker();
+        let mut cx = std::task::Context::from_waker(&waker);
+        let pin = std::pin::Pin::new(&mut future);
+        match Future::poll(pin, &mut cx) {
+            std::task::Poll::Ready(res) => {
+                assert!(res.is_ok(), "expected Ok on first poll, got {res:?}");
+            }
+            std::task::Poll::Pending => {
+                panic!("TokioBackend::complete returned Pending — will deadlock under futures::executor::block_on (regression of the spawn().await bug)");
+            }
+        }
     }
 }

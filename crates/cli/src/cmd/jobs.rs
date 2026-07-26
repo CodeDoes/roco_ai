@@ -4,6 +4,19 @@ use roco_protocol::InferJobsResponse;
 use std::env;
 
 pub fn cmd_jobs(extra: &[&str]) {
+    // In mock/test mode, emit a deterministic response without touching the network.
+    if env::var("ROCO_USE_MOCK_BACKEND").as_deref() == Ok("1") {
+        println!("\n  \x1b[1mRoCo Inference Daemon (roco-inferd) Status\x1b[0m");
+        println!("  ──────────────────────────────────────────────");
+        println!("  Status:       \x1b[32mok\x1b[0m");
+        println!("  Backend:      mock");
+        println!("  Active Jobs:  \x1b[1m0\x1b[0m");
+        println!("  Uptime:       0s");
+        println!("  Features:     mock");
+        println!("  Endpoint:     http://127.0.0.1:8080\n");
+        return;
+    }
+
     let port = extra
         .iter()
         .position(|&a| a == "--port")
