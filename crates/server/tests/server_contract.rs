@@ -434,6 +434,42 @@ async fn unknown_route_returns_404() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+/// DRY helper: execute a POST request with JSON payload.
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    payload: &impl serde::Serialize,
+) -> (StatusCode, Value) {
+    let req_body = serde_json::to_string(payload).unwrap();
+    let response = app
+        .oneshot(
+            Request::post(uri)
+                .header("Content-Type", "application/json")
+                .body(Body::from(req_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
+    (status, json)
+}
+
+#[tokio::test]
+async fn chat_completions_contract_dry() {
+    let app = test_app(0);
+    let payload = serde_json::json!({
+        "model": "test-model",
+        "prompt": "Hello local LLM"
+    });
+    let (status, body) = post_json(app, "/v1/completions", &payload).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.get("choices").is_some());
+}
+
 #[tokio::test]
 async fn bad_json_returns_422() {
     let app = test_app(0);
