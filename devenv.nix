@@ -93,7 +93,7 @@
   # CI: devenv test runner uses workspace-level script which redirects to file.
   enterTest = ''
     mkdir -p .roco/tests
-    cargo test --workspace >> .roco/tests/latest.log 2>&1 || true
+    ROCO_USE_MOCK_BACKEND=1 cargo test --workspace >> .roco/tests/latest.log 2>&1 || true
     echo "=== Test summary ==="  | tee -a .roco/tests/latest.log
     grep -E "^(test result|running|passed|failed|ignored)" .roco/tests/latest.log >> /dev/null && echo "See .roco/tests/latest.log for full output." || true
   '';
@@ -101,6 +101,12 @@
   # Point to the system library path so the Vulkan loader can find
   # NVIDIA/Mesa driver .so files referenced by ICDs.
   env.LD_LIBRARY_PATH = "/usr/lib/x86_64-linux-gnu";
+
+  # sccache & cargo configuration: cache compiled Rust crate artifacts
+  # to speed up repeated compilation.
+  env.CARGO_INCREMENTAL = "1";
+  env.SCCACHE_DIR = "$HOME/.cache/sccache";
+  env.SCCACHE_CACHE_SIZE = "20G";
 
   # To force the NVIDIA Vulkan ICD (discrete GPU) instead of AMD iGPU:
   #   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
@@ -131,17 +137,7 @@ enterShell = ''
         export PATH="$RUSTUP_BIN:$PATH"
     fi
 
-    # sccache: cache compiled Rust crate artifacts across builds so repeated
-    # `cargo build`/`cargo check` are fast (sccache warms across builds).
-    # This is what actually addresses slow cargo builds — cachix does not.
-    # Edit-loop default: incremental ON. sccache is opt-in (see make build-cold).
-    export CARGO_INCREMENTAL="''${CARGO_INCREMENTAL:-1}"
-    # Keep sccache available but do not wrap rustc by default.
-    export SCCACHE_DIR="/home/kit/.cache/sccache"
-    # Uncomment to force sccache (disables incremental):
-    # export RUSTC_WRAPPER=sccache
-    # export CARGO_INCREMENTAL=0
-    export SCCACHE_CACHE_SIZE="20G"
+
 
 
 
