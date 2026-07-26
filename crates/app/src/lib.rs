@@ -110,5 +110,3 @@ pub(crate) fn generate(
 ) -> AppResult<CompletionResponse> {
     block_on(backend.complete(req)).map_err(AppError::Engine)
 }
-
-pub mod local_agent;
