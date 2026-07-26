@@ -45,6 +45,17 @@
 
   # Test/lint output lands here for inspection; never prints to terminal.
   # After running: cat .roco/tests/latest.log or cat .roco/lints/latest.log
+  scripts.roco.exec = ''
+    # Run the roco CLI.
+    # If the release binary exists, execute it directly to bypass cargo check overhead.
+    # Otherwise, run it via cargo run.
+    TARGET_BIN="''${CARGO_TARGET_DIR:-$(pwd)/target}/release/roco"
+    if [ -f "$TARGET_BIN" ]; then
+      exec "$TARGET_BIN" "$@"
+    else
+      exec cargo run --release -p roco-cli -- "$@"
+    fi
+  '';
   scripts.check.exec = "mkdir -p .roco/lints && cargo check --workspace > .roco/lints/latest.log 2>&1 || true";
   scripts.test.exec = "mkdir -p .roco/tests && cargo test --workspace > .roco/tests/latest.log 2>&1 || true";
   scripts.build.exec = "cargo build --workspace";
@@ -106,12 +117,7 @@ enterShell = ''
     # the host GUI libraries discoverable.
     export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig"
 
-    # Add the roco CLI binary to PATH after a cargo build.
-    # We prepend the local dev target/release directory to PATH so it takes precedence over globally installed binaries.
-    if [ -z "$CARGO_TARGET_DIR" ]; then
-        export CARGO_TARGET_DIR="$(pwd)/target"
-    fi
-    export PATH="$CARGO_TARGET_DIR/release:$PATH"
+
 
     # Rust toolchain shadowing fix: prefer rustup's stable toolchain over
     # devenv's Nix-provided rust-toolchain bin on PATH. Without this,
