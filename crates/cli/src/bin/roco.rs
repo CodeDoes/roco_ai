@@ -14,6 +14,9 @@ fn main() {
         std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
     }
 
+    // Initialize AgentJournal for client-side logging
+    let _ = roco_app::agent_journal::AgentJournal::init();
+
     // Load config before anything else so RWKV_MODEL / RWKV_VOCAB propagate.
     let cfg = roco_app::RoCoConfig::load();
     cfg.apply_to_environment();
@@ -29,6 +32,11 @@ fn main() {
     } else {
         filtered_args[1..].to_vec()
     };
+
+    roco_app::agent_journal::AgentJournal::info(
+        "client",
+        &format!("roco command: sub={sub}, extra={:?}", extra),
+    );
 
     match sub {
         "eval" => cmd::eval::cmd_eval(&extra),

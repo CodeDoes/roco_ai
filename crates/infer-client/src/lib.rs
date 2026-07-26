@@ -222,6 +222,17 @@ async fn remote_complete(
     req: CompletionRequest,
 ) -> Result<CompletionResponse, EngineError> {
     let stream = req.on_token.is_some();
+    let start_time = std::time::Instant::now();
+    let url = format!("{base_url}/v1/completions");
+
+    tracing::info!(
+        target: "roco_infer_client",
+        url = %url,
+        prompt_len = req.prompt.len(),
+        stream = stream,
+        "Sending completion request to remote backend"
+    );
+
     let wire = WireRequest {
         prompt: req.prompt.clone(),
         system: req.system.clone(),
@@ -235,7 +246,6 @@ async fn remote_complete(
         preserve_state: if req.preserve_state { Some(true) } else { None },
     };
 
-    let url = format!("{base_url}/v1/completions");
     let mut builder = client
         .post(&url)
         .header("Content-Type", "application/json")
@@ -247,7 +257,16 @@ async fn remote_complete(
     let resp = builder
         .send()
         .await
-        .map_err(|e| EngineError::Backend(format!("inference API request failed: {e}")))?;
+        .map_err(|e| {
+            tracing::error!(
+                target: "roco_infer_client",
+                url = %url,
+                elapsed_ms = start_time.elapsed().as_millis(),
+                err = %e,
+                "Remote completion HTTP request failed"
+            );
+            EngineError::Backend(format!("inference API request failed: {e}"))
+        })?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -255,6 +274,14 @@ async fn remote_complete(
             .text()
             .await
             .unwrap_or_else(|_| "<unreadable>".to_string());
+        tracing::error!(
+            target: "roco_infer_client",
+            url = %url,
+            status = %status,
+            body = %body,
+            elapsed_ms = start_time.elapsed().as_millis(),
+            "Remote completion HTTP returned error status"
+        );
         return Err(EngineError::Backend(format!(
             "inference API error {status}: {body}"
         )));
@@ -316,6 +343,13 @@ async fn remote_complete(
         if prompt_tokens == 0 {
             prompt_tokens = req.estimated_prompt_tokens;
         }
+        tracing::info!(
+            target: "roco_infer_client",
+            url = %url,
+            elapsed_ms = start_time.elapsed().as_millis(),
+            completion_tokens = completion_tokens,
+            "Remote stream completion finished"
+        );
         return Ok(CompletionResponse {
             text: full,
             usage: TokenUsage {
@@ -350,6 +384,14 @@ async fn remote_complete(
         ),
         None => (req.estimated_prompt_tokens, 0),
     };
+
+    tracing::info!(
+        target: "roco_infer_client",
+        url = %url,
+        elapsed_ms = start_time.elapsed().as_millis(),
+        completion_tokens = completion_tokens,
+        "Remote completion finished"
+    );
 
     Ok(CompletionResponse {
         text,

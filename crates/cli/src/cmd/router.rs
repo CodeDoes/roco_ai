@@ -179,6 +179,10 @@ fn detect_intent(
                     // Find the matching intent
                     let matched = available.iter().find(|i| i.id == intent_id).cloned();
                     if let Some(intent) = matched {
+                        roco_app::agent_journal::AgentJournal::info(
+                            "router",
+                            &format!("Intent detected: {} -> prompt: \"{}\"", intent.id, prompt),
+                        );
                         (intent, prompt)
                     } else {
                         fallback()
@@ -286,6 +290,10 @@ pub fn cmd_router(extra: &[&str]) {
 
         // If intent changed to a different mode, switch
         if intent.target_mode != current_mode {
+            roco_app::agent_journal::AgentJournal::action(
+                "router",
+                &format!("Mode switch: {:?} -> {:?}", current_mode, intent.target_mode),
+            );
             let transition = match intent.target_mode {
                 Mode::Adventure => "\n🎮 Switching to adventure mode!",
                 Mode::Story => "\n📖 Switching to story mode!",
