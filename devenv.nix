@@ -7,11 +7,7 @@
   # entry). Cachix only caches Nix *derivations*; it does NOT speed up
   # `cargo build`. That's what sccache (below) is for.
   # https://devenv.sh/basics/
-  env.ROCO_PROJECT = "roco_ai";
 
-  # Build artifacts land on a local ext4 cache rather than the NTFS external
-  # drive (avoids symlink/permission issues when compiling from EXTHD).
-  env.CARGO_TARGET_DIR = "/home/kit/.cache/roco_target";
 
   # https://devenv.sh/packages/
   # GPU/Vulkan packages for local RWKV inference via web-rwkv+wgpu.
@@ -101,7 +97,7 @@
   #   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
 
   # https://devenv.sh/reference/options/
-  enterShell = ''
+enterShell = ''
     # Use the SYSTEM's already-installed GTK3/WebKit (not Nix). devenv's own
     # PKG_CONFIG_PATH only lists Nix store paths, so it can't see the host's
     # webkit2gtk-4.1 / gtk3 / libsoup3 dev packages. Append the host pkg-config
@@ -111,7 +107,11 @@
     export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig"
 
     # Add the roco CLI binary to PATH after a cargo build.
-    export PATH="$PATH:$CARGO_TARGET_DIR/release"
+    # We prepend the local dev target/release directory to PATH so it takes precedence over globally installed binaries.
+    if [ -z "$CARGO_TARGET_DIR" ]; then
+        export CARGO_TARGET_DIR="$(pwd)/target"
+    fi
+    export PATH="$CARGO_TARGET_DIR/release:$PATH"
 
     # Rust toolchain shadowing fix: prefer rustup's stable toolchain over
     # devenv's Nix-provided rust-toolchain bin on PATH. Without this,
@@ -122,7 +122,7 @@
     # ran first. `rustup which rustc` returns rustup's toolchain bin dir.
     RUSTUP_BIN="$(rustup which rustc 2>/dev/null | xargs -I{} dirname {})"
     if [ -n "$RUSTUP_BIN" ] && [ -d "$RUSTUP_BIN" ]; then
-      export PATH="$RUSTUP_BIN:$PATH"
+        export PATH="$RUSTUP_BIN:$PATH"
     fi
 
     # sccache: cache compiled Rust crate artifacts across builds so repeated
@@ -136,6 +136,8 @@
     # export RUSTC_WRAPPER=sccache
     # export CARGO_INCREMENTAL=0
     export SCCACHE_CACHE_SIZE="20G"
+
+
 
     echo "RoCo AI — devenv ready"
     echo ""
@@ -152,5 +154,5 @@
     echo "  gpu-check                          # show Vulkan device + model status"
     echo ""
     echo "GPU: $(vulkaninfo --summary 2>/dev/null | grep -oP 'deviceName\s*=\s*\K.*' | head -1 || echo 'no Vulkan device found')"
-  '';
+    '';
 }
