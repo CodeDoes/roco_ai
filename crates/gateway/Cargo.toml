@@ -9,7 +9,6 @@ name = "roco_gateway"
 [dependencies]
 roco-engine = { path = "../engine" }
 roco-session = { path = "../session" }
-roco-app = { path = "../app" }
 tokio = { workspace = true, features = ["macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -20,3 +19,6 @@ axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json.workspace = true
+async-stream = "0.3"
+uuid = { version = "1", features = ["v4", "serde"] }
+
