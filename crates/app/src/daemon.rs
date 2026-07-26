@@ -76,12 +76,30 @@ pub fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &PathBuf, pid_path
     std::mem::forget(child);
 }
 
-/// Check if a daemon is running via health endpoint (synchronous, spawns its
-/// own runtime if needed).
+fn is_pid_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        std::path::Path::new(&format!("/proc/{}", pid)).exists()
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+/// Check if a daemon is running via health endpoint or PID process check.
 pub fn is_running(name: &str, port: u16) -> bool {
     let pid_file = pid_path(name);
     if !pid_file.exists() {
         return false;
+    }
+
+    if let Some(pid) = read_pid(name) {
+        if !is_pid_alive(pid) {
+            // Process is dead; clean up stale PID file.
+            let _ = std::fs::remove_file(&pid_file);
+            return false;
+        }
     }
 
     let url = format!("http://127.0.0.1:{}/health", port);
@@ -91,19 +109,17 @@ pub fn is_running(name: &str, port: u16) -> bool {
         .build()
     {
         Ok(rt) => rt,
-        Err(_) => return false,
+        Err(_) => return true,
     };
-    let healthy = rt.block_on(async {
+    
+    // Process is alive. Treat as running if healthy or starting.
+    let _ = rt.block_on(async {
         reqwest::get(&url)
             .await
             .map(|r| r.status().is_success())
             .unwrap_or(false)
     });
 
-    if !healthy {
-        let _ = std::fs::remove_file(&pid_file);
-        return false;
-    }
     true
 }
 

@@ -45,17 +45,7 @@
 
   # Test/lint output lands here for inspection; never prints to terminal.
   # After running: cat .roco/tests/latest.log or cat .roco/lints/latest.log
-  scripts.roco.exec = ''
-    # Run the roco CLI.
-    # If the release binary exists, execute it directly to bypass cargo check overhead.
-    # Otherwise, run it via cargo run.
-    TARGET_BIN="''${CARGO_TARGET_DIR:-$(pwd)/target}/release/roco"
-    if [ -f "$TARGET_BIN" ]; then
-      exec "$TARGET_BIN" "$@"
-    else
-      exec cargo run --release -p roco-cli -- "$@"
-    fi
-  '';
+  scripts.roco.exec = "cargo run -p roco-cli -- \"$@\"";
   scripts.check.exec = "mkdir -p .roco/lints && cargo check --workspace > .roco/lints/latest.log 2>&1 || true";
   scripts.test.exec = "mkdir -p .roco/tests && cargo test --workspace > .roco/tests/latest.log 2>&1 || true";
   scripts.build.exec = "cargo build --workspace";

@@ -32,6 +32,11 @@ pub fn cmd_gateway(extra: &[&str]) {
         .map(PathBuf::from)
         .unwrap_or_else(|| daemon::default_detach_path("gateway", port, "pid"));
 
+    if daemon::is_running("gateway", port) && !is_child {
+        println!("✓ Gateway is already running on port {port}.");
+        return;
+    }
+
     if detach && !is_child {
         daemon::spawn_detached("gateway", extra, &log_path, &pid_path);
         return;
