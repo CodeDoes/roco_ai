@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
-use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend, StateTuning};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tracing::info;
@@ -306,12 +306,53 @@ impl ModelBackend for RwkvBackend {
         })
     }
 
-    fn bake_state(
-        &self,
-        session_id: &str,
-        _system: &str,
-        few_shots: &[(&str, &str)], // (user_prompt, assistant_response)
-    ) -> BoxFuture<'_, Result<String, EngineError>> {
+    fn bake_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> BoxFuture<'a, Result<String, EngineError>> {
+        self.tune_state(session_id, system, few_shots)
+    }
+
+    fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
+        Box::pin(async move {
+            let (rtx, rrx) = tokio::sync::oneshot::channel();
+            tx.send(ActorMessage::SaveState(rtx))
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv save_state send: {e}")))?;
+            rrx.await
+                .map_err(|e| EngineError::Backend(format!("rwkv save_state recv: {e}")))?
+        })
+    }
+
+    fn load_state(&self, state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
+        Box::pin(async move {
+            let (rtx, rrx) = tokio::sync::oneshot::channel();
+            tx.send(ActorMessage::LoadState(state, rtx))
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv load_state send: {e}")))?;
+            rrx.await
+                .map_err(|e| EngineError::Backend(format!("rwkv load_state recv: {e}")))?
+        })
+    }
+}
+
+impl StateTuning for RwkvBackend {
+    fn tune_state<'a>(
+        &'a self,
+        session_id: &'a str,
+        _system: &'a str,
+        few_shots: &'a [(&'a str, &'a str)],
+    ) -> BoxFuture<'a, Result<String, EngineError>> {
         let tx = self
             .tx
             .clone()
@@ -328,12 +369,6 @@ impl ModelBackend for RwkvBackend {
                 .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
 
             for (i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
-                // Single shot: send user message + assistant answer as prefill
-                // in ONE request with max_tokens=0. The actor processes all
-                // prompt+prefill tokens through inference (updating state)
-                // but stops BEFORE sampling, so there is NO generation
-                // contamination. The state learns the exact (user, assistant)
-                // pair without the model's own noisy output mixed in.
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 tx.send(
                     CompleteReq {
@@ -376,34 +411,15 @@ impl ModelBackend for RwkvBackend {
         })
     }
 
-    fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
-        let tx = self
-            .tx
-            .clone()
-            .expect("rwkv backend already shut down (channel closed)");
-        Box::pin(async move {
-            let (rtx, rrx) = tokio::sync::oneshot::channel();
-            tx.send(ActorMessage::SaveState(rtx))
-                .await
-                .map_err(|e| EngineError::Backend(format!("rwkv save_state send: {e}")))?;
-            rrx.await
-                .map_err(|e| EngineError::Backend(format!("rwkv save_state recv: {e}")))?
-        })
-    }
-
-    fn load_state(&self, state: Vec<u8>) -> BoxFuture<'_, Result<(), EngineError>> {
-        let tx = self
-            .tx
-            .clone()
-            .expect("rwkv backend already shut down (channel closed)");
-        Box::pin(async move {
-            let (rtx, rrx) = tokio::sync::oneshot::channel();
-            tx.send(ActorMessage::LoadState(state, rtx))
-                .await
-                .map_err(|e| EngineError::Backend(format!("rwkv load_state send: {e}")))?;
-            rrx.await
-                .map_err(|e| EngineError::Backend(format!("rwkv load_state recv: {e}")))?
-        })
+    fn blend_states<'a>(
+        &'a self,
+        session_a: &'a str,
+        session_b: &'a str,
+        alpha: f32,
+        output_session: &'a str,
+    ) -> BoxFuture<'a, Result<(), EngineError>> {
+        let res = self.blend_states(session_a, session_b, alpha, output_session);
+        Box::pin(async move { res.map_err(|e| EngineError::Backend(format!("rwkv blend_states: {e}"))) })
     }
 }
 

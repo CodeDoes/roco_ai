@@ -486,19 +486,6 @@ mod tests {
                 })
             })
         }
-
-        fn bake_state<'a>(
-            &'a self,
-            _session_id: &'a str,
-            _system: &'a str,
-            _few_shots: &'a [(&'a str, &'a str)],
-        ) -> BoxFuture<'a, Result<String, roco_engine::EngineError>> {
-            Box::pin(async move {
-                Err(roco_engine::EngineError::Backend(
-                    "bake_state not supported".into(),
-                ))
-            })
-        }
     }
 
     #[tokio::test]
@@ -538,18 +525,6 @@ mod tests {
                         think_trace: None,
                         trace: Vec::new(),
                     })
-                })
-            }
-            fn bake_state<'a>(
-                &'a self,
-                _session_id: &'a str,
-                _system: &'a str,
-                _few_shots: &'a [(&'a str, &'a str)],
-            ) -> BoxFuture<'a, Result<String, roco_engine::EngineError>> {
-                Box::pin(async move {
-                    Err(roco_engine::EngineError::Backend(
-                        "bake_state not supported".into(),
-                    ))
                 })
             }
         }

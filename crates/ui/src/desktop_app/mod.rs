@@ -967,14 +967,6 @@ mod tests {
             })
         }
 
-        fn bake_state<'a>(
-            &'a self,
-            _session_id: &'a str,
-            _system: &'a str,
-            _few_shots: &'a [(&'a str, &'a str)],
-        ) -> BoxFuture<'a, Result<String, EngineError>> {
-            Box::pin(async move { Err(EngineError::Backend("bake_state not supported".into())) })
-        }
     }
 
     fn app_with_mock_backend(responses: Vec<String>) -> RocoDesktopApp {

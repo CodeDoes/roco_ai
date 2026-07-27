@@ -20,7 +20,7 @@ use std::collections::HashMap;
 
 use base64::Engine;
 use futures::future::BoxFuture;
-use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend, TokenUsage};
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend, StateTuning, TokenUsage};
 
 /// Default base URL for the singleton inference API server.
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8080";
@@ -172,7 +172,10 @@ impl ModelBackend for RemoteBackend {
         Box::pin(async move { remote_complete(&client, &base_url, &extra_headers, req).await })
     }
 
-    fn bake_state<'a>(
+}
+
+impl StateTuning for RemoteBackend {
+    fn tune_state<'a>(
         &'a self,
         session_id: &'a str,
         system: &'a str,
@@ -224,6 +227,18 @@ impl ModelBackend for RemoteBackend {
                 .map_err(|e| EngineError::Backend(format!("bake_state decode failed: {e}")))?;
 
             Ok(bake_resp.session_id)
+        })
+    }
+
+    fn blend_states<'a>(
+        &'a self,
+        _session_a: &'a str,
+        _session_b: &'a str,
+        _alpha: f32,
+        _output_session: &'a str,
+    ) -> BoxFuture<'a, Result<(), EngineError>> {
+        Box::pin(async move {
+            Err(EngineError::Backend("blend_states not supported by RemoteBackend".into()))
         })
     }
 }

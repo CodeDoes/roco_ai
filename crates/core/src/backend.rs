@@ -81,19 +81,16 @@ pub trait ModelBackend: Send + Sync {
     /// Generate text from a prompt.
     async fn complete(&self, req: CompletionRequest) -> RoCoResult<CompletionResponse>;
 
-    /// Bake few-shot examples into a named session.
-    async fn bake_state(
-        &self,
-        session_id: &str,
-        system: &str,
-        few_shots: &[("&str", "&str")],
-    ) -> RoCoResult<String>;
-
     /// Feed an EOS token into a session to reset state without losing context.
     async fn feed_eos(&self, session_id: Option<String>) -> RoCoResult<()>;
 
     /// Return the model name / identifier.
     fn name(&self) -> &str;
+
+    /// Downcast helper for optional `StateTuning` support.
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
     /// Return vocabulary bytes for BNF mask construction, if available.
     fn vocab_bytes(&self) -> Option<Vec<Vec<u8>>> {
@@ -113,6 +110,22 @@ pub trait ModelBackend: Send + Sync {
             "blend_states not supported".into(),
         ))
     }
+}
+
+/// Optional: state-tuning for RNN-based backends (RWKV).
+///
+/// This is a separate trait so that transformer backends — or mocks — are
+/// not forced to provide a meaningless `bake_state` implementation.
+#[async_trait]
+pub trait StateTuning: ModelBackend {
+    /// Bake few-shot examples into a named session to prime the recurrent
+    /// state, bypassing replay.
+    async fn bake_state(
+        &self,
+        session_id: &str,
+        system: &str,
+        few_shots: &[(&str, &str)],
+    ) -> RoCoResult<String>;
 }
 
 /// A mock backend for testing.
@@ -136,15 +149,6 @@ impl ModelBackend for MockBackend {
         })
     }
 
-    async fn bake_state(
-        &self,
-        session_id: &str,
-        _system: &str,
-        _few_shots: &[("&str", "&str")],
-    ) -> RoCoResult<String> {
-        Ok(session_id.to_string())
-    }
-
     async fn feed_eos(&self, _session_id: Option<String>) -> RoCoResult<()> {
         Ok(())
     }
@@ -153,5 +157,20 @@ impl ModelBackend for MockBackend {
         "mock"
     }
 }
+
+#[async_trait]
+impl StateTuning for MockBackend {
+    async fn bake_state(
+        &self,
+        session_id: &str,
+        _system: &str,
+        _few_shots: &[(&str, &str)],
+    ) -> RoCoResult<String> {
+        Err(crate::error::RoCoError::Backend(
+            "bake_state not supported by MockBackend".into(),
+        ))
+    }
+}
+
 
 

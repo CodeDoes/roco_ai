@@ -719,42 +719,6 @@ impl roco_engine::ModelBackend for TokioBackend {
         Box::pin(async move { Ok(()) })
     }
 
-    fn bake_state<'a>(
-        &'a self,
-        session_id: &'a str,
-        system: &'a str,
-        few_shots: &'a [(&'a str, &'a str)],
-    ) -> futures::future::BoxFuture<'a, Result<String, roco_engine::EngineError>> {
-        let inner = self.inner.clone();
-        let rt_handle = self.rt.handle().clone();
-        let session_id = session_id.to_string();
-        let system = system.to_string();
-        let few_shots: Vec<(String, String)> = few_shots
-            .iter()
-            .map(|(u, a)| (u.to_string(), a.to_string()))
-            .collect();
-        // Same fix as complete(): run synchronously on the dedicated runtime
-        // via block_on on a scoped thread to avoid the JoinHandle deadlock.
-        let result = std::thread::scope(|s| {
-            s.spawn(|| {
-                rt_handle.block_on(
-                    inner.bake_state(
-                        &session_id,
-                        &system,
-                        &few_shots
-                            .iter()
-                            .map(|(u, a)| (u.as_str(), a.as_str()))
-                            .collect::<Vec<_>>(),
-                    ),
-                )
-            })
-            .join()
-            .unwrap_or(Err(roco_engine::EngineError::Backend(
-                "TokioBackend bake_state thread panicked".into(),
-            )))
-        });
-        Box::pin(futures::future::ready(result))
-    }
 }
 
 /// Return a backend that works from synchronous code (uses a dedicated tokio
@@ -989,6 +953,8 @@ mod tests {
 
     // ── Scenario 4: bake_state via futures::executor::block_on ───────────────
     // bake_state had the same spawn().await bug.
+    // MockBackend returns Err for bake_state (default impl); we only care
+    // that the call doesn't deadlock.
 
     #[test]
     fn tokio_backend_bake_state_via_futures_block_on_no_surrounding_runtime() {
@@ -1002,8 +968,8 @@ mod tests {
                     "system prompt",
                     &[("hi", "hello")],
                 ));
-                // MockBackend returns Ok for bake_state; we just care it doesn't hang.
-                let _ = res; // Ok or Err, not deadlocked
+                // Default impl returns Err; we just care it doesn't hang.
+                assert!(res.is_err());
             },
         );
     }

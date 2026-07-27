@@ -457,18 +457,6 @@ impl ModelBackend for MockBackend {
     fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
         Box::pin(async move { Ok(()) })
     }
-
-    fn bake_state<'a>(
-        &'a self,
-        session_id: &'a str,
-        system: &'a str,
-        few_shots: &'a [(&'a str, &'a str)],
-    ) -> BoxFuture<'a, Result<String, EngineError>> {
-        Box::pin(async move {
-            let _ = (session_id, system, few_shots);
-            Err(EngineError::Backend("state baking not supported".into()))
-        })
-    }
 }
 
 /// Run example turns through a backend with `preserve_state` and return

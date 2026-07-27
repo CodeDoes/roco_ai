@@ -49,14 +49,6 @@ impl ModelBackend for TestBackend {
         self.calls.lock().unwrap().push("load_state".into());
         Box::pin(async move { Ok(()) })
     }
-    fn bake_state<'a>(
-        &'a self,
-        _session_id: &'a str,
-        _system: &'a str,
-        _few_shots: &'a [(&'a str, &'a str)],
-    ) -> futures::future::BoxFuture<'a, Result<String, EngineError>> {
-        Box::pin(async move { Err(EngineError::Backend("bake_state not supported".into())) })
-    }
 }
 
 /// Build an `AppContext` backed by `TestBackend` without touching the daemon.
