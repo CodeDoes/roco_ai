@@ -12,6 +12,8 @@ pub mod pet;
 pub mod router;
 pub mod story;
 pub mod story_mode;
+pub mod stats;
+pub mod eval_suite;
 
 #[cfg(feature = "desktop")]
 pub mod desktop;

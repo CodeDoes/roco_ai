@@ -260,6 +260,18 @@ fn main() {
             );
         }
 
+        // ── Stats & Review ───────────────────────────────────────────────
+        "stats" | "review" => {
+            if has_help_flag(&extra) { help(Some("stats")); }
+            cmd::stats::cmd_stats(&extra);
+        }
+
+        // ── Deterministic Eval Suite ─────────────────────────────────────
+        "eval-suite" => {
+            if has_help_flag(&extra) { help(Some("eval-suite")); }
+            cmd::eval_suite::cmd_eval_suite(&extra);
+        }
+
         // ── Identity ─────────────────────────────────────────────────────
         "whoami" | "who-am-i" => {
             if has_help_flag(&extra) { help(Some("whoami")); }
