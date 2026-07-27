@@ -464,17 +464,19 @@ impl IntentClassifier {
             .build();
 
         let text = futures::executor::block_on(
-            backend.complete(CompletionRequest {
-                system: "You classify user intent for a story-writing assistant. \
-                     Output valid JSON only. No thinking, no reasoning. Only JSON."
-                    .to_string(),
-                prompt,
-                grammar: schema.to_gbnf("Classification").ok(),
-                temperature: self.temperature,
-                max_tokens: self.max_tokens,
-                prefill: Some("{\n".into()),
-                ..Default::default()
-            }),
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(
+                        "You classify user intent for a story-writing assistant. \
+                     Output valid JSON only. No thinking, no reasoning. Only JSON.",
+                    )
+                    .prompt(prompt)
+                    .grammar_opt(schema.to_gbnf("Classification").ok())
+                    .temperature(self.temperature)
+                    .max_tokens(self.max_tokens)
+                    .prefill("{\n")
+                    .build(),
+            ),
         )
         .map_err(|e| format!("classifier model error: {e}"))?
         .text;

@@ -190,15 +190,14 @@ fn ask(
     streaming::thinking_hint();
 
     let printer = StreamPrinter::new("").shared();
-    let request = roco_engine::CompletionRequest {
-        system: system_prompt.to_string(),
-        prompt: build_coder_prompt(history, input),
-        temperature: 0.5,
-        max_tokens: 2048,
-        prefill: Some(roco_engine::NO_THINK_PREFILL.to_string()),
-        on_token: Some(streaming::on_token_for(&printer)),
-        ..Default::default()
-    };
+    let request = roco_engine::CompletionRequest::builder()
+        .system(system_prompt)
+        .prompt(build_coder_prompt(history, input))
+        .temperature(0.5)
+        .max_tokens(2048)
+        .prefill(roco_engine::NO_THINK_PREFILL)
+        .on_token(streaming::on_token_for(&printer))
+        .build();
 
     let result = futures::executor::block_on(backend.complete(request));
 

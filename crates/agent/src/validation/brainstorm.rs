@@ -262,15 +262,17 @@ impl StoryIdeaGenerator {
              Output JSON with an 'ideas' array."
         );
 
-        let text = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: system.to_string(),
-            prompt: full_prompt,
-            grammar: None, // State-tuned
-            temperature: self.brainstorm_temperature,
-            max_tokens: self.max_tokens,
-            prefill: Some("{\n  \"ideas\": [".into()),
-            ..Default::default()
-        }))
+        let text = futures::executor::block_on(
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(system)
+                    .prompt(full_prompt)
+                    .temperature(self.brainstorm_temperature)
+                    .max_tokens(self.max_tokens)
+                    .prefill("{\n  \"ideas\": [")
+                    .build(),
+            ),
+        )
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
@@ -342,15 +344,17 @@ impl StoryIdeaGenerator {
              }}"
         );
 
-        let text = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: system.to_string(),
-            prompt,
-            grammar: None, // State-tuned
-            temperature: self.expand_temperature,
-            max_tokens: self.max_tokens,
-            prefill: Some("{\n  \"title\":".into()),
-            ..Default::default()
-        }))
+        let text = futures::executor::block_on(
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(system)
+                    .prompt(prompt)
+                    .temperature(self.expand_temperature)
+                    .max_tokens(self.max_tokens)
+                    .prefill("{\n  \"title\":")
+                    .build(),
+            ),
+        )
         .map_err(|e| format!("model error: {e}"))?
         .text;
 

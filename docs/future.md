@@ -99,23 +99,6 @@ pub trait StateTuning: ModelBackend {
 - The conversation code checks `if let Some(tuner) = backend.as_any().downcast_ref::<dyn StateTuning>()`
 - Keeps `ModelBackend` lean
 
-### 8. Unify `CompletionRequest` construction across callers
-**Rationale:** Every caller that constructs a `CompletionRequest` repeats the same pattern: set system, prompt, temperature, prefill, etc. There are 6+ construction sites with subtle differences (some set `top_a`, others don't; some set `deadline_ms`, others rely on the default).
-
-**Approach:**
-- Add a builder pattern:
-```rust
-CompletionRequest::builder()
-    .system("You are...")
-    .prompt("Write a story")
-    .temperature(0.8)
-    .seed(42)
-    .prefill_no_think()
-    .build()
-```
-- Encapsulate common presets: `.chat_preset()`, `.story_preset()`, `.grammar_preset(gbnf)`
-- The builder can also apply env-var overrides (`RWKV_DETERMINISTIC_SEED`, `RWKV_TEMPERATURE`)
-
 ### 9. Decouple the gateway's daemon lifecycle from the CLI
 **Rationale:** `roco gateway start` manages daemon lifecycle (start inferd, health-check, restart on crash). This logic lives in the CLI binary, making it impossible to use the gateway as a library without daemon-management side effects.
 

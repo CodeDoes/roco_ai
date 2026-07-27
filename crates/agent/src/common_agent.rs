@@ -267,13 +267,12 @@ impl Agent {
 
             let prompt = self.render_prompt(task, &history);
 
-            let req = CompletionRequest {
-                prompt,
-                grammar,
-                temperature: self.config.temperature,
-                max_tokens: self.config.max_tokens_per_step,
-                ..Default::default()
-            };
+            let req = CompletionRequest::builder()
+                .prompt(prompt)
+                .grammar_opt(grammar)
+                .temperature(self.config.temperature)
+                .max_tokens(self.config.max_tokens_per_step)
+                .build();
 
             let retry_config = RetryConfig::default();
             let resp = match complete_with_retry(backend, req, &retry_config).await {
@@ -349,13 +348,12 @@ impl Agent {
             "System: {}\n\nUser: {}\n\n{}Assistant: ",
             self.config.system_prompt, subtask.objective, subtask.context
         );
-        let req = CompletionRequest {
-            prompt,
-            temperature: subtask.temperature,
-            max_tokens: subtask.max_tokens,
-            thinking: self.config.enable_think,
-            ..Default::default()
-        };
+        let req = CompletionRequest::builder()
+            .prompt(prompt)
+            .temperature(subtask.temperature)
+            .max_tokens(subtask.max_tokens)
+            .thinking(self.config.enable_think)
+            .build();
         let resp = backend
             .complete(req)
             .await

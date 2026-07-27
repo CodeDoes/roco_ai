@@ -392,6 +392,12 @@ impl CompletionRequestBuilder {
         self
     }
 
+    /// Set grammar for constrained decoding from an optional string.
+    pub fn grammar_opt(mut self, g: Option<String>) -> Self {
+        self.grammar = g;
+        self
+    }
+
     /// Set sampling temperature (default: 0.2).
     pub fn temperature(mut self, t: f32) -> Self {
         self.temperature = Some(t);
@@ -441,7 +447,13 @@ impl CompletionRequestBuilder {
     }
 
     /// Set a token callback for streaming.
-    pub fn on_token(mut self, cb: OnToken) -> Self {
+    pub fn on_token(mut self, cb: impl Fn(&str) + Send + Sync + 'static) -> Self {
+        self.on_token = Some(Box::new(cb));
+        self
+    }
+
+    /// Set a token callback option for streaming.
+    pub fn on_token_opt(mut self, cb: OnToken) -> Self {
         self.on_token = cb;
         self
     }

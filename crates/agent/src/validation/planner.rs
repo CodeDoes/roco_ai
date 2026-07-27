@@ -343,17 +343,19 @@ impl ModificationPlan {
         let grammar = schema.to_gbnf("ModificationPlan").ok();
 
         let text = futures::executor::block_on(
-            backend.complete(CompletionRequest {
-                system: "You are a story planning assistant. Output valid JSON only. \
-                     No thinking, no reasoning, only JSON."
-                    .to_string(),
-                prompt,
-                grammar,
-                temperature: 0.4,
-                max_tokens: 400,
-                prefill: Some("{\n".into()),
-                ..Default::default()
-            }),
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(
+                        "You are a story planning assistant. Output valid JSON only. \
+                     No thinking, no reasoning, only JSON.",
+                    )
+                    .prompt(prompt)
+                    .grammar_opt(grammar)
+                    .temperature(0.4)
+                    .max_tokens(400)
+                    .prefill("{\n")
+                    .build(),
+            ),
         )
         .map_err(|e| format!("model error: {e}"))?
         .text;

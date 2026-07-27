@@ -203,15 +203,18 @@ impl Critic {
              Output valid JSON matching the schema."
         );
 
-        let text = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: system.clone(),
-            prompt: prompt.clone(),
-            grammar,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            prefill: Some("{\n\"overall_score\"".into()),
-            ..Default::default()
-        }))
+        let text = futures::executor::block_on(
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(system)
+                    .prompt(prompt)
+                    .grammar_opt(grammar)
+                    .temperature(self.temperature)
+                    .max_tokens(self.max_tokens)
+                    .prefill("{\n\"overall_score\"")
+                    .build(),
+            ),
+        )
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
@@ -248,15 +251,18 @@ impl Critic {
              Output valid JSON only."
         );
 
-        let text = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: system.to_string(),
-            prompt: prompt.clone(),
-            grammar,
-            temperature: self.temperature.min(0.2),
-            max_tokens: 200,
-            prefill: Some("{\n\"follows_instructions\"".into()),
-            ..Default::default()
-        }))
+        let text = futures::executor::block_on(
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(system)
+                    .prompt(prompt)
+                    .grammar_opt(grammar)
+                    .temperature(self.temperature.min(0.2))
+                    .max_tokens(200)
+                    .prefill("{\n\"follows_instructions\"")
+                    .build(),
+            ),
+        )
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
@@ -286,14 +292,16 @@ impl Critic {
              Be concise — 2-3 paragraphs."
         );
 
-        let response = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: system.to_string(),
-            prompt: prompt.clone(),
-            grammar: None,
-            temperature: 0.5,
-            max_tokens: self.max_tokens,
-            ..Default::default()
-        }))
+        let response = futures::executor::block_on(
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(system)
+                    .prompt(prompt)
+                    .temperature(0.5)
+                    .max_tokens(self.max_tokens)
+                    .build(),
+            ),
+        )
         .map_err(|e| format!("model error: {e}"))?;
 
         Ok(response.text)

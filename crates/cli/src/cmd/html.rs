@@ -139,14 +139,13 @@ pub fn cmd_html(extra: &[&str]) {
     add_msg("user", &markdown_to_html(&greeting_prompt));
     r::header("You");
 
-    let request = roco_engine::CompletionRequest {
-        system: system_prompt.into(),
-        prompt: greeting_prompt,
-        temperature: 0.8,
-        max_tokens: 2048,
-        prefill: Some("<div style='font-family:sans-serif;padding:20px;'>\n".into()),
-        ..Default::default()
-    };
+    let request = roco_engine::CompletionRequest::builder()
+        .system(system_prompt)
+        .prompt(greeting_prompt)
+        .temperature(0.8)
+        .max_tokens(2048)
+        .prefill("<div style='font-family:sans-serif;padding:20px;'>\n")
+        .build();
 
     println!(
         "{}Generating HTML response...{}",
@@ -257,14 +256,13 @@ pub fn cmd_html(extra: &[&str]) {
         add_msg("user", &markdown_to_html(&input));
         r::header("You");
 
-        let request = roco_engine::CompletionRequest {
-            system: system_prompt.into(),
-            prompt: input,
-            temperature: 0.8,
-            max_tokens: 2048,
-            prefill: Some("<div style='font-family:sans-serif;padding:20px;'>\n".into()),
-            ..Default::default()
-        };
+        let request = roco_engine::CompletionRequest::builder()
+            .system(system_prompt)
+            .prompt(input)
+            .temperature(0.8)
+            .max_tokens(2048)
+            .prefill("<div style='font-family:sans-serif;padding:20px;'>\n")
+            .build();
 
         match futures::executor::block_on(backend.complete(request)) {
             Ok(resp) => {

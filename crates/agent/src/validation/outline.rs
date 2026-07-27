@@ -130,15 +130,18 @@ impl OutlineValidator {
              Output valid JSON only."
         );
 
-        let text = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: system.to_string(),
-            prompt: prompt.clone(),
-            grammar,
-            temperature: 0.3,
-            max_tokens: 300,
-            prefill: Some("{\n\"plot_coherent\"".into()),
-            ..Default::default()
-        }))
+        let text = futures::executor::block_on(
+            backend.complete(
+                CompletionRequest::builder()
+                    .system(system)
+                    .prompt(prompt)
+                    .grammar_opt(grammar)
+                    .temperature(0.3)
+                    .max_tokens(300)
+                    .prefill("{\n\"plot_coherent\"")
+                    .build(),
+            ),
+        )
         .map_err(|e| format!("model error: {e}"))?
         .text;
 
