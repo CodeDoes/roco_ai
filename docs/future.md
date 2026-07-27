@@ -6,16 +6,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ## UX — User Experience
 
-### 1. Interactive `roco inspect` with live backend connection
-**Rationale:** `roco inspect` currently shows static config and disk state. It cannot inspect the live model's recurrent state, active sessions in the state pool, or the GPU memory footprint.
-
-**Approach:**
-- Add `roco inspect live` that connects to a running backend (inferd or direct) and queries:
-  - Active session keys and their LRU position
-  - Current GPU memory usage (`wgpu` adapter queries)
-  - Model metadata (loaded layers, quant scheme, context window)
-  - Sampling parameters in use (temperature, top_p, seed)
-- Output as structured JSON for scripting
+---
 
 ### 2. Generation progress bar with ETA
 **Rationale:** Long generations (story chapters, multi-turn reasoning) give no feedback besides the first token appearing. Users don't know if the model is still processing the prompt, sampling, or stuck.

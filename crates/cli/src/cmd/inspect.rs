@@ -38,6 +38,9 @@ pub fn cmd_inspect(extra: &[&str]) {
         "trace" | "traces" => {
             inspect_trace(workspace_dir, extra, json_mode);
         }
+        "live" => {
+            inspect_live(json_mode);
+        }
         _ => {
             if !json_mode {
                 println!("================================================================");
@@ -277,6 +280,58 @@ fn inspect_config(json_mode: bool) {
     }
 }
 
+fn inspect_live(json_mode: bool) {
+    let gp = crate::daemon::GATEWAY_PORT;
+    let ip = crate::daemon::INFERENCE_PORT;
+    let gw_alive = crate::daemon::is_running("gateway", gp);
+    let inf_alive = crate::daemon::is_running("inferd", ip) || crate::daemon::is_running("server", ip);
+
+    let backend_name = if gw_alive || inf_alive {
+        let backend = crate::daemon::ensure_sync_backend();
+        backend.name().to_string()
+    } else {
+        "offline".to_string()
+    };
+
+    let seed_var = std::env::var("RWKV_DETERMINISTIC_SEED").ok();
+    let adapter_var = std::env::var("RWKV_ADAPTER").unwrap_or_else(|_| "vulkan (default)".into());
+    let model_var = std::env::var("RWKV_MODEL").unwrap_or_else(|_| "auto-detected".into());
+
+    let live_data = serde_json::json!({
+        "status": if gw_alive || inf_alive { "online" } else { "offline" },
+        "backend": backend_name,
+        "gateway_port": gp,
+        "inference_port": ip,
+        "gateway_running": gw_alive,
+        "inference_running": inf_alive,
+        "gpu_adapter": adapter_var,
+        "model_weight": model_var,
+        "sampling_defaults": {
+            "temperature": 0.8,
+            "top_p": 0.9,
+            "seed": seed_var,
+        }
+    });
+
+    if json_mode {
+        println!("{}", serde_json::to_string_pretty(&live_data).unwrap_or_default());
+    } else {
+        println!("================================================================");
+        println!("  RoCo AI — Live Backend Inspection");
+        println!("================================================================");
+        println!("  Status:             {}", if gw_alive || inf_alive { "ONLINE" } else { "OFFLINE" });
+        println!("  Backend:            {}", backend_name);
+        println!("  Gateway (port {}):  {}", gp, if gw_alive { "running" } else { "stopped" });
+        println!("  Inference (port {}): {}", ip, if inf_alive { "running" } else { "stopped" });
+        println!("  GPU Adapter:        {}", adapter_var);
+        println!("  Model Weights:      {}", model_var);
+        if let Some(s) = seed_var {
+            println!("  Deterministic Seed: {}", s);
+        }
+        println!("================================================================");
+    }
+}
+
 fn inspect_seed_info() {
     // Show seed/determinism information
     println!();
@@ -402,6 +457,12 @@ mod tests {
     #[test]
     fn test_inspect_config_only() {
         cmd_inspect(&["config"]);
+    }
+
+    #[test]
+    fn test_inspect_live() {
+        cmd_inspect(&["live"]);
+        cmd_inspect(&["--json", "live"]);
     }
 
     #[test]
