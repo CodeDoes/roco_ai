@@ -260,6 +260,12 @@ fn main() {
             );
         }
 
+        // ── Identity ─────────────────────────────────────────────────────
+        "whoami" | "who-am-i" => {
+            if has_help_flag(&extra) { help(Some("whoami")); }
+            roco_cli::identity::cmd_whoami(&extra);
+        }
+
         // ── Version ─────────────────────────────────────────────────────
         "version" | "--version" => {
             eprintln!("RoCo AI v{} — collaborative writing assistant", env!("CARGO_PKG_VERSION"));

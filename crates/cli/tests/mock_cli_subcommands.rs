@@ -9,10 +9,61 @@ fn test_cli_help_subcommands() {
     let res = runner.run_binary(["help"]);
     res.assert_success();
     res.assert_stderr_contains("RoCo AI");
-    res.assert_stderr_contains("Subcommands:");
+    // The help banner prints "Commands:" — this assertion previously looked
+    // for "Subcommands:", which the CLI has never emitted.
+    res.assert_stderr_contains("Commands:");
+    res.assert_stderr_contains("interact");
+    res.assert_stderr_contains("whoami");
 
     let res_flag = runner.run_binary(["--help"]);
     res_flag.assert_success();
+}
+
+#[test]
+fn test_cli_whoami_reports_both_identities() {
+    let runner = MockCliRunner::new();
+
+    // `whoami` must work without starting the daemon chain.
+    let res = runner.run_binary(["whoami"]);
+    res.assert_success();
+    res.assert_stdout_contains("Who is RoCo?");
+    res.assert_stdout_contains("Who are you?");
+
+    // Record a name, then read it back.
+    let set = runner.run_binary(["whoami", "--set-name", "Ada"]);
+    set.assert_success();
+
+    let after = runner.run_binary(["whoami"]);
+    after.assert_success();
+    after.assert_stdout_contains("Ada");
+
+    // JSON output is machine-readable.
+    let json = runner.run_binary(["whoami", "--json"]);
+    json.assert_success();
+    json.assert_stdout_contains("\"name\"");
+
+    // And it can be erased.
+    let forget = runner.run_binary(["whoami", "--forget"]);
+    forget.assert_success();
+    let cleared = runner.run_binary(["whoami"]);
+    cleared.assert_stdout_contains("don't know");
+}
+
+#[test]
+fn test_cli_interact_answers_identity_questions_locally() {
+    let session = ScriptedTuiSession::new()
+        .type_line("my name is Ada")
+        .type_line("who am I?")
+        .type_line("what can you do?")
+        .type_line(":quit");
+
+    let res = session.run_subcommand("interact", &[]);
+    res.assert_success();
+    // The name is echoed back on recall, not hallucinated.
+    res.assert_stdout_contains("Ada");
+    // Capability answers come from the real command table.
+    res.assert_stdout_contains("story");
+    res.assert_stdout_contains("Session saved. Goodbye!");
 }
 
 #[test]

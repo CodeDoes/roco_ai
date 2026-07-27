@@ -4,8 +4,11 @@
 //! subcommand does not recompile a single 1500-line translation unit.
 
 pub mod cmd;
+pub mod conversation;
 pub mod daemon;
+pub mod identity;
 pub mod rich_output;
+pub mod streaming;
 pub mod test_harness;
 
 #[path = "interact.rs"]
@@ -73,6 +76,7 @@ pub fn help(sub: Option<&str>) {
         Some("gpu-check") => help_gpu_check(),
         Some("reload") => help_reload(),
         Some("jobs") => help_jobs(),
+        Some("whoami") => help_whoami(),
         Some("version") | Some("--version") => help_version(),
         _ => help_root(),
     }
@@ -105,6 +109,7 @@ fn help_root() {
     eprintln!("  rwkv         Smoke-test the RWKV backend");
     eprintln!("  grammar      Grammar-constrained decode test");
     eprintln!("  gpu-check    Show Vulkan device + model info");
+    eprintln!("  whoami       Show what RoCo is and what it knows about you");
     eprintln!("  version      Show version\n");
     eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_CONFIG / ~/.config/roco/config.toml");
     std::process::exit(0);
@@ -162,10 +167,32 @@ fn help_interact() {
     eprintln!("roco interact — Interactive chat REPL\n");
     eprintln!("Usage:");
     eprintln!("  roco interact                       Start interactive chat");
-    eprintln!("  roco interact --prompt <text>        Chat with starting prompt");
+    eprintln!("  roco interact <text>                 Chat with an opening message");
+    eprintln!("  roco interact --prompt <text>        One-shot: generate, save, exit");
     eprintln!("  roco interact --resume <session>     Resume a saved session");
     eprintln!("  roco interact --list-sessions        List saved sessions");
     eprintln!("  roco interact --pace <mode>          Pacing: auto|careful|rolling|planning\n");
+    eprintln!("Responses stream token-by-token as they are generated.\n");
+    eprintln!("In-chat commands:");
+    eprintln!("  :help            Show all commands");
+    eprintln!("  :whoami          What RoCo knows about you");
+    eprintln!("  :whois           What RoCo is");
+    eprintln!("  :name <you>      Tell RoCo your name");
+    eprintln!("  :remember <fact> Remember something about you");
+    eprintln!("  :forget          Forget everything about you");
+    eprintln!("  :quit            Save and exit\n");
+    std::process::exit(0);
+}
+
+fn help_whoami() {
+    eprintln!("roco whoami — Identity: who RoCo is, and who you are\n");
+    eprintln!("Usage:");
+    eprintln!("  roco whoami                    Show both identities");
+    eprintln!("  roco whoami --json             Print the stored profile as JSON");
+    eprintln!("  roco whoami --set-name <name>  Record your name");
+    eprintln!("  roco whoami --forget           Erase the stored profile\n");
+    eprintln!("Your profile lives in ./.roco/profile.json and never leaves this machine.");
+    eprintln!("It is only written when you say so (\"my name is …\", \"remember that …\").\n");
     std::process::exit(0);
 }
 

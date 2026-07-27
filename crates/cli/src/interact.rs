@@ -1,41 +1,60 @@
-//! `roco interact` — Interactive CLI equivalent to the GUI experience.
+//! `roco interact` — the interactive chat surface.
 //!
-//! Exposes the same control flows as the GUI widgets (PacingWidget, ChatWidget)
-//! but in the terminal:
+//! Three modes, one conversation engine ([`crate::conversation::ChatSession`]):
 //!
-//! - **Interactive mode** (`--interactive`): REPL-like conversation with pacing
-//!   controls, accept/skip/stop, streaming output, session persistence.
-//! - **Prompt mode** (`--prompt "text"`): One-shot generation, saves session,
-//!   prints result, then exits.
-//! - **Resume mode** (`--resume <session-id>`): Load a previous session and
-//!   continue from where you left off.
+//! - **Interactive** (default): streaming REPL with pacing controls, slash
+//!   commands, identity awareness and session persistence.
+//! - **Prompt** (`--prompt "text"`): one-shot generation, saves the session,
+//!   prints the result, exits.
+//! - **Resume** (`--resume <id>`): reload a transcript and carry on.
+//!
+//! All three previously duplicated prompt-building, backend invocation and
+//! response cleanup — with subtly different bugs in each. They now share
+//! `ChatSession`, so streaming, context budgeting, identity handling and
+//! auto-save behave identically everywhere.
 
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use roco_agent::interaction::{InteractionMode, InteractionState};
+use roco_protocol::ConversationState;
 
+use crate::conversation::{ChatSession, TurnOutcome};
 use crate::rich_output as r;
+
+/// Session files kept on disk. Older ones are pruned on startup so a daily
+/// user doesn't accumulate an unbounded `.roco/sessions/` directory.
+pub const MAX_SAVED_SESSIONS: usize = 100;
+
+/// Default persona for the chat surface. The identity preamble is prepended
+/// by `ChatSession`, so this only describes *behaviour*.
+const CHAT_PERSONA: &str = "\
+Hold a natural conversation.
+- Answer the user's actual question first, then add detail if it helps.
+- Match their tone and length: a short question gets a short answer.
+- Use the conversation history — refer back to what was already said.
+- If you don't know something, say so instead of inventing it.
+- Write one reply as yourself. Never write the user's next message.";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Configuration
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// How to run the interactive session
+/// How to run the interactive session.
 #[derive(Debug, Clone)]
 pub enum InteractMode {
-    /// One-shot prompt: takes a prompt, generates, saves session, prints, exits
+    /// One-shot prompt: generate, save, print, exit.
     Prompt { prompt: String },
-    /// Full interactive REPL with pacing control
+    /// Full interactive REPL with pacing control.
     Interactive {
         pacing: PacingChoice,
         prompt: Option<String>,
     },
-    /// Resume a previous session by ID
+    /// Resume a previous session by ID.
     Resume { session_id: String },
 }
 
-/// Initial pacing mode for interactive sessions
+/// Initial pacing mode for interactive sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PacingChoice {
     Planning,
@@ -62,21 +81,25 @@ impl PacingChoice {
             PacingChoice::AutoAccept => "auto-accept",
         }
     }
+
+    /// Parse the pacing recorded in a saved session.
+    pub fn from_label(label: &str) -> Self {
+        match label {
+            "planning" | "plan" => PacingChoice::Planning,
+            "rolling" | "batch" => PacingChoice::Rolling,
+            "auto-accept" | "auto" => PacingChoice::AutoAccept,
+            _ => PacingChoice::Careful,
+        }
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Conversation State (uses shared roco_protocol)
+// Entry point
 // ═════════════════════════════════════════════════════════════════════════════
 
-use roco_protocol::ConversationState;
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Running the interactive CLI
-// ═════════════════════════════════════════════════════════════════════════════
-
-/// Run the interactive CLI. This is the entry point called from `roco interact`.
+/// Run the interactive CLI. Entry point for `roco interact`.
 pub fn run(mode: InteractMode, backend: &dyn roco_engine::ModelBackend) -> anyhow::Result<()> {
-    // Initialize the agent journal so all components can log
+    // Journal init is idempotent; surfaces may be entered directly.
     let _ = roco_app::agent_journal::AgentJournal::init();
 
     match mode {
@@ -87,51 +110,34 @@ pub fn run(mode: InteractMode, backend: &dyn roco_engine::ModelBackend) -> anyho
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Prompt Mode (One-shot, saves session, exits)
+// Prompt Mode
 // ═════════════════════════════════════════════════════════════════════════════
 
 fn run_prompt(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow::Result<()> {
-    let session_id = format!("prompt_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     let session_dir = get_sessions_dir();
     std::fs::create_dir_all(&session_dir)?;
-    let session_path = session_dir.join(format!("{}.json", session_id));
+    prune_old_sessions(&session_dir, MAX_SAVED_SESSIONS);
 
-    let mut state = ConversationState::new(session_id.clone(), "auto-accept");
+    let session_id = format!("prompt_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let session_path = session_dir.join(format!("{}.json", session_id));
 
     r::header("RoCo AI — Prompt");
     r::info(&format!("Prompt: {}", prompt));
     r::dim(&format!("Session: {}", session_id));
+    println!();
 
-    state.add_message("user", prompt);
+    let state = ConversationState::new(session_id.clone(), "auto-accept");
+    let mut chat = ChatSession::new(state, session_path.clone(), CHAT_PERSONA, backend);
 
-    let request = roco_engine::CompletionRequest {
-        system: "You are a creative writing assistant. Respond with vivid, engaging prose.".into(),
-        prompt: format!("User: {}\nAssistant:", prompt),
-        temperature: 0.8,
-        max_tokens: 1024,
-        prefill: Some("<think></think>".into()),
-        ..Default::default()
-    };
+    // Streams straight to the terminal as tokens arrive.
+    chat.turn(backend, prompt);
 
-    let response = futures::executor::block_on(backend.complete(request))
-        .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?;
-
-    let text = r::clean_response(&response.text);
-    println!("\n{}", text);
-    state.add_message("assistant", &text);
-
-    // Save session and exit
-    if let Err(e) = state.save(&session_path) {
-        r::warning(&format!("Session save failed: {e}"));
-    } else {
-        r::success(&format!("Session saved: {}", session_path.display()));
-    }
-
+    r::success(&format!("Session saved: {}", session_path.display()));
     Ok(())
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Interactive Mode (REPL)
+// Interactive Mode
 // ═════════════════════════════════════════════════════════════════════════════
 
 fn run_interactive(
@@ -139,146 +145,29 @@ fn run_interactive(
     pacing: PacingChoice,
     initial_prompt: Option<String>,
 ) -> anyhow::Result<()> {
-    let session_id = format!("interact_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     let session_dir = get_sessions_dir();
     std::fs::create_dir_all(&session_dir)?;
+    prune_old_sessions(&session_dir, MAX_SAVED_SESSIONS);
+
+    let session_id = format!("interact_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     let session_path = session_dir.join(format!("{}.json", session_id));
 
-    let mut state = ConversationState::new(session_id.clone(), pacing.label());
+    let state = ConversationState::new(session_id, pacing.label());
+    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend);
 
     r::header("RoCo AI — Chat");
-    r::dim("  Type your message and press Enter.  :h for help, :q to quit.\n");
+    println!("{}", chat.greeting());
+    r::dim("  Type your message and press Enter.  :h for help, :q to quit.");
 
-    let mut current_pacing = pacing.to_interaction_mode();
-    let mut interaction = InteractionState::new(current_pacing.clone(), 0);
+    let mut pacing_mode = pacing.to_interaction_mode();
+    let mut interaction = InteractionState::new(pacing_mode.clone(), 0);
 
-    // If an initial prompt was provided, send it immediately
-    if let Some(ref initial) = initial_prompt {
-        state.add_message("user", initial);
-        let context0 = format!("User: {}\nAssistant:", initial);
-        let request = roco_engine::CompletionRequest {
-            system: "You are RoCo AI, a helpful creative writing assistant. Be concise and engaging.".into(),
-            prompt: context0,
-            temperature: 0.8,
-            max_tokens: 1024,
-            prefill: Some("<think></think>".into()),
-            ..Default::default()
-        };
-        match futures::executor::block_on(backend.complete(request)) {
-            Ok(response) => {
-                let text = r::clean_response(&response.text);
-                println!("{}RoCo:{} {}", r::Colors::CYAN, r::Colors::RESET, text);
-                state.add_message("assistant", &text);
-                interaction.tasks_completed += 1;
-            }
-            Err(e) => {
-                r::error(&format!("Generation failed: {e}"));
-                state.add_message("assistant", &format!("[Error: {e}]"));
-            }
-        }
-        if let Err(e) = state.save(&session_path) {
-            r::warning(&format!("Auto-save failed: {e}"));
-        }
+    if let Some(initial) = initial_prompt {
+        println!("\n{}You:{} {}", r::Colors::BOLD, r::Colors::RESET, initial);
+        run_turn(&mut chat, backend, &initial, &mut interaction, &pacing_mode);
     }
 
-    loop {
-        print!("\n{}You:{} ", r::Colors::BOLD, r::Colors::RESET);
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input)? == 0 {
-            break;
-        }
-        let input = input.trim().to_string();
-
-        if input.is_empty() {
-            continue;
-        }
-
-        // Handle commands
-        if input.starts_with('/') || input.starts_with(':') {
-            let cmd = input
-                .trim_start_matches('/')
-                .trim_start_matches(':')
-                .trim()
-                .to_lowercase();
-            if handle_command(
-                &cmd,
-                &mut state,
-                &mut current_pacing,
-                &mut interaction,
-                &session_path,
-            )
-            .map_err(|e| anyhow::anyhow!("{e}"))?
-            {
-                break;
-            }
-            continue;
-        }
-
-        // Build conversation context and record user turn
-        let context = build_chat_context(&state.messages, &input);
-        state.add_message("user", &input);
-
-        print!(
-            "{}{}  ...{}\r",
-            r::Colors::DIM,
-            r::Colors::CYAN,
-            r::Colors::RESET
-        );
-        io::stdout().flush()?;
-
-        let roco_prefix = format!("{}RoCo:{} ", r::Colors::CYAN, r::Colors::RESET);
-        // Buffer streaming tokens; clean_response post-processes the final text.
-        let streamed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-        let streamed_cb = std::sync::Arc::clone(&streamed);
-        let request = roco_engine::CompletionRequest {
-            system: "You are RoCo AI, a helpful creative writing assistant. Be concise and engaging.".into(),
-            prompt: context,
-            temperature: 0.8,
-            max_tokens: 1024,
-            prefill: Some("<think></think>".into()),
-            on_token: Some(Box::new(move |token: &str| {
-                if let Ok(mut buf) = streamed_cb.lock() {
-                    buf.push_str(token);
-                }
-            })),
-            ..Default::default()
-        };
-
-        match futures::executor::block_on(backend.complete(request)) {
-            Ok(response) => {
-                let text = r::clean_response(&response.text);
-                print!("\r\x1b[K");
-                println!("{}{}", roco_prefix, text);
-                io::stdout().flush().ok();
-                state.add_message("assistant", &text);
-
-                // Pacing: check if we should pause
-                interaction.tasks_completed += 1;
-                let should_pause = current_pacing.should_pause(
-                    interaction.tasks_completed,
-                    interaction.total_tasks.max(interaction.tasks_completed + 1),
-                );
-
-                if should_pause {
-                    r::dim("  [a]ccept  [s]kip  [q]uit");
-                    interaction.waiting_for_human = true;
-                }
-            }
-            Err(e) => {
-                r::error(&format!("Generation failed: {e}"));
-                state.add_message("assistant", &format!("[Error: {e}]"));
-            }
-        }
-
-        // Auto-save after each exchange
-        if let Err(e) = state.save(&session_path) {
-            r::warning(&format!("Auto-save failed: {e}"));
-        }
-    }
-
-    Ok(())
+    repl_loop(&mut chat, backend, &mut pacing_mode, &mut interaction)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -307,8 +196,16 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
     ));
     r::dim("Reviewing past messages:\n");
 
-    // Show history
-    for msg in &state.messages {
+    // Show the tail of the transcript — replaying hundreds of messages helps
+    // nobody and floods the scrollback.
+    let shown = state.messages.len().min(12);
+    if state.messages.len() > shown {
+        r::dim(&format!(
+            "  … {} earlier messages omitted",
+            state.messages.len() - shown
+        ));
+    }
+    for msg in state.messages.iter().skip(state.messages.len() - shown) {
         let label = match msg.role.as_str() {
             "user" => format!("{}User{}", r::Colors::BLUE, r::Colors::RESET),
             "assistant" | "ai" => format!("{}AI{}", r::Colors::GREEN, r::Colors::RESET),
@@ -319,114 +216,121 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
         println!("  [{}] {}...", label, preview);
     }
 
+    let pacing = PacingChoice::from_label(&state.pacing);
     println!("\nSession resumed. Continue typing to chat.");
     println!("Use /quit to save and exit.");
 
-    // Continue interactive loop
-    let pacing = match state.pacing.as_str() {
-        "planning" => PacingChoice::Planning,
-        "careful" => PacingChoice::Careful,
-        "rolling" => PacingChoice::Rolling,
-        "auto-accept" => PacingChoice::AutoAccept,
-        _ => PacingChoice::Careful,
-    };
+    let mut pacing_mode = pacing.to_interaction_mode();
+    let mut interaction = InteractionState::new(pacing_mode.clone(), state.messages.len());
+    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend);
 
-    // Re-enter interactive with loaded state
-    // For simplicity, we re-create the session and continue
-    let mut new_state = state.clone();
-    let mut current_pacing = pacing.to_interaction_mode();
-    let mut interaction = InteractionState::new(current_pacing.clone(), new_state.messages.len());
+    repl_loop(&mut chat, backend, &mut pacing_mode, &mut interaction)
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Shared REPL
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// The read/eval/print loop shared by interactive and resume modes.
+fn repl_loop(
+    chat: &mut ChatSession,
+    backend: &dyn roco_engine::ModelBackend,
+    pacing: &mut InteractionMode,
+    interaction: &mut InteractionState,
+) -> anyhow::Result<()> {
+    // One reusable input buffer: allocating a fresh String per iteration in a
+    // long REPL is needless churn.
+    let mut buf = String::new();
 
     loop {
         print!("\n{}You:{} ", r::Colors::BOLD, r::Colors::RESET);
         io::stdout().flush()?;
 
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input)? == 0 {
+        buf.clear();
+        if io::stdin().read_line(&mut buf)? == 0 {
+            // EOF (piped stdin exhausted, or Ctrl-D). Save and leave cleanly.
+            chat.save();
             break;
         }
-        let input = input.trim().to_string();
-
+        let input = buf.trim();
         if input.is_empty() {
             continue;
         }
 
-        if input.starts_with('/') || input.starts_with(':') {
-            let cmd = input
-                .trim_start_matches('/')
-                .trim_start_matches(':')
-                .trim()
-                .to_lowercase();
-            if handle_command(
-                &cmd,
-                &mut new_state,
-                &mut current_pacing,
-                &mut interaction,
-                &session_path,
-            )
-            .map_err(|e| anyhow::anyhow!("{e}"))?
+        if let Some(cmd) = as_command(input) {
+            if handle_command(&cmd, chat, pacing, interaction).map_err(|e| anyhow::anyhow!("{e}"))?
             {
                 break;
             }
             continue;
         }
 
-        // Build conversation context and record user turn
-        let context = build_chat_context(&new_state.messages, &input);
-        new_state.add_message("user", &input);
-
-        let request = roco_engine::CompletionRequest {
-            system: "You are RoCo AI, a helpful creative writing assistant. Be concise and engaging.".into(),
-            prompt: context,
-            temperature: 0.8,
-            max_tokens: 1024,
-            prefill: Some("<think></think>".into()),
-            ..Default::default()
-        };
-
-        match futures::executor::block_on(backend.complete(request)) {
-            Ok(response) => {
-                let text = r::clean_response(&response.text);
-                println!("{}RoCo:{} {}", r::Colors::CYAN, r::Colors::RESET, text);
-                new_state.add_message("assistant", &text);
-                interaction.tasks_completed += 1;
-
-                let should_pause = current_pacing.should_pause(
-                    interaction.tasks_completed,
-                    interaction.total_tasks.max(interaction.tasks_completed + 1),
-                );
-
-                if should_pause {
-                    r::dim("  [a]ccept  [s]kip  [q]uit");
-                    interaction.waiting_for_human = true;
-                }
-            }
-            Err(e) => {
-                r::error(&format!("Generation failed: {e}"));
-                new_state.add_message("assistant", &format!("[Error: {e}]"));
-            }
-        }
-
-        if let Err(e) = new_state.save(&session_path) {
-            r::warning(&format!("Auto-save failed: {e}"));
-        }
+        let input = input.to_string();
+        run_turn(chat, backend, &input, interaction, pacing);
     }
 
     Ok(())
 }
 
+/// Strip a leading `/` or `:` and normalise, or `None` for ordinary text.
+fn as_command(input: &str) -> Option<String> {
+    if !(input.starts_with('/') || input.starts_with(':')) {
+        return None;
+    }
+    Some(
+        input
+            .trim_start_matches('/')
+            .trim_start_matches(':')
+            .trim()
+            .to_lowercase(),
+    )
+}
+
+/// Execute one conversational turn and apply pacing.
+fn run_turn(
+    chat: &mut ChatSession,
+    backend: &dyn roco_engine::ModelBackend,
+    input: &str,
+    interaction: &mut InteractionState,
+    pacing: &InteractionMode,
+) {
+    let outcome = chat.turn(backend, input);
+
+    // Only real generations count toward pacing — an instant identity answer
+    // shouldn't trigger a "review this batch" pause.
+    if !matches!(outcome, TurnOutcome::Generated(_)) {
+        return;
+    }
+
+    interaction.tasks_completed += 1;
+    let should_pause = pacing.should_pause(
+        interaction.tasks_completed,
+        interaction.total_tasks.max(interaction.tasks_completed + 1),
+    );
+    if should_pause {
+        r::dim("  [a]ccept  [s]kip  [q]uit");
+        interaction.waiting_for_human = true;
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
-// Command Handler
+// Command handler
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Handle a slash command. Returns `true` if the session should quit.
-fn handle_command(
+pub fn handle_command(
     cmd: &str,
-    state: &mut ConversationState,
+    chat: &mut ChatSession,
     pacing: &mut InteractionMode,
     interaction: &mut InteractionState,
-    session_path: &PathBuf,
 ) -> Result<bool, String> {
+    // Identity commands (`:whoami`, `:remember …`, `:name …`, `:forget`) are
+    // shared with every other surface.
+    if let Some(reply) = chat.identity_command(cmd) {
+        println!("{reply}");
+        return Ok(false);
+    }
+
     match cmd {
         "help" | "h" | "?" => {
             r::panel(
@@ -435,11 +339,17 @@ fn handle_command(
                     "  /accept      Accept current AI output and continue",
                     "  /skip        Skip current AI output",
                     "  /stop        Stop generation",
-                    "  /revise <text>  Request revision with feedback",
                     "  /pause       Pause generation",
                     "  /resume      Resume paused generation",
-                    "  /undo        Undo last action",
+                    "  /undo        Undo last exchange",
                     "  /redo        Redo last undone action",
+                    "  /clear       Clear the conversation",
+                    "",
+                    "  /whoami      What RoCo knows about you",
+                    "  /whois       What RoCo is",
+                    "  /name <you>  Tell RoCo your name",
+                    "  /remember <fact>  Remember something about you",
+                    "  /forget      Forget everything about you",
                     "",
                     "  /pace <mode> Change pacing: planning, careful, rolling, auto",
                     "  /save        Save session",
@@ -465,22 +375,24 @@ fn handle_command(
         }
 
         "stop" => {
-            // Stop generation and exit — same as quit
-            if let Err(e) = state.save(session_path) {
-                r::warning(&format!("Auto-save failed: {e}"));
-            }
+            chat.save();
             r::info("Session saved. Goodbye!");
             Ok(true)
         }
 
         "undo" => {
-            if state.messages.len() >= 2 {
-                state.messages.pop();
-                state.messages.pop();
+            if chat.undo() {
                 r::success("Undone last exchange.");
             } else {
                 r::warning("Nothing to undo.");
             }
+            Ok(false)
+        }
+
+        "clear" => {
+            chat.clear();
+            chat.save();
+            r::success("Conversation cleared.");
             Ok(false)
         }
 
@@ -504,10 +416,10 @@ fn handle_command(
         "list" | "history" => {
             r::header(&format!(
                 "Session: {} ({} messages)",
-                state.id,
-                state.messages.len()
+                chat.state.id,
+                chat.state.messages.len()
             ));
-            for (i, msg) in state.messages.iter().enumerate() {
+            for (i, msg) in chat.state.messages.iter().enumerate() {
                 let label = match msg.role.as_str() {
                     "user" => format!("{}U{}", r::Colors::BLUE, r::Colors::RESET),
                     "assistant" => format!("{}A{}", r::Colors::GREEN, r::Colors::RESET),
@@ -521,48 +433,40 @@ fn handle_command(
         }
 
         "save" => {
-            match state.save(session_path) {
-                Ok(_) => {
-                    r::success(&format!("Session saved: {}", session_path.display()));
-                }
-                Err(e) => {
-                    r::error(&format!("Save failed: {e}"));
-                }
+            match chat.state.save(&chat.path) {
+                Ok(_) => r::success(&format!("Session saved: {}", chat.path.display())),
+                Err(e) => r::error(&format!("Save failed: {e}")),
             }
             Ok(false)
         }
 
         "quit" | "q" | "exit" => {
-            // Auto-save before quit
-            if let Err(e) = state.save(session_path) {
-                r::warning(&format!("Auto-save on quit failed: {e}"));
-            }
+            chat.save();
             r::info("Session saved. Goodbye!");
             Ok(true)
         }
 
         _ if cmd.starts_with("pace") || cmd.starts_with("pacing") => {
-            let parts: Vec<&str> = cmd.split_whitespace().collect();
-            let new_pace = parts.get(1).copied().unwrap_or("");
+            let new_pace = cmd.split_whitespace().nth(1).unwrap_or("");
             match new_pace {
                 "planning" | "plan" => {
                     *pacing = InteractionMode::NoControl;
-                    state.pacing = "planning".to_string();
+                    chat.state.pacing = "planning".into();
                     r::success("Pacing: Planning (agent runs to completion)");
                 }
                 "careful" | "full" => {
                     *pacing = InteractionMode::FullControl;
-                    state.pacing = "careful".to_string();
+                    chat.state.pacing = "careful".into();
                     r::success("Pacing: Careful (one task at a time)");
                 }
                 "rolling" | "batch" => {
                     *pacing = InteractionMode::ModerateControl { batch_size: 3 };
-                    state.pacing = "rolling".to_string();
-                    r::success("Pacing: Rolling (review batches)");
+                    chat.state.pacing = "rolling".into();
+                    r::success("Pacing: Rolling (batches of 3)");
                 }
-                "auto" | "accept" | "go-ham" => {
+                "auto" | "auto-accept" | "ham" => {
                     *pacing = InteractionMode::GoHam;
-                    state.pacing = "auto-accept".to_string();
+                    chat.state.pacing = "auto-accept".into();
                     r::success("Pacing: Auto-Accept (fastest)");
                 }
                 _ => {
@@ -590,34 +494,55 @@ fn handle_command(
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Helpers
+// Session storage
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// Build a prompt that includes recent conversation history so the model has context.
-fn build_chat_context(messages: &[roco_protocol::ConversationMessage], new_input: &str) -> String {
-    let mut ctx = String::new();
-    // Include up to the last 8 turns (4 exchanges)
-    let recent: Vec<_> = messages.iter().rev().take(8).rev().collect();
-    for msg in &recent {
-        let label = match msg.role.as_str() {
-            "user" => "User",
-            "assistant" | "ai" => "Assistant",
-            _ => continue,
-        };
-        let preview: String = msg.content.chars().take(300).collect();
-        ctx.push_str(&format!("{label}: {preview}\n"));
-    }
-    ctx.push_str(&format!("User: {new_input}\nAssistant:"));
-    ctx
-}
-
-/// Get the directory where session files are stored
-fn get_sessions_dir() -> PathBuf {
+/// Directory where session transcripts live.
+pub fn get_sessions_dir() -> PathBuf {
     let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     base.join(".roco").join("sessions")
 }
 
-/// List available sessions
+/// Delete the oldest session files beyond `keep`.
+///
+/// Every run of `roco interact` writes a new `.json`, so without pruning
+/// `.roco/sessions/` grows forever — a slow but real storage leak (and it
+/// makes `--list-sessions` progressively slower, since listing parses every
+/// file). Sorting by filename works because IDs are timestamp-prefixed; we
+/// fall back to mtime when a name doesn't parse.
+pub fn prune_old_sessions(dir: &Path, keep: usize) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+        .map(|e| {
+            let mtime = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            (mtime, e.path())
+        })
+        .collect();
+
+    if files.len() <= keep {
+        return 0;
+    }
+
+    // Oldest first, then delete from the front.
+    files.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    let remove = files.len() - keep;
+    let mut removed = 0;
+    for (_, path) in files.into_iter().take(remove) {
+        if std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// List available sessions.
 pub fn list_sessions() {
     let session_dir = get_sessions_dir();
     if !session_dir.exists() {
@@ -642,27 +567,48 @@ pub fn list_sessions() {
     r::header("Available Sessions");
     for entry in &entries {
         let path = entry.path();
-        if let Ok(json) = std::fs::read_to_string(&path) {
-            if let Ok(state) = serde_json::from_str::<ConversationState>(&json) {
-                let first = state
-                    .messages
-                    .first()
-                    .map(|m| format!(" — {}", &m.content.chars().take(60).collect::<String>()))
-                    .unwrap_or_default();
-                println!(
-                    "  {}  ({}){}",
-                    path.file_stem().unwrap().to_string_lossy(),
-                    state.messages.len(),
-                    first,
-                );
-            }
-        }
+        let Ok(json) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(state) = serde_json::from_str::<ConversationState>(&json) else {
+            continue;
+        };
+        let first = state
+            .messages
+            .first()
+            .map(|m| format!(" — {}", &m.content.chars().take(60).collect::<String>()))
+            .unwrap_or_default();
+        println!(
+            "  {}  ({}){}",
+            path.file_stem().unwrap_or_default().to_string_lossy(),
+            state.messages.len(),
+            first,
+        );
     }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Tests
+// ═════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use roco_engine::MockBackend;
+
+    fn test_chat(dir: &Path) -> ChatSession {
+        let backend = MockBackend::default();
+        ChatSession::new(
+            ConversationState::new("test".into(), "careful"),
+            dir.join("session.json"),
+            CHAT_PERSONA,
+            &backend,
+        )
+        .with_profile_path(dir.join("profile.json"))
+        .quiet(true)
+    }
+
+    // ── Pacing ───────────────────────────────────────────────────────────
 
     #[test]
     fn test_pacing_choice_mapping() {
@@ -693,6 +639,22 @@ mod tests {
     }
 
     #[test]
+    fn test_pacing_label_roundtrip() {
+        for p in [
+            PacingChoice::Planning,
+            PacingChoice::Careful,
+            PacingChoice::Rolling,
+            PacingChoice::AutoAccept,
+        ] {
+            assert_eq!(PacingChoice::from_label(p.label()), p);
+        }
+        // Unknown labels fall back to careful.
+        assert_eq!(PacingChoice::from_label("nonsense"), PacingChoice::Careful);
+    }
+
+    // ── ConversationState ────────────────────────────────────────────────
+
+    #[test]
     fn test_conversation_state_new() {
         let state = ConversationState::new("test-123".into(), "careful");
         assert_eq!(state.id, "test-123");
@@ -712,9 +674,8 @@ mod tests {
 
     #[test]
     fn test_conversation_state_save_load_roundtrip() {
-        let dir = std::env::temp_dir().join("roco_interact_test");
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("test_session.json");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test_session.json");
 
         let mut state = ConversationState::new("roundtrip".into(), "rolling");
         state.add_message("user", "Test message");
@@ -725,119 +686,153 @@ mod tests {
         assert_eq!(loaded.id, "roundtrip");
         assert_eq!(loaded.messages.len(), 2);
         assert_eq!(loaded.messages[0].content, "Test message");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
+
+    // ── Command parsing ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_as_command_recognises_both_prefixes() {
+        assert_eq!(as_command("/Quit").as_deref(), Some("quit"));
+        assert_eq!(as_command(":HELP").as_deref(), Some("help"));
+        assert_eq!(as_command("  :pace rolling").as_deref(), None); // leading space => text
+        assert_eq!(as_command("hello").as_deref(), None);
+        assert_eq!(as_command("/pace rolling").as_deref(), Some("pace rolling"));
+    }
+
+    // ── Command handling ─────────────────────────────────────────────────
 
     #[test]
     fn test_handle_command_quit() {
-        let mut state = ConversationState::new("cmd-test".into(), "careful");
+        let dir = tempfile::tempdir().unwrap();
+        let mut chat = test_chat(dir.path());
         let mut pacing = InteractionMode::FullControl;
         let mut interaction = InteractionState::new(pacing.clone(), 0);
-        let path = std::env::temp_dir().join("cmd_test.json");
 
-        // /quit should return true (quit signal)
-        let result = handle_command("quit", &mut state, &mut pacing, &mut interaction, &path);
-        assert!(result.unwrap());
-
-        // /help should return false (continue)
-        let result = handle_command("help", &mut state, &mut pacing, &mut interaction, &path);
-        assert!(!result.unwrap());
+        assert!(handle_command("quit", &mut chat, &mut pacing, &mut interaction).unwrap());
+        assert!(!handle_command("help", &mut chat, &mut pacing, &mut interaction).unwrap());
     }
 
     #[test]
     fn test_handle_command_pace() {
-        let mut state = ConversationState::new("pace-test".into(), "careful");
+        let dir = tempfile::tempdir().unwrap();
+        let mut chat = test_chat(dir.path());
         let mut pacing = InteractionMode::FullControl;
         let mut interaction = InteractionState::new(pacing.clone(), 0);
-        let path = std::env::temp_dir().join("pace_test.json");
 
-        // Change to planning
-        // Simulate /pace planning
-        let _ = handle_command(
-            "pace planning",
-            &mut state,
-            &mut pacing,
-            &mut interaction,
-            &path,
-        );
+        handle_command("pace planning", &mut chat, &mut pacing, &mut interaction).unwrap();
         assert_eq!(pacing, InteractionMode::NoControl);
-        assert_eq!(state.pacing, "planning");
+        assert_eq!(chat.state.pacing, "planning");
 
-        // Change to auto
-        let _ = handle_command(
-            "pace auto",
-            &mut state,
-            &mut pacing,
-            &mut interaction,
-            &path,
-        );
+        handle_command("pace auto", &mut chat, &mut pacing, &mut interaction).unwrap();
         assert_eq!(pacing, InteractionMode::GoHam);
-        assert_eq!(state.pacing, "auto-accept");
+        assert_eq!(chat.state.pacing, "auto-accept");
+
+        handle_command("pace rolling", &mut chat, &mut pacing, &mut interaction).unwrap();
+        assert_eq!(pacing, InteractionMode::ModerateControl { batch_size: 3 });
     }
 
     #[test]
     fn test_handle_command_accept_skip_stop() {
-        let mut state = ConversationState::new("actions".into(), "careful");
+        let dir = tempfile::tempdir().unwrap();
+        let mut chat = test_chat(dir.path());
         let mut pacing = InteractionMode::FullControl;
         let mut interaction = InteractionState::new(pacing.clone(), 0);
-        let path = std::env::temp_dir().join("actions_test.json");
 
         interaction.waiting_for_human = true;
-
-        handle_command("accept", &mut state, &mut pacing, &mut interaction, &path).unwrap();
+        handle_command("accept", &mut chat, &mut pacing, &mut interaction).unwrap();
         assert!(!interaction.waiting_for_human);
 
         interaction.waiting_for_human = true;
-        handle_command("skip", &mut state, &mut pacing, &mut interaction, &path).unwrap();
+        handle_command("skip", &mut chat, &mut pacing, &mut interaction).unwrap();
         assert!(!interaction.waiting_for_human);
 
         interaction.waiting_for_human = true;
-        // stop returns Ok(true) meaning exit — does not modify waiting_for_human
-        let result = handle_command("stop", &mut state, &mut pacing, &mut interaction, &path);
+        let result = handle_command("stop", &mut chat, &mut pacing, &mut interaction);
         assert!(result.unwrap(), "stop should signal exit");
     }
 
     #[test]
     fn test_handle_command_undo() {
-        let mut state = ConversationState::new("undo-test".into(), "careful");
+        let dir = tempfile::tempdir().unwrap();
+        let mut chat = test_chat(dir.path());
         let mut pacing = InteractionMode::FullControl;
         let mut interaction = InteractionState::new(pacing.clone(), 0);
-        let path = std::env::temp_dir().join("undo_test.json");
 
-        state.add_message("user", "Hello");
-        state.add_message("assistant", "Hi");
-        assert_eq!(state.messages.len(), 2);
+        chat.push("user", "Hello");
+        chat.push("assistant", "Hi");
+        assert_eq!(chat.state.messages.len(), 2);
 
-        handle_command("undo", &mut state, &mut pacing, &mut interaction, &path).unwrap();
-        assert_eq!(state.messages.len(), 0);
+        handle_command("undo", &mut chat, &mut pacing, &mut interaction).unwrap();
+        assert_eq!(chat.state.messages.len(), 0);
     }
 
     #[test]
-    fn test_session_meta_pacing_variants() {
-        // Verify all variants are reachable
-        fn assert_pacing(p: PacingChoice) {
-            match p {
-                PacingChoice::Planning
-                | PacingChoice::Careful
-                | PacingChoice::Rolling
-                | PacingChoice::AutoAccept => {}
-            }
+    fn test_handle_command_identity_is_routed_to_chat_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut chat = test_chat(dir.path());
+        let mut pacing = InteractionMode::FullControl;
+        let mut interaction = InteractionState::new(pacing.clone(), 0);
+
+        assert!(!handle_command("name Ada", &mut chat, &mut pacing, &mut interaction).unwrap());
+        assert_eq!(chat.profile().name.as_deref(), Some("Ada"));
+        assert!(!handle_command("whoami", &mut chat, &mut pacing, &mut interaction).unwrap());
+    }
+
+    #[test]
+    fn test_handle_command_clear() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut chat = test_chat(dir.path());
+        let mut pacing = InteractionMode::FullControl;
+        let mut interaction = InteractionState::new(pacing.clone(), 0);
+
+        chat.push("user", "a");
+        chat.push("assistant", "b");
+        handle_command("clear", &mut chat, &mut pacing, &mut interaction).unwrap();
+        assert!(chat.state.messages.is_empty());
+    }
+
+    // ── Session pruning (storage leak regression) ────────────────────────
+
+    #[test]
+    fn prune_removes_only_the_oldest_beyond_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        for i in 0..10 {
+            let path = root.join(format!("s{i:02}.json"));
+            let mut state = ConversationState::new(format!("s{i:02}"), "careful");
+            state.add_message("user", "hi");
+            state.save(&path).unwrap();
         }
-        assert_pacing(PacingChoice::Planning);
-        assert_pacing(PacingChoice::Careful);
-        assert_pacing(PacingChoice::Rolling);
-        assert_pacing(PacingChoice::AutoAccept);
+
+        let removed = prune_old_sessions(root, 4);
+        assert_eq!(removed, 6);
+
+        let left: Vec<String> = std::fs::read_dir(root)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".json"))
+            .collect();
+        assert_eq!(left.len(), 4, "got {left:?}");
+        assert!(left.contains(&"s09.json".to_string()), "newest kept: {left:?}");
+        assert!(!left.contains(&"s00.json".to_string()), "oldest dropped");
     }
 
     #[test]
-    fn test_conversation_message_timestamps() {
-        let mut state = ConversationState::new("ts-test".into(), "careful");
-        state.add_message("user", "t1");
-        state.add_message("assistant", "t2");
-
-        // Just verify timestamps are non-empty and different
-        assert!(!state.messages[0].timestamp.is_empty());
-        assert!(!state.messages[1].timestamp.is_empty());
+    fn prune_is_a_noop_under_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..3 {
+            ConversationState::new(format!("s{i}"), "careful")
+                .save(&dir.path().join(format!("s{i}.json")))
+                .unwrap();
+        }
+        assert_eq!(prune_old_sessions(dir.path(), 10), 0);
     }
+
+    #[test]
+    fn prune_tolerates_a_missing_directory() {
+        assert_eq!(prune_old_sessions(Path::new("/nonexistent/roco/xyz"), 5), 0);
+    }
+
 }

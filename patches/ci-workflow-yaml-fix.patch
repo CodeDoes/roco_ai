@@ -1,0 +1,35 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index da10af2..5f44b2d 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -53,7 +53,7 @@ jobs:
+     steps:
+       - uses: actions/checkout@v4
+       - uses: actions-rust-lang/setup-rust-toolchain@v1
+-      - name: Install system deps (egui: libgl, libxcb, …)
++      - name: "Install system deps (egui: libgl, libxcb, …)"
+         run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1-mesa-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev mold clang
+       - name: "cargo check — desktop feature"
+         run: cargo check -p roco-cli --features desktop
+@@ -77,8 +77,19 @@ jobs:
+       - uses: actions-rust-lang/setup-rust-toolchain@v1
+       - name: Install system deps
+         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+-      - name: "cargo test — agent-core + agent-story + engine"
+-        run: cargo test -p roco-agent-core -p roco-agent-story -p roco-engine --no-fail-fast
++      # NOTE: `roco-agent-core` / `roco-agent-story` are not workspace members
++      # (see the `[workspace] members` list in Cargo.toml) — cargo errors out
++      # with "package(s) not found". The agent crate is a single `roco-agent`.
++      - name: "cargo test — agent + engine + app + infer-client + cli"
++        env:
++          ROCO_USE_MOCK_BACKEND: "1"
++        run: |
++          cargo test --no-fail-fast \
++            -p roco-agent \
++            -p roco-engine \
++            -p roco-app \
++            -p roco-infer-client \
++            -p roco-cli
+ 
+   clippy:
+     name: "clippy"
