@@ -72,16 +72,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ---
 
-### 18. Structured logging for the generation pipeline
-**Rationale:** Current tracing is ad-hoc `info!` calls in `actor.rs`. There's no structured span hierarchy linking a completion request through its entire lifecycle.
-
-**Approach:**
-- Add `tracing` spans with fields:
-  - `ot.name = "handle_complete"`, `req.prompt_len`, `req.seed`, `req.temperature`
-  - Child span `sampling` with `token_id`, `prob`, `selected_by_grammar`
-  - Child span `token_decode` with `word`, `word_len`
-- Export via `tracing-subscriber` to `OTLP` or JSON file
-- Add `ROCO_TRACE=1` env var to enable detailed per-token tracing to stderr
+---
 
 ---
 

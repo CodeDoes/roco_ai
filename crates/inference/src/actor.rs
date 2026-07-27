@@ -942,6 +942,17 @@ impl RwkvActor {
         // to avoid move issues inside the async block.
         let mut seeded_rng: Option<StdRng> = seed.map(StdRng::seed_from_u64);
 
+        let span = tracing::info_span!(
+            "handle_complete",
+            system_len = system.len(),
+            prompt_len = prompt.len(),
+            max_tokens = max_tokens,
+            temperature = temperature,
+            seed = seed,
+            session = session.as_deref().unwrap_or("none")
+        );
+        let _guard = span.enter();
+
         let outcome: Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError> = async {
             let session_id = session.as_ref().cloned();
             let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
@@ -1170,18 +1181,27 @@ impl RwkvActor {
                     break;
                 }
 
-                if record_trace {
+                if record_trace || std::env::var("ROCO_TRACE").is_ok() {
                     let prob = probs.data().get(token as usize).copied().unwrap_or(0.0);
                     let is_masked = bnf_mask.is_some();
-                    token_traces.push(roco_engine::TokenTrace {
-                        token_id: token,
-                        token_str: word.clone(),
-                        probability: prob,
-                        temperature,
-                        top_p_cut: top_p,
-                        grammar_masked: is_masked,
-                        selected_by_grammar: is_masked,
-                    });
+                    if record_trace {
+                        token_traces.push(roco_engine::TokenTrace {
+                            token_id: token,
+                            token_str: word.clone(),
+                            probability: prob,
+                            temperature,
+                            top_p_cut: top_p,
+                            grammar_masked: is_masked,
+                            selected_by_grammar: is_masked,
+                        });
+                    }
+                    tracing::debug!(
+                        token_id = token,
+                        word = %word,
+                        prob = prob,
+                        grammar_masked = is_masked,
+                        "token_decode"
+                    );
                 }
 
                 text.push_str(&word);
