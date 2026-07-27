@@ -26,24 +26,6 @@ This document catalogs concrete improvements beyond the current state, organized
 - During generation: show `Generating [tok/s] | tokens: N/M | est. remaining: Xs`
 - The actor thread already reports `tokens generated` — pipe this through a channel to the UI thread, or poll periodically via a new `ActorMessage::Progress` message
 
-### 4. Session resume without replay
-**Status:** Completed
-
-**Rationale:** `roco interact --resume <session>` currently replays the entire transcript through the model to rebuild the recurrent state. For long sessions this costs minutes of wall time.
-
-**Approach:**
-- Save the raw recurrent state tensor alongside the transcript (already possible via `SaveState`)
-- On resume, `LoadState` bypasses replay entirely — instant resume
-- Fall back to replay when the saved state is missing or corrupted (graceful degradation)
-- Flag: `roco interact --resume <session> [--instant]` or `roco interact --resume <session> --replay` to force replay
-
-**Implementation notes:**
-- Added `--instant` / `--replay` flags to `roco interact --resume`
-- Backend state is saved to `.roco/sessions/<id>.state` after each successful model turn
-- On `--instant`, the saved state is loaded before the first turn, and the first prompt skips context history
-- Missing or corrupt state files gracefully fall back to full replay
-
-
 ---
 
 ## Modularity — Crate Architecture & Separation of Concerns
@@ -232,7 +214,6 @@ pub trait StateTuning: ModelBackend {
 | Priority | Area | Item | Effort | Impact |
 |----------|------|------|--------|--------|
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
-| P1 | UX | ~~4. Instant session resume~~ | 2 days | High — saves minutes per interactive session |
 | P1 | Interpretability | 14. Token trace logging | 2 days | Medium — enables debugging bad generations |
 | P2 | UX | 2. Progress bar | 1 day | Medium — better feedback for long gen |
 | P2 | Modularity | 7. Extract StateTuning trait | 1 day | Medium — cleaner trait hierarchy |
