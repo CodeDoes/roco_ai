@@ -51,13 +51,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ---
 
-### 15. Token probability heatmap in the TUI/GUI
-**Rationale:** The desktop GUI (`crates/ui`) has no way to show uncertainty. Users see the final text but not the model's confidence.
-
-**Approach:**
-- Add a "confidence" color overlay to the markdown editor: green (p > 0.9), yellow (0.5-0.9), red (< 0.5)
-- Show per-token probability on hover
-- Requires the trace data from item 14
+---
 
 ---
 

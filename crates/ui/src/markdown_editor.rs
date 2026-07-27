@@ -253,11 +253,39 @@ impl SelectionState {
     }
 }
 
+/// Token confidence probability for heatmap overlay (green p > 0.9, yellow 0.5-0.9, red < 0.5)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenConfidence {
+    pub token_str: String,
+    pub probability: f32,
+}
+
+impl TokenConfidence {
+    pub fn new(token_str: impl Into<String>, probability: f32) -> Self {
+        Self {
+            token_str: token_str.into(),
+            probability,
+        }
+    }
+
+    pub fn color(&self) -> Color32 {
+        if self.probability > 0.9 {
+            Color32::from_rgb(46, 204, 113) // green
+        } else if self.probability >= 0.5 {
+            Color32::from_rgb(241, 196, 15) // yellow
+        } else {
+            Color32::from_rgb(231, 76, 60) // red
+        }
+    }
+}
+
 /// Markdown editor widget state
 #[derive(Debug, Clone, Default)]
 pub struct MarkdownEditorState {
     /// The document being edited
     pub document: MarkdownDocument,
+    /// Per-token confidence trace for uncertainty heatmap overlay
+    pub confidence_trace: Vec<TokenConfidence>,
     /// Current editor mode
     pub mode: EditorMode,
     /// Current selection
@@ -1317,6 +1345,17 @@ mod tests {
 
         sel.selection_end = Some(10);
         assert!(!sel.has_selection());
+    }
+
+    #[test]
+    fn test_token_confidence_heatmap_colors() {
+        let high = TokenConfidence::new("high", 0.95);
+        let mid = TokenConfidence::new("mid", 0.70);
+        let low = TokenConfidence::new("low", 0.30);
+
+        assert_eq!(high.color(), Color32::from_rgb(46, 204, 113));
+        assert_eq!(mid.color(), Color32::from_rgb(241, 196, 15));
+        assert_eq!(low.color(), Color32::from_rgb(231, 76, 60));
     }
 
     #[test]
