@@ -80,17 +80,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ## Testing & CI
 
-### 20. Real integration tests for the full pipeline
-**Rationale:** The eval suite tests components in isolation. There's no end-to-end test that starts inferd, sends a request, and verifies the response.
-
-**Approach:**
-- Add `tests/pipeline_test.rs` that:
-  - Starts `roco-inferd` (or connects to an already-running one)
-  - Sends a `CompletionRequest` with known parameters
-  - Verifies the response is well-formed JSON
-  - Verifies deterministic seed produces identical results across two calls
-- Guard with `#[cfg(feature = "integration")]` so it doesn't run in regular `cargo test`
-- Add to CI as a separate job
+---
 
 ### 21. Fuzz testing for the grammar engine
 **Rationale:** The bnf-engine/kbnf grammar parser is complex. Malformed grammars could panic or hang.
