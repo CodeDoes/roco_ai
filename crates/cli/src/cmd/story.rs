@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use roco_agent::AgentError;
 use roco_agent::mechanistic::{
     HandlerResult, MechanisticAgent, Plan as MechPlan, RepairConfig, Task,
 };
@@ -601,6 +602,63 @@ const BAKE_VALIDATION_EXAMPLES: &[(&str, &str)] = &[
 ///
 /// Sets `prefill` to `"{\n"` for grammar strategies to jump-start JSON.
 /// For StateTuned, both `grammar` and `prefill` are left empty.
+fn repair_json(s: &str) -> String {
+    let mut text = s.trim();
+    if let Some(start) = text.find("```json") {
+        if let Some(end) = text[start + 7..].find("```") {
+            text = text[start + 7..start + 7 + end].trim();
+        }
+    } else if let Some(start) = text.find("```") {
+        if let Some(end) = text[start + 3..].find("```") {
+            text = text[start + 3..start + 3 + end].trim();
+        }
+    }
+
+    let mut result = String::with_capacity(text.len() + 32);
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut i = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    while i < n {
+        let c = chars[i];
+        if in_string {
+            result.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == '"' {
+            in_string = true;
+            result.push(c);
+            i += 1;
+            continue;
+        }
+
+        result.push(c);
+
+        if c == '}' {
+            let mut j = i + 1;
+            while j < n && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < n && chars[j] == '{' {
+                result.push(',');
+            }
+        }
+        i += 1;
+    }
+    result
+}
+
 fn structured_complete_with_strategy<T>(
     backend: &dyn ModelBackend,
     system: &str,
@@ -615,32 +673,52 @@ where
 {
     let grammar = strategy.grammar();
     let use_grammar = !grammar.is_empty();
+    let mut last_err = String::new();
 
-    let text = futures::executor::block_on(backend.complete(CompletionRequest {
-        system: system.to_string(),
-        prompt: prompt.to_string(),
-        grammar: if use_grammar {
-            Some(grammar.clone())
-        } else {
-            None
-        },
-        temperature,
-        max_tokens,
-        prefill: if use_grammar {
-            Some("{\n".into())
-        } else {
-            None
-        },
-        session: session_id.map(|s| s.to_string()),
-        bnf_mask: None,
-        ..Default::default()
-    }))
-    .map_err(|e| format!("model error: {e}"))?
-    .text;
+    for _attempt in 0..3 {
+        let text_res = futures::executor::block_on(backend.complete(CompletionRequest {
+            system: system.to_string(),
+            prompt: prompt.to_string(),
+            grammar: if use_grammar {
+                Some(grammar.clone())
+            } else {
+                None
+            },
+            temperature,
+            max_tokens,
+            prefill: if use_grammar {
+                Some("{\n".into())
+            } else {
+                None
+            },
+            session: session_id.map(|s| s.to_string()),
+            bnf_mask: None,
+            ..Default::default()
+        }));
 
-    strategy
-        .parse::<T>(&text)
-        .map_err(|e| format!("parse error: {e}\nraw: {text}"))
+        let text = match text_res {
+            Ok(resp) => resp.text,
+            Err(e) => {
+                last_err = format!("model error: {e}");
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                continue;
+            }
+        };
+
+        match strategy.parse::<T>(&text) {
+            Ok(val) => return Ok(val),
+            Err(orig_e) => {
+                let repaired = repair_json(&text);
+                match strategy.parse::<T>(&repaired) {
+                    Ok(val) => return Ok(val),
+                    Err(_) => {
+                        last_err = format!("parse error: {orig_e}\nraw: {text}");
+                    }
+                }
+            }
+        }
+    }
+    Err(last_err)
 }
 
 fn extract_title(outline: &str) -> String {
@@ -826,7 +904,7 @@ pub fn cmd_story(extra: &[&str]) {
 
     let backend = daemon::ensure_backend();
 
-    rt.block_on(async move {
+    let pipeline_result: Result<(), AgentError> = rt.block_on(async move {
         tracing_subscriber::fmt()
             .with_env_filter(
                 tracing_subscriber::EnvFilter::try_from_default_env()
@@ -894,28 +972,16 @@ pub fn cmd_story(extra: &[&str]) {
 
                 AgentJournal::phase("story", "Generating outline (phase 1/6)...");
 
-                let outline: StoryOutline =
-                    structured_complete_with_strategy(
-                        backend,
-                        SYSTEM_OUTLINE,
-                        &prompt_outline(premise),
-                        &outline_strategy_clone,
-                        0.6,
-                        300,
-                        Some(SESSION_WRITER),
-                    )
-                    .unwrap_or_else(|e| StoryOutline {
-                        title: "Untitled".into(),
-                        genre: "Unknown".into(),
-                        tone: "Unknown".into(),
-                        chapters: (1..=3)
-                            .map(|i| StoryChapterInfo {
-                                number: i,
-                                title: format!("Chapter {i}"),
-                                summary: format!("Error generating outline: {e}"),
-                            })
-                            .collect(),
-                    });
+                let outline: StoryOutline = structured_complete_with_strategy(
+                    backend,
+                    SYSTEM_OUTLINE,
+                    &prompt_outline(premise),
+                    &outline_strategy_clone,
+                    0.6,
+                    300,
+                    Some(SESSION_WRITER),
+                )
+                .map_err(|e| AgentError::Internal(format!("outline generation failed: {e}")))?;
 
                 // Build formatted markdown with front matter
                 let title = &outline.title;
@@ -941,7 +1007,7 @@ pub fn cmd_story(extra: &[&str]) {
                     outline.chapters.len()
                 ));
 
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: format!(
                         "Title: {title}\nGenre: {genre}\nTone: {tone}\nChapters: {}\n",
@@ -949,7 +1015,7 @@ pub fn cmd_story(extra: &[&str]) {
                     ),
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -981,13 +1047,7 @@ pub fn cmd_story(extra: &[&str]) {
                     500,
                     Some(SESSION_WRITER),
                 )
-                .unwrap_or_else(|e| StoryWiki {
-                    characters: vec![StoryCharacter {
-                        name: "Unknown".into(),
-                        description: format!("Error generating wiki: {e}"),
-                    }],
-                    setting: "Unknown".into(),
-                });
+                .map_err(|e| AgentError::Internal(format!("wiki generation failed: {e}")))?;
 
                 let mut md = String::from("# World Bible\n\n");
                 md.push_str("## Characters\n\n");
@@ -1005,12 +1065,12 @@ pub fn cmd_story(extra: &[&str]) {
                     wiki.characters.len()
                 ));
 
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: md,
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -1087,10 +1147,7 @@ pub fn cmd_story(extra: &[&str]) {
                     max_tokens,
                     Some(SESSION_WRITER),
                 )
-                .unwrap_or_else(|e| StoryChapter {
-                    title: chapter_label.into(),
-                    content: format!("Error writing chapter: {e}"),
-                });
+                .map_err(|e| AgentError::Internal(format!("chapter generation failed: {e}")))?;
 
                 // Clean the content: strip thinking, fix paragraphs
                 let clean_content = clean_story_text(&chapter.content);
@@ -1107,12 +1164,12 @@ pub fn cmd_story(extra: &[&str]) {
                     "{label}: {wc} words written to {filename}"
                 ));
 
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: md,
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -1134,7 +1191,7 @@ pub fn cmd_story(extra: &[&str]) {
                     .unwrap_or(0);
 
                 let entry = if chapter_text.trim().is_empty() {
-                    format!("\n## Chapter {chapter_num}\n\n[validation skipped — chapter is empty]\n")
+                    Ok(format!("\n## Chapter {chapter_num}\n\n[validation skipped — chapter is empty]\n"))
                 } else {
                     structured_complete_with_strategy::<StoryValidation>(
                         backend,
@@ -1151,12 +1208,8 @@ pub fn cmd_story(extra: &[&str]) {
                             v.quality, v.issues, v.suggestion
                         )
                     })
-                    .unwrap_or_else(|e| {
-                        format!(
-                            "\n## Chapter {chapter_num}\n\nQuality: fail\nIssues: Model error: {e}\nSuggestion: Retry\n"
-                        )
-                    })
-                };
+                    .map_err(|e| AgentError::Internal(format!("validation failed: {e}")))
+                }?;
 
                 // Log quality result
                 if entry.contains("Quality: pass") {
@@ -1179,12 +1232,12 @@ pub fn cmd_story(extra: &[&str]) {
                     "content": existing + &entry,
                 }));
 
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: entry,
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -1211,9 +1264,7 @@ pub fn cmd_story(extra: &[&str]) {
                     200,
                     Some(SESSION_WRITER),
                 )
-                .unwrap_or_else(|e| StorySynopsis {
-                    summary: format!("Error writing synopsis: {e}"),
-                });
+                .map_err(|e| AgentError::Internal(format!("synopsis generation failed: {e}")))?;
 
                 let md = format!("# Synopsis\n\n{}", synopsis.summary);
 
@@ -1222,12 +1273,12 @@ pub fn cmd_story(extra: &[&str]) {
 
                 AgentJournal::action("story", "Synopsis complete");
 
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: md,
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -1313,7 +1364,7 @@ pub fn cmd_story(extra: &[&str]) {
                     "Story complete! \"{title}\" — {word_count} words, 3 chapters"
                 ));
 
-                HandlerResult {
+                Ok(HandlerResult {
                     task: Task {
                         r#type: "publish".into(),
                         domain: "chapter".into(),
@@ -1324,7 +1375,7 @@ pub fn cmd_story(extra: &[&str]) {
                     ),
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -1343,8 +1394,7 @@ pub fn cmd_story(extra: &[&str]) {
             }],
         };
         let outline_result = agent
-            .dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)
-            .expect("outline failed");
+            .dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)?;
         let outline_text = &outline_result.output;
         println!("  ✓ Outline complete\n");
 
@@ -1358,9 +1408,7 @@ pub fn cmd_story(extra: &[&str]) {
                 spec: serde_json::json!({"premise": prompt, "outline": outline_text}),
             }],
         };
-        let _wiki_result = agent
-            .dispatch_single(backend.as_ref(), &wiki_plan.tasks[0], &ws)
-            .expect("wiki failed");
+        agent.dispatch_single(backend.as_ref(), &wiki_plan.tasks[0], &ws)?;
         println!("  ✓ World bible complete\n");
 
         // Reset writer session so outline/wiki state doesn't contaminate instructional baking
@@ -1431,8 +1479,7 @@ pub fn cmd_story(extra: &[&str]) {
                 }),
             };
             let ch_result = agent
-                .dispatch_single(backend.as_ref(), &ch_task, &ws)
-                .expect("chapter failed");
+                .dispatch_single(backend.as_ref(), &ch_task, &ws)?;
             chapter_texts.push(ch_result.output.clone());
 
             // Validation
@@ -1446,8 +1493,7 @@ pub fn cmd_story(extra: &[&str]) {
                 }),
             };
             let val_result = agent
-                .dispatch_single(backend.as_ref(), &val_task, &ws)
-                .expect("validation failed");
+                .dispatch_single(backend.as_ref(), &val_task, &ws)?;
 
             // Self-correction loop: extract feedback from validation output directly
             let val_entry = &val_result.output;
@@ -1478,8 +1524,7 @@ pub fn cmd_story(extra: &[&str]) {
                     }),
                 };
                 let retry_result = agent
-                    .dispatch_single(backend.as_ref(), &retry_task, &ws)
-                    .unwrap_or(ch_result);
+                    .dispatch_single(backend.as_ref(), &retry_task, &ws)?;
 
                 let filename = format!("03-CHAPTER_{i}.md");
                 let path = ws.resolve(&filename).unwrap();
@@ -1510,9 +1555,7 @@ pub fn cmd_story(extra: &[&str]) {
             domain: "synopsis".into(),
             spec: serde_json::json!({"chapters": all_chapters}),
         };
-        let _synopsis_result = agent
-            .dispatch_single(backend.as_ref(), &synopsis_task, &ws)
-            .expect("synopsis failed");
+        agent.dispatch_single(backend.as_ref(), &synopsis_task, &ws)?;
         println!("  ✓ Synopsis complete\n");
 
         // Phase 5: publish
@@ -1524,8 +1567,7 @@ pub fn cmd_story(extra: &[&str]) {
             spec: serde_json::json!({}),
         };
         let publish_result = agent
-            .dispatch_single(backend.as_ref(), &publish_task, &ws)
-            .expect("publish failed");
+            .dispatch_single(backend.as_ref(), &publish_task, &ws)?;
 
         let outcome = agent
             .commit(
@@ -1554,5 +1596,12 @@ pub fn cmd_story(extra: &[&str]) {
         println!(
             "✅ Monitor: tail -f .roco/agent-journal.md\n"
         );
+
+        Ok(())
     });
+
+    if let Err(e) = pipeline_result {
+        eprintln!("❌ Story pipeline failed: {e}");
+        AgentJournal::warn("story", &format!("Pipeline failed: {e}"));
+    }
 }
