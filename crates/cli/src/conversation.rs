@@ -112,6 +112,11 @@ pub struct ChatSession {
     quiet: bool,
     /// Turns that actually hit the model.
     pub model_turns: u64,
+    /// Path to a persisted backend state file for instant resume.
+    pub state_file: Option<PathBuf>,
+    /// If true, the next turn skips context history because the loaded
+    /// backend state already encodes the full conversation up to this point.
+    pub instant_resume: bool,
 }
 
 impl ChatSession {
@@ -138,12 +143,27 @@ impl ChatSession {
             record_trace: false,
             quiet: false,
             model_turns: 0,
+            state_file: None,
+            instant_resume: false,
         }
     }
 
     /// Suppress terminal writes (the caller prints the result itself).
     pub fn quiet(mut self, quiet: bool) -> Self {
         self.quiet = quiet;
+        self
+    }
+
+    /// Attach a state file for instant-resume support.
+    pub fn with_state_file(mut self, path: PathBuf) -> Self {
+        self.state_file = Some(path);
+        self
+    }
+
+    /// Mark that the backend state has been pre-loaded and the next turn
+    /// should skip context history.
+    pub fn with_instant_resume(mut self) -> Self {
+        self.instant_resume = true;
         self
     }
 
@@ -196,7 +216,15 @@ impl ChatSession {
     pub fn turn(&mut self, backend: &dyn ModelBackend, input: &str) -> TurnOutcome {
         // Build the prompt from history *before* recording the new message, so
         // the user's line isn't duplicated in the context.
-        let context = self.build_context(input);
+        let was_instant = self.instant_resume;
+        self.instant_resume = false;
+        let context = if was_instant {
+            // Backend state already encodes the full history; only the new
+            // user message needs to be sent.
+            format!("User: {}\nAssistant:", input.trim())
+        } else {
+            self.build_context(input)
+        };
         self.push("user", input);
 
         // ── Identity fast-path: correct, instant, no tokens ──────────────
@@ -268,6 +296,16 @@ impl ChatSession {
 
         self.push("assistant", outcome.text());
         self.save();
+
+        // Persist backend recurrent state for instant resume on next session.
+        if outcome.used_model() {
+            if let Some(ref state_path) = self.state_file {
+                if let Ok(bytes) = futures::executor::block_on(backend.save_state()) {
+                    let _ = std::fs::write(state_path, bytes);
+                }
+            }
+        }
+
         outcome
     }
 

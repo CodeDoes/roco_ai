@@ -315,6 +315,8 @@ fn help_interact() {
     eprintln!("  roco interact <text>                 Chat with an opening message");
     eprintln!("  roco interact --prompt <text>        One-shot: generate, save, exit");
     eprintln!("  roco interact --resume <session>     Resume a saved session");
+    eprintln!("  roco interact --resume <session> --instant  Instant resume (skip replay)");
+    eprintln!("  roco interact --resume <session> --replay   Force full replay\n");
     eprintln!("  roco interact --list-sessions        List saved sessions");
     eprintln!("  roco interact --pace <mode>          Pacing: auto|careful|rolling|planning");
     eprintln!("  roco interact --seed <n>             Set deterministic seed for sampling");

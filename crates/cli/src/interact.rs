@@ -51,7 +51,7 @@ pub enum InteractMode {
         prompt: Option<String>,
     },
     /// Resume a previous session by ID.
-    Resume { session_id: String },
+    Resume { session_id: String, instant: bool },
 }
 
 /// Initial pacing mode for interactive sessions.
@@ -105,7 +105,7 @@ pub fn run(mode: InteractMode, backend: &dyn roco_engine::ModelBackend) -> anyho
     match mode {
         InteractMode::Prompt { prompt } => run_prompt(backend, &prompt),
         InteractMode::Interactive { pacing, prompt } => run_interactive(backend, pacing, prompt),
-        InteractMode::Resume { session_id } => run_resume(backend, &session_id),
+        InteractMode::Resume { session_id, instant } => run_resume(backend, &session_id, instant),
     }
 }
 
@@ -122,7 +122,9 @@ pub fn run_with_seed(
         InteractMode::Interactive { pacing, prompt } => {
             run_interactive_with_seed(backend, pacing, prompt, seed)
         }
-        InteractMode::Resume { session_id } => run_resume_with_seed(backend, &session_id, seed),
+        InteractMode::Resume { session_id, instant } => {
+            run_resume_with_seed(backend, &session_id, seed, instant)
+        }
     }
 }
 
@@ -251,9 +253,14 @@ fn run_interactive_with_seed(
 // Resume Mode
 // ═════════════════════════════════════════════════════════════════════════════
 
-fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyhow::Result<()> {
+fn run_resume(
+    backend: &dyn roco_engine::ModelBackend,
+    session_id: &str,
+    instant: bool,
+) -> anyhow::Result<()> {
     let session_dir = get_sessions_dir();
     let session_path = session_dir.join(format!("{}.json", session_id));
+    let state_path = session_dir.join(format!("{}.state", session_id));
 
     if !session_path.exists() {
         eprintln!("Session not found: {}", session_path.display());
@@ -266,6 +273,9 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
         .map_err(|e| anyhow::anyhow!("Failed to load session: {e}"))?;
 
     r::header(&format!("Resuming Session: {}", state.id));
+    if instant {
+        r::info("Mode: instant resume (loading saved backend state)");
+    }
     r::info(&format!(
         "{} messages, pacing: {}",
         state.messages.len(),
@@ -299,7 +309,24 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
 
     let mut pacing_mode = pacing.to_interaction_mode();
     let mut interaction = InteractionState::new(pacing_mode.clone(), state.messages.len());
-    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend);
+    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend)
+        .with_state_file(state_path);
+
+    // Instant resume: load saved backend state so the first turn skips
+    // context history. Gracefully fall back to replay if the state file is
+    // missing or corrupt.
+    if instant {
+        if let Ok(saved) = std::fs::read(&chat.state_file.as_ref().unwrap()) {
+            if futures::executor::block_on(backend.load_state(saved)).is_ok() {
+                chat = chat.with_instant_resume();
+                r::info("Instant resume: backend state loaded.");
+            } else {
+                r::warning("Instant resume: state file corrupt, falling back to replay.");
+            }
+        } else {
+            r::warning("Instant resume: no state file found, falling back to replay.");
+        }
+    }
 
     repl_loop(&mut chat, backend, &mut pacing_mode, &mut interaction)
 }
@@ -308,9 +335,11 @@ fn run_resume_with_seed(
     backend: &dyn roco_engine::ModelBackend,
     session_id: &str,
     seed: u64,
+    instant: bool,
 ) -> anyhow::Result<()> {
     let session_dir = get_sessions_dir();
     let session_path = session_dir.join(format!("{}.json", session_id));
+    let state_path = session_dir.join(format!("{}.state", session_id));
 
     if !session_path.exists() {
         eprintln!("Session not found: {}", session_path.display());
@@ -326,6 +355,9 @@ fn run_resume_with_seed(
         "Resuming Session: {} (deterministic, seed={})",
         state.id, seed
     ));
+    if instant {
+        r::info("Mode: instant resume (loading saved backend state)");
+    }
     r::info(&format!(
         "{} messages, pacing: {}",
         state.messages.len(),
@@ -335,7 +367,25 @@ fn run_resume_with_seed(
     let pacing = PacingChoice::from_label(&state.pacing);
     let mut pacing_mode = pacing.to_interaction_mode();
     let mut interaction = InteractionState::new(pacing_mode.clone(), state.messages.len());
-    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend).with_seed(seed);
+    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend)
+        .with_seed(seed)
+        .with_state_file(state_path);
+
+    // Instant resume: load saved backend state so the first turn skips
+    // context history. Gracefully fall back to replay if the state file is
+    // missing or corrupt.
+    if instant {
+        if let Ok(saved) = std::fs::read(&chat.state_file.as_ref().unwrap()) {
+            if futures::executor::block_on(backend.load_state(saved)).is_ok() {
+                chat = chat.with_instant_resume();
+                r::info("Instant resume: backend state loaded.");
+            } else {
+                r::warning("Instant resume: state file corrupt, falling back to replay.");
+            }
+        } else {
+            r::warning("Instant resume: no state file found, falling back to replay.");
+        }
+    }
 
     repl_loop(&mut chat, backend, &mut pacing_mode, &mut interaction)
 }

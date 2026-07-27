@@ -14,6 +14,8 @@ pub fn cmd_interact(extra: &[&str]) {
 
     let prompt_arg = parse_opt("--prompt", extra);
     let resume = parse_opt("--resume", extra);
+    let instant = extra.iter().any(|&a| a == "--instant" || a == "-I");
+    let replay = extra.iter().any(|&a| a == "--replay" || a == "-R");
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
     let pace_str = parse_opt("--pace", extra).unwrap_or("careful");
     let pacing = PacingChoice::from_label(pace_str);
@@ -34,8 +36,11 @@ pub fn cmd_interact(extra: &[&str]) {
             prompt: p.to_string(),
         }
     } else if let Some(session_id) = resume {
+        // --replay forces full context replay even if a saved state exists.
+        let use_instant = instant && !replay;
         InteractMode::Resume {
             session_id: session_id.to_string(),
+            instant: use_instant,
         }
     } else {
         InteractMode::Interactive {
