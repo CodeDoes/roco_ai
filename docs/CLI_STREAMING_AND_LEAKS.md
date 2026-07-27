@@ -238,37 +238,71 @@ Balanced-delimiter checks were run across all 13 touched files. **`cargo test
 --workspace --all-targets -- --deny warnings` still need to be run** on a
 machine with the toolchain.
 
-### GitHub Actions cannot currently confirm this
+### CI is broken — root-caused, but the fix needs a maintainer to apply
 
-CI was expected to provide the first real compile, but it does not run. Every
-workflow run in this repository — on `main`, going back well before this
-change — completes in seconds with `total_count: 0` jobs and the message
-"This run likely failed because of a workflow file issue":
+CI was expected to provide the first real compile. It does not run at all:
+every workflow run in this repository — on `main`, going back well before this
+branch — completes in seconds with `total_count: 0` jobs.
+
+**Root cause: `.github/workflows/ci.yml` is not valid YAML.** Actions reports
 
 ```
-run 30244736301  branch=arena/019fa238-roco-ai   jobs=0
-run 30241315719  branch=main                     jobs=0
-run 30219377439  branch=main                     jobs=0
-run 30214431994  branch=main                     jobs=0
-...
+Invalid workflow file — You have an error in your yaml syntax on line 56
 ```
 
-`.github/workflows/ci.yml` was **not** modified here, and the failures predate
-this branch, so this is pre-existing repository infrastructure rather than a
-consequence of these changes. Two candidate causes worth checking:
+Line 56 is an unquoted scalar containing `": "`:
 
-1. `test-core` references `-p roco-agent-core -p roco-agent-story`, which are
-   **not workspace members** (`Cargo.toml` lists `crates/agent` as
-   `roco-agent`). That job would fail, but it would not prevent jobs from
-   being created.
-2. More likely: an org/repo-level Actions restriction, or the
-   `actions-rust-lang/setup-rust-toolchain` action not being on the allowed
-   list — consistent with zero jobs ever being scheduled. (The API returns
-   403 `Resource not accessible by integration` for the Actions-permissions
-   endpoint, so this could not be verified from here.)
+```yaml
+      - name: Install system deps (egui: libgl, libxcb, …)
+```
 
-Until that is resolved, the local reference-implementation results above are
-the strongest available evidence, and a maintainer should run cargo directly.
+The `egui: ` is parsed as the start of a nested mapping in a scalar context —
+a hard parse error (`mapping values are not allowed here`, line 56 column 40).
+Every other multi-word `name:` in the file is quoted; this one is not. Because
+the file never parses, **no jobs are ever created**, which is why the run
+"fails" instantly with an empty job list and no logs to inspect.
+
+#### The fix (two lines)
+
+1. Quote line 56:
+
+   ```yaml
+   - name: "Install system deps (egui: libgl, libxcb, …)"
+   ```
+
+2. Then `test-core` will start running — and immediately fail, because it
+   names packages that do not exist:
+
+   ```yaml
+   run: cargo test -p roco-agent-core -p roco-agent-story -p roco-engine
+   ```
+
+   Neither `roco-agent-core` nor `roco-agent-story` is a workspace member; the
+   agent crate is a single `roco-agent`. Suggested replacement, which also
+   covers the crates this branch touches:
+
+   ```yaml
+   - name: "cargo test — agent + engine + app + infer-client + cli"
+     env:
+       ROCO_USE_MOCK_BACKEND: "1"
+     run: |
+       cargo test --no-fail-fast \
+         -p roco-agent -p roco-engine -p roco-app \
+         -p roco-infer-client -p roco-cli
+   ```
+
+Both changes are prepared and verified locally (the corrected file parses, and
+all 7 jobs materialise), but **could not be pushed**: the GitHub App backing
+this session lacks the `workflows` permission —
+
+```
+refusing to allow a GitHub App to create or update workflow
+`.github/workflows/ci.yml` without `workflows` permission
+```
+
+So a maintainer needs to apply them. Until then the local
+reference-implementation results above are the strongest available evidence,
+and cargo should be run directly.
 
 Roughly 90 tests were added across the touched crates. Notable regression
 guards:
