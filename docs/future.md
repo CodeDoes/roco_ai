@@ -37,13 +37,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ---
 
-### 9. Decouple the gateway's daemon lifecycle from the CLI
-**Rationale:** `roco gateway start` manages daemon lifecycle (start inferd, health-check, restart on crash). This logic lives in the CLI binary, making it impossible to use the gateway as a library without daemon-management side effects.
-
-**Approach:**
-- Extract `DaemonManager` into its own crate (`roco-daemon` or within `roco-net`)
-- The CLI calls `DaemonManager::start("inferd", args)` and `DaemonManager::start("gateway", args)`
-- Library users can opt out of daemon management entirely
+---
 
 ---
 

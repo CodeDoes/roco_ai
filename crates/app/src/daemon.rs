@@ -16,6 +16,27 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Manages background daemon lifecycle (start, stop, health-check).
+pub struct DaemonManager;
+
+impl DaemonManager {
+    /// Start a daemon by name ("inferd" or "gateway") with arguments.
+    pub fn start(name: &str, port: u16, extra_args: &[&str]) -> bool {
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("roco"));
+        ensure_daemon(&exe, name, port, extra_args)
+    }
+
+    /// Check if a daemon is running on the given port.
+    pub fn is_running(name: &str, port: u16) -> bool {
+        is_running(name, port)
+    }
+
+    /// Stop all running daemons (inferd + gateway).
+    pub fn stop_all() {
+        stop_all();
+    }
+}
+
 /// Detect if we're running from a Cargo workspace (development mode).
 ///
 /// Checks whether `current_exe()` lives under `target/debug/` or
@@ -750,6 +771,12 @@ mod tests {
         assert_eq!(GATEWAY_PORT, 18000);
         assert_eq!(INFERENCE_PORT, 18080);
         assert_eq!(GATEWAY_TARGET, "http://127.0.0.1:18080");
+    }
+
+    #[test]
+    fn test_daemon_manager_api() {
+        let is_running = DaemonManager::is_running("non_existent_daemon_xyz", 65534);
+        assert!(!is_running);
     }
 
     // ── Resource-leak regressions ────────────────────────────────────────
