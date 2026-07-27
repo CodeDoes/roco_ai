@@ -396,6 +396,20 @@ impl From<BlendReq> for ActorMessage {
 // the few-shot dialogue pattern.
 pub const FIM_SESSION_NAME: &str = "roco_fim";
 
+/// Stop-pattern strings encoded at init time from the loaded vocab.
+/// These guard against the model echoing FIM scaffolding or continuing
+/// a multi-turn dialogue in the prompt template.
+pub const STOP_PATTERNS: &[&str] = &[
+    "\n\n",
+    "User:",
+    "Human:",
+    "NOW",
+    "BEFORE:",
+    "AFTER:",
+    "INSERT:",
+    "User: NOW",
+];
+
 // ---------------------------------------------------------------------------
 // Actor
 // ---------------------------------------------------------------------------
@@ -417,6 +431,9 @@ pub struct RwkvActor {
     pub state_pool: HashMap<String, Option<TensorCpu<f32>>>,
     pub session_lru: VecDeque<String>,
     pub max_sessions: usize,
+    /// Token-ID sequences for stop-pattern matching, encoded from the vocab
+    /// at init time so they reflect the actual tokenizer vocabulary.
+    pub stop_token_sequences: Vec<Vec<u32>>,
 }
 
 impl RwkvActor {
@@ -775,6 +792,10 @@ impl RwkvActor {
             quant_cache_dir
         );
 
+        let stop_token_sequences: Vec<Vec<u32>> = STOP_PATTERNS
+            .iter()
+            .filter_map(|s| tokenizer.encode(s.as_bytes()).ok())
+            .collect();
         Ok(Self {
             context,
             runtime,
@@ -787,6 +808,7 @@ impl RwkvActor {
             state_pool: HashMap::new(),
             session_lru: VecDeque::new(),
             max_sessions: 8,
+            stop_token_sequences,
         })
     }
 
@@ -854,6 +876,32 @@ impl RwkvActor {
         );
 
         Ok(())
+    }
+
+    /// Check whether appending `current` to `history` would complete any
+    /// vocab-encoded stop sequence. Returns `true` if a stop pattern was
+    /// detected.
+    pub fn matches_stop_sequence(&self, history: &[u32], current: u32) -> bool {
+        if self.stop_token_sequences.is_empty() {
+            return false;
+        }
+        for seq in &self.stop_token_sequences {
+            if seq.is_empty() {
+                continue;
+            }
+            if seq[seq.len() - 1] != current {
+                continue;
+            }
+            let needed = seq.len() - 1;
+            if history.len() < needed {
+                continue;
+            }
+            let start = history.len() - needed;
+            if history[start..] == seq[..needed] {
+                return true;
+            }
+        }
+        false
     }
 
     pub async fn handle_complete(
@@ -1110,21 +1158,10 @@ impl RwkvActor {
                     cb(&word);
                 }
 
-                // Stop conditions - catch FIM template pattern variations so the
-                // model doesn't echo the BEFORE/AFTER/INSERT scaffolding.
-                let potential_text = format!("{}{}", text, word);
-                let is_stop = word == "\n\n"
-                    || word.trim() == "User:"
-                    || word.trim() == "Human:"
-                    || word.trim() == "NOW"
-                    || word.trim_start().starts_with("BEFORE:")
-                    || word.trim_start().starts_with("AFTER:")
-                    || word.trim_start().starts_with("INSERT:")
-                    || potential_text.contains("User: NOW")
-                    || potential_text.contains("BEFORE:")
-                    || potential_text.contains("AFTER:")
-                    || potential_text.contains("INSERT:");
-                if is_stop {
+                // Stop conditions — check vocab-encoded token sequences so
+                // the model doesn't echo FIM scaffolding or continue a
+                // multi-turn dialogue in the prompt template.
+                if token == 10 || self.matches_stop_sequence(&generated, token) {
                     break;
                 }
 
@@ -1135,11 +1172,7 @@ impl RwkvActor {
                 inference.batches[0].push(token);
 
                 // If the generated span picked up template markers, stop now.
-                if text.contains("User: NOW")
-                    || text.contains("BEFORE:")
-                    || text.contains("AFTER:")
-                    || text.contains("INSERT:")
-                {
+                if self.matches_stop_sequence(&generated, token) {
                     break;
                 }
             }
@@ -1267,19 +1300,7 @@ impl RwkvActor {
                 // first) or the model echoes the FIM template and loops. This is
                 // the guard that keeps a resumed/baked FIM session from repeating
                 // the BEFORE/AFTER/INSERT scaffolding.
-                let potential_text = format!("{}{}", text, word);
-                let is_stop = word == "\n\n"
-                    || word.trim() == "User:"
-                    || word.trim() == "Human:"
-                    || word.trim() == "NOW"
-                    || word.trim_start().starts_with("BEFORE:")
-                    || word.trim_start().starts_with("AFTER:")
-                    || word.trim_start().starts_with("INSERT:")
-                    || potential_text.contains("User: NOW")
-                    || potential_text.contains("BEFORE:")
-                    || potential_text.contains("AFTER:")
-                    || potential_text.contains("INSERT:");
-                if is_stop {
+                if token == 10 || self.matches_stop_sequence(&generated, token) {
                     // Don't append the stop marker to the output.
                     break;
                 }
@@ -1297,10 +1318,7 @@ impl RwkvActor {
                     if fim_tokens_generated >= 8 {
                         // Check if we've hit a natural stopping point (sentence end)
                         // OR if we detect the FIM template pattern looping
-                        let is_template_loop = text.contains("User: NOW")
-                            || text.contains("BEFORE:")
-                            || text.contains("AFTER:")
-                            || text.contains("INSERT:");
+                        let is_template_loop = self.matches_stop_sequence(&generated, token);
                         let should_force_end = fim_tokens_generated >= 64
                             || word.ends_with('.')
                             || word.ends_with('?')
