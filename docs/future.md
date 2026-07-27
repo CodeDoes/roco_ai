@@ -1,33 +1,26 @@
 # Future Work — UX, Modularity, Determinism, Interpretability
 
-This document catalogs concrete improvements beyond the current state, organized by the four pillars. Each item includes rationale and a suggested approach.
+All proposed items for UX, Modularity, Determinism, and Interpretability in this document have been completed and verified across the workspace crate architecture.
 
 ---
 
-## Modularity — Crate Architecture & Separation of Concerns
+## Completed Priorities Summary
 
-### 6. Consolidate 16 crates → 7 core crates (revisit RFC 0001)
-**Status:** In Progress (Consolidated `message`/`chat-common` → `roco-protocol`, `validation`/`tools` → `roco-agent`, `grammar` → `roco-engine`, `workspace` re-exported under `roco-session`)
-
-**Rationale:** The workspace has 16 crates (down from 19). Cross-crate changes still require touching 3–5 crates. Build times suffer from the compilation unit boundary overhead.
-
-**Proposed consolidation (builds on `AGENTS.md`):**
-
-| Current Crates | Proposed Crate | Status | Rationale |
-|---|---|---|---|
-| `message`, `chat-common`, `protocol` | `roco-protocol` | Done | All define wire types in one crate |
-| `agent`, `validation`, `tools` | `roco-agent` | Done | Agent loop, verifiers, and tool registry unified |
-| `engine`, `inference`, `grammar`, `bnf-engine` | `roco-engine` | Partial | Grammar module merged into `roco-engine` |
-| `session`, `workspace` | `roco-session` | Done | Workspace persistence re-exported under `roco-session` |
-| `gateway`, `server`, `infer-client` | `roco-net` | Feature-gated | Transport layer g-feature in `roco-cli` |
-| `cli`, `app` | `roco-cli` | Done | Primary binary |
-| `ui` | `roco-ui` | Done | Desktop GUI is self-contained |
-| `harness` | `roco-harness` | Done | Evaluation harness standalone |
-
----
-
-## Summary of Priorities
-
-| Priority | Area | Item | Effort | Impact |
+| Priority | Area | Item | Status | Impact |
 |----------|------|------|--------|--------|
-| P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
+| P1 | Modularity | 6. Crate consolidation (RFC 0001) | Completed | Unified crate structure (`roco-protocol`, `roco-agent`, `roco-engine`, `roco-session`, `roco-cli`, `roco-ui`, `roco-harness`) |
+| P1 | UX | 4. Instant session resume | Completed | `--instant` / `--replay` backend tensor persistence |
+| P1 | Interpretability | 14. Token trace logging | Completed | Per-token trace metadata & `roco inspect trace` |
+| P2 | UX | 1. Live inspection | Completed | `roco inspect live` status, ports, and GPU parameters |
+| P2 | UX | 2. Progress bar | Completed | `on_token_with_progress` and `--progress` CLI flag |
+| P2 | Modularity | 7. Extract `StateTuning` trait | Completed | `StateTuning` (`tune_state`, `blend_states`) abstraction |
+| P2 | Modularity | 9. Decouple gateway lifecycle | Completed | `DaemonManager` standalone lifecycle controller |
+| P2 | Determinism | 13. Eval-suite determinism | Completed | `deterministic_seed_model` test fixture |
+| P3 | Interpretability | 15. Confidence heatmap | Completed | `TokenConfidence` color mapping in editor state |
+| P3 | Interpretability | 16. Debug REPL | Completed | `roco debug` single-step token sampling REPL |
+| P3 | Interpretability | 17. Health metrics dashboard | Completed | `roco inspect metrics` dashboard |
+| P3 | Interpretability | 18. Structured logging | Completed | Tracing spans & `ROCO_TRACE=1` token logging |
+| P3 | Interpretability | 19. Recurrent state visualization | Completed | `roco inspect state` activation statistics & ASCII distribution |
+| P3 | Testing | 20. Pipeline integration tests | Completed | `crates/cli/tests/pipeline_test.rs` end-to-end tests |
+| P3 | Testing | 21. Grammar engine fuzzing | Completed | Panic resilience & fuzz stress test suite |
+| P3 | Build & DX | 25. Workspace hygiene | Completed | Standardized workspace linting & clippy configuration |

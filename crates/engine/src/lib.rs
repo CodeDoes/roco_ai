@@ -5,6 +5,7 @@
 //! flow through the pipeline, and the eval suite for benchmarking backends.
 
 pub mod backend;
+pub mod bnf_engine;
 pub mod cache;
 pub mod cases;
 pub mod eval;
@@ -14,6 +15,7 @@ pub mod types;
 pub mod util;
 
 pub use backend::*;
+pub use bnf_engine::*;
 pub use cache::*;
 pub use cases::*;
 pub use eval::*;
