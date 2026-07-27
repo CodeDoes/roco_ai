@@ -341,7 +341,7 @@ pub struct CompleteReq {
     /// Opaque grammar constraint callback, created outside this crate
     /// so grammar-engine types never enter this compilation unit.
     pub bnf_mask: Option<Box<dyn BnfMask>>,
-    pub reply: oneshot::Sender<Result<(String, TokenUsage), EngineError>>,
+    pub reply: oneshot::Sender<Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError>>,
     pub preserve_state: bool,
     pub on_token: roco_engine::OnToken,
     pub session: Option<String>,
@@ -352,6 +352,8 @@ pub struct CompleteReq {
     /// When `Some(seed)`, the RNG is seeded deterministically.
     /// When `None`, uses non-deterministic `fastrand` (default).
     pub seed: Option<u64>,
+    /// Record per-token sampling metadata for trace logging.
+    pub record_trace: bool,
 }
 
 pub struct BlendReq {
@@ -930,6 +932,7 @@ impl RwkvActor {
             session,
             mut bnf_mask,
             seed,
+            record_trace,
             reply,
             ..
         } = req;
@@ -939,7 +942,7 @@ impl RwkvActor {
         // to avoid move issues inside the async block.
         let mut seeded_rng: Option<StdRng> = seed.map(StdRng::seed_from_u64);
 
-        let outcome: Result<(String, TokenUsage), EngineError> = async {
+        let outcome: Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError> = async {
             let session_id = session.as_ref().cloned();
             let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
 
@@ -1033,6 +1036,7 @@ impl RwkvActor {
             let mut text = String::new();
             let mut first_token_sampled = false;
             let mut tokens_generated: usize = 0;
+            let mut token_traces: Vec<roco_engine::TokenTrace> = Vec::new();
 
             // Flush prompt + sample first token
             //
@@ -1062,6 +1066,7 @@ impl RwkvActor {
                             prompt_tokens: total_prompt_len,
                             completion_tokens: generated.len(),
                         },
+                        token_traces,
                     ));
                 }
                 let input = inference.clone();
@@ -1165,6 +1170,20 @@ impl RwkvActor {
                     break;
                 }
 
+                if record_trace {
+                    let prob = probs.data().get(token as usize).copied().unwrap_or(0.0);
+                    let is_masked = bnf_mask.is_some();
+                    token_traces.push(roco_engine::TokenTrace {
+                        token_id: token,
+                        token_str: word.clone(),
+                        probability: prob,
+                        temperature,
+                        top_p_cut: top_p,
+                        grammar_masked: is_masked,
+                        selected_by_grammar: is_masked,
+                    });
+                }
+
                 text.push_str(&word);
                 generated.push(token);
                 tokens_generated += 1;
@@ -1195,6 +1214,7 @@ impl RwkvActor {
                         prompt_tokens: prompt_len,
                         completion_tokens: 0,
                     },
+                    token_traces,
                 ));
             }
 
@@ -1305,6 +1325,20 @@ impl RwkvActor {
                     break;
                 }
 
+                if record_trace {
+                    let prob = probs.data().get(token as usize).copied().unwrap_or(0.0);
+                    let is_masked = bnf_mask.is_some();
+                    token_traces.push(roco_engine::TokenTrace {
+                        token_id: token,
+                        token_str: word.clone(),
+                        probability: prob,
+                        temperature,
+                        top_p_cut: top_p,
+                        grammar_masked: is_masked,
+                        selected_by_grammar: is_masked,
+                    });
+                }
+
                 text.push_str(&word);
                 generated.push(token);
                 inference.batches[0] = RnnInputBatch::new(vec![token], RnnOption::Last);
@@ -1383,6 +1417,7 @@ impl RwkvActor {
                     prompt_tokens: prompt_len,
                     completion_tokens: generated.len(),
                 },
+                token_traces,
             ))
         }
         .await;

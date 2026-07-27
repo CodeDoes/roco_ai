@@ -544,6 +544,11 @@ async fn remote_complete(
         "Remote completion finished"
     );
 
+    let trace: Vec<roco_engine::TokenTrace> = value
+        .get("trace")
+        .and_then(|t| serde_json::from_value(t.clone()).ok())
+        .unwrap_or_default();
+
     Ok(CompletionResponse {
         text,
         usage: TokenUsage {
@@ -552,7 +557,7 @@ async fn remote_complete(
         },
         parsed: None,
         think_trace: None,
-        trace: Vec::new(),
+        trace,
     })
 }
 

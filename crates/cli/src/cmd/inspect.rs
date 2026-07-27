@@ -4,7 +4,7 @@
 //! and generation parameters. Useful for debugging determinism, understanding
 //! why the model produced a specific output, and verifying state management.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Run the inspect command.
 ///
@@ -34,6 +34,9 @@ pub fn cmd_inspect(extra: &[&str]) {
         }
         "seed" | "determinism" => {
             inspect_seed_info();
+        }
+        "trace" | "traces" => {
+            inspect_trace(workspace_dir, extra, json_mode);
         }
         _ => {
             if !json_mode {
@@ -284,6 +287,77 @@ fn inspect_seed_info() {
     println!();
     println!("    Example: --data '{{\"prompt\":\"hello\",\"seed\":42,\"temperature\":0.8}}'");
     println!("    Environment: RWKV_DETERMINISTIC_SEED (optional)");
+}
+
+fn inspect_trace(workspace_dir: &Path, extra: &[&str], json_mode: bool) {
+    let session_id = extra
+        .iter()
+        .skip_while(|&&a| a != "--session")
+        .nth(1)
+        .copied();
+
+    let sessions_dir = workspace_dir.join("sessions");
+    if !sessions_dir.exists() {
+        if json_mode {
+            println!("{}", serde_json::json!({ "error": "No sessions found" }));
+        } else {
+            println!("No sessions found in .roco/sessions/");
+        }
+        return;
+    }
+
+    let mut session_file: Option<PathBuf> = None;
+    if let Some(sid) = session_id {
+        let p = sessions_dir.join(format!("{sid}.json"));
+        if p.exists() {
+            session_file = Some(p);
+        }
+    }
+
+    if session_file.is_none() {
+        if let Ok(entries) = std::fs::read_dir(&sessions_dir) {
+            let mut files: Vec<(PathBuf, std::time::SystemTime)> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("json"))
+                .filter_map(|p| {
+                    let mtime = std::fs::metadata(&p).ok()?.modified().ok()?;
+                    Some((p, mtime))
+                })
+                .collect();
+            files.sort_by_key(|f| f.1);
+            if let Some(last) = files.last() {
+                session_file = Some(last.0.clone());
+            }
+        }
+    }
+
+    let file_path = match session_file {
+        Some(p) => p,
+        None => {
+            if json_mode {
+                println!("{}", serde_json::json!({ "error": "No session json file found" }));
+            } else {
+                println!("No session transcript found in .roco/sessions/");
+            }
+            return;
+        }
+    };
+
+    if let Ok(content) = std::fs::read_to_string(&file_path) {
+        if json_mode {
+            let parsed: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
+            println!("{}", serde_json::to_string_pretty(&parsed).unwrap_or_default());
+        } else {
+            println!("================================================================");
+            println!("  RoCo AI — Token Trace Inspection");
+            println!("================================================================");
+            println!("  Session File: {}", file_path.display());
+            println!("----------------------------------------------------------------");
+            println!("{}", content);
+            println!("================================================================");
+        }
+    }
 }
 
 /// Get the default profile path (same as identity::UserProfile::default_path).

@@ -65,15 +65,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ## Interpretability — Understanding What the Model Is Doing
 
-### 14. Token-level trace logging
-**Rationale:** When a generation goes wrong (repeats, hallucinates, goes off-topic), there's no way to see what tokens were sampled, what the probabilities were, or where the grammar intervened.
-
-**Approach:**
-- Add a `token_trace: Vec<TokenTrace>` field to `CompletionResponse`
-- `TokenTrace` contains: `token_id`, `token_str`, `probability`, `temperature`, `top_p_cut`, `grammar_masked: bool`, `selected_by_grammar: bool`
-- Enable with `CompletionRequest::record_trace(true)` or `--trace` CLI flag
-- Display via `roco inspect trace --session <id> --last` or a new `roco trace` subcommand
-- Conditional compilation (`#[cfg(feature = "trace")]`) so release builds don't pay the memory cost
+---
 
 ### 15. Token probability heatmap in the TUI/GUI
 **Rationale:** The desktop GUI (`crates/ui`) has no way to show uncertainty. Users see the final text but not the model's confidence.
@@ -183,7 +175,6 @@ This document catalogs concrete improvements beyond the current state, organized
 | Priority | Area | Item | Effort | Impact |
 |----------|------|------|--------|--------|
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
-| P1 | Interpretability | 14. Token trace logging | 2 days | Medium — enables debugging bad generations |
 | P2 | UX | 2. Progress bar | 1 day | Medium — better feedback for long gen |
 | P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |
 | P3 | Testing | 21. Fuzz grammar engine | 2 days | Low — security hardening |

@@ -232,6 +232,7 @@ impl ModelBackend for RwkvBackend {
                             .ok()
                             .and_then(|s| s.parse::<u64>().ok())
                     }),
+                    record_trace: req.record_trace,
                 }
                 .into(),
             )
@@ -248,7 +249,7 @@ impl ModelBackend for RwkvBackend {
             } else {
                 self.default_deadline_ms
             };
-            let (text, usage) = if effective_deadline_ms > 0 {
+            let (text, usage, trace) = if effective_deadline_ms > 0 {
                 let timeout = tokio::time::Duration::from_millis(effective_deadline_ms);
                 match tokio::time::timeout(timeout, reply_rx).await {
                     Ok(Ok(inner)) => {
@@ -273,6 +274,7 @@ impl ModelBackend for RwkvBackend {
 
             info!(ms = started.elapsed().as_millis(), prompt_tokens = usage.prompt_tokens,
                 completion_tokens = usage.completion_tokens,
+                trace_len = trace.len(),
                 snippet = %text.chars().take(200).collect::<String>(), "rwkv complete");
 
             let parsed = serde_json::from_str(&text).ok();
@@ -281,7 +283,7 @@ impl ModelBackend for RwkvBackend {
                 usage,
                 parsed,
                 think_trace: None,
-                trace: Vec::new(),
+                trace,
             })
         })
     }
@@ -386,6 +388,7 @@ impl StateTuning for RwkvBackend {
                         session: Some(session_id.clone()),
                         deadline_ms: 60000,
                         seed: None,
+                        record_trace: false,
                     }
                     .into(),
                 )

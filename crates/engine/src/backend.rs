@@ -404,6 +404,20 @@ impl ModelBackend for MockBackend {
                 (result_text, None)
             };
 
+            let trace = if req.record_trace {
+                vec![TokenTrace {
+                    token_id: 42,
+                    token_str: "mock".into(),
+                    probability: 0.95,
+                    temperature: req.temperature,
+                    top_p_cut: 0.9,
+                    grammar_masked: req.grammar.is_some(),
+                    selected_by_grammar: req.grammar.is_some(),
+                }]
+            } else {
+                Vec::new()
+            };
+
             Ok(CompletionResponse {
                 text: final_text,
                 usage: TokenUsage {
@@ -412,7 +426,7 @@ impl ModelBackend for MockBackend {
                 },
                 parsed,
                 think_trace,
-                trace: Vec::new(),
+                trace,
             })
         })
     }

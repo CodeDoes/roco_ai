@@ -543,3 +543,24 @@ async fn think_trace_extraction() {
         resp.text
     );
 }
+
+#[tokio::test]
+async fn record_trace_token_metadata() {
+    let backend = MockBackend::default();
+
+    // Without record_trace
+    let req = CompletionRequest::new("sys", "no trace");
+    let resp = backend.complete(req).await.unwrap();
+    assert!(resp.trace.is_empty());
+
+    // With record_trace
+    let req_trace = CompletionRequest::builder()
+        .system("sys")
+        .prompt("trace test")
+        .record_trace(true)
+        .build();
+    let resp_trace = backend.complete(req_trace).await.unwrap();
+    assert!(!resp_trace.trace.is_empty());
+    assert_eq!(resp_trace.trace[0].token_str, "mock");
+    assert_eq!(resp_trace.trace[0].probability, 0.95);
+}
