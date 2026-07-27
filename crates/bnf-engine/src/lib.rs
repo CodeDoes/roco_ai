@@ -94,8 +94,20 @@ impl BnfEngine {
         let vocab_obj = Vocabulary::new(id_to_token, id_to_token_string)
             .map_err(|e| BnfError::Vocab(format!("{e:?}")))?;
 
-        let mut engine = Engine::with_config(grammar, vocab_obj, config)
-            .map_err(|e| BnfError::Init(format!("{e:?}")))?;
+        let engine_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Engine::with_config(grammar, vocab_obj, config)
+        }));
+        let mut engine = match engine_res {
+            Ok(Ok(eng)) => eng,
+            Ok(Err(e)) => return Err(BnfError::Init(format!("{e:?}"))),
+            Err(p) => {
+                let msg = p
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .unwrap_or("kbnf syntax parser panic");
+                return Err(BnfError::Init(format!("malformed grammar: {msg}")));
+            }
+        };
         // kbnf initializes Earley sets in reset() but does NOT populate
         // `allowed_token_ids` — we must do that before the first mask_logits.
         engine.compute_allowed_token_ids();

@@ -82,15 +82,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ---
 
-### 21. Fuzz testing for the grammar engine
-**Rationale:** The bnf-engine/kbnf grammar parser is complex. Malformed grammars could panic or hang.
-
-**Approach:**
-- Add `cargo fuzz` targets for:
-  - Parsing random GBNF strings (ensure no crash)
-  - Masking random logits with random grammar states (ensure no panic)
-  - Accepting random token sequences (ensure no infinite loop)
-- Run in CI with a short timeout
+---
 
 
 ---
@@ -114,4 +106,3 @@ This document catalogs concrete improvements beyond the current state, organized
 |----------|------|------|--------|--------|
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
 | P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |
-| P3 | Testing | 21. Fuzz grammar engine | 2 days | Low — security hardening |
