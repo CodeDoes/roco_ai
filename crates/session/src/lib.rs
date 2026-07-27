@@ -47,6 +47,9 @@ pub mod pool;
 pub mod store;
 pub mod types;
 
+/// Unified workspace persistence re-export (towards `roco-store` consolidation).
+pub use roco_workspace as workspace;
+
 pub use pool::{LruSessionPool, SessionPool};
 pub use store::{SessionError, SessionHandle, SessionStore};
 pub use types::*;

@@ -4643,6 +4643,7 @@ version = "0.1.0"
 dependencies = [
  "parking_lot",
  "roco-engine",
+ "roco-workspace",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
