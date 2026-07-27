@@ -160,7 +160,7 @@ pub struct MechanisticOutcome {
 /// purely in code. All file writes go through the workspace — the
 /// model never touches the real filesystem.
 pub type HandlerFn =
-    Box<dyn Fn(&Task, &dyn ModelBackend, &Workspace) -> HandlerResult + Send + Sync>;
+    Box<dyn Fn(&Task, &dyn ModelBackend, &Workspace) -> Result<HandlerResult, AgentError> + Send + Sync>;
 
 /// The mechanistic agent — code-driven controller + router.
 ///
@@ -179,11 +179,12 @@ pub type HandlerFn =
 ///     let title = task.spec.get("title").and_then(|v| v.as_str()).unwrap_or("Chapter");
 ///     let path = ws.resolve("CHAPTER.md").unwrap();
 ///     std::fs::write(&path, format!("# {}\n\nContent.", title)).ok();
-///     HandlerResult {
+///     Ok(HandlerResult {
 ///         task: task.clone(),
 ///         output: format!("written: {}", title),
 ///         files: HashMap::new(),  // populated at commit
-///     }
+///         pass: true,
+///     })
 /// }));
 ///
 /// let outcome = agent.run("Write a story about a dragon").unwrap();
@@ -502,7 +503,7 @@ impl MechanisticAgent {
                 task.r#type, task.domain
             ))
         })?;
-        Ok(handler(task, _backend, ws))
+        handler(task, _backend, ws)
     }
 
     /// Phase 3: dispatch each task to its registered handler.
@@ -521,7 +522,7 @@ impl MechanisticAgent {
                     task.r#type, task.domain
                 ))
             })?;
-            let result = handler(task, _backend, ws);
+            let result = handler(task, _backend, ws)?;
             results.push(result);
         }
         Ok(results)
@@ -649,12 +650,12 @@ mod tests {
             Box::new(|task, _backend, ws| {
                 let path = ws.resolve("CHAPTER.md").unwrap();
                 std::fs::write(&path, "# Title\n\nContent.").ok();
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: "written".to_string(),
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -728,12 +729,12 @@ mod tests {
                     .unwrap_or("Ch");
                 let path = ws.resolve("CHAPTER.md").unwrap();
                 std::fs::write(&path, format!("# {title}\n\nContent.")).ok();
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: format!("written: {title}"),
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
@@ -783,12 +784,12 @@ mod tests {
                     .unwrap_or_else(|_| "[generated]".to_string());
                 let path = ws.resolve("OUTPUT.md").unwrap();
                 std::fs::write(&path, &resp).ok();
-                HandlerResult {
+                Ok(HandlerResult {
                     task: task.clone(),
                     output: resp,
                     files: HashMap::new(),
                     pass: true,
-                }
+                })
             }),
         );
 
