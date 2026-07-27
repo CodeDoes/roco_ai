@@ -85,6 +85,7 @@ pub fn help(sub: Option<&str>) {
         Some("stats") | Some("review") => help_stats(),
         Some("inspect") => help_inspect(),
         Some("eval-suite") => help_eval_suite(),
+        Some("completions") => help_completions(),
         Some("whoami") => help_whoami(),
         Some("version") | Some("--version") => help_version(),
         _ => help_root(),
@@ -363,4 +364,104 @@ fn help_eval_suite() {
     eprintln!("  - Identity fast-path detection");
     eprintln!("  - Context budgeting\n");
     std::process::exit(0);
+}
+
+fn help_completions() {
+    eprintln!("roco completions — Generate shell completion script\n");
+    eprintln!("Usage:");
+    eprintln!("  roco completions bash             Generate bash completion script");
+    eprintln!("  roco completions zsh              Generate zsh completion script");
+    eprintln!("  roco completions fish             Generate fish completion script\n");
+    std::process::exit(0);
+}
+
+/// Compute Levenshtein distance between two strings.
+pub fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let mut costs = (0..=b.len()).collect::<Vec<_>>();
+    for (i, ca) in a.chars().enumerate() {
+        let mut last_cost = i;
+        costs[0] = i + 1;
+        for (j, cb) in b.chars().enumerate() {
+            let old_cost = costs[j + 1];
+            let cost = if ca == cb {
+                last_cost
+            } else {
+                1 + last_cost.min(costs[j]).min(costs[j + 1])
+            };
+            last_cost = old_cost;
+            costs[j + 1] = cost;
+        }
+    }
+    costs[b.len()]
+}
+
+/// Known top-level subcommands in `roco`.
+pub const KNOWN_SUBCOMMANDS: &[&str] = &[
+    "story", "interact", "code", "coder", "game", "html", "inspect", "eval", "eval-suite",
+    "gui", "pet", "stats", "review", "export", "whoami", "version", "inferd", "server",
+    "gateway", "gpu-check", "jobs", "reload", "stop", "rwkv", "grammar", "bless", "completions",
+];
+
+/// Find the closest matching subcommand for a given input if within distance 3.
+pub fn suggest_subcommand(input: &str) -> Option<&'static str> {
+    let mut best_match = None;
+    let mut min_dist = usize::MAX;
+    for &cmd in KNOWN_SUBCOMMANDS {
+        let dist = levenshtein_distance(input, cmd);
+        if dist < min_dist && dist <= 3 {
+            min_dist = dist;
+            best_match = Some(cmd);
+        }
+    }
+    best_match
+}
+
+/// Generate shell completion script for bash, zsh, or fish.
+pub fn generate_completions(shell: &str) {
+    let cmds = KNOWN_SUBCOMMANDS.join(" ");
+    match shell {
+        "zsh" => {
+            println!("#compdef roco");
+            println!("_roco() {{");
+            println!("    local -a commands");
+            println!("    commands=({})", KNOWN_SUBCOMMANDS.iter().map(|c| format!("'{}'", c)).collect::<Vec<_>>().join(" "));
+            println!("    _describe 'roco subcommand' commands");
+            println!("}}");
+            println!("compdef _roco roco");
+        }
+        "fish" => {
+            for cmd in KNOWN_SUBCOMMANDS {
+                println!("complete -c roco -n '__fish_use_subcommand' -a {}", cmd);
+            }
+        }
+        _ => {
+            // Default to bash
+            println!("_roco_completions() {{");
+            println!("    local cur=\"${{COMP_WORDS[COMP_CWORD]}}\"");
+            println!("    COMPREPLY=($(compgen -W \"{}\" -- \"$cur\"))", cmds);
+            println!("}}");
+            println!("complete -F _roco_completions roco");
+        }
+    }
+}
+
+#[cfg(test)]
+mod autocomplete_tests {
+    use super::*;
+
+    #[test]
+    fn test_levenshtein_distance() {
+        assert_eq!(levenshtein_distance("story", "story"), 0);
+        assert_eq!(levenshtein_distance("stori", "story"), 1);
+        assert_eq!(levenshtein_distance("exprot", "export"), 2);
+        assert_eq!(levenshtein_distance("foo", "bar"), 3);
+    }
+
+    #[test]
+    fn test_suggest_subcommand() {
+        assert_eq!(suggest_subcommand("stori"), Some("story"));
+        assert_eq!(suggest_subcommand("interac"), Some("interact"));
+        assert_eq!(suggest_subcommand("exprot"), Some("export"));
+        assert_eq!(suggest_subcommand("completely_unknown_long_str"), None);
+    }
 }

@@ -359,6 +359,16 @@ fn main() {
             cmd::eval_suite::cmd_eval_suite(&extra);
         }
 
+        // ── Shell Completions ────────────────────────────────────────────
+        "completions" => {
+            if has_help_flag(&extra) {
+                help(Some("completions"));
+            }
+            let shell = extra.first().copied().unwrap_or("bash");
+            roco_cli::generate_completions(shell);
+            std::process::exit(0);
+        }
+
         // ── Identity ─────────────────────────────────────────────────────
         "whoami" | "who-am-i" => {
             if has_help_flag(&extra) {
@@ -384,6 +394,10 @@ fn main() {
             // If the user typed something like "roco unknown --help", show help.
             if has_help_flag(&extra) {
                 help(None);
+            }
+            // Check if user mistyped a known subcommand and suggest the closest match
+            if let Some(suggestion) = roco_cli::suggest_subcommand(sub) {
+                eprintln!("Note: Unknown subcommand '{sub}'. Did you mean 'roco {suggestion}'?\n");
             }
             // Unknown subcommand → route through mode router with that text as prompt.
             let mut args_with_prompt = vec![sub];

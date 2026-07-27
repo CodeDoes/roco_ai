@@ -26,14 +26,6 @@ This document catalogs concrete improvements beyond the current state, organized
 - During generation: show `Generating [tok/s] | tokens: N/M | est. remaining: Xs`
 - The actor thread already reports `tokens generated` — pipe this through a channel to the UI thread, or poll periodically via a new `ActorMessage::Progress` message
 
-### 3. Command autocomplete and suggestions
-**Rationale:** Users type `roco story` but forget the subcommand syntax. The help text lists everything but requires scrolling back.
-
-**Approach:**
-- Integrate `clap_complete` to generate shell completions for bash/zsh/fish
-- On unknown subcommand, suggest the closest match (Levenshtein distance against known commands)
-- `roco` with no args shows a brief usage hint rather than just launching interact mode
-
 ### 4. Session resume without replay
 **Rationale:** `roco interact --resume <session>` currently replays the entire transcript through the model to rebuild the recurrent state. For long sessions this costs minutes of wall time.
 
@@ -101,14 +93,6 @@ pub trait StateTuning: ModelBackend {
 ---
 
 ## Determinism — Reproducible & Predictable Behaviour
-
-### 12. Deterministic state serialization
-**Rationale:** `SaveState`/`LoadState` currently serializes the GPU recurrent state as raw bytes. These bytes may differ across GPU drivers or `web-rwkv` versions, making a saved state non-portable.
-
-**Approach:**
-- After saving state bytes, compute a BLAKE3 hash and store it alongside
-- On load, verify the hash matches (catch corruption early)
-- For cross-platform determinism: also save the model SHA256 + `web-rwkv` version string so the tool can warn "this state was saved from a different model/version"
 
 ### 13. Deterministic test fixtures for the eval suite
 **Rationale:** `roco eval-suite` runs deterministic checks but doesn't test model-level determinism (same seed → same output from the real backend).
@@ -223,14 +207,6 @@ pub trait StateTuning: ModelBackend {
 
 ## Build & Developer Experience
 
-
-### 24. Pre-compiled sccache cache for CI
-**Rationale:** CI builds from scratch every time (no sccache remote). A full build takes 15-25 minutes.
-
-**Approach:**
-- Configure sccache with an S3/GCS backend (or GH Actions cache)
-- Cache `target/` between CI runs using `Swatinem/rust-cache@v2`
-- Add a `ci-cache-cleanup` job that prunes stale entries weekly
 
 ### 25. Cargo workspace hygiene
 **Rationale:** Several crates have unused dependencies or mismatched feature flags.
