@@ -59,13 +59,41 @@ impl JournalLevel {
     }
 }
 
+/// Rotate the journal once it exceeds this size (8 MiB).
+///
+/// The journal is append-only and every `roco` invocation writes to it, so
+/// without rotation `.roco/agent-journal.md` grows without bound — a genuine
+/// storage leak on a machine used daily. Override with `$ROCO_JOURNAL_MAX_MB`.
+const DEFAULT_MAX_JOURNAL_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Longest single message written verbatim. Longer entries are truncated with
+/// an ellipsis, so one runaway prompt dump cannot add megabytes in a single
+/// call.
+const MAX_ENTRY_CHARS: usize = 4_000;
+
+/// Number of rotated journals kept (`agent-journal.md.1`).
+const ROTATION_KEEP: u32 = 1;
+
+fn max_journal_bytes() -> u64 {
+    std::env::var("ROCO_JOURNAL_MAX_MB")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|mb| *mb > 0)
+        .map(|mb| mb * 1024 * 1024)
+        .unwrap_or(DEFAULT_MAX_JOURNAL_BYTES)
+}
+
 /// Agent journal — appends structured entries to `.roco/agent-journal.md`.
 ///
-/// Thread-safe. Multiple components can log concurrently.
+/// Thread-safe. Multiple components can log concurrently. The file is rotated
+/// once it passes [`max_journal_bytes`] so it cannot grow indefinitely.
 pub struct AgentJournal {
-    #[allow(dead_code)]
     path: PathBuf,
     file: fs::File,
+    /// Bytes written since the last size check, to avoid `stat`-ing on every
+    /// entry (the journal is on the hot path of every CLI command).
+    since_check: u64,
+    max_bytes: u64,
 }
 
 impl AgentJournal {
@@ -77,15 +105,16 @@ impl AgentJournal {
 
     /// Open (or create) the agent journal at a specific path.
     pub fn open_at(path: PathBuf) -> Result<Self, String> {
+        Self::open_with_limit(path, max_journal_bytes())
+    }
+
+    /// Open with an explicit size limit (used by tests).
+    pub fn open_with_limit(path: PathBuf, max_bytes: u64) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("cannot create journal dir: {e}"))?;
         }
 
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| format!("cannot open journal: {e}"))?;
+        let file = Self::open_append(&path)?;
 
         // Write header if file is empty
         let meta = file
@@ -97,7 +126,20 @@ impl AgentJournal {
             writeln!(&file).ok();
         }
 
-        Ok(Self { path, file })
+        Ok(Self {
+            path,
+            file,
+            since_check: 0,
+            max_bytes: max_bytes.max(1),
+        })
+    }
+
+    fn open_append(path: &PathBuf) -> Result<fs::File, String> {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(|e| format!("cannot open journal: {e}"))
     }
 
     /// Write a timestamped entry to the journal.
@@ -105,13 +147,63 @@ impl AgentJournal {
         let now = Self::timestamp();
         let emoji = level.as_emoji();
         let level_name = format!("{:?}", level).to_uppercase();
+        let message = Self::truncate(message);
 
-        writeln!(
-            &self.file,
-            "## {now}\n\n{emoji} **{level_name}** ({domain}): {message}\n"
-        )
-        .ok();
+        let entry = format!("## {now}\n\n{emoji} **{level_name}** ({domain}): {message}\n\n");
+        if write!(&self.file, "{entry}").is_ok() {
+            self.since_check += entry.len() as u64;
+        }
         let _ = self.file.flush();
+
+        // Only stat once per ~64 KiB written.
+        if self.since_check >= 64 * 1024 {
+            self.since_check = 0;
+            self.rotate_if_needed();
+        }
+    }
+
+    /// Clamp an entry so a single call can't append megabytes.
+    fn truncate(message: &str) -> std::borrow::Cow<'_, str> {
+        if message.chars().count() <= MAX_ENTRY_CHARS {
+            return std::borrow::Cow::Borrowed(message);
+        }
+        let kept: String = message.chars().take(MAX_ENTRY_CHARS).collect();
+        std::borrow::Cow::Owned(format!("{kept}… [truncated]"))
+    }
+
+    /// Rename the journal aside and start a fresh one when it gets too big.
+    pub fn rotate_if_needed(&mut self) -> bool {
+        let too_big = self
+            .file
+            .metadata()
+            .map(|m| m.len() > self.max_bytes)
+            .unwrap_or(false);
+        if !too_big {
+            return false;
+        }
+
+        let rotated = self.path.with_extension("md.1");
+        // Best-effort: a failed rotation must never break logging.
+        let _ = fs::remove_file(&rotated);
+        if fs::rename(&self.path, &rotated).is_err() {
+            return false;
+        }
+        // Drop older generations beyond what we keep.
+        for n in (ROTATION_KEEP + 1)..(ROTATION_KEEP + 4) {
+            let _ = fs::remove_file(self.path.with_extension(format!("md.{n}")));
+        }
+
+        match Self::open_append(&self.path) {
+            Ok(file) => {
+                self.file = file;
+                let today = Self::today();
+                writeln!(&self.file, "# Agent Journal — {today}").ok();
+                writeln!(&self.file, "\n_(rotated; previous log: {})_\n", rotated.display()).ok();
+                let _ = self.file.flush();
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     // ── Convenience static methods ────────────────────────────────────
@@ -288,5 +380,81 @@ mod tests {
         assert_eq!(ts.len(), 8);
         assert_eq!(ts.chars().nth(2), Some(':'));
         assert_eq!(ts.chars().nth(5), Some(':'));
+    }
+
+    // ── Rotation (storage leak regression) ───────────────────────────────
+
+    #[test]
+    fn journal_rotates_instead_of_growing_forever() {
+        let dir = std::env::temp_dir().join("roco_journal_rotate_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rot.md");
+
+        // 4 KiB limit so the test is fast.
+        let mut journal = AgentJournal::open_with_limit(path.clone(), 4 * 1024).unwrap();
+        for i in 0..2_000 {
+            journal.log(JournalLevel::Info, "test", &format!("entry number {i}"));
+        }
+
+        let live = std::fs::metadata(&path).unwrap().len();
+        assert!(
+            live <= 4 * 1024 + 64 * 1024,
+            "journal grew unbounded: {live} bytes"
+        );
+        assert!(
+            path.with_extension("md.1").exists(),
+            "a rotated journal should exist"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_one_rotated_generation_is_kept() {
+        let dir = std::env::temp_dir().join("roco_journal_gen_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("gen.md");
+
+        let mut journal = AgentJournal::open_with_limit(path.clone(), 2 * 1024).unwrap();
+        for i in 0..5_000 {
+            journal.log(JournalLevel::Info, "test", &format!("e{i}"));
+        }
+
+        assert!(!path.with_extension("md.2").exists(), "no .2 generation");
+        assert!(!path.with_extension("md.3").exists(), "no .3 generation");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn oversized_entries_are_truncated() {
+        let huge = "x".repeat(MAX_ENTRY_CHARS * 5);
+        let out = AgentJournal::truncate(&huge);
+        assert!(out.chars().count() < MAX_ENTRY_CHARS + 32);
+        assert!(out.ends_with("[truncated]"));
+
+        // Short messages are borrowed untouched.
+        assert_eq!(AgentJournal::truncate("hi").as_ref(), "hi");
+    }
+
+    #[test]
+    fn multibyte_entries_truncate_on_char_boundaries() {
+        let huge = "é".repeat(MAX_ENTRY_CHARS * 2);
+        // Would panic if we sliced by bytes.
+        let out = AgentJournal::truncate(&huge);
+        assert!(out.ends_with("[truncated]"));
+    }
+
+    #[test]
+    fn max_journal_bytes_respects_the_env_override() {
+        std::env::set_var("ROCO_JOURNAL_MAX_MB", "3");
+        assert_eq!(max_journal_bytes(), 3 * 1024 * 1024);
+        std::env::set_var("ROCO_JOURNAL_MAX_MB", "not-a-number");
+        assert_eq!(max_journal_bytes(), DEFAULT_MAX_JOURNAL_BYTES);
+        std::env::set_var("ROCO_JOURNAL_MAX_MB", "0");
+        assert_eq!(max_journal_bytes(), DEFAULT_MAX_JOURNAL_BYTES);
+        std::env::remove_var("ROCO_JOURNAL_MAX_MB");
     }
 }

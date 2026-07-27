@@ -105,7 +105,9 @@ pub fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &PathBuf, pid_path
     // Marker so the child does not re-detach.
     child_args.push(format!("--_child-{subcmd}"));
 
-    // Append to existing log (don't truncate on re-start)
+    // Append to existing log (don't truncate on re-start), rotating first so
+    // it cannot grow without bound across many restarts.
+    rotate_log_if_needed(log_path);
     let log_file = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
@@ -130,18 +132,86 @@ pub fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &PathBuf, pid_path
     println!("roco {subcmd} started (PID {pid})");
     println!("  log:      {}", log_path.display());
     println!("  pidfile:  {}", pid_path.display());
-    std::mem::forget(child);
+
+    // Detach: dropping `Child` does NOT kill the process in Rust, it only
+    // releases our handle. The previous `std::mem::forget(child)` leaked the
+    // handle's allocation *and* the pipe file descriptors it owned for the
+    // rest of the parent's life, for no benefit.
+    drop(child);
 }
 
+/// Is a PID a live, non-zombie process?
+///
+/// `/proc/<pid>` exists for zombies too, so the old existence check reported a
+/// crashed daemon as "running" until someone reaped it — leaving `roco` stuck
+/// talking to a dead port and never restarting the daemon. We read the process
+/// state and treat `Z` (zombie) and `X` (dead) as not running.
 fn is_pid_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        std::path::Path::new(&format!("/proc/{}", pid)).exists()
+        let stat_path = format!("/proc/{pid}/stat");
+        let Ok(stat) = std::fs::read_to_string(&stat_path) else {
+            // No /proc entry at all → definitely gone.
+            return std::path::Path::new(&format!("/proc/{pid}")).exists();
+        };
+        // Format: `pid (comm) state ...`. `comm` may contain spaces and
+        // parentheses, so scan from the LAST ')'.
+        match stat.rfind(')') {
+            Some(i) => {
+                let state = stat[i + 1..].trim_start().chars().next();
+                !matches!(state, Some('Z') | Some('X') | Some('x'))
+            }
+            // Unparseable but present — assume alive rather than kill a daemon.
+            None => true,
+        }
     }
     #[cfg(not(unix))]
     {
+        let _ = pid;
         true
     }
+}
+
+/// Shared HTTP client for health probes.
+///
+/// `is_running` is called several times per CLI invocation, and each call used
+/// to build a brand-new `reqwest::Client`. Every client owns its own
+/// connection pool and DNS resolver, so nothing was ever reused and each probe
+/// opened a fresh socket. One process-wide client fixes both.
+fn health_client() -> Option<reqwest::Client> {
+    static CLIENT: std::sync::OnceLock<Option<reqwest::Client>> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(3))
+                .pool_idle_timeout(std::time::Duration::from_secs(30))
+                .pool_max_idle_per_host(2)
+                .build()
+                .ok()
+        })
+        .clone()
+}
+
+/// Cap for daemon log files (16 MiB), after which they are rotated.
+const MAX_DAEMON_LOG_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Rotate a daemon log if it has grown past [`MAX_DAEMON_LOG_BYTES`].
+///
+/// Daemon logs are opened in append mode and never truncated (deliberately —
+/// truncating on restart loses the crash that caused the restart). Without a
+/// cap they grow forever; a chatty inferd can produce hundreds of megabytes in
+/// `/tmp/roco/`. Called before each spawn, which is the only time it's safe to
+/// rename the file out from under a writer.
+fn rotate_log_if_needed(path: &std::path::Path) {
+    let too_big = std::fs::metadata(path)
+        .map(|m| m.len() > MAX_DAEMON_LOG_BYTES)
+        .unwrap_or(false);
+    if !too_big {
+        return;
+    }
+    let rotated = path.with_extension("log.1");
+    let _ = std::fs::remove_file(&rotated);
+    let _ = std::fs::rename(path, &rotated);
 }
 
 /// Check if a daemon is running via health endpoint or PID process check.
@@ -168,15 +238,12 @@ pub fn is_running(name: &str, port: u16) -> bool {
         Ok(rt) => rt,
         Err(_) => return true,
     };
-    
+
     // Process is alive. Require a successful health response within 3s.
     // A failing health check means it's either a different process that
     // reused the PID, or our daemon has crashed after the fork.
     let healthy = rt.block_on(async {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(3))
-            .build()
-            .ok()?;
+        let client = health_client()?;
         let resp = client.get(&url).send().await.ok()?;
         Some(resp.status().is_success())
     });
@@ -221,7 +288,8 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
         let log_file_path = log_path("inferd", port);
         let pid_file_path = pid_path("inferd");
         let _ = std::fs::remove_file(&pid_file_path);
-        // Append to existing log (don't truncate on re-start)
+        // Append to existing log (don't truncate on re-start), rotating first.
+        rotate_log_if_needed(&log_file_path);
     let log_file = match std::fs::OpenOptions::new()
         .append(true)
         .create(true)
@@ -299,7 +367,9 @@ pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]
     args.extend(extra_args.iter().map(|s| s.to_string()));
     args.push(format!("--port={}", port));
 
-    // stdout/stderr → log file (append, don't truncate on re-start)
+    // stdout/stderr → log file (append, don't truncate on re-start), rotating
+    // first so repeated restarts can't grow it without bound.
+    rotate_log_if_needed(&log_file_path);
     let log_file = match std::fs::OpenOptions::new()
         .append(true)
         .create(true)
@@ -489,7 +559,8 @@ pub fn run_gateway_with_auto_inference(host: &str, port: u16, target: &str, rate
     let log_path = log_path("gateway", port);
     let pid_path = pid_path("gateway");
 
-    // Redirect stdio (append, don't truncate on re-start)
+    // Redirect stdio (append, don't truncate on re-start), rotating first.
+    rotate_log_if_needed(&log_path);
     let log_file = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
@@ -711,6 +782,99 @@ mod tests {
         assert_eq!(GATEWAY_PORT, 18000);
         assert_eq!(INFERENCE_PORT, 18080);
         assert_eq!(GATEWAY_TARGET, "http://127.0.0.1:18080");
+    }
+
+    // ── Resource-leak regressions ────────────────────────────────────────
+
+    #[test]
+    fn health_client_is_built_once_and_reused() {
+        // Regression: `is_running` used to construct a brand-new
+        // `reqwest::Client` — and therefore a new connection pool and DNS
+        // resolver — on every probe, several times per CLI invocation.
+        //
+        // `health_client` memoises in a `OnceLock`, so repeated calls are
+        // cheap and share one pool. Assert both that it succeeds repeatedly
+        // and that it is genuinely memoised (many calls stay fast).
+        assert!(health_client().is_some());
+
+        let start = std::time::Instant::now();
+        for _ in 0..10_000 {
+            assert!(health_client().is_some());
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "health_client appears to rebuild each call: {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn daemon_log_rotates_past_the_cap() {
+        let dir = std::env::temp_dir().join("roco_daemon_log_rot");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("test.log");
+
+        // Under the cap → untouched.
+        std::fs::write(&log, b"small").unwrap();
+        rotate_log_if_needed(&log);
+        assert!(log.exists());
+        assert!(!log.with_extension("log.1").exists());
+
+        // Over the cap → rotated aside.
+        let big = vec![b'x'; (MAX_DAEMON_LOG_BYTES + 1) as usize];
+        std::fs::write(&log, &big).unwrap();
+        rotate_log_if_needed(&log);
+        assert!(
+            log.with_extension("log.1").exists(),
+            "oversized log should be rotated"
+        );
+        assert!(!log.exists(), "the live log is renamed away");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rotate_log_tolerates_a_missing_file() {
+        // Must not panic on the first-ever spawn.
+        rotate_log_if_needed(std::path::Path::new("/nonexistent/roco/none.log"));
+    }
+
+    #[test]
+    fn is_pid_alive_recognises_the_current_process() {
+        assert!(is_pid_alive(std::process::id()));
+    }
+
+    #[test]
+    fn is_pid_alive_rejects_an_unused_pid() {
+        // PID 0 is never a real user process on Linux.
+        assert!(!is_pid_alive(0));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_pid_alive_reports_zombies_as_dead() {
+        // Regression: `/proc/<pid>` exists for zombies, so the old existence
+        // check reported a crashed daemon as still running.
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("true")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn /bin/true");
+        let pid = child.id();
+
+        // Wait for it to exit without reaping it immediately.
+        std::thread::sleep(Duration::from_millis(250));
+
+        // It is now a zombie (we haven't called wait()).
+        let zombie_seen = !is_pid_alive(pid);
+
+        let _ = child.wait(); // reap
+        assert!(
+            zombie_seen,
+            "a zombie process must not be reported as running"
+        );
     }
 
     // ── TokioBackend deadlock regression tests ────────────────────────────────

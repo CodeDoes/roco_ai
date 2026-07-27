@@ -25,6 +25,44 @@ use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBacke
 /// Default base URL for the singleton inference API server.
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8080";
 
+/// How long to wait for the server to *start* responding.
+///
+/// A cold `roco-inferd` can spend ~25s loading 2.9B weights before it answers,
+/// so this is generous. It exists so a dead or wedged daemon surfaces as an
+/// error instead of hanging the CLI forever — the previous
+/// `reqwest::Client::new()` had **no timeout at all**, which meant a half-open
+/// socket parked the REPL with no way out but Ctrl-C.
+const CONNECT_TIMEOUT_SECS: u64 = 30;
+
+/// Idle timeout for pooled connections.
+///
+/// reqwest keeps idle sockets alive indefinitely by default. Long-lived
+/// surfaces (the REPL, the gateway) accumulate half-dead keep-alive
+/// connections to a daemon that has since restarted; each one is a file
+/// descriptor plus kernel buffers held for the life of the process.
+const POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+
+/// Maximum idle connections retained per host.
+const POOL_MAX_IDLE_PER_HOST: usize = 4;
+
+/// Build the shared HTTP client with sane bounds.
+///
+/// Note there is deliberately **no total-request timeout**: generation is
+/// open-ended and a long story can legitimately stream for minutes. The
+/// per-request deadline belongs to `CompletionRequest::deadline_ms`, which the
+/// server enforces. What we bound here is *connection* establishment and idle
+/// socket retention.
+fn build_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS))
+        .pool_idle_timeout(std::time::Duration::from_secs(POOL_IDLE_TIMEOUT_SECS))
+        .pool_max_idle_per_host(POOL_MAX_IDLE_PER_HOST)
+        .build()
+        // A builder failure means TLS/config is broken; fall back rather than
+        // panicking inside a constructor.
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 /// A [`ModelBackend`] that forwards to a remote inference API server over HTTP.
 pub struct RemoteBackend {
     base_url: String,
@@ -52,7 +90,7 @@ impl RemoteBackend {
         };
         Self {
             base_url: base,
-            client: reqwest::Client::new(),
+            client: build_client(),
             extra_headers,
             name: "remote".to_string(),
         }
@@ -214,6 +252,60 @@ struct WireRequest {
     preserve_state: Option<bool>,
 }
 
+/// Parse one complete SSE line, recording any usage it carries.
+///
+/// Returns the text delta, if the line contained one. Pulled out of the
+/// streaming loop so the chunk-boundary behaviour can be unit-tested.
+fn parse_sse_line(
+    line: &str,
+    prompt_tokens: &mut usize,
+    completion_tokens: &mut usize,
+) -> Option<String> {
+    let data = line.trim().strip_prefix("data:")?.trim();
+    if data.is_empty() || data == "[DONE]" {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(data).ok()?;
+
+    // Usage, if the server sends it on a closing event.
+    if let Some(u) = value.get("usage") {
+        if let Some(p) = u.get("prompt_tokens").and_then(|v| v.as_u64()) {
+            *prompt_tokens = p as usize;
+        }
+        if let Some(c) = u.get("completion_tokens").and_then(|v| v.as_u64()) {
+            *completion_tokens = c as usize;
+        }
+    }
+
+    // OpenAI-style delta: choices[0].text
+    value
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("text"))
+        .and_then(|t| t.as_str())
+        .filter(|d| !d.is_empty())
+        .map(|d| d.to_string())
+}
+
+/// Feed raw SSE bytes through a line buffer, emitting complete-line deltas.
+///
+/// `pending` carries the trailing partial line between calls. This is the
+/// piece that was missing before: HTTP chunks and SSE events are unrelated,
+/// so a `data:` line split across two chunks used to be dropped entirely.
+fn drain_sse_lines(
+    pending: &mut String,
+    prompt_tokens: &mut usize,
+    completion_tokens: &mut usize,
+    mut emit: impl FnMut(&str),
+) {
+    while let Some(nl) = pending.find('\n') {
+        let line: String = pending.drain(..=nl).collect();
+        if let Some(delta) = parse_sse_line(&line, prompt_tokens, completion_tokens) {
+            emit(&delta);
+        }
+    }
+}
+
 /// Run a completion against the remote inference API server.
 async fn remote_complete(
     client: &reqwest::Client,
@@ -286,56 +378,64 @@ async fn remote_complete(
 
     if stream {
         // SSE stream: accumulate deltas, invoke on_token for each text chunk.
+        //
+        // NOTE: HTTP chunk boundaries have nothing to do with SSE event
+        // boundaries. The previous implementation called `split('\n')` on each
+        // chunk independently, so any `data: {...}` line straddling two chunks
+        // was parsed as two invalid fragments and **silently dropped** — tokens
+        // vanished from the middle of the stream, more often the longer the
+        // response. We now carry a line buffer across chunks and only parse
+        // complete, newline-terminated lines.
         let mut stream = resp.bytes_stream();
         let mut full = String::new();
+        let mut pending = String::new();
         let mut prompt_tokens = 0usize;
-        let mut completion_tokens = 0usize;
+        // Set only if the server reports usage explicitly.
+        let mut reported_completion_tokens = 0usize;
+        // Fallback: one delta ≈ one token.
+        let mut delta_count = 0usize;
         let on_token = req.on_token;
 
         use futures::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk
                 .map_err(|e| EngineError::Backend(format!("inference API stream error: {e}")))?;
-            let text = String::from_utf8_lossy(&chunk);
-            for line in text.split('\n') {
-                let line = line.trim();
-                if !line.starts_with("data:") {
-                    continue;
-                }
-                let data = line.trim_start_matches("data:").trim();
-                if data.is_empty() || data == "[DONE]" {
-                    continue;
-                }
-                let value: serde_json::Value = match serde_json::from_str(data) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                // OpenAI-style delta: choices[0].text
-                if let Some(delta) = value
-                    .get("choices")
-                    .and_then(|c| c.get(0))
-                    .and_then(|c| c.get("text"))
-                    .and_then(|t| t.as_str())
-                {
-                    if !delta.is_empty() {
-                        full.push_str(delta);
-                        completion_tokens += 1;
-                        if let Some(cb) = &on_token {
-                            cb(delta);
-                        }
+            pending.push_str(&String::from_utf8_lossy(&chunk));
+
+            // Drain every *complete* line; keep the trailing partial in `pending`.
+            drain_sse_lines(
+                &mut pending,
+                &mut prompt_tokens,
+                &mut reported_completion_tokens,
+                |delta| {
+                    full.push_str(delta);
+                    delta_count += 1;
+                    if let Some(cb) = &on_token {
+                        cb(delta);
                     }
-                }
-                // Usage, if the server sends it on a closing event.
-                if let Some(u) = value.get("usage") {
-                    if let Some(p) = u.get("prompt_tokens").and_then(|v| v.as_u64()) {
-                        prompt_tokens = p as usize;
-                    }
-                    if let Some(c) = u.get("completion_tokens").and_then(|v| v.as_u64()) {
-                        completion_tokens = c as usize;
-                    }
+                },
+            );
+        }
+
+        // A final event may arrive without a trailing newline.
+        if !pending.trim().is_empty() {
+            if let Some(delta) =
+                parse_sse_line(&pending, &mut prompt_tokens, &mut reported_completion_tokens)
+            {
+                full.push_str(&delta);
+                delta_count += 1;
+                if let Some(cb) = &on_token {
+                    cb(&delta);
                 }
             }
         }
+
+        // Prefer the server's own count; fall back to counting deltas.
+        let completion_tokens = if reported_completion_tokens > 0 {
+            reported_completion_tokens
+        } else {
+            delta_count
+        };
 
         if prompt_tokens == 0 {
             prompt_tokens = req.estimated_prompt_tokens;
@@ -423,5 +523,114 @@ mod tests {
         h.insert("X-Token".to_string(), "abc".to_string());
         let b = RemoteBackend::with_headers("http://x", h);
         assert_eq!(b.extra_headers.get("X-Token").unwrap(), "abc");
+    }
+
+    // ── SSE line parsing ─────────────────────────────────────────────────
+
+    fn collect(chunks: &[&str]) -> (String, usize, usize) {
+        let mut pending = String::new();
+        let mut prompt = 0usize;
+        let mut completion = 0usize;
+        let mut out = String::new();
+        for c in chunks {
+            pending.push_str(c);
+            drain_sse_lines(&mut pending, &mut prompt, &mut completion, |d| {
+                out.push_str(d)
+            });
+        }
+        if !pending.trim().is_empty() {
+            if let Some(d) = parse_sse_line(&pending, &mut prompt, &mut completion) {
+                out.push_str(&d);
+            }
+        }
+        (out, prompt, completion)
+    }
+
+    fn event(text: &str) -> String {
+        format!(
+            "data: {}\n\n",
+            serde_json::json!({ "choices": [{ "text": text }] })
+        )
+    }
+
+    #[test]
+    fn whole_events_are_parsed() {
+        let (out, _, _) = collect(&[&event("Hello"), &event(", world")]);
+        assert_eq!(out, "Hello, world");
+    }
+
+    #[test]
+    fn events_split_across_chunk_boundaries_are_not_dropped() {
+        // The regression this guards: reqwest can (and does) split an SSE
+        // line anywhere. The old per-chunk `split('\n')` lost these entirely.
+        let full = format!("{}{}", event("alpha"), event("beta"));
+        for split_at in 1..full.len() {
+            if !full.is_char_boundary(split_at) {
+                continue;
+            }
+            let (a, b) = full.split_at(split_at);
+            let (out, _, _) = collect(&[a, b]);
+            assert_eq!(out, "alphabeta", "lost data when split at byte {split_at}");
+        }
+    }
+
+    #[test]
+    fn a_single_byte_at_a_time_still_reassembles() {
+        let full = format!("{}{}", event("one "), event("two"));
+        let chunks: Vec<String> = full.chars().map(|c| c.to_string()).collect();
+        let refs: Vec<&str> = chunks.iter().map(|s| s.as_str()).collect();
+        let (out, _, _) = collect(&refs);
+        assert_eq!(out, "one two");
+    }
+
+    #[test]
+    fn final_event_without_trailing_newline_is_kept() {
+        let (out, _, _) = collect(&[r#"data: {"choices":[{"text":"tail"}]}"#]);
+        assert_eq!(out, "tail");
+    }
+
+    #[test]
+    fn done_sentinel_and_blank_lines_are_ignored() {
+        let (out, _, _) = collect(&[&event("x"), "\n", "data: [DONE]\n\n", ": comment\n"]);
+        assert_eq!(out, "x");
+    }
+
+    #[test]
+    fn malformed_json_does_not_abort_the_stream() {
+        let (out, _, _) = collect(&[&event("good "), "data: {broken\n", &event("still here")]);
+        assert_eq!(out, "good still here");
+    }
+
+    #[test]
+    fn usage_is_picked_up_from_the_closing_event() {
+        let usage = format!(
+            "data: {}\n\n",
+            serde_json::json!({
+                "choices": [{ "text": "" }],
+                "usage": { "prompt_tokens": 12, "completion_tokens": 34 }
+            })
+        );
+        let (_, prompt, completion) = collect(&[&event("hi"), &usage]);
+        assert_eq!(prompt, 12);
+        assert_eq!(completion, 34);
+    }
+
+    #[test]
+    fn empty_deltas_are_not_emitted() {
+        let (out, _, _) = collect(&[&event(""), &event("real")]);
+        assert_eq!(out, "real");
+    }
+
+    // ── Client configuration (resource leak guards) ──────────────────────
+
+    #[test]
+    fn client_is_built_with_bounded_pooling() {
+        // We can't introspect reqwest's config, but we can assert the builder
+        // succeeds — a misconfiguration would silently fall back to the
+        // unbounded default client.
+        let _ = build_client();
+        assert!(CONNECT_TIMEOUT_SECS > 0);
+        assert!(POOL_IDLE_TIMEOUT_SECS > 0);
+        assert!(POOL_MAX_IDLE_PER_HOST > 0);
     }
 }

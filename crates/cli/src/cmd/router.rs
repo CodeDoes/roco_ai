@@ -14,7 +14,9 @@ use std::io::{self, Write};
 
 use crate::cmd;
 use crate::daemon;
+use crate::identity;
 use crate::rich_output as r;
+use crate::streaming::{self, StreamPrinter};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Modes
@@ -218,51 +220,76 @@ pub fn cmd_router(extra: &[&str]) {
     let mut current_mode = Mode::Chat;
     let intents = all_intents();
 
+    // Identity is answered locally (see `crate::identity`), so the router
+    // needs a profile + assistant facts even though it keeps its own history.
+    let profile_path = identity::UserProfile::default_path();
+    let mut profile = identity::UserProfile::load(&profile_path);
+    let assistant = identity::AssistantIdentity::detect(&*backend);
+
     // If an initial prompt was given, detect intent and route
     if let Some(ref prompt) = initial_prompt {
         add_history(&mut history, "user", prompt);
-        let (intent, extracted) = detect_intent(&*backend, prompt, &intents, "chat");
-        current_mode = intent.target_mode;
+        if let Some(reply) = answer_identity(prompt, &assistant, &mut profile, &profile_path) {
+            println!("\n{reply}");
+            add_history(&mut history, "assistant", &reply);
+        } else {
+            let (intent, extracted) = detect_intent(&*backend, prompt, &intents, "chat");
+            current_mode = intent.target_mode;
 
-        match current_mode {
-            Mode::Story => {
-                launch_story(&extracted);
-                current_mode = Mode::Chat;
-                add_history(&mut history, "system", "Story completed. Back in chat.");
-            }
-            Mode::Html => {
-                launch_html(&extracted);
-                current_mode = Mode::Chat;
-                add_history(
-                    &mut history,
-                    "system",
-                    "HTML session completed. Back in chat.",
-                );
-            }
-            _ => {
-                let text = generate_response(&*backend, current_mode, &history, &extracted);
-                add_history(&mut history, "assistant", &text);
-                println!("\n{}", text);
+            match current_mode {
+                Mode::Story => {
+                    launch_story(&extracted);
+                    current_mode = Mode::Chat;
+                    add_history(&mut history, "system", "Story completed. Back in chat.");
+                }
+                Mode::Html => {
+                    launch_html(&extracted);
+                    current_mode = Mode::Chat;
+                    add_history(
+                        &mut history,
+                        "system",
+                        "HTML session completed. Back in chat.",
+                    );
+                }
+                _ => {
+                    let text = generate_response(
+                        &*backend,
+                        current_mode,
+                        &history,
+                        &extracted,
+                        &assistant,
+                        &profile,
+                    );
+                    add_history(&mut history, "assistant", &text);
+                }
             }
         }
     } else {
-        let greeting = "Hello! I'm RoCo AI. I can chat, tell stories, run adventures, generate HTML, or help you code. Just tell me what you'd like to do!";
+        let greeting = match &profile.name {
+            Some(name) => format!(
+                "Welcome back, {name}! I can chat, tell stories, run adventures, \
+                 generate HTML, or help you code. What are we doing today?"
+            ),
+            None => "Hello! I'm RoCo AI. I can chat, tell stories, run adventures, generate HTML, or help you code. Just tell me what you'd like to do!".to_string(),
+        };
         println!("{}", greeting);
-        add_history(&mut history, "assistant", greeting);
+        add_history(&mut history, "assistant", &greeting);
     }
 
     // ── Main loop ──────────────────────────────────────────────────────
+    // One reusable buffer rather than a fresh allocation per iteration.
+    let mut buf = String::new();
     loop {
         let mode_label = current_mode.label();
         print!("\n{}{} >{} ", r::Colors::CYAN, mode_label, r::Colors::RESET);
         io::stdout().flush().ok();
 
-        let mut input = String::new();
-        match io::stdin().read_line(&mut input) {
+        buf.clear();
+        match io::stdin().read_line(&mut buf) {
             Ok(0) | Err(_) => break,
             Ok(_) => {}
         }
-        let input = input.trim().to_string();
+        let input = buf.trim().to_string();
 
         if input.is_empty() {
             continue;
@@ -275,6 +302,10 @@ pub fn cmd_router(extra: &[&str]) {
                 .trim_start_matches(':')
                 .trim()
                 .to_lowercase();
+            if let Some(reply) = identity_command(&cmd, &assistant, &mut profile, &profile_path) {
+                println!("{reply}");
+                continue;
+            }
             if handle_command(&cmd, &mut current_mode, &mut history) {
                 break;
             }
@@ -282,6 +313,16 @@ pub fn cmd_router(extra: &[&str]) {
         }
 
         add_history(&mut history, "user", &input);
+
+        // ── Identity fast-path ─────────────────────────────────────────
+        // "who are you / who am I / what can you do" are answered from real
+        // program facts. Routing them through intent detection wasted a model
+        // call and produced confident nonsense from a 2.9B model.
+        if let Some(reply) = answer_identity(&input, &assistant, &mut profile, &profile_path) {
+            println!("\n{reply}");
+            add_history(&mut history, "assistant", &reply);
+            continue;
+        }
 
         // ── Intent detection on EVERY message, from EVERY mode ────────
         let (intent, extracted) =
@@ -347,23 +388,107 @@ pub fn cmd_router(extra: &[&str]) {
             continue;
         }
 
-        let text = generate_response(&*backend, current_mode, &history, &extracted);
+        let text = generate_response(
+            &*backend,
+            current_mode,
+            &history,
+            &extracted,
+            &assistant,
+            &profile,
+        );
         add_history(&mut history, "assistant", &text);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Identity (shared with `roco interact` via `crate::identity`)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Answer an identity question locally, persisting any profile change.
+fn answer_identity(
+    input: &str,
+    assistant: &identity::AssistantIdentity,
+    profile: &mut identity::UserProfile,
+    profile_path: &std::path::Path,
+) -> Option<String> {
+    let query = identity::detect(input)?;
+    let (reply, changed) = query.answer(assistant, profile);
+    if changed {
+        if let Err(e) = profile.save(profile_path) {
+            r::warning(&format!("Could not save profile: {e}"));
+        }
+    }
+    Some(reply)
+}
+
+/// Handle the identity slash commands (`:whoami`, `:name …`, `:remember …`).
+fn identity_command(
+    cmd: &str,
+    assistant: &identity::AssistantIdentity,
+    profile: &mut identity::UserProfile,
+    profile_path: &std::path::Path,
+) -> Option<String> {
+    let (verb, rest) = match cmd.split_once(char::is_whitespace) {
+        Some((v, r)) => (v, r.trim()),
+        None => (cmd, ""),
+    };
+    let (reply, changed) = match verb {
+        "whoami" | "me" => (profile.render(), false),
+        "whois" | "about" => (assistant.who_are_you(), false),
+        "name" if !rest.is_empty() => {
+            profile.set_name(rest);
+            (format!("I'll call you {rest}."), true)
+        }
+        "remember" if !rest.is_empty() => {
+            let msg = if profile.remember(rest) {
+                format!("Noted: {rest}")
+            } else {
+                "I already had that one.".to_string()
+            };
+            (msg, true)
+        }
+        "forget" => {
+            profile.clear();
+            ("Forgotten.".to_string(), true)
+        }
+        _ => return None,
+    };
+    if changed {
+        if let Err(e) = profile.save(profile_path) {
+            r::warning(&format!("Could not save profile: {e}"));
+        }
+    }
+    Some(reply)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Response Generation
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Generate a response in the given mode using the model.
+/// Generate a response in the given mode, streaming it to the terminal.
+///
+/// The previous version attached an `on_token` callback that appended into an
+/// `Arc<Mutex<String>>` which was never read — so it looked like streaming in
+/// the source but the user saw a spinner and then the whole answer at once.
+/// Now the callback drives a [`StreamPrinter`], which renders incrementally.
+///
+/// HTML mode is the one exception: partial HTML is meaningless (and would
+/// dump raw tags into the terminal), so it is rendered only once complete.
 fn generate_response(
     backend: &dyn roco_engine::ModelBackend,
     mode: Mode,
     history: &[HistoryEntry],
     user_input: &str,
+    assistant: &identity::AssistantIdentity,
+    profile: &identity::UserProfile,
 ) -> String {
-    let system = mode_system_prompt(mode);
+    // Ground the model in who it is and who it's talking to, so identity
+    // questions embedded mid-conversation don't produce invented answers.
+    let system = format!(
+        "{}\n\n{}",
+        identity::identity_preamble(assistant, profile),
+        mode_system_prompt(mode)
+    );
     let recent = build_recent_history(history, 6);
 
     let prompt = format!(
@@ -376,7 +501,7 @@ fn generate_response(
     let prefill = match mode {
         Mode::Html => Some("<div style='font-family:sans-serif;padding:20px;'>\n".into()),
         Mode::Coder => Some(" thinking".into()),
-        _ => Some(" thinking response".into()),
+        _ => Some(roco_engine::NO_THINK_PREFILL.to_string()),
     };
 
     let max_tokens = match mode {
@@ -384,46 +509,56 @@ fn generate_response(
         _ => 1024,
     };
 
-    print!(
-        "{}{}  ...{}\r",
-        r::Colors::DIM,
-        r::Colors::CYAN,
-        r::Colors::RESET
-    );
-    io::stdout().flush().ok();
+    streaming::thinking_hint();
 
-    // Buffer streaming tokens; clean_response post-processes the final text.
-    let streamed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-    let streamed_cb = std::sync::Arc::clone(&streamed);
+    // HTML is assembled silently; everything else streams live.
+    let live = mode != Mode::Html;
+    let printer = if live {
+        StreamPrinter::new("").shared()
+    } else {
+        StreamPrinter::quiet().shared()
+    };
+
     let request = roco_engine::CompletionRequest {
         system,
         prompt,
         temperature: 0.8,
         max_tokens,
         prefill,
-        on_token: Some(Box::new(move |token: &str| {
-            if let Ok(mut buf) = streamed_cb.lock() {
-                buf.push_str(token);
-            }
-        })),
+        on_token: Some(streaming::on_token_for(&printer)),
         ..Default::default()
     };
 
-    let resp = match futures::executor::block_on(backend.complete(request)) {
+    let result = futures::executor::block_on(backend.complete(request));
+
+    match result {
         Ok(resp) => {
-            let raw = r::clean_response(&resp.text);
+            let text = match printer.lock() {
+                Ok(mut p) => p.finish(&resp.text),
+                Err(poisoned) => poisoned.into_inner().finish(&resp.text),
+            };
             if mode == Mode::Html {
-                sanitize_html(&raw)
+                let html = sanitize_html(&text);
+                streaming::clear_line();
+                println!("{html}");
+                io::stdout().flush().ok();
+                html
             } else {
-                raw
+                if text.trim().is_empty() {
+                    streaming::clear_line();
+                    println!("(no response — try rephrasing)");
+                }
+                text
             }
         }
-        Err(e) => format!("[Error: {e}]"),
-    };
-    print!("\r\x1b[K");
-    println!("{resp}");
-    io::stdout().flush().ok();
-    resp
+        Err(e) => {
+            streaming::clear_line();
+            let msg = format!("[Error: {e}]");
+            println!("{msg}");
+            io::stdout().flush().ok();
+            msg
+        }
+    }
 }
 
 /// Get the system prompt for a given mode.
@@ -590,6 +725,13 @@ fn handle_command(cmd: &str, mode: &mut Mode, history: &mut Vec<HistoryEntry>) -
                     "  :code           Switch to coder mode",
                     "  :history        Show recent history",
                     "  :clear          Clear history",
+                    "  ",
+                    "  :whoami         What RoCo knows about you",
+                    "  :whois          What RoCo is",
+                    "  :name <you>     Tell RoCo your name",
+                    "  :remember <x>   Remember something about you",
+                    "  :forget         Forget everything about you",
+                    "  ",
                     "  :help / :h      Show this help",
                     "  :quit / :q      Exit",
                 ]
@@ -821,5 +963,93 @@ mod tests {
         assert!(mode_response_prefix(Mode::Adventure).contains("GM:"));
         assert!(mode_response_prefix(Mode::Coder).contains("Assistant:"));
         assert!(mode_response_prefix(Mode::Chat).contains("Assistant:"));
+    }
+
+    // ── Identity integration ─────────────────────────────────────────────
+
+    #[test]
+    fn identity_questions_are_answered_without_the_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile.json");
+        let assistant = identity::AssistantIdentity::default();
+        let mut profile = identity::UserProfile::default();
+
+        let reply = answer_identity("who are you?", &assistant, &mut profile, &path)
+            .expect("identity question should be recognised");
+        assert!(reply.contains("RoCo"), "got {reply}");
+    }
+
+    #[test]
+    fn ordinary_messages_still_go_to_intent_detection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile.json");
+        let assistant = identity::AssistantIdentity::default();
+        let mut profile = identity::UserProfile::default();
+
+        assert!(
+            answer_identity("write me a story about a dragon", &assistant, &mut profile, &path)
+                .is_none(),
+            "ordinary input must not be hijacked by the identity fast-path"
+        );
+    }
+
+    #[test]
+    fn name_is_persisted_to_the_profile_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile.json");
+        let assistant = identity::AssistantIdentity::default();
+        let mut profile = identity::UserProfile::default();
+
+        answer_identity("my name is Ada", &assistant, &mut profile, &path).unwrap();
+        assert!(path.exists(), "profile should have been written");
+
+        let reloaded = identity::UserProfile::load(&path);
+        assert_eq!(reloaded.name.as_deref(), Some("Ada"));
+    }
+
+    #[test]
+    fn identity_slash_commands_are_handled() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile.json");
+        let assistant = identity::AssistantIdentity::default();
+        let mut profile = identity::UserProfile::default();
+
+        assert!(identity_command("name Ada", &assistant, &mut profile, &path)
+            .unwrap()
+            .contains("Ada"));
+        assert!(identity_command("whoami", &assistant, &mut profile, &path)
+            .unwrap()
+            .contains("Ada"));
+        assert!(identity_command("whois", &assistant, &mut profile, &path)
+            .unwrap()
+            .contains("RoCo"));
+        assert!(identity_command("forget", &assistant, &mut profile, &path)
+            .unwrap()
+            .contains("Forgotten"));
+        // Mode commands must fall through to `handle_command`.
+        assert!(identity_command("adventure", &assistant, &mut profile, &path).is_none());
+        assert!(identity_command("quit", &assistant, &mut profile, &path).is_none());
+    }
+
+    #[test]
+    fn history_is_bounded() {
+        // Regression: unbounded router history is a memory leak in a
+        // long-running REPL.
+        let mut history = Vec::new();
+        for i in 0..500 {
+            add_history(&mut history, "user", &format!("m{i}"));
+        }
+        assert!(history.len() <= 20, "history grew to {}", history.len());
+    }
+
+    #[test]
+    fn recent_history_is_bounded_in_size() {
+        let mut history = Vec::new();
+        for i in 0..20 {
+            add_history(&mut history, "user", &format!("{i} {}", "x".repeat(5000)));
+        }
+        let recent = build_recent_history(&history, 6);
+        // 6 entries × 200-char preview + labels.
+        assert!(recent.len() < 2_000, "recent history too big: {}", recent.len());
     }
 }
