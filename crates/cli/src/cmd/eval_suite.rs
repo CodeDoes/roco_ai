@@ -6,6 +6,8 @@
 //! this is a CLI-accessible command that produces a structured JSON report
 //! suitable for CI or manual review.
 
+use roco_engine::ModelBackend;
+
 /// Run the evaluation suite.
 ///
 /// Supports `--json` / `-j` for machine-readable output and a benchmark name
@@ -137,6 +139,66 @@ pub fn cmd_eval_suite(extra: &[&str]) {
             let ctx = s.build_context("continue");
             if !ctx.contains(&long) {
                 return Err("long assistant turn truncated in context".into());
+            }
+            Ok(())
+        }));
+    }
+
+    // ── 7. Model-level determinism (same seed → same output) ─────────────
+    if target == "all" || target == "determinism" {
+        results.push(eval("deterministic_seed_model", || {
+            let gp = crate::daemon::GATEWAY_PORT;
+            let ip = crate::daemon::INFERENCE_PORT;
+            let live_daemon = crate::daemon::is_running("gateway", gp)
+                || crate::daemon::is_running("inferd", ip)
+                || crate::daemon::is_running("server", ip);
+
+            // If no live model backend is running and env var isn't forcing it,
+            // verify seed handling against a deterministic mock backend.
+            let force = std::env::var("ROCO_TEST_LIVE_MODEL").is_ok();
+            if !live_daemon && !force {
+                let mock = roco_engine::MockBackend::default();
+                let req1 = roco_engine::CompletionRequest::builder()
+                    .system("You are a deterministic oracle.")
+                    .prompt("Count to 5.")
+                    .temperature(0.0)
+                    .max_tokens(20)
+                    .seed(42)
+                    .build();
+                let req2 = req1.clone();
+                let (res1, res2) = futures::executor::block_on(async {
+                    (mock.complete(req1).await, mock.complete(req2).await)
+                });
+                let resp1 = res1.map_err(|e| format!("mock req 1 failed: {e}"))?;
+                let resp2 = res2.map_err(|e| format!("mock req 2 failed: {e}"))?;
+                if resp1.text != resp2.text {
+                    return Err(format!(
+                        "mock seed outputs differed:\n  A: {:?}\n  B: {:?}",
+                        resp1.text, resp2.text
+                    ));
+                }
+                return Ok(());
+            }
+
+            let backend = crate::daemon::ensure_sync_backend();
+            let req1 = roco_engine::CompletionRequest::builder()
+                .system("You are a deterministic oracle.")
+                .prompt("Output the numbers 1 to 5.")
+                .temperature(0.0)
+                .max_tokens(20)
+                .seed(42)
+                .build();
+            let req2 = req1.clone();
+            let (res1, res2) = futures::executor::block_on(async {
+                (backend.complete(req1).await, backend.complete(req2).await)
+            });
+            let resp1 = res1.map_err(|e| format!("req 1 failed: {e}"))?;
+            let resp2 = res2.map_err(|e| format!("req 2 failed: {e}"))?;
+            if resp1.text != resp2.text {
+                return Err(format!(
+                    "model outputs differed for same seed 42:\n  A: {:?}\n  B: {:?}",
+                    resp1.text, resp2.text
+                ));
             }
             Ok(())
         }));

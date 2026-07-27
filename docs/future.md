@@ -63,18 +63,6 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ---
 
-## Determinism — Reproducible & Predictable Behaviour
-
-### 13. Deterministic test fixtures for the eval suite
-**Rationale:** `roco eval-suite` runs deterministic checks but doesn't test model-level determinism (same seed → same output from the real backend).
-
-**Approach:**
-- Add `eval-suite` test: "deterministic_seed_model" — sends the same `CompletionRequest` with `seed=42` twice to a running backend, asserts `response_a.text == response_b.text`
-- Run this test only when a real backend is available (skip on `MockBackend`)
-- CI can run this against the production inferd if available
-
----
-
 ## Interpretability — Understanding What the Model Is Doing
 
 ### 14. Token-level trace logging

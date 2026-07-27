@@ -108,11 +108,12 @@ pub trait StateTuning: Send + Sync {
     ) -> BoxFuture<'a, Result<(), EngineError>>;
 }
 
-fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize) -> Option<String> {
+fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize, seed: Option<u64>) -> Option<String> {
     use ahash::AHashMap;
     use kbnf::engine_like::EngineLike;
     use kbnf::{Config, Engine, Token, Vocabulary};
     use rand::seq::SliceRandom;
+    use rand::SeedableRng;
 
     let kbnf_str = crate::grammar::gbnf_to_kbnf(gbnf);
     let tokens: Vec<&str> = vec![
@@ -227,7 +228,10 @@ fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize) -> Option<String> {
     };
     let mut engine = Engine::with_config(&kbnf_str, vocab_obj, config).ok()?;
 
-    let mut rng = rand::thread_rng();
+    let mut rng: Box<dyn rand::RngCore> = match seed {
+        Some(s) => Box::new(rand::rngs::StdRng::seed_from_u64(s)),
+        None => Box::new(rand::thread_rng()),
+    };
     let mut out = String::new();
 
     let steps = if max_tokens == 0 { 256 } else { max_tokens };
@@ -357,7 +361,7 @@ impl ModelBackend for MockBackend {
             let bnf_walk_text = req
                 .grammar
                 .as_ref()
-                .and_then(|g| mock_random_walk_bnf(g, req.max_tokens));
+                .and_then(|g| mock_random_walk_bnf(g, req.max_tokens, req.seed));
 
             let system_lower = req.system.to_lowercase();
             let mut matched_text = bnf_walk_text;
