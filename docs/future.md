@@ -43,15 +43,6 @@ This document catalogs concrete improvements beyond the current state, organized
 - Fall back to replay when the saved state is missing or corrupted (graceful degradation)
 - Flag: `roco interact --resume <session> [--instant]` or `roco interact --resume <session> --replay` to force replay
 
-### 5. Rich error messages with suggested fixes
-**Rationale:** Many errors just print a string ("backend failure", "model not found"). The user doesn't know what to do.
-
-**Approach:**
-- Categorize common errors and attach `help: ` suggestion:
-  - `EngineError::Backend("adapter failed")` → `Help: Try RWKV_ADAPTER=llvmpipe for CPU fallback`
-  - Model not found → `Help: Place a .st file in models/ or set $RWKV_MODEL`
-  - GPU hang → `Help: Set RWKV_ADAPTER=llvmpipe and re-run`
-- Use `#[error(help = "...")]` via thiserror or a custom wrapper
 
 ---
 
@@ -273,5 +264,4 @@ pub trait StateTuning: ModelBackend {
 | P2 | Modularity | 7. Extract StateTuning trait | 1 day | Medium — cleaner trait hierarchy |
 | P2 | Testing | 22. Property-based sampling tests | 1 day | Medium — catches subtle edge cases |
 | P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |
-| P3 | UX | 5. Rich error messages | 1 day | Low — nice-to-have polish |
 | P3 | Testing | 21. Fuzz grammar engine | 2 days | Low — security hardening |
