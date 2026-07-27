@@ -4,14 +4,6 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ---
 
-## UX — User Experience
-
----
-
----
-
----
-
 ## Modularity — Crate Architecture & Separation of Concerns
 
 ### 6. Consolidate 16 crates → 7 core crates (revisit RFC 0001)
@@ -34,48 +26,6 @@ This document catalogs concrete improvements beyond the current state, organized
 - Reduction from 16 → 7 workspace crates
 - One `cargo check` compiles ~40% fewer crate boundaries
 - Changes to wire types touch exactly 1 crate instead of 3
-
----
-
----
-
----
-
-## Interpretability — Understanding What the Model Is Doing
-
----
-
----
-
----
-
----
-
----
-
----
-
----
-
-## Testing & CI
-
----
-
----
-
-
----
-
-## Story Pipeline Fault Tolerance & Pipeline Safety
-
-
-
----
-
-## Build & Developer Experience
-
-
----
 
 ---
 
