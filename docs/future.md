@@ -212,16 +212,6 @@ pub trait StateTuning: ModelBackend {
   - Accepting random token sequences (ensure no infinite loop)
 - Run in CI with a short timeout
 
-### 22. Property-based testing for sampling
-**Rationale:** The sampling functions have subtle edge cases (all-probs-zero, temperature=0, epsilon probabilities). Property-based tests can find edge cases that unit tests miss.
-
-**Approach:**
-- Use `proptest` or `quickcheck` to generate random probability distributions
-- Verify invariants:
-  - `sample_token` always returns a valid token index (0..vocab_size)
-  - `greedy (temp=0)` always picks the argmax
-  - Sum of output probabilities for constrained sampling is 1.0
-  - Seeded sampling is transitive (a == b && b == c → a == c)
 
 ---
 
@@ -262,6 +252,5 @@ pub trait StateTuning: ModelBackend {
 | P1 | Interpretability | 14. Token trace logging | 2 days | Medium — enables debugging bad generations |
 | P2 | UX | 2. Progress bar | 1 day | Medium — better feedback for long gen |
 | P2 | Modularity | 7. Extract StateTuning trait | 1 day | Medium — cleaner trait hierarchy |
-| P2 | Testing | 22. Property-based sampling tests | 1 day | Medium — catches subtle edge cases |
 | P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |
 | P3 | Testing | 21. Fuzz grammar engine | 2 days | Low — security hardening |

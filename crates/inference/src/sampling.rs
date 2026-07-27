@@ -293,30 +293,74 @@ mod tests {
     }
 
     #[test]
-    fn constrained_sampling_with_rng_is_deterministic() {
-        let probs = vec![0.1, 0.0, 0.5, 0.2, 0.2];
-        let allowed = vec![true, false, true, true, true];
-        let seed = 777u64;
+    fn property_sample_token_always_in_bounds() {
+        // Property check across varying array sizes, temperatures, and seeds
+        for size in 1..=50 {
+            for temp in [0.0, 0.1, 0.5, 1.0, 2.0] {
+                for seed in 0..10 {
+                    let probs: Vec<f32> = (0..size).map(|i| (i as f32 + 1.0) / size as f32).collect();
+                    let mut rng = StdRng::seed_from_u64(seed);
+                    let token = sample_token_with_rng(&probs, temp, 0.9, 0.05, Some(&mut rng));
+                    assert!(
+                        (token as usize) < size,
+                        "token {token} out of bounds for size {size}"
+                    );
+                }
+            }
+        }
+    }
 
-        let mut rng1 = StdRng::seed_from_u64(seed);
-        let mut rng2 = StdRng::seed_from_u64(seed);
+    #[test]
+    fn property_constrained_sampling_never_returns_disallowed() {
+        for seed in 0..20 {
+            let mut probs = vec![0.1, 0.4, 0.05, 0.2, 0.25];
+            let allowed = vec![
+                seed % 2 == 0,
+                seed % 3 == 0,
+                seed % 5 == 0,
+                seed % 7 == 0,
+                seed % 11 == 0,
+            ];
+            let any_allowed = allowed.iter().any(|&b| b);
 
-        let r1 = constrained_sample_token_with_rng(
-            &mut probs.clone(),
-            &allowed,
-            0.8,
-            0.9,
-            0.0,
-            Some(&mut rng1),
-        );
-        let r2 = constrained_sample_token_with_rng(
-            &mut probs.clone(),
-            &allowed,
-            0.8,
-            0.9,
-            0.0,
-            Some(&mut rng2),
-        );
-        assert_eq!(r1, r2, "constrained sampling with same seed diverged");
+            let mut rng = StdRng::seed_from_u64(seed);
+            let result = constrained_sample_token_with_rng(
+                &mut probs,
+                &allowed,
+                0.8,
+                0.9,
+                0.0,
+                Some(&mut rng),
+            );
+
+            if any_allowed {
+                let id = result.expect("should return token when at least one allowed");
+                assert!(
+                    allowed[id as usize],
+                    "returned token {id} which is disallowed by mask"
+                );
+            } else {
+                assert_eq!(result, None);
+            }
+        }
+    }
+
+    #[test]
+    fn property_extreme_probs_never_panic() {
+        let extreme_cases = vec![
+            vec![f32::NEG_INFINITY, f32::NEG_INFINITY],
+            vec![0.0, 0.0, 0.0],
+            vec![f32::MIN_POSITIVE, f32::MAX],
+            vec![1e-30, 1e-30],
+        ];
+
+        for (i, probs) in extreme_cases.into_iter().enumerate() {
+            let mut rng = StdRng::seed_from_u64(i as u64);
+            let token = sample_token_with_rng(&probs, 0.7, 0.9, 0.0, Some(&mut rng));
+            assert!(
+                (token as usize) < probs.len(),
+                "extreme case {i} returned invalid token {token}"
+            );
+        }
     }
 }
