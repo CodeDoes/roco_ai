@@ -159,8 +159,15 @@ impl OutputStrategy for SchemaStrategy {
 impl<T: DeserializeOwned> OutputParser<T> for SchemaStrategy {
     fn parse(&self, text: &str) -> Result<T, String> {
         let cleaned = strip_code_fences(text);
-        serde_json::from_str::<T>(&cleaned)
-            .map_err(|e| format!("SchemaStrategy parse error: {e}\nraw: {cleaned}"))
+        match serde_json::from_str::<T>(&cleaned) {
+            Ok(val) => Ok(val),
+            Err(e) => {
+                let repaired = repair_json(&cleaned);
+                serde_json::from_str::<T>(&repaired).map_err(|e2| {
+                    format!("SchemaStrategy parse error: {e} (repaired err: {e2})\nraw: {cleaned}\nrepaired: {repaired}")
+                })
+            }
+        }
     }
 }
 
@@ -229,8 +236,15 @@ impl OutputStrategy for LooseJsonStrategy {
 impl<T: DeserializeOwned> OutputParser<T> for LooseJsonStrategy {
     fn parse(&self, text: &str) -> Result<T, String> {
         let cleaned = strip_code_fences(text);
-        serde_json::from_str::<T>(&cleaned)
-            .map_err(|e| format!("LooseJsonStrategy parse error: {e}\nraw: {cleaned}"))
+        match serde_json::from_str::<T>(&cleaned) {
+            Ok(val) => Ok(val),
+            Err(e) => {
+                let repaired = repair_json(&cleaned);
+                serde_json::from_str::<T>(&repaired).map_err(|e2| {
+                    format!("LooseJsonStrategy parse error: {e} (repaired err: {e2})\nraw: {cleaned}\nrepaired: {repaired}")
+                })
+            }
+        }
     }
 }
 
@@ -382,9 +396,15 @@ impl<T: DeserializeOwned> OutputParser<T> for StateTunedStrategy {
     /// - Leading/trailing whitespace
     fn parse(&self, text: &str) -> Result<T, String> {
         let cleaned = clean_json_output(text);
-        serde_json::from_str::<T>(&cleaned).map_err(|e| {
-            format!("StateTunedStrategy parse error: {e}\noriginal: {text}\ncleaned: {cleaned}")
-        })
+        match serde_json::from_str::<T>(&cleaned) {
+            Ok(val) => Ok(val),
+            Err(e) => {
+                let repaired = repair_json(&cleaned);
+                serde_json::from_str::<T>(&repaired).map_err(|e2| {
+                    format!("StateTunedStrategy parse error: {e} (repaired err: {e2})\noriginal: {text}\ncleaned: {cleaned}\nrepaired: {repaired}")
+                })
+            }
+        }
     }
 }
 
@@ -504,6 +524,112 @@ pub fn clean_json_output(text: &str) -> String {
 
     // Fallback: return trimmed text
     trimmed.to_string()
+}
+
+/// Comprehensive JSON repair: cleans fences, closes truncated structures,
+/// removes trailing commas, and inserts missing commas between array elements/fields.
+pub fn repair_json(s: &str) -> String {
+    let cleaned = clean_json_output(s);
+    let repaired_truncated = repair_truncated_json(&cleaned);
+    let trailing_fixed = fix_trailing_commas(&repaired_truncated);
+    fix_missing_commas(&trailing_fixed)
+}
+
+fn fix_trailing_commas(s: &str) -> String {
+    let mut res = String::with_capacity(s.len());
+    let chars: Vec<char> = s.chars().collect();
+    let n = chars.len();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    let mut i = 0;
+    while i < n {
+        let c = chars[i];
+        if in_string {
+            res.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == '"' {
+            in_string = true;
+            res.push(c);
+            i += 1;
+            continue;
+        }
+
+        if c == ',' {
+            let mut j = i + 1;
+            while j < n && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < n && (chars[j] == '}' || chars[j] == ']') {
+                i += 1;
+                continue;
+            }
+        }
+
+        res.push(c);
+        i += 1;
+    }
+    res
+}
+
+fn fix_missing_commas(s: &str) -> String {
+    let mut res = String::with_capacity(s.len() + 16);
+    let chars: Vec<char> = s.chars().collect();
+    let n = chars.len();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    let mut i = 0;
+    while i < n {
+        let c = chars[i];
+        if in_string {
+            res.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == '"' {
+            in_string = true;
+            res.push(c);
+            i += 1;
+            continue;
+        }
+
+        res.push(c);
+
+        if c == '}' || c == ']' {
+            let mut j = i + 1;
+            while j < n && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < n {
+                let next = chars[j];
+                if next == '{' || next == '[' || next == '"' {
+                    res.push(',');
+                }
+            }
+        }
+
+        i += 1;
+    }
+    res
 }
 
 /// Wraps a strategy kind + the concrete implementations.
@@ -841,5 +967,25 @@ space ::= " "?
                 age: 40
             }
         );
+    }
+
+    #[test]
+    fn repair_json_missing_commas_and_trailing_commas() {
+        let text = r#"{"name": "Grace", "age": 42,}"#;
+        let strategy = StateTunedStrategy;
+        let result: Simple = strategy.parse(text).unwrap();
+        assert_eq!(
+            result,
+            Simple {
+                name: "Grace".into(),
+                age: 42
+            }
+        );
+
+        let array_text = r#"[{"name":"Alice","age":20} {"name":"Bob","age":30}]"#;
+        let res: Vec<Simple> = strategy.parse(array_text).unwrap();
+        assert_eq!(res.len(), 2);
+        assert_eq!(res[0].name, "Alice");
+        assert_eq!(res[1].name, "Bob");
     }
 }
