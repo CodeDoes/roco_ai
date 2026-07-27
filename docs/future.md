@@ -104,14 +104,7 @@ This document catalogs concrete improvements beyond the current state, organized
 ## Build & Developer Experience
 
 
-### 25. Cargo workspace hygiene
-**Rationale:** Several crates have unused dependencies or mismatched feature flags.
-
-**Approach:**
-- Run `cargo machete` (unused dependency detector) regularly
-- Add `cargo deny` to CI for license checks, duplicate crate detection, and security advisories
-- Unify `tokio` feature flags across all crates (some enable `process`, others don't)
-- Add a workspace-level `[lints.rust]` section for consistent clippy configuration
+---
 
 ---
 

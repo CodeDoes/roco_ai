@@ -31,6 +31,13 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 
+[workspace.lints.rust]
+unexpected_cfgs = "allow"
+
+[workspace.lints.clippy]
+redundant_clone = "warn"
+clone_on_copy = "warn"
+
 [workspace.dependencies]
 tokio = { version = "1", default-features = false, features = [
     "macros",
