@@ -93,6 +93,11 @@ fn main() {
             );
         }
 
+        // ── Debug REPL ───────────────────────────────────────────────────
+        "debug" => {
+            cmd::debug::cmd_debug(&extra);
+        }
+
         // ── GPU / Jobs ───────────────────────────────────────────────────
         "gpu-check" => {
             if has_help_flag(&extra) {

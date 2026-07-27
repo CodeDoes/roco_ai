@@ -59,16 +59,7 @@ This document catalogs concrete improvements beyond the current state, organized
 - Show per-token probability on hover
 - Requires the trace data from item 14
 
-### 16. Generative debug REPL
-**Rationale:** Debugging a bad generation requires setting breakpoints in `handle_complete` — a 900-line async function on a separate OS thread. There's no way to step through generation interactively.
-
-**Approach:**
-- Add `roco debug` subcommand that starts a generation in single-step mode:
-  - After each token, print: `token=1234 "the" p=0.87 top5=[(1234,0.87), (5678,0.05), ...]`
-  - Press Enter to advance one token, or type `continue` to finish
-  - Type `state` to dump recurrent state statistics (mean activation, variance)
-  - Type `grammar` to show current grammar stack
-- Implement via a new `ActorMessage::Step` variant that the actor processes
+---
 
 ---
 
@@ -105,4 +96,3 @@ This document catalogs concrete improvements beyond the current state, organized
 | Priority | Area | Item | Effort | Impact |
 |----------|------|------|--------|--------|
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
-| P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |

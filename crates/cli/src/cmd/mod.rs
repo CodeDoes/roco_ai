@@ -1,6 +1,7 @@
 //! Subcommand implementations for the `roco` CLI.
 
 pub mod coder;
+pub mod debug;
 pub mod eval;
 pub mod eval_suite;
 pub mod export;
