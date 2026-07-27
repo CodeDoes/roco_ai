@@ -915,6 +915,11 @@ pub fn cmd_story(extra: &[&str]) {
     let seed_str = parse_opt("--seed", extra);
     let seed = seed_str.and_then(|s| s.parse::<u64>().ok());
 
+    let progress = extra.iter().any(|&a| a == "--progress" || a == "-P");
+    if progress {
+        std::env::set_var("ROCO_PROGRESS", "1");
+    }
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

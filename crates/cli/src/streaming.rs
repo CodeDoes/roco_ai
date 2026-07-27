@@ -478,6 +478,26 @@ pub fn on_token_for(printer: &Arc<Mutex<StreamPrinter>>) -> Box<dyn Fn(&str) + S
     })
 }
 
+/// Build an `on_token` callback that updates both `printer` and `tracker`.
+pub fn on_token_with_progress(
+    printer: &Arc<Mutex<StreamPrinter>>,
+    tracker: &Arc<Mutex<ProgressTracker>>,
+) -> Box<dyn Fn(&str) + Send + Sync> {
+    let printer = Arc::clone(printer);
+    let tracker = Arc::clone(tracker);
+    Box::new(move |token: &str| {
+        if let Ok(mut tr) = tracker.lock() {
+            tr.tick();
+            let status = tr.status_line();
+            eprint!("{status}");
+            let _ = std::io::stderr().flush();
+        }
+        if let Ok(mut p) = printer.lock() {
+            p.push(token);
+        }
+    })
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Tests
 // ═════════════════════════════════════════════════════════════════════════════

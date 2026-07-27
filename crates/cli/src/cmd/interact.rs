@@ -21,6 +21,7 @@ pub fn cmd_interact(extra: &[&str]) {
     let pacing = PacingChoice::from_label(pace_str);
     let seed = parse_seed(extra);
     let trace = extra.iter().any(|&a| a == "--trace" || a == "-t");
+    let progress = extra.iter().any(|&a| a == "--progress" || a == "-P");
 
     // The first positional argument (anything not starting with `-`) is an
     // opening message. Previously `extra.first()` was used unconditionally,
@@ -58,6 +59,9 @@ pub fn cmd_interact(extra: &[&str]) {
     // Enable per-token trace mode for debugging generations
     if trace {
         std::env::set_var("ROCO_TRACE", "1");
+    }
+    if progress {
+        std::env::set_var("ROCO_PROGRESS", "1");
     }
 
     let result = if let Some(s) = seed {

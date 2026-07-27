@@ -8,14 +8,7 @@ This document catalogs concrete improvements beyond the current state, organized
 
 ---
 
-### 2. Generation progress bar with ETA
-**Rationale:** Long generations (story chapters, multi-turn reasoning) give no feedback besides the first token appearing. Users don't know if the model is still processing the prompt, sampling, or stuck.
-
-**Approach:**
-- Add `--progress` flag to `roco interact`, `roco story`
-- During prompt processing: show `Processing prompt... [tok/s]`
-- During generation: show `Generating [tok/s] | tokens: N/M | est. remaining: Xs`
-- The actor thread already reports `tokens generated` — pipe this through a channel to the UI thread, or poll periodically via a new `ActorMessage::Progress` message
+---
 
 ---
 
@@ -146,6 +139,5 @@ This document catalogs concrete improvements beyond the current state, organized
 | Priority | Area | Item | Effort | Impact |
 |----------|------|------|--------|--------|
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
-| P2 | UX | 2. Progress bar | 1 day | Medium — better feedback for long gen |
 | P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |
 | P3 | Testing | 21. Fuzz grammar engine | 2 days | Low — security hardening |

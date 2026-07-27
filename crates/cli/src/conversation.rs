@@ -117,6 +117,8 @@ pub struct ChatSession {
     /// If true, the next turn skips context history because the loaded
     /// backend state already encodes the full conversation up to this point.
     pub instant_resume: bool,
+    /// If true, display a generation progress bar with tok/s and ETA.
+    pub show_progress: bool,
 }
 
 impl ChatSession {
@@ -145,7 +147,14 @@ impl ChatSession {
             model_turns: 0,
             state_file: None,
             instant_resume: false,
+            show_progress: std::env::var("ROCO_PROGRESS").is_ok(),
         }
+    }
+
+    /// Enable generation progress bar display with tok/s and ETA.
+    pub fn with_progress(mut self, enabled: bool) -> Self {
+        self.show_progress = enabled;
+        self
     }
 
     /// Suppress terminal writes (the caller prints the result itself).
@@ -252,16 +261,24 @@ impl ChatSession {
             StreamPrinter::new(self.prefix()).shared()
         };
 
+        let tracker = Arc::new(Mutex::new(streaming::ProgressTracker::new(self.max_tokens)));
+        let on_token = if self.show_progress {
+            streaming::on_token_with_progress(&printer, &tracker)
+        } else {
+            streaming::on_token_for(&printer)
+        };
+
         let mut request = CompletionRequest {
             system: self.system_prompt(),
             prompt: context,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             prefill: Some(roco_engine::NO_THINK_PREFILL.to_string()),
-            on_token: Some(streaming::on_token_for(&printer)),
+            on_token: Some(on_token),
             seed: self.seed,
             ..Default::default()
         };
+        request.record_trace = self.record_trace;
         request.record_trace = self.record_trace;
 
         // `request` (and the `on_token` closure holding a clone of `printer`)
@@ -269,6 +286,10 @@ impl ChatSession {
         // end of this statement — so by the time we lock the printer below,
         // nothing else can be writing to it.
         let result = futures::executor::block_on(backend.complete(request));
+
+        if self.show_progress {
+            eprint!("\r\x1b[K");
+        }
 
         let outcome = match result {
             Ok(response) => {
