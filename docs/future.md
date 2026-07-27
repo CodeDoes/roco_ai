@@ -254,14 +254,6 @@ CompletionRequest::builder()
 ## Story Pipeline Fault Tolerance & Pipeline Safety
 
 
-### 27. LLM JSON Repair & Outline Fallback Guardrails
-**Rationale:** RWKV or local LLMs can occasionally omit commas between JSON array elements (`[{"a":1} {"b":2}]`). When `StateTunedStrategy` fails to parse the outline JSON, previous logic fell back to an empty outline state, stripping premise context for downstream chapter generation.
-
-**Approach:**
-- Implement a lightweight JSON sanitizer/repair routine prior to `serde_json::from_str` (insert missing commas between adjacent `}` `{`, close unclosed brackets).
-- Enforce token-level BNF grammar constraints (`strict_grammar = true`) on outline and wiki generation endpoints to physically prohibit malformed JSON tokens.
-- If outline parsing fails despite repair, trigger an automatic re-prompt turn rather than falling back to an empty outline state.
-
 ### 28. `inferd` Daemon Concurrency & Request Queueing
 **Rationale:** Under concurrent request spikes (e.g., streaming interactive chat while running a background `roco story` pipeline), the backend actor channel can drop (`rwkv channel recv: channel closed`), returning HTTP 500 to clients.
 
@@ -297,7 +289,6 @@ CompletionRequest::builder()
 
 | Priority | Area | Item | Effort | Impact |
 |----------|------|------|--------|--------|
-| P0 | Pipeline Safety | 27. LLM JSON repair & strict outline guardrails | 1 day | High — prevents parse failures on malformed JSON |
 | P0 | Infrastructure | 28. `inferd` queueing & client retry backoff | 1 day | High — prevents channel closure on concurrent load |
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
 | P1 | UX | 4. Instant session resume | 2 days | High — saves minutes per interactive session |
