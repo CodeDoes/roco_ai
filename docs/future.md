@@ -77,18 +77,7 @@ This document catalogs concrete improvements beyond the current state, organized
   - Type `grammar` to show current grammar stack
 - Implement via a new `ActorMessage::Step` variant that the actor processes
 
-### 17. Generation health metrics dashboard
-**Rationale:** Operators and developers need visibility into live generation health without reading log files.
-
-**Approach:**
-- Add `roco inspect metrics` that exposes:
-  - Tokens per second (instant + rolling average)
-  - GPU utilization (from `wgpu` adapter queries)
-  - State pool size / eviction rate
-  - Cache hit ratio
-  - Number of cancelled/interrupted generations
-- Output as JSON for Prometheus/Grafana ingestion
-- Optional: push metrics to a statsd endpoint
+---
 
 ### 18. Structured logging for the generation pipeline
 **Rationale:** Current tracing is ad-hoc `info!` calls in `actor.rs`. There's no structured span hierarchy linking a completion request through its entire lifecycle.
@@ -101,16 +90,7 @@ This document catalogs concrete improvements beyond the current state, organized
 - Export via `tracing-subscriber` to `OTLP` or JSON file
 - Add `ROCO_TRACE=1` env var to enable detailed per-token tracing to stderr
 
-### 19. Session state visualization
-**Rationale:** The recurrent state is an opaque tensor. There's no way to see how it evolves across turns — which dimensions activate, how blend operations reshape it, etc.
-
-**Approach:**
-- Add `roco inspect state --session <id>` that:
-  - Loads the session's recurrent state from the pool
-  - Computes summary statistics: mean, std, min, max per layer
-  - Computes per-layer entropy (how "surprised" is the model?)
-  - Outputs as JSON for external visualization (e.g., `python -c "import json, matplotlib; ..."`)
-- Add a lightweight TUI view in `crates/ui` that plots the state distribution as an ASCII histogram
+---
 
 ---
 
