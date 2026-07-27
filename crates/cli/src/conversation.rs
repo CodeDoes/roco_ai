@@ -218,10 +218,12 @@ impl ChatSession {
             ..Default::default()
         };
 
+        // `request` (and the `on_token` closure holding a clone of `printer`)
+        // is consumed by `complete`, and the returned future is dropped at the
+        // end of this statement — so by the time we lock the printer below,
+        // nothing else can be writing to it.
         let result = futures::executor::block_on(backend.complete(request));
 
-        // Drop the callback's reference before taking the printer back, so the
-        // Arc refcount is 1 and the closure (which captured a clone) is gone.
         let outcome = match result {
             Ok(response) => {
                 let text = Self::finish_stream(&printer, &response.text);

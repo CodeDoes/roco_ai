@@ -236,7 +236,39 @@ implementations:
 Balanced-delimiter checks were run across all 13 touched files. **`cargo test
 -p roco-cli -p roco-app -p roco-engine -p roco-infer-client` and `cargo clippy
 --workspace --all-targets -- --deny warnings` still need to be run** on a
-machine with the toolchain — the CI workflow covers both.
+machine with the toolchain.
+
+### GitHub Actions cannot currently confirm this
+
+CI was expected to provide the first real compile, but it does not run. Every
+workflow run in this repository — on `main`, going back well before this
+change — completes in seconds with `total_count: 0` jobs and the message
+"This run likely failed because of a workflow file issue":
+
+```
+run 30244736301  branch=arena/019fa238-roco-ai   jobs=0
+run 30241315719  branch=main                     jobs=0
+run 30219377439  branch=main                     jobs=0
+run 30214431994  branch=main                     jobs=0
+...
+```
+
+`.github/workflows/ci.yml` was **not** modified here, and the failures predate
+this branch, so this is pre-existing repository infrastructure rather than a
+consequence of these changes. Two candidate causes worth checking:
+
+1. `test-core` references `-p roco-agent-core -p roco-agent-story`, which are
+   **not workspace members** (`Cargo.toml` lists `crates/agent` as
+   `roco-agent`). That job would fail, but it would not prevent jobs from
+   being created.
+2. More likely: an org/repo-level Actions restriction, or the
+   `actions-rust-lang/setup-rust-toolchain` action not being on the allowed
+   list — consistent with zero jobs ever being scheduled. (The API returns
+   403 `Resource not accessible by integration` for the Actions-permissions
+   endpoint, so this could not be verified from here.)
+
+Until that is resolved, the local reference-implementation results above are
+the strongest available evidence, and a maintainer should run cargo directly.
 
 Roughly 90 tests were added across the touched crates. Notable regression
 guards:
