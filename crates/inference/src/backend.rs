@@ -422,7 +422,9 @@ impl StateTuning for RwkvBackend {
         output_session: &'a str,
     ) -> BoxFuture<'a, Result<(), EngineError>> {
         let res = self.blend_states(session_a, session_b, alpha, output_session);
-        Box::pin(async move { res.map_err(|e| EngineError::Backend(format!("rwkv blend_states: {e}"))) })
+        Box::pin(
+            async move { res.map_err(|e| EngineError::Backend(format!("rwkv blend_states: {e}"))) },
+        )
     }
 }
 

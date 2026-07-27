@@ -1,7 +1,7 @@
 //! Single-step generative debug REPL: `roco debug`.
 
-use roco_engine::{CompletionRequest, ModelBackend};
 use crate::daemon;
+use roco_engine::{CompletionRequest, ModelBackend};
 
 /// Run the generative debug REPL using the provided backend.
 pub fn run_debug_with_backend(backend: &dyn ModelBackend, prompt: &str) {

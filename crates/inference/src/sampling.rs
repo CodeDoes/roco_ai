@@ -298,7 +298,8 @@ mod tests {
         for size in 1..=50 {
             for temp in [0.0, 0.1, 0.5, 1.0, 2.0] {
                 for seed in 0..10 {
-                    let probs: Vec<f32> = (0..size).map(|i| (i as f32 + 1.0) / size as f32).collect();
+                    let probs: Vec<f32> =
+                        (0..size).map(|i| (i as f32 + 1.0) / size as f32).collect();
                     let mut rng = StdRng::seed_from_u64(seed);
                     let token = sample_token_with_rng(&probs, temp, 0.9, 0.05, Some(&mut rng));
                     assert!(

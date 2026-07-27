@@ -399,9 +399,33 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
 
 /// Known top-level subcommands in `roco`.
 pub const KNOWN_SUBCOMMANDS: &[&str] = &[
-    "story", "interact", "code", "coder", "game", "html", "inspect", "eval", "eval-suite",
-    "gui", "pet", "stats", "review", "export", "whoami", "version", "inferd", "server",
-    "gateway", "gpu-check", "jobs", "reload", "stop", "rwkv", "grammar", "bless", "completions",
+    "story",
+    "interact",
+    "code",
+    "coder",
+    "game",
+    "html",
+    "inspect",
+    "eval",
+    "eval-suite",
+    "gui",
+    "pet",
+    "stats",
+    "review",
+    "export",
+    "whoami",
+    "version",
+    "inferd",
+    "server",
+    "gateway",
+    "gpu-check",
+    "jobs",
+    "reload",
+    "stop",
+    "rwkv",
+    "grammar",
+    "bless",
+    "completions",
 ];
 
 /// Find the closest matching subcommand for a given input if within distance 3.
@@ -426,7 +450,14 @@ pub fn generate_completions(shell: &str) {
             println!("#compdef roco");
             println!("_roco() {{");
             println!("    local -a commands");
-            println!("    commands=({})", KNOWN_SUBCOMMANDS.iter().map(|c| format!("'{}'", c)).collect::<Vec<_>>().join(" "));
+            println!(
+                "    commands=({})",
+                KNOWN_SUBCOMMANDS
+                    .iter()
+                    .map(|c| format!("'{}'", c))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
             println!("    _describe 'roco subcommand' commands");
             println!("}}");
             println!("compdef _roco roco");

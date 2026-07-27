@@ -739,7 +739,6 @@ impl roco_engine::ModelBackend for TokioBackend {
     ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         Box::pin(async move { Ok(()) })
     }
-
 }
 
 /// Return a backend that works from synchronous code (uses a dedicated tokio

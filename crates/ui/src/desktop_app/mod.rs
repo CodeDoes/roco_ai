@@ -966,7 +966,6 @@ mod tests {
                 })
             })
         }
-
     }
 
     fn app_with_mock_backend(responses: Vec<String>) -> RocoDesktopApp {

@@ -290,7 +290,8 @@ fn inspect_metrics(workspace_dir: &Path, json_mode: bool) {
     let gp = crate::daemon::GATEWAY_PORT;
     let ip = crate::daemon::INFERENCE_PORT;
     let gw_alive = crate::daemon::is_running("gateway", gp);
-    let inf_alive = crate::daemon::is_running("inferd", ip) || crate::daemon::is_running("server", ip);
+    let inf_alive =
+        crate::daemon::is_running("inferd", ip) || crate::daemon::is_running("server", ip);
 
     let sessions_dir = workspace_dir.join("sessions");
     let state_pool_size = count_files(&sessions_dir);
@@ -312,16 +313,32 @@ fn inspect_metrics(workspace_dir: &Path, json_mode: bool) {
     });
 
     if json_mode {
-        println!("{}", serde_json::to_string_pretty(&metrics_data).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&metrics_data).unwrap_or_default()
+        );
     } else {
         println!("================================================================");
         println!("  RoCo AI — Generation Health Metrics Dashboard");
         println!("================================================================");
-        println!("  System Status:         {}", if gw_alive || inf_alive { "ONLINE" } else { "OFFLINE" });
+        println!(
+            "  System Status:         {}",
+            if gw_alive || inf_alive {
+                "ONLINE"
+            } else {
+                "OFFLINE"
+            }
+        );
         println!("  Tokens / sec (instant): 45.2 tok/s");
         println!("  Tokens / sec (rolling): 42.8 tok/s");
-        println!("  GPU Utilization:       {}", if inf_alive { "85.0%" } else { "0.0%" });
-        println!("  State Pool Size:       {} active sessions", state_pool_size);
+        println!(
+            "  GPU Utilization:       {}",
+            if inf_alive { "85.0%" } else { "0.0%" }
+        );
+        println!(
+            "  State Pool Size:       {} active sessions",
+            state_pool_size
+        );
         println!("  Cache Hit Ratio:       95.0%");
         println!("  Cancelled Generations: 0");
         println!("================================================================");
@@ -367,16 +384,19 @@ fn inspect_state(workspace_dir: &Path, extra: &[&str], json_mode: bool) {
         Some(p) => p,
         None => {
             if json_mode {
-                println!("{}", serde_json::json!({
-                    "session_id": session_id.unwrap_or("none"),
-                    "layers": 32,
-                    "mean_activation": 0.0124,
-                    "std_activation": 0.4512,
-                    "min_activation": -2.145,
-                    "max_activation": 2.891,
-                    "per_layer_entropy": [1.42, 1.38, 1.45, 1.41],
-                    "status": "simulated"
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "session_id": session_id.unwrap_or("none"),
+                        "layers": 32,
+                        "mean_activation": 0.0124,
+                        "std_activation": 0.4512,
+                        "min_activation": -2.145,
+                        "max_activation": 2.891,
+                        "per_layer_entropy": [1.42, 1.38, 1.45, 1.41],
+                        "status": "simulated"
+                    })
+                );
             } else {
                 println!("================================================================");
                 println!("  RoCo AI — Session Recurrent State Visualization");
@@ -399,7 +419,11 @@ fn inspect_state(workspace_dir: &Path, extra: &[&str], json_mode: bool) {
 
     let count = bytes.len();
     let sum: u64 = bytes.iter().map(|&b| b as u64).sum();
-    let mean = if count > 0 { sum as f64 / count as f64 } else { 0.0 };
+    let mean = if count > 0 {
+        sum as f64 / count as f64
+    } else {
+        0.0
+    };
 
     let state_data = serde_json::json!({
         "file": file_path.to_string_lossy(),
@@ -416,7 +440,10 @@ fn inspect_state(workspace_dir: &Path, extra: &[&str], json_mode: bool) {
     });
 
     if json_mode {
-        println!("{}", serde_json::to_string_pretty(&state_data).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&state_data).unwrap_or_default()
+        );
     } else {
         println!("================================================================");
         println!("  RoCo AI — Session Recurrent State Visualization");
@@ -440,7 +467,8 @@ fn inspect_live(json_mode: bool) {
     let gp = crate::daemon::GATEWAY_PORT;
     let ip = crate::daemon::INFERENCE_PORT;
     let gw_alive = crate::daemon::is_running("gateway", gp);
-    let inf_alive = crate::daemon::is_running("inferd", ip) || crate::daemon::is_running("server", ip);
+    let inf_alive =
+        crate::daemon::is_running("inferd", ip) || crate::daemon::is_running("server", ip);
 
     let backend_name = if gw_alive || inf_alive {
         let backend = crate::daemon::ensure_sync_backend();
@@ -470,15 +498,33 @@ fn inspect_live(json_mode: bool) {
     });
 
     if json_mode {
-        println!("{}", serde_json::to_string_pretty(&live_data).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&live_data).unwrap_or_default()
+        );
     } else {
         println!("================================================================");
         println!("  RoCo AI — Live Backend Inspection");
         println!("================================================================");
-        println!("  Status:             {}", if gw_alive || inf_alive { "ONLINE" } else { "OFFLINE" });
+        println!(
+            "  Status:             {}",
+            if gw_alive || inf_alive {
+                "ONLINE"
+            } else {
+                "OFFLINE"
+            }
+        );
         println!("  Backend:            {}", backend_name);
-        println!("  Gateway (port {}):  {}", gp, if gw_alive { "running" } else { "stopped" });
-        println!("  Inference (port {}): {}", ip, if inf_alive { "running" } else { "stopped" });
+        println!(
+            "  Gateway (port {}):  {}",
+            gp,
+            if gw_alive { "running" } else { "stopped" }
+        );
+        println!(
+            "  Inference (port {}): {}",
+            ip,
+            if inf_alive { "running" } else { "stopped" }
+        );
         println!("  GPU Adapter:        {}", adapter_var);
         println!("  Model Weights:      {}", model_var);
         if let Some(s) = seed_var {
@@ -547,7 +593,10 @@ fn inspect_trace(workspace_dir: &Path, extra: &[&str], json_mode: bool) {
         Some(p) => p,
         None => {
             if json_mode {
-                println!("{}", serde_json::json!({ "error": "No session json file found" }));
+                println!(
+                    "{}",
+                    serde_json::json!({ "error": "No session json file found" })
+                );
             } else {
                 println!("No session transcript found in .roco/sessions/");
             }
@@ -558,7 +607,10 @@ fn inspect_trace(workspace_dir: &Path, extra: &[&str], json_mode: bool) {
     if let Ok(content) = std::fs::read_to_string(&file_path) {
         if json_mode {
             let parsed: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
-            println!("{}", serde_json::to_string_pretty(&parsed).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&parsed).unwrap_or_default()
+            );
         } else {
             println!("================================================================");
             println!("  RoCo AI — Token Trace Inspection");

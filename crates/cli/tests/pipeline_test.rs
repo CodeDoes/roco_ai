@@ -39,8 +39,7 @@ async fn test_full_pipeline_json_formatting() {
 
     let resp = backend.complete(req).await.expect("completion failed");
     assert!(
-        resp.parsed.is_some()
-            || serde_json::from_str::<serde_json::Value>(&resp.text).is_ok(),
+        resp.parsed.is_some() || serde_json::from_str::<serde_json::Value>(&resp.text).is_ok(),
         "outliner response must be well-formed JSON"
     );
 }

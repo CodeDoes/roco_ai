@@ -8,7 +8,9 @@
 //! Run: cargo test -p roco-engine --test mock_scenarios
 
 use futures::future::BoxFuture;
-use roco_engine::{CompletionRequest, CompletionResponse, EngineError, MockBackend, ModelBackend, StateTuning};
+use roco_engine::{
+    CompletionRequest, CompletionResponse, EngineError, MockBackend, ModelBackend, StateTuning,
+};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -59,7 +61,9 @@ impl StateTuning for RecordingBackend {
         _few_shots: &'a [(&'a str, &'a str)],
     ) -> BoxFuture<'a, Result<String, EngineError>> {
         Box::pin(async move {
-            Err(EngineError::Backend("state tuning not supported by RecordingBackend".into()))
+            Err(EngineError::Backend(
+                "state tuning not supported by RecordingBackend".into(),
+            ))
         })
     }
 
@@ -71,7 +75,9 @@ impl StateTuning for RecordingBackend {
         _output_session: &'a str,
     ) -> BoxFuture<'a, Result<(), EngineError>> {
         Box::pin(async move {
-            Err(EngineError::Backend("state blending not supported by RecordingBackend".into()))
+            Err(EngineError::Backend(
+                "state blending not supported by RecordingBackend".into(),
+            ))
         })
     }
 }

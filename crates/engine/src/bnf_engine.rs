@@ -1,10 +1,10 @@
 //! Token-level BNF grammar engine wrapping kbnf.
 
+use crate::types::BnfMask;
 use ahash::AHashMap;
 use kbnf::{
     engine_like::AcceptTokenError, AcceptTokenResult, Config, Engine, EngineLike, Token, Vocabulary,
 };
-use crate::types::BnfMask;
 
 /// Create a `Box<dyn BnfMask>` from a kbnf-format GBNF grammar and vocabulary bytes.
 ///
