@@ -341,24 +341,57 @@ async fn remote_complete(
         seed: req.seed,
     };
 
-    let mut builder = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&wire);
-    for (k, v) in extra_headers {
-        builder = builder.header(k, v);
-    }
+    let max_retries = 3;
+    let mut attempt = 0;
+    let mut backoff = std::time::Duration::from_millis(200);
 
-    let resp = builder.send().await.map_err(|e| {
-        tracing::error!(
-            target: "roco_infer_client",
-            url = %url,
-            elapsed_ms = start_time.elapsed().as_millis(),
-            err = %e,
-            "Remote completion HTTP request failed"
-        );
-        EngineError::Backend(format!("inference API request failed: {e}"))
-    })?;
+    let resp = loop {
+        attempt += 1;
+        let mut builder = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&wire);
+        for (k, v) in extra_headers {
+            builder = builder.header(k, v);
+        }
+
+        match builder.send().await {
+            Ok(resp) if resp.status().is_server_error() && attempt <= max_retries => {
+                let status = resp.status();
+                tracing::warn!(
+                    target: "roco_infer_client",
+                    url = %url,
+                    status = %status,
+                    attempt = attempt,
+                    "Remote completion returned server error, retrying in {backoff:?}"
+                );
+                tokio::time::sleep(backoff).await;
+                backoff *= 2;
+            }
+            Ok(resp) => break resp,
+            Err(e) if attempt <= max_retries => {
+                tracing::warn!(
+                    target: "roco_infer_client",
+                    url = %url,
+                    attempt = attempt,
+                    err = %e,
+                    "Remote completion HTTP connection failed, retrying in {backoff:?}"
+                );
+                tokio::time::sleep(backoff).await;
+                backoff *= 2;
+            }
+            Err(e) => {
+                tracing::error!(
+                    target: "roco_infer_client",
+                    url = %url,
+                    elapsed_ms = start_time.elapsed().as_millis(),
+                    err = %e,
+                    "Remote completion HTTP request failed after max retries"
+                );
+                return Err(EngineError::Backend(format!("inference API request failed: {e}")));
+            }
+        }
+    };
 
     if !resp.status().is_success() {
         let status = resp.status();

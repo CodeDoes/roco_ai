@@ -254,12 +254,6 @@ CompletionRequest::builder()
 ## Story Pipeline Fault Tolerance & Pipeline Safety
 
 
-### 28. `inferd` Daemon Concurrency & Request Queueing
-**Rationale:** Under concurrent request spikes (e.g., streaming interactive chat while running a background `roco story` pipeline), the backend actor channel can drop (`rwkv channel recv: channel closed`), returning HTTP 500 to clients.
-
-**Approach:**
-- Introduce an explicit request queueing actor inside `roco-inferd` / `roco-gateway` to serialize incoming generation jobs per device context.
-- Implement exponential backoff retry logic inside `roco-infer-client` when receiving a 500 Internal Server Error or closed channel response.
 
 ---
 
@@ -289,7 +283,6 @@ CompletionRequest::builder()
 
 | Priority | Area | Item | Effort | Impact |
 |----------|------|------|--------|--------|
-| P0 | Infrastructure | 28. `inferd` queueing & client retry backoff | 1 day | High — prevents channel closure on concurrent load |
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
 | P1 | UX | 4. Instant session resume | 2 days | High — saves minutes per interactive session |
 | P1 | Interpretability | 14. Token trace logging | 2 days | Medium — enables debugging bad generations |
