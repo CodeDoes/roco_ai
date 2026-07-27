@@ -13,9 +13,9 @@ pub fn cmd_gateway(extra: &[&str]) {
     use roco_gateway::Gateway;
 
     let host = parse_opt("--host", extra).unwrap_or("127.0.0.1");
-    let port_str = parse_opt("--port", extra).unwrap_or("8000");
-    let port = port_str.parse::<u16>().unwrap_or(8000);
-    let target = parse_opt("--target", extra).unwrap_or("http://127.0.0.1:8080");
+    let port_str = parse_opt("--port", extra).unwrap_or("18000");
+    let port = port_str.parse::<u16>().unwrap_or(18000);
+    let target = parse_opt("--target", extra).unwrap_or("http://127.0.0.1:18080");
     let limit_str = parse_opt("--rate-limit", extra).unwrap_or("60");
     let limit = limit_str.parse::<usize>().unwrap_or(60);
     let ws_dir_str = parse_opt("--workspace", extra)

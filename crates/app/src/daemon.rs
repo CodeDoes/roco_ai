@@ -251,14 +251,26 @@ pub fn is_running(name: &str, port: u16) -> bool {
     healthy.unwrap_or(false)
 }
 
-/// Locate the `roco-inferd` binary (sibling of current exe, then PATH).
+/// Locate the `roco-inferd` binary.
+///
+/// Preference order:
+/// 1. Release sibling (when running from debug, prefer the release build
+///    — the debug build of `roco-inferd` may hang on GPU)
+/// 2. Sibling of current exe
+/// 3. PATH lookup
 fn find_inferd(current_exe: &PathBuf) -> Option<PathBuf> {
     if let Some(dir) = current_exe.parent() {
+        // When running from target/debug/, prefer target/release/roco-inferd
+        if dir.ends_with("target/debug") {
+            let release = dir.parent()?.join("release").join("roco-inferd");
+            if release.is_file() {
+                return Some(release);
+            }
+        }
         let sibling = dir.join("roco-inferd");
         if sibling.is_file() {
             return Some(sibling);
         }
-        // cargo run layout: target/debug/roco next to target/debug/roco-inferd
     }
     // PATH lookup
     if let Ok(path) = std::env::var("PATH") {
