@@ -1,0 +1,310 @@
+# Future Work — UX, Modularity, Determinism, Interpretability
+
+This document catalogs concrete improvements beyond the current state, organized by the four pillars. Each item includes rationale and a suggested approach.
+
+---
+
+## UX — User Experience
+
+### 1. Interactive `roco inspect` with live backend connection
+**Rationale:** `roco inspect` currently shows static config and disk state. It cannot inspect the live model's recurrent state, active sessions in the state pool, or the GPU memory footprint.
+
+**Approach:**
+- Add `roco inspect live` that connects to a running backend (inferd or direct) and queries:
+  - Active session keys and their LRU position
+  - Current GPU memory usage (`wgpu` adapter queries)
+  - Model metadata (loaded layers, quant scheme, context window)
+  - Sampling parameters in use (temperature, top_p, seed)
+- Output as structured JSON for scripting
+
+### 2. Generation progress bar with ETA
+**Rationale:** Long generations (story chapters, multi-turn reasoning) give no feedback besides the first token appearing. Users don't know if the model is still processing the prompt, sampling, or stuck.
+
+**Approach:**
+- Add `--progress` flag to `roco interact`, `roco story`
+- During prompt processing: show `Processing prompt... [tok/s]`
+- During generation: show `Generating [tok/s] | tokens: N/M | est. remaining: Xs`
+- The actor thread already reports `tokens generated` — pipe this through a channel to the UI thread, or poll periodically via a new `ActorMessage::Progress` message
+
+### 3. Command autocomplete and suggestions
+**Rationale:** Users type `roco story` but forget the subcommand syntax. The help text lists everything but requires scrolling back.
+
+**Approach:**
+- Integrate `clap_complete` to generate shell completions for bash/zsh/fish
+- On unknown subcommand, suggest the closest match (Levenshtein distance against known commands)
+- `roco` with no args shows a brief usage hint rather than just launching interact mode
+
+### 4. Session resume without replay
+**Rationale:** `roco interact --resume <session>` currently replays the entire transcript through the model to rebuild the recurrent state. For long sessions this costs minutes of wall time.
+
+**Approach:**
+- Save the raw recurrent state tensor alongside the transcript (already possible via `SaveState`)
+- On resume, `LoadState` bypasses replay entirely — instant resume
+- Fall back to replay when the saved state is missing or corrupted (graceful degradation)
+- Flag: `roco interact --resume <session> [--instant]` or `roco interact --resume <session> --replay` to force replay
+
+### 5. Rich error messages with suggested fixes
+**Rationale:** Many errors just print a string ("backend failure", "model not found"). The user doesn't know what to do.
+
+**Approach:**
+- Categorize common errors and attach `help: ` suggestion:
+  - `EngineError::Backend("adapter failed")` → `Help: Try RWKV_ADAPTER=llvmpipe for CPU fallback`
+  - Model not found → `Help: Place a .st file in models/ or set $RWKV_MODEL`
+  - GPU hang → `Help: Set RWKV_ADAPTER=llvmpipe and re-run`
+- Use `#[error(help = "...")]` via thiserror or a custom wrapper
+
+---
+
+## Modularity — Crate Architecture & Separation of Concerns
+
+### 6. Consolidate 16 crates → 7 core crates (revisit RFC 0001)
+**Rationale:** The workspace has 16 crates (down from 19). Cross-crate changes still require touching 3–5 crates. Build times suffer from the compilation unit boundary overhead.
+
+**Proposed consolidation (builds on `AGENTS.md`):**
+
+| Current Crates | Proposed Crate | Rationale |
+|---|---|---|
+| `message`, `chat-common`, `protocol` | `roco-protocol` | All define wire types; changing one field touches all three |
+| `agent`, `validation`, `tools` | `roco-agent` | Agent loop, verifiers, and tool registry are tightly coupled |
+| `engine`, `inference`, `grammar`, `bnf-engine` | `roco-engine` | ModelBackend trait + backends + grammar all in one compilation unit eliminates the `Box<dyn BnfMask>` dance |
+| `session`, `workspace` | `roco-store` | Both are persistence-layer concerns with overlapping path logic |
+| `gateway`, `server`, `infer-client` | `roco-net` | Transport layer — all HTTP, all share route types |
+| `cli`, `app` | `roco-cli` (keep) | Already the primary binary |
+| `ui` | `roco-ui` (keep) | Desktop GUI is self-contained |
+| `harness` | (keep standalone or merge into test infrastructure) | Evaluation harness is a dev-dependency |
+
+**Estimated impact:**
+- Reduction from 16 → 7 workspace crates
+- One `cargo check` compiles ~40% fewer crate boundaries
+- Changes to wire types touch exactly 1 crate instead of 3
+
+### 7. Extract `ModelBackend::bake_state` into a standalone trait
+**Rationale:** `bake_state` is only meaningful for RNN-based backends (RWKV). Transformer backends (if added later) would have a no-op default. This violates Interface Segregation.
+
+**Approach:**
+```rust
+/// Optional: state-tuning for RNN-based backends.
+#[async_trait]
+pub trait StateTuning: ModelBackend {
+    async fn bake_state(
+        &self,
+        session_id: &str,
+        system: &str,
+        few_shots: &[(&str, &str)],
+    ) -> Result<String, EngineError>;
+}
+```
+- `RwkvBackend` implements `StateTuning`
+- `MockBackend` does not (returns error)
+- The conversation code checks `if let Some(tuner) = backend.as_any().downcast_ref::<dyn StateTuning>()`
+- Keeps `ModelBackend` lean
+
+### 8. Unify `CompletionRequest` construction across callers
+**Rationale:** Every caller that constructs a `CompletionRequest` repeats the same pattern: set system, prompt, temperature, prefill, etc. There are 6+ construction sites with subtle differences (some set `top_a`, others don't; some set `deadline_ms`, others rely on the default).
+
+**Approach:**
+- Add a builder pattern:
+```rust
+CompletionRequest::builder()
+    .system("You are...")
+    .prompt("Write a story")
+    .temperature(0.8)
+    .seed(42)
+    .prefill_no_think()
+    .build()
+```
+- Encapsulate common presets: `.chat_preset()`, `.story_preset()`, `.grammar_preset(gbnf)`
+- The builder can also apply env-var overrides (`RWKV_DETERMINISTIC_SEED`, `RWKV_TEMPERATURE`)
+
+### 9. Decouple the gateway's daemon lifecycle from the CLI
+**Rationale:** `roco gateway start` manages daemon lifecycle (start inferd, health-check, restart on crash). This logic lives in the CLI binary, making it impossible to use the gateway as a library without daemon-management side effects.
+
+**Approach:**
+- Extract `DaemonManager` into its own crate (`roco-daemon` or within `roco-net`)
+- The CLI calls `DaemonManager::start("inferd", args)` and `DaemonManager::start("gateway", args)`
+- Library users can opt out of daemon management entirely
+
+---
+
+## Determinism — Reproducible & Predictable Behaviour
+
+### 12. Deterministic state serialization
+**Rationale:** `SaveState`/`LoadState` currently serializes the GPU recurrent state as raw bytes. These bytes may differ across GPU drivers or `web-rwkv` versions, making a saved state non-portable.
+
+**Approach:**
+- After saving state bytes, compute a BLAKE3 hash and store it alongside
+- On load, verify the hash matches (catch corruption early)
+- For cross-platform determinism: also save the model SHA256 + `web-rwkv` version string so the tool can warn "this state was saved from a different model/version"
+
+### 13. Deterministic test fixtures for the eval suite
+**Rationale:** `roco eval-suite` runs deterministic checks but doesn't test model-level determinism (same seed → same output from the real backend).
+
+**Approach:**
+- Add `eval-suite` test: "deterministic_seed_model" — sends the same `CompletionRequest` with `seed=42` twice to a running backend, asserts `response_a.text == response_b.text`
+- Run this test only when a real backend is available (skip on `MockBackend`)
+- CI can run this against the production inferd if available
+
+---
+
+## Interpretability — Understanding What the Model Is Doing
+
+### 14. Token-level trace logging
+**Rationale:** When a generation goes wrong (repeats, hallucinates, goes off-topic), there's no way to see what tokens were sampled, what the probabilities were, or where the grammar intervened.
+
+**Approach:**
+- Add a `token_trace: Vec<TokenTrace>` field to `CompletionResponse`
+- `TokenTrace` contains: `token_id`, `token_str`, `probability`, `temperature`, `top_p_cut`, `grammar_masked: bool`, `selected_by_grammar: bool`
+- Enable with `CompletionRequest::record_trace(true)` or `--trace` CLI flag
+- Display via `roco inspect trace --session <id> --last` or a new `roco trace` subcommand
+- Conditional compilation (`#[cfg(feature = "trace")]`) so release builds don't pay the memory cost
+
+### 15. Token probability heatmap in the TUI/GUI
+**Rationale:** The desktop GUI (`crates/ui`) has no way to show uncertainty. Users see the final text but not the model's confidence.
+
+**Approach:**
+- Add a "confidence" color overlay to the markdown editor: green (p > 0.9), yellow (0.5-0.9), red (< 0.5)
+- Show per-token probability on hover
+- Requires the trace data from item 14
+
+### 16. Generative debug REPL
+**Rationale:** Debugging a bad generation requires setting breakpoints in `handle_complete` — a 900-line async function on a separate OS thread. There's no way to step through generation interactively.
+
+**Approach:**
+- Add `roco debug` subcommand that starts a generation in single-step mode:
+  - After each token, print: `token=1234 "the" p=0.87 top5=[(1234,0.87), (5678,0.05), ...]`
+  - Press Enter to advance one token, or type `continue` to finish
+  - Type `state` to dump recurrent state statistics (mean activation, variance)
+  - Type `grammar` to show current grammar stack
+- Implement via a new `ActorMessage::Step` variant that the actor processes
+
+### 17. Generation health metrics dashboard
+**Rationale:** Operators and developers need visibility into live generation health without reading log files.
+
+**Approach:**
+- Add `roco inspect metrics` that exposes:
+  - Tokens per second (instant + rolling average)
+  - GPU utilization (from `wgpu` adapter queries)
+  - State pool size / eviction rate
+  - Cache hit ratio
+  - Number of cancelled/interrupted generations
+- Output as JSON for Prometheus/Grafana ingestion
+- Optional: push metrics to a statsd endpoint
+
+### 18. Structured logging for the generation pipeline
+**Rationale:** Current tracing is ad-hoc `info!` calls in `actor.rs`. There's no structured span hierarchy linking a completion request through its entire lifecycle.
+
+**Approach:**
+- Add `tracing` spans with fields:
+  - `ot.name = "handle_complete"`, `req.prompt_len`, `req.seed`, `req.temperature`
+  - Child span `sampling` with `token_id`, `prob`, `selected_by_grammar`
+  - Child span `token_decode` with `word`, `word_len`
+- Export via `tracing-subscriber` to `OTLP` or JSON file
+- Add `ROCO_TRACE=1` env var to enable detailed per-token tracing to stderr
+
+### 19. Session state visualization
+**Rationale:** The recurrent state is an opaque tensor. There's no way to see how it evolves across turns — which dimensions activate, how blend operations reshape it, etc.
+
+**Approach:**
+- Add `roco inspect state --session <id>` that:
+  - Loads the session's recurrent state from the pool
+  - Computes summary statistics: mean, std, min, max per layer
+  - Computes per-layer entropy (how "surprised" is the model?)
+  - Outputs as JSON for external visualization (e.g., `python -c "import json, matplotlib; ..."`)
+- Add a lightweight TUI view in `crates/ui` that plots the state distribution as an ASCII histogram
+
+---
+
+## Testing & CI
+
+### 20. Real integration tests for the full pipeline
+**Rationale:** The eval suite tests components in isolation. There's no end-to-end test that starts inferd, sends a request, and verifies the response.
+
+**Approach:**
+- Add `tests/pipeline_test.rs` that:
+  - Starts `roco-inferd` (or connects to an already-running one)
+  - Sends a `CompletionRequest` with known parameters
+  - Verifies the response is well-formed JSON
+  - Verifies deterministic seed produces identical results across two calls
+- Guard with `#[cfg(feature = "integration")]` so it doesn't run in regular `cargo test`
+- Add to CI as a separate job
+
+### 21. Fuzz testing for the grammar engine
+**Rationale:** The bnf-engine/kbnf grammar parser is complex. Malformed grammars could panic or hang.
+
+**Approach:**
+- Add `cargo fuzz` targets for:
+  - Parsing random GBNF strings (ensure no crash)
+  - Masking random logits with random grammar states (ensure no panic)
+  - Accepting random token sequences (ensure no infinite loop)
+- Run in CI with a short timeout
+
+### 22. Property-based testing for sampling
+**Rationale:** The sampling functions have subtle edge cases (all-probs-zero, temperature=0, epsilon probabilities). Property-based tests can find edge cases that unit tests miss.
+
+**Approach:**
+- Use `proptest` or `quickcheck` to generate random probability distributions
+- Verify invariants:
+  - `sample_token` always returns a valid token index (0..vocab_size)
+  - `greedy (temp=0)` always picks the argmax
+  - Sum of output probabilities for constrained sampling is 1.0
+  - Seeded sampling is transitive (a == b && b == c → a == c)
+
+---
+
+## Story Pipeline Fault Tolerance & Pipeline Safety
+
+
+### 27. LLM JSON Repair & Outline Fallback Guardrails
+**Rationale:** RWKV or local LLMs can occasionally omit commas between JSON array elements (`[{"a":1} {"b":2}]`). When `StateTunedStrategy` fails to parse the outline JSON, previous logic fell back to an empty outline state, stripping premise context for downstream chapter generation.
+
+**Approach:**
+- Implement a lightweight JSON sanitizer/repair routine prior to `serde_json::from_str` (insert missing commas between adjacent `}` `{`, close unclosed brackets).
+- Enforce token-level BNF grammar constraints (`strict_grammar = true`) on outline and wiki generation endpoints to physically prohibit malformed JSON tokens.
+- If outline parsing fails despite repair, trigger an automatic re-prompt turn rather than falling back to an empty outline state.
+
+### 28. `inferd` Daemon Concurrency & Request Queueing
+**Rationale:** Under concurrent request spikes (e.g., streaming interactive chat while running a background `roco story` pipeline), the backend actor channel can drop (`rwkv channel recv: channel closed`), returning HTTP 500 to clients.
+
+**Approach:**
+- Introduce an explicit request queueing actor inside `roco-inferd` / `roco-gateway` to serialize incoming generation jobs per device context.
+- Implement exponential backoff retry logic inside `roco-infer-client` when receiving a 500 Internal Server Error or closed channel response.
+
+---
+
+## Build & Developer Experience
+
+
+### 24. Pre-compiled sccache cache for CI
+**Rationale:** CI builds from scratch every time (no sccache remote). A full build takes 15-25 minutes.
+
+**Approach:**
+- Configure sccache with an S3/GCS backend (or GH Actions cache)
+- Cache `target/` between CI runs using `Swatinem/rust-cache@v2`
+- Add a `ci-cache-cleanup` job that prunes stale entries weekly
+
+### 25. Cargo workspace hygiene
+**Rationale:** Several crates have unused dependencies or mismatched feature flags.
+
+**Approach:**
+- Run `cargo machete` (unused dependency detector) regularly
+- Add `cargo deny` to CI for license checks, duplicate crate detection, and security advisories
+- Unify `tokio` feature flags across all crates (some enable `process`, others don't)
+- Add a workspace-level `[lints.rust]` section for consistent clippy configuration
+
+---
+
+## Summary of Priorities
+
+| Priority | Area | Item | Effort | Impact |
+|----------|------|------|--------|--------|
+| P0 | Pipeline Safety | 27. LLM JSON repair & strict outline guardrails | 1 day | High — prevents parse failures on malformed JSON |
+| P0 | Infrastructure | 28. `inferd` queueing & client retry backoff | 1 day | High — prevents channel closure on concurrent load |
+| P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
+| P1 | UX | 4. Instant session resume | 2 days | High — saves minutes per interactive session |
+| P1 | Interpretability | 14. Token trace logging | 2 days | Medium — enables debugging bad generations |
+| P2 | UX | 2. Progress bar | 1 day | Medium — better feedback for long gen |
+| P2 | Modularity | 7. Extract StateTuning trait | 1 day | Medium — cleaner trait hierarchy |
+| P2 | Testing | 22. Property-based sampling tests | 1 day | Medium — catches subtle edge cases |
+| P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |
+| P3 | UX | 5. Rich error messages | 1 day | Low — nice-to-have polish |
+| P3 | Testing | 21. Fuzz grammar engine | 2 days | Low — security hardening |
