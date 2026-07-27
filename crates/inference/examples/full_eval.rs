@@ -19,6 +19,7 @@ use roco_inference::RwkvBackend;
 /// Prefill to suppress thinking contamination on intent-inference cases
 const INTENT_PREFILL: &str = "{\n  \"route\": \"";
 
+#[allow(clippy::vec_init_then_push)]
 fn collect_all_cases() -> Vec<EvalCase> {
     let mut cases = Vec::new();
 

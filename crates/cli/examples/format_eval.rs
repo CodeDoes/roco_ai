@@ -295,6 +295,8 @@ async fn run_one(
             on_token: None,
             preserve_state: false,
             thinking: false,
+            seed: None,
+            record_trace: false,
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 60000,
@@ -433,7 +435,7 @@ async fn main() {
             }
             v
         }
-        None => FormatSpec::all().iter().copied().collect(),
+        None => FormatSpec::all().to_vec(),
     };
 
     let mut results: Vec<RunResult> = Vec::new();

@@ -198,7 +198,12 @@ impl AgentJournal {
                 self.file = file;
                 let today = Self::today();
                 writeln!(&self.file, "# Agent Journal — {today}").ok();
-                writeln!(&self.file, "\n_(rotated; previous log: {})_\n", rotated.display()).ok();
+                writeln!(
+                    &self.file,
+                    "\n_(rotated; previous log: {})_\n",
+                    rotated.display()
+                )
+                .ok();
                 let _ = self.file.flush();
                 true
             }

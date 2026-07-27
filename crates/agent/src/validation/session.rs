@@ -201,7 +201,7 @@ impl StorySessionManager {
                         .into_iter()
                         .map(|s| (s.story_name, s.last_active))
                         .collect();
-                    history.sort_by(|a, b| b.1.cmp(&a.1)); // Most recent first
+                    history.sort_by_key(|b| std::cmp::Reverse(b.1)); // Most recent first
                     return history;
                 }
             }

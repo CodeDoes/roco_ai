@@ -1,5 +1,7 @@
 //! Incremental (streaming) terminal rendering for model output.
 //!
+//! This module also provides [`ProgressTracker`] for showing a generation
+//! progress bar with tok/s and ETA.
 //! Before this module the CLI *claimed* to stream: `interact.rs` and
 //! `router.rs` both attached an `on_token` callback that appended every token
 //! into an `Arc<Mutex<String>>` which was then **never read**. The user stared
@@ -56,6 +58,168 @@ const HOLDBACK_MARKERS: &[&str] = &[
 // ═════════════════════════════════════════════════════════════════════════════
 // Pure rendering helpers
 // ═════════════════════════════════════════════════════════════════════════════
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Progress tracker
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Tracks generation progress: tokens/sec, ETA, and prompt processing status.
+///
+/// Usage:
+/// ```ignore
+/// let tracker = ProgressTracker::new(512);
+/// tracker.start_prompt();
+/// // ... process prompt ...
+/// tracker.finish_prompt();
+/// // Or just call tracker.tick() during generation:
+/// while generating {
+///     tracker.tick();
+///     if elapsed_since_last_update > 500ms {
+///         eprint!("{}", tracker.status_line());
+///     }
+/// }
+/// tracker.finish();
+/// ```
+pub struct ProgressTracker {
+    max_tokens: usize,
+    tokens: usize,
+    prompt_processing: bool,
+    start_time: std::time::Instant,
+    prompt_time: Option<std::time::Duration>,
+    last_tick: std::time::Instant,
+    tick_count: u64,
+}
+
+impl ProgressTracker {
+    /// Create a new tracker for a generation with `max_tokens` limit.
+    pub fn new(max_tokens: usize) -> Self {
+        Self {
+            max_tokens,
+            tokens: 0,
+            prompt_processing: true,
+            start_time: std::time::Instant::now(),
+            prompt_time: None,
+            last_tick: std::time::Instant::now(),
+            tick_count: 0,
+        }
+    }
+
+    /// Mark that prompt processing has started.
+    pub fn start_prompt(&mut self) {
+        self.prompt_processing = true;
+        self.start_time = std::time::Instant::now();
+    }
+
+    /// Mark that prompt processing is finished (generation starting).
+    pub fn finish_prompt(&mut self) {
+        self.prompt_processing = false;
+        self.prompt_time = Some(self.start_time.elapsed());
+        self.last_tick = std::time::Instant::now();
+        self.tick_count = 0;
+    }
+
+    /// Record one generated token.
+    pub fn tick(&mut self) {
+        if self.prompt_processing {
+            self.finish_prompt();
+        }
+        self.tokens += 1;
+        self.tick_count += 1;
+    }
+
+    /// Record `n` generated tokens at once.
+    pub fn add_tokens(&mut self, n: usize) {
+        if self.prompt_processing {
+            self.finish_prompt();
+        }
+        self.tokens += n;
+        self.tick_count += n as u64;
+    }
+
+    /// Tokens per second (rolling average).
+    pub fn tokens_per_sec(&self) -> f64 {
+        if self.prompt_processing || self.tokens == 0 {
+            return 0.0;
+        }
+        let elapsed = self.start_time.elapsed();
+        let gen_elapsed = elapsed - self.prompt_time.unwrap_or_default();
+        if gen_elapsed.as_secs_f64() <= 0.0 {
+            return 0.0;
+        }
+        self.tokens as f64 / gen_elapsed.as_secs_f64()
+    }
+
+    /// Elapsed time since generation started.
+    pub fn elapsed(&self) -> std::time::Duration {
+        self.start_time.elapsed()
+    }
+
+    /// Estimated remaining time in seconds.
+    pub fn eta_secs(&self) -> f64 {
+        let tps = self.tokens_per_sec();
+        if tps <= 0.0 || self.max_tokens == 0 {
+            return 0.0;
+        }
+        let remaining = self.max_tokens.saturating_sub(self.tokens) as f64;
+        remaining / tps
+    }
+
+    /// Build a compact status line for terminal display.
+    pub fn status_line(&self) -> String {
+        if self.prompt_processing {
+            let elapsed = self.start_time.elapsed();
+            return format!("\rProcessing prompt... [{:.1}s]", elapsed.as_secs_f64());
+        }
+        if self.tokens == 0 {
+            return "\rWaiting for first token...".into();
+        }
+        let tps = self.tokens_per_sec();
+        let eta = self.eta_secs();
+        let pct = if self.max_tokens > 0 {
+            (self.tokens as f64 / self.max_tokens as f64) * 100.0
+        } else {
+            0.0
+        };
+        if self.max_tokens > 0 {
+            format!(
+                "\rGenerating [{:.0}%] | {:.1} tok/s | {}/{} tokens | est. {:.0}s remaining  ",
+                pct, tps, self.tokens, self.max_tokens, eta
+            )
+        } else {
+            format!(
+                "\rGenerating | {:.1} tok/s | {} tokens | {:.1}s elapsed  ",
+                tps,
+                self.tokens,
+                self.elapsed().as_secs_f64()
+            )
+        }
+    }
+
+    /// Clear the status line from the terminal.
+    pub fn clear(&self) {
+        use std::io::Write;
+        let _ = write!(io::stderr(), "\r{:80}\r", "");
+        let _ = io::stderr().flush();
+    }
+
+    /// Mark generation complete and print a final summary line.
+    pub fn finish(&self) {
+        self.clear();
+        let tps = self.tokens_per_sec();
+        let elapsed = self.elapsed();
+        let prompt_ms = self.prompt_time.map(|d| d.as_millis()).unwrap_or(0);
+        if tps > 0.0 {
+            eprintln!(
+                "{}Done{}: {} tokens in {:.1}s ({:.1} tok/s, prompt {prompt_ms}ms)",
+                r::Colors::DIM,
+                r::Colors::RESET,
+                self.tokens,
+                elapsed.as_secs_f64(),
+                tps
+            );
+        }
+    }
+}
 
 /// Length of the longest suffix of `s` that is a *proper* prefix of `marker`.
 fn partial_suffix_len(s: &str, marker: &str) -> usize {
@@ -223,7 +387,7 @@ impl StreamPrinter {
 
     // ── internals ────────────────────────────────────────────────────────
 
-    fn render(&self, finished: bool) -> String {
+    pub(crate) fn render(&self, finished: bool) -> String {
         if self.raw.trim().is_empty() {
             return String::new();
         }
@@ -393,7 +557,14 @@ mod tests {
     #[test]
     fn visible_text_is_monotonic_across_deltas() {
         // The printer relies on the rendered text only ever growing.
-        let deltas = ["He", "llo\n", "wor", "ld <thi", "nk>z</think>", "!\nUser: x"];
+        let deltas = [
+            "He",
+            "llo\n",
+            "wor",
+            "ld <thi",
+            "nk>z</think>",
+            "!\nUser: x",
+        ];
         let mut p = StreamPrinter::quiet();
         let mut prev = String::new();
         for d in deltas {

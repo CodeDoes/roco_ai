@@ -159,8 +159,9 @@ pub struct MechanisticOutcome {
 /// sandbox. They may call the model (grammar-constrained) or execute
 /// purely in code. All file writes go through the workspace — the
 /// model never touches the real filesystem.
-pub type HandlerFn =
-    Box<dyn Fn(&Task, &dyn ModelBackend, &Workspace) -> Result<HandlerResult, AgentError> + Send + Sync>;
+pub type HandlerFn = Box<
+    dyn Fn(&Task, &dyn ModelBackend, &Workspace) -> Result<HandlerResult, AgentError> + Send + Sync,
+>;
 
 /// The mechanistic agent — code-driven controller + router.
 ///

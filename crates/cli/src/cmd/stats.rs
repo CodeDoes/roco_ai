@@ -90,14 +90,22 @@ pub fn cmd_stats(extra: &[&str]) {
         println!("Total Character Count:{total_chars} chars");
         println!("Total Paragraphs:     {total_paragraphs}");
         println!("Est. Reading Time:    ~{est_reading_minutes} min (at 225 WPM)");
-        println!("Outline Present:      {}", if has_outline { format!("Yes ({outline_words} words)") } else { "No".into() });
+        println!(
+            "Outline Present:      {}",
+            if has_outline {
+                format!("Yes ({outline_words} words)")
+            } else {
+                "No".into()
+            }
+        );
         println!("----------------------------------------------------------------");
         if chapters.is_empty() {
             println!("(No 03-CHAPTER_*.md chapters found in this directory)");
         } else {
             println!("Chapter Breakdown:");
             for (name, w, _, p) in &chapters {
-                let bar = "#".repeat((*w as f32 / (total_words.max(1) as f32) * 30.0).ceil() as usize);
+                let bar =
+                    "#".repeat((*w as f32 / (total_words.max(1) as f32) * 30.0).ceil() as usize);
                 println!("  {name:25} | {w:5} words | {p:3} paras | {bar}");
             }
         }
@@ -115,13 +123,18 @@ mod tests {
         let dir = tmp.path();
 
         fs::write(dir.join("03-CHAPTER_1.md"), "Hello world test chapter one.").unwrap();
-        fs::write(dir.join("03-CHAPTER_2.md"), "Another chapter with more words here.").unwrap();
+        fs::write(
+            dir.join("03-CHAPTER_2.md"),
+            "Another chapter with more words here.",
+        )
+        .unwrap();
         fs::write(dir.join("01-OUTLINE.md"), "Outline plot outline.").unwrap();
 
-        let mut out_capture = Vec::new();
         // Test helper directly or check computations
         let ch1_words = "Hello world test chapter one.".split_whitespace().count();
-        let ch2_words = "Another chapter with more words here.".split_whitespace().count();
+        let ch2_words = "Another chapter with more words here."
+            .split_whitespace()
+            .count();
         assert_eq!(ch1_words, 5);
         assert_eq!(ch2_words, 6);
     }

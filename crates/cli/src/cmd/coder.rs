@@ -125,8 +125,7 @@ pub fn cmd_coder(extra: &[&str]) {
                             language = new_lang.to_string();
                             // Actually rebuild the system prompt — the old code
                             // printed a confirmation and changed nothing.
-                            system_prompt =
-                                coder_system_prompt(&language, &assistant, &profile);
+                            system_prompt = coder_system_prompt(&language, &assistant, &profile);
                             r::success(&format!("Switched language focus to: {language}"));
                         }
                         None => r::info(&format!("Current language focus: {language}")),
@@ -451,7 +450,10 @@ mod tests {
             first_positional(&["--lang", "rust", "how do I sort?"]),
             Some("how do I sort?")
         );
-        assert_eq!(first_positional(&["how do I sort?"]), Some("how do I sort?"));
+        assert_eq!(
+            first_positional(&["how do I sort?"]),
+            Some("how do I sort?")
+        );
         assert_eq!(first_positional(&[]), None);
     }
 
@@ -462,9 +464,11 @@ mod tests {
         let assistant = identity::AssistantIdentity::default();
         let mut profile = identity::UserProfile::default();
 
-        assert!(identity_command("name Ada", &assistant, &mut profile, &path)
-            .unwrap()
-            .contains("Ada"));
+        assert!(
+            identity_command("name Ada", &assistant, &mut profile, &path)
+                .unwrap()
+                .contains("Ada")
+        );
         assert_eq!(
             identity::UserProfile::load(&path).name.as_deref(),
             Some("Ada")

@@ -83,9 +83,7 @@ pub fn clean_response(text: &str) -> String {
                     .lines()
                     .find(|l| {
                         let l = l.trim();
-                        !l.is_empty()
-                            && !l.starts_with("User:")
-                            && !l.starts_with("Assistant:")
+                        !l.is_empty() && !l.starts_with("User:") && !l.starts_with("Assistant:")
                     })
                     .unwrap_or("")
                     .trim_start_matches("[mock-3b] ")

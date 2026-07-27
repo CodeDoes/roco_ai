@@ -73,6 +73,7 @@ async fn complete_non_streaming_returns_200() {
         prefill: None,
         session: None,
         preserve_state: None,
+        seed: None,
     })
     .unwrap();
 

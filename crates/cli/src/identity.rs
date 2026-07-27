@@ -257,7 +257,10 @@ impl AssistantIdentity {
         &[
             ("chat", "open-ended conversation, questions, brainstorming"),
             ("story", "structured short stories from a premise"),
-            ("story-mode", "interactive writing assistant over a workspace"),
+            (
+                "story-mode",
+                "interactive writing assistant over a workspace",
+            ),
             ("game", "text-adventure game master"),
             ("html", "live HTML canvas you can iterate on"),
             ("code", "programming help, explanations and debugging"),
@@ -376,9 +379,32 @@ fn normalize(input: &str) -> String {
 /// Names that are obviously not names — guards against
 /// "I'm confused" being stored as the user's name.
 const NAME_STOPWORDS: &[&str] = &[
-    "not", "sure", "confused", "sorry", "here", "back", "done", "good", "fine", "ok", "okay",
-    "trying", "looking", "working", "just", "going", "wondering", "curious", "new", "afraid",
-    "thinking", "hoping", "still", "a", "an", "the",
+    "not",
+    "sure",
+    "confused",
+    "sorry",
+    "here",
+    "back",
+    "done",
+    "good",
+    "fine",
+    "ok",
+    "okay",
+    "trying",
+    "looking",
+    "working",
+    "just",
+    "going",
+    "wondering",
+    "curious",
+    "new",
+    "afraid",
+    "thinking",
+    "hoping",
+    "still",
+    "a",
+    "an",
+    "the",
 ];
 
 /// Extract a plausible personal name from the tail of a phrase.
@@ -410,7 +436,10 @@ fn extract_name(rest: &str) -> Option<String> {
         (*first).to_string()
     };
     let candidate: String = candidate.chars().take(MAX_NAME_CHARS).collect();
-    if candidate.chars().all(|c| c.is_alphabetic() || c == '-' || c == ' ') {
+    if candidate
+        .chars()
+        .all(|c| c.is_alphabetic() || c == '-' || c == ' ')
+    {
         Some(candidate)
     } else {
         None
@@ -449,7 +478,12 @@ pub fn detect(input: &str) -> Option<IdentityQuery> {
     let n = normalize(raw);
 
     // ── Memory instructions (checked first: they contain "i am"/"my name") ──
-    for prefix in ["remember that ", "remember this: ", "remember: ", "remember "] {
+    for prefix in [
+        "remember that ",
+        "remember this: ",
+        "remember: ",
+        "remember ",
+    ] {
         if !n.starts_with(prefix) {
             continue;
         }
@@ -585,10 +619,7 @@ impl IdentityQuery {
             IdentityQuery::WhoAmI => (profile.render(), false),
             IdentityQuery::SetName(name) => {
                 profile.set_name(name);
-                (
-                    format!("Got it — I'll call you {name} from now on."),
-                    true,
-                )
+                (format!("Got it — I'll call you {name} from now on."), true)
             }
             IdentityQuery::Remember(fact) => {
                 if profile.remember(fact) {
@@ -643,7 +674,7 @@ pub fn cmd_whoami(extra: &[&str]) {
         return;
     }
 
-    if extra.iter().any(|&a| a == "--json") {
+    if extra.contains(&"--json") {
         match serde_json::to_string_pretty(&profile) {
             Ok(j) => println!("{j}"),
             Err(e) => r::error(&format!("serialize failed: {e}")),
@@ -890,12 +921,15 @@ mod tests {
         }
         assert_eq!(p.facts.len(), MAX_PROFILE_FACTS);
         // Oldest dropped, newest retained.
-        assert!(p.facts.last().unwrap().contains(&format!(
-            "fact {}",
-            MAX_PROFILE_FACTS * 3 - 1
-        )));
+        assert!(p
+            .facts
+            .last()
+            .unwrap()
+            .contains(&format!("fact {}", MAX_PROFILE_FACTS * 3 - 1)));
 
-        assert!(!p.remember("fact 100"), "duplicates must be rejected");
+        // Pick a fact that survived eviction (newest 64 of 192 added).
+        // After adding 192 facts with capacity 64, facts[0] = "fact 128".
+        assert!(!p.remember("fact 150"), "duplicates must be rejected");
     }
 
     #[test]

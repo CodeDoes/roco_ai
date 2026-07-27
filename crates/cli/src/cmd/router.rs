@@ -158,7 +158,7 @@ fn detect_intent(
         .iter()
         .find(|i| i.id == "chat")
         .cloned()
-        .unwrap_or_else(|| Intent {
+        .unwrap_or(Intent {
             id: "chat",
             label: "Chat",
             target_mode: Mode::Chat,
@@ -208,7 +208,7 @@ fn detect_intent(
 
 /// Run the mode router. This is the default `roco` entry point.
 pub fn cmd_router(extra: &[&str]) {
-    let initial_prompt = extra.first().map(|s| *s).filter(|s| !s.starts_with('-'));
+    let initial_prompt = extra.first().copied().filter(|s| !s.starts_with('-'));
 
     let backend = daemon::ensure_sync_backend();
 
@@ -227,7 +227,7 @@ pub fn cmd_router(extra: &[&str]) {
     let assistant = identity::AssistantIdentity::detect(&*backend);
 
     // If an initial prompt was given, detect intent and route
-    if let Some(ref prompt) = initial_prompt {
+    if let Some(prompt) = initial_prompt {
         add_history(&mut history, "user", prompt);
         if let Some(reply) = answer_identity(prompt, &assistant, &mut profile, &profile_path) {
             println!("\n{reply}");
@@ -987,8 +987,13 @@ mod tests {
         let mut profile = identity::UserProfile::default();
 
         assert!(
-            answer_identity("write me a story about a dragon", &assistant, &mut profile, &path)
-                .is_none(),
+            answer_identity(
+                "write me a story about a dragon",
+                &assistant,
+                &mut profile,
+                &path
+            )
+            .is_none(),
             "ordinary input must not be hijacked by the identity fast-path"
         );
     }
@@ -1014,9 +1019,11 @@ mod tests {
         let assistant = identity::AssistantIdentity::default();
         let mut profile = identity::UserProfile::default();
 
-        assert!(identity_command("name Ada", &assistant, &mut profile, &path)
-            .unwrap()
-            .contains("Ada"));
+        assert!(
+            identity_command("name Ada", &assistant, &mut profile, &path)
+                .unwrap()
+                .contains("Ada")
+        );
         assert!(identity_command("whoami", &assistant, &mut profile, &path)
             .unwrap()
             .contains("Ada"));
@@ -1050,6 +1057,10 @@ mod tests {
         }
         let recent = build_recent_history(&history, 6);
         // 6 entries × 200-char preview + labels.
-        assert!(recent.len() < 2_000, "recent history too big: {}", recent.len());
+        assert!(
+            recent.len() < 2_000,
+            "recent history too big: {}",
+            recent.len()
+        );
     }
 }

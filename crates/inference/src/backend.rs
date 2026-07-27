@@ -226,6 +226,12 @@ impl ModelBackend for RwkvBackend {
                     on_token: req.on_token,
                     session: req.session,
                     deadline_ms: req.deadline_ms,
+                    // Resolve seed: per-request > env var > None (non-deterministic)
+                    seed: req.seed.or_else(|| {
+                        std::env::var("RWKV_DETERMINISTIC_SEED")
+                            .ok()
+                            .and_then(|s| s.parse::<u64>().ok())
+                    }),
                 }
                 .into(),
             )
@@ -275,6 +281,7 @@ impl ModelBackend for RwkvBackend {
                 usage,
                 parsed,
                 think_trace: None,
+                trace: Vec::new(),
             })
         })
     }
@@ -343,6 +350,7 @@ impl ModelBackend for RwkvBackend {
                         on_token: None,
                         session: Some(session_id.clone()),
                         deadline_ms: 60000,
+                        seed: None,
                     }
                     .into(),
                 )

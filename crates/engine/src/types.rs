@@ -99,6 +99,38 @@ pub enum EngineError {
     TimedOut { ms: u64 },
 }
 
+impl EngineError {
+    /// Return a human-readable help string suggesting how to fix this error.
+    pub fn help(&self) -> Option<&'static str> {
+        match self {
+            EngineError::Backend(msg) => {
+                if msg.contains("adapter") || msg.contains("context") || msg.contains("GPU") {
+                    Some("Try: RWKV_ADAPTER=llvmpipe for CPU fallback, or check Vulkan drivers with `roco gpu-check`")
+                } else if msg.contains("model") || msg.contains("load") {
+                    Some("Try: Place a .st file in models/ or set $RWKV_MODEL to the model path")
+                } else if msg.contains("tokenizer") || msg.contains("vocab") {
+                    Some("Try: Set $RWKV_VOCAB to the vocab JSON path, or run from the project root")
+                } else if msg.contains("timeout") || msg.contains("hang") {
+                    Some("Try: Set RWKV_BACKEND_TIMEOUT for a longer wait, or RWKV_ADAPTER=llvmpipe")
+                } else if msg.contains("channel") || msg.contains("shut") {
+                    Some("Try: Restart the backend with `roco inferd restart`")
+                } else {
+                    None
+                }
+            }
+            EngineError::EmptyResponse => {
+                Some("Try: Rephrase your prompt or increase max_tokens")
+            }
+            EngineError::BudgetExceeded { .. } => {
+                Some("Try: Increase max_tokens or reduce the prompt length")
+            }
+            EngineError::TimedOut { .. } => {
+                Some("Try: Increase deadline_ms or check GPU load. Set RWKV_DEADLINE_MS=0 for no deadline")
+            }
+        }
+    }
+}
+
 /// Token accounting returned by a backend.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct TokenUsage {
@@ -148,6 +180,17 @@ pub struct CompletionRequest {
     /// downstream crates that depend on `web-rwkv`.
     #[serde(skip)]
     pub bnf_mask: Option<Box<dyn BnfMask>>,
+    /// Deterministic seed for reproducible sampling.
+    /// When `Some(seed)`, the RNG is seeded deterministically so that
+    /// the same prompt + seed + temperature produces the same output.
+    /// When `None`, uses a truly random seed (current default behaviour).
+    #[serde(default)]
+    pub seed: Option<u64>,
+    /// If true, record per-token sampling metadata into the response.
+    /// Enables token-level trace logging for debugging bad generations.
+    /// Default: false (no trace, zero memory overhead).
+    #[serde(default)]
+    pub record_trace: bool,
 }
 
 fn default_temperature() -> f32 {
@@ -174,6 +217,8 @@ impl Clone for CompletionRequest {
             preserve_state: self.preserve_state,
             session: self.session.clone(),
             deadline_ms: self.deadline_ms,
+            seed: self.seed,
+            record_trace: self.record_trace,
             on_token: None,
             bnf_mask: None,
         }
@@ -196,6 +241,8 @@ impl std::fmt::Debug for CompletionRequest {
             .field("preserve_state", &self.preserve_state)
             .field("session", &self.session)
             .field("deadline_ms", &self.deadline_ms)
+            .field("seed", &self.seed)
+            .field("record_trace", &self.record_trace)
             .field("on_token", &self.on_token.as_ref().map(|_| "<callback>"))
             .field("bnf_mask", &self.bnf_mask.as_ref().map(|_| "<BnfMask>"))
             .finish()
@@ -219,6 +266,8 @@ impl Default for CompletionRequest {
             on_token: None,
             session: None,
             deadline_ms: 0,
+            seed: None,
+            record_trace: false,
             bnf_mask: None,
         }
     }
@@ -232,6 +281,272 @@ impl CompletionRequest {
             ..Default::default()
         }
     }
+
+    /// Create a builder for convenient construction with validation.
+    pub fn builder() -> CompletionRequestBuilder {
+        CompletionRequestBuilder::default()
+    }
+}
+
+/// Builder pattern for [`CompletionRequest`].
+///
+/// Encapsulates common presets and applies env-var overrides automatically.
+/// Every caller that constructs a `CompletionRequest` repeats the same
+/// pattern: set system, prompt, temperature, prefill, etc. This builder
+/// eliminates that duplication and ensures consistent field handling.
+#[derive(Default)]
+pub struct CompletionRequestBuilder {
+    system: Option<String>,
+    prompt: Option<String>,
+    prefill: Option<String>,
+    output_schema: Option<String>,
+    grammar: Option<String>,
+    temperature: Option<f32>,
+    top_a: Option<f32>,
+    max_tokens: Option<usize>,
+    thinking: Option<bool>,
+    preserve_state: Option<bool>,
+    session: Option<String>,
+    deadline_ms: Option<u64>,
+    seed: Option<u64>,
+    /// NOTE: OnToken is already Option<Box<dyn Fn...>>, so we store it directly.
+    on_token: OnToken, // OnToken is already Option<Box<dyn Fn...>>
+    bnf_mask: Option<Box<dyn BnfMask>>,
+    record_trace: Option<bool>,
+}
+
+impl std::fmt::Debug for CompletionRequestBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompletionRequestBuilder")
+            .field("system", &self.system)
+            .field("prompt", &self.prompt)
+            .field("prefill", &self.prefill)
+            .field("output_schema", &self.output_schema)
+            .field("grammar", &self.grammar)
+            .field("temperature", &self.temperature)
+            .field("top_a", &self.top_a)
+            .field("max_tokens", &self.max_tokens)
+            .field("thinking", &self.thinking)
+            .field("preserve_state", &self.preserve_state)
+            .field("session", &self.session)
+            .field("deadline_ms", &self.deadline_ms)
+            .field("seed", &self.seed)
+            .field("record_trace", &self.record_trace)
+            .field("on_token", &self.on_token.as_ref().map(|_| "<callback>"))
+            .field("bnf_mask", &self.bnf_mask.as_ref().map(|_| "<BnfMask>"))
+            .finish()
+    }
+}
+
+impl Clone for CompletionRequestBuilder {
+    fn clone(&self) -> Self {
+        Self {
+            system: self.system.clone(),
+            prompt: self.prompt.clone(),
+            prefill: self.prefill.clone(),
+            output_schema: self.output_schema.clone(),
+            grammar: self.grammar.clone(),
+            temperature: self.temperature,
+            top_a: self.top_a,
+            max_tokens: self.max_tokens,
+            thinking: self.thinking,
+            preserve_state: self.preserve_state,
+            session: self.session.clone(),
+            deadline_ms: self.deadline_ms,
+            seed: self.seed,
+            record_trace: self.record_trace,
+            on_token: None,
+            bnf_mask: None,
+        }
+    }
+}
+
+impl CompletionRequestBuilder {
+    /// Set the system prompt.
+    pub fn system(mut self, s: impl Into<String>) -> Self {
+        self.system = Some(s.into());
+        self
+    }
+
+    /// Set the user prompt.
+    pub fn prompt(mut self, p: impl Into<String>) -> Self {
+        self.prompt = Some(p.into());
+        self
+    }
+
+    /// Set prefill text injected after "Assistant:".
+    pub fn prefill(mut self, p: impl Into<String>) -> Self {
+        self.prefill = Some(p.into());
+        self
+    }
+
+    /// Set output schema for structured generation.
+    pub fn output_schema(mut self, s: impl Into<String>) -> Self {
+        self.output_schema = Some(s.into());
+        self
+    }
+
+    /// Set grammar for constrained decoding.
+    pub fn grammar(mut self, g: impl Into<String>) -> Self {
+        self.grammar = Some(g.into());
+        self
+    }
+
+    /// Set sampling temperature (default: 0.2).
+    pub fn temperature(mut self, t: f32) -> Self {
+        self.temperature = Some(t);
+        self
+    }
+
+    /// Set top_a sampling parameter.
+    pub fn top_a(mut self, a: f32) -> Self {
+        self.top_a = Some(a);
+        self
+    }
+
+    /// Set maximum tokens to generate.
+    pub fn max_tokens(mut self, n: usize) -> Self {
+        self.max_tokens = Some(n);
+        self
+    }
+
+    /// Enable think-trace extraction.
+    pub fn thinking(mut self, enabled: bool) -> Self {
+        self.thinking = Some(enabled);
+        self
+    }
+
+    /// Preserve recurrent state after completion.
+    pub fn preserve_state(mut self, enabled: bool) -> Self {
+        self.preserve_state = Some(enabled);
+        self
+    }
+
+    /// Set session name for state management.
+    pub fn session(mut self, s: impl Into<String>) -> Self {
+        self.session = Some(s.into());
+        self
+    }
+
+    /// Set wall-clock deadline in milliseconds (0 = no deadline).
+    pub fn deadline_ms(mut self, ms: u64) -> Self {
+        self.deadline_ms = Some(ms);
+        self
+    }
+
+    /// Set deterministic seed for reproducible sampling.
+    pub fn seed(mut self, s: u64) -> Self {
+        self.seed = Some(s);
+        self
+    }
+
+    /// Set a token callback for streaming.
+    pub fn on_token(mut self, cb: OnToken) -> Self {
+        self.on_token = cb;
+        self
+    }
+
+    /// Set a BNF grammar mask.
+    pub fn bnf_mask(mut self, mask: Box<dyn BnfMask>) -> Self {
+        self.bnf_mask = Some(mask);
+        self
+    }
+
+    /// Enable per-token trace recording for debugging.
+    pub fn record_trace(mut self, enabled: bool) -> Self {
+        self.record_trace = Some(enabled);
+        self
+    }
+
+    /// Apply a chat preset (system prompt for conversational use).
+    pub fn chat_preset(mut self) -> Self {
+        self.system = self.system.or_else(|| {
+            Some("Hold a natural conversation. Answer concisely. Match the user's tone.".into())
+        });
+        self.temperature.get_or_insert(0.8);
+        self.max_tokens.get_or_insert(1024);
+        self.prefill.get_or_insert(" thinking response".into());
+        self
+    }
+
+    /// Apply a story preset.
+    pub fn story_preset(mut self) -> Self {
+        self.system = self.system.or_else(|| {
+            Some("You are a creative writing assistant. Write engaging, vivid prose.".into())
+        });
+        self.temperature.get_or_insert(0.9);
+        self.max_tokens.get_or_insert(2048);
+        self
+    }
+
+    /// Apply a grammar-constrained preset.
+    pub fn grammar_preset(mut self, gbnf: impl Into<String>) -> Self {
+        self.grammar = Some(gbnf.into());
+        self.temperature.get_or_insert(0.2);
+        self.max_tokens.get_or_insert(512);
+        self
+    }
+
+    /// Apply env-var overrides for determinism environment variables.
+    fn apply_env_overrides(mut self) -> Self {
+        // RWKV_DETERMINISTIC_SEED overrides if set and no explicit seed given
+        if self.seed.is_none() {
+            if let Ok(s) = std::env::var("RWKV_DETERMINISTIC_SEED") {
+                if let Ok(seed) = s.parse::<u64>() {
+                    self.seed = Some(seed);
+                }
+            }
+        }
+        // RWKV_TEMPERATURE overrides if set and no explicit temperature given
+        if self.temperature.is_none() {
+            if let Ok(s) = std::env::var("RWKV_TEMPERATURE") {
+                if let Ok(t) = s.parse::<f32>() {
+                    self.temperature = Some(t);
+                }
+            }
+        }
+        self
+    }
+
+    /// Build the final [`CompletionRequest`].
+    ///
+    /// Panics if `prompt` is not set. Call `prompt(...)` before `build()`.
+    pub fn build(self) -> CompletionRequest {
+        let b = self.apply_env_overrides();
+        CompletionRequest {
+            system: b.system.unwrap_or_default(),
+            prompt: b
+                .prompt
+                .expect("CompletionRequestBuilder: prompt is required"),
+            prefill: b.prefill,
+            output_schema: b.output_schema,
+            grammar: b.grammar,
+            temperature: b.temperature.unwrap_or(0.2),
+            top_a: b.top_a,
+            max_tokens: b.max_tokens.unwrap_or(512),
+            estimated_prompt_tokens: 0,
+            thinking: b.thinking.unwrap_or(false),
+            preserve_state: b.preserve_state.unwrap_or(false),
+            session: b.session,
+            deadline_ms: b.deadline_ms.unwrap_or(0),
+            seed: b.seed,
+            record_trace: b.record_trace.unwrap_or(false),
+            on_token: b.on_token,
+            bnf_mask: b.bnf_mask,
+        }
+    }
+}
+
+/// Per-token sampling metadata for trace logging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenTrace {
+    pub token_id: u32,
+    pub token_str: String,
+    pub probability: f32,
+    pub temperature: f32,
+    pub top_p_cut: f32,
+    pub grammar_masked: bool,
+    pub selected_by_grammar: bool,
 }
 
 /// A completion produced by a backend.
@@ -241,6 +556,10 @@ pub struct CompletionResponse {
     pub usage: TokenUsage,
     pub parsed: Option<serde_json::Value>,
     pub think_trace: Option<String>,
+    /// Per-token trace metadata. Only populated when the corresponding
+    /// `CompletionRequest::record_trace` is true.
+    #[serde(default)]
+    pub trace: Vec<TokenTrace>,
 }
 
 /// Opaque BNF/logit-masking callback for grammar-constrained generation.
@@ -298,5 +617,86 @@ mod tests {
         assert_eq!(req.temperature, 0.5);
         assert_eq!(req.max_tokens, 10);
         assert_eq!(req.system, "test");
+    }
+
+    // ── Builder tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn builder_requires_prompt() {
+        let req = CompletionRequest::builder().prompt("hello").build();
+        assert_eq!(req.prompt, "hello");
+        assert_eq!(req.temperature, 0.2); // default
+        assert!(req.seed.is_none());
+    }
+
+    #[test]
+    fn builder_sets_all_fields() {
+        let req = CompletionRequest::builder()
+            .system("You are a helpful assistant.")
+            .prompt("Tell me a story")
+            .temperature(0.8)
+            .max_tokens(2048)
+            .seed(42)
+            .top_a(0.5)
+            .thinking(true)
+            .preserve_state(true)
+            .session("test-session")
+            .deadline_ms(30000)
+            .grammar("story")
+            .output_schema("json")
+            .prefill("Once upon a time")
+            .build();
+
+        assert_eq!(req.system, "You are a helpful assistant.");
+        assert_eq!(req.prompt, "Tell me a story");
+        assert!((req.temperature - 0.8).abs() < 1e-6);
+        assert_eq!(req.max_tokens, 2048);
+        assert_eq!(req.seed, Some(42));
+        assert!((req.top_a.unwrap() - 0.5).abs() < 1e-6);
+        assert!(req.thinking);
+        assert!(req.preserve_state);
+        assert_eq!(req.session.as_deref(), Some("test-session"));
+        assert_eq!(req.deadline_ms, 30000);
+        assert_eq!(req.grammar.as_deref(), Some("story"));
+        assert_eq!(req.output_schema.as_deref(), Some("json"));
+        assert_eq!(req.prefill.as_deref(), Some("Once upon a time"));
+    }
+
+    #[test]
+    fn builder_chat_preset_applies_defaults() {
+        let req = CompletionRequest::builder()
+            .prompt("Hello")
+            .chat_preset()
+            .build();
+        assert_eq!(req.temperature, 0.8);
+        assert_eq!(req.max_tokens, 1024);
+        assert!(req.prefill.is_some());
+    }
+
+    #[test]
+    fn builder_story_preset_applies_defaults() {
+        let req = CompletionRequest::builder()
+            .prompt("A tale")
+            .story_preset()
+            .build();
+        assert_eq!(req.temperature, 0.9);
+        assert_eq!(req.max_tokens, 2048);
+    }
+
+    #[test]
+    fn builder_grammar_preset_applies_defaults() {
+        let req = CompletionRequest::builder()
+            .prompt("output json")
+            .grammar_preset("root ::= \"hello\"")
+            .build();
+        assert_eq!(req.temperature, 0.2);
+        assert_eq!(req.max_tokens, 512);
+        assert_eq!(req.grammar.as_deref(), Some("root ::= \"hello\""));
+    }
+
+    #[test]
+    #[should_panic(expected = "prompt is required")]
+    fn builder_panics_without_prompt() {
+        let _req = CompletionRequest::builder().build();
     }
 }

@@ -17,10 +17,12 @@ serde_json.workspace = true
 half = { version = "2.7" }
 safetensors = { version = "0.6" }
 fastrand = { version = "2.3" }
+rand = { version = "0.8", default-features = false, features = ["std_rng"] }
 bit-set = { version = "0.5" }
 futures.workspace = true
 memmap2 = "0.9"
 md-5 = "0.10"
+blake3 = "1.5"
 web-rwkv = { version = "0.10", default-features = false, features = ["native"] }
 # Linux/dev builds only need Vulkan. Dropping dx12/metal/webgpu cuts a large
 # amount of wgpu-hal/naga backend code out of the unit graph.

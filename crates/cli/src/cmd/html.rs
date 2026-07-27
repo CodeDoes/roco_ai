@@ -36,7 +36,7 @@ struct ServerState {
 
 /// Run the HTML live-preview mode
 pub fn cmd_html(extra: &[&str]) {
-    let initial = extra.first().map(|s| *s).filter(|s| !s.starts_with('-'));
+    let initial = extra.first().copied().filter(|s| !s.starts_with('-'));
     let port: u16 = parse_opt("--port", extra)
         .and_then(|s| s.parse().ok())
         .unwrap_or(8080);
@@ -164,7 +164,7 @@ pub fn cmd_html(extra: &[&str]) {
             let error_html = format!(
                 "<div style='color:red;padding:20px;font-family:sans-serif'>\
                  <h2>Error</h2><p>{}</p></div>",
-                e.to_string()
+                e
             );
             add_msg("assistant", &error_html);
             r::error(&format!("Generation failed: {e}"));
@@ -276,7 +276,7 @@ pub fn cmd_html(extra: &[&str]) {
                 let error_html = format!(
                     "<div style='color:red;padding:20px;font-family:sans-serif'>\
                      <h2>Error</h2><p>{}</p></div>",
-                    e.to_string()
+                    e
                 );
                 add_msg("assistant", &error_html);
                 r::error(&format!("Generation failed: {e}"));

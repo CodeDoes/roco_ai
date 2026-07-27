@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use half::f16;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use roco_engine::{BnfMask, EngineError, TokenUsage};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
@@ -33,7 +35,7 @@ use web_rwkv::tokenizer::Tokenizer;
 
 use crate::config::{
     auto_quant, check_model_cache, default_model_path, get_pipeline_cache_path,
-    get_quant_cache_dir, CacheIndex, CachedTensorInfo,
+    get_quant_cache_dir, migrate_pipeline_cache, CacheIndex, CachedTensorInfo,
 };
 use crate::sampling;
 
@@ -346,6 +348,10 @@ pub struct CompleteReq {
     /// Wall-clock deadline for the entire completion in milliseconds.
     /// 0 = no deadline.
     pub deadline_ms: u64,
+    /// Deterministic seed for reproducible sampling.
+    /// When `Some(seed)`, the RNG is seeded deterministically.
+    /// When `None`, uses non-deterministic `fastrand` (default).
+    pub seed: Option<u64>,
 }
 
 pub struct BlendReq {
@@ -573,6 +579,8 @@ impl RwkvActor {
                 ainfo.name, ainfo.device_type, coop, max_mb
             );
 
+            // Attempt migration from old path-based pipeline cache
+            migrate_pipeline_cache(&model_path);
             let cache_path = get_pipeline_cache_path(&model_path);
             let cached_pipelines = std::fs::read(&cache_path).ok();
             let mut builder = ContextBuilder::new(adapter).auto_limits(&model_info);
@@ -873,9 +881,15 @@ impl RwkvActor {
             grammar: _grammar,
             session,
             mut bnf_mask,
+            seed,
             reply,
             ..
         } = req;
+
+        // Create a seeded RNG for deterministic sampling when a seed is provided.
+        // Stored as `Option<StdRng>`; we borrow via `.as_mut()` at each call site
+        // to avoid move issues inside the async block.
+        let mut seeded_rng: Option<StdRng> = seed.map(StdRng::seed_from_u64);
 
         let outcome: Result<(String, TokenUsage), EngineError> = async {
             let session_id = session.as_ref().cloned();
@@ -1050,7 +1064,13 @@ impl RwkvActor {
                                 }
                             }
                         }
-                        let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
+                        let t = sampling::sample_token_with_rng(
+                            &p,
+                            temperature,
+                            1.0,
+                            top_a_val,
+                            seeded_rng.as_mut(),
+                        );
                         if t > 0 {
                             mask.accept(t);
                             t
@@ -1058,11 +1078,23 @@ impl RwkvActor {
                             break;
                         }
                     } else {
-                        sampling::sample_token(&p, temperature, top_p, top_a_val)
+                        sampling::sample_token_with_rng(
+                            &p,
+                            temperature,
+                            top_p,
+                            top_a_val,
+                            seeded_rng.as_mut(),
+                        )
                     }
                 };
                 #[cfg(not(feature = "grammar"))]
-                let token = sampling::sample_token(probs.data(), temperature, top_p, top_a_val);
+                let token = sampling::sample_token_with_rng(
+                    probs.data(),
+                    temperature,
+                    top_p,
+                    top_a_val,
+                    seeded_rng.as_mut(),
+                );
 
                 if token == 0 || token >= 65530 {
                     break;
@@ -1180,7 +1212,13 @@ impl RwkvActor {
                                 }
                             }
                         }
-                        let t = sampling::sample_token(&p, temperature, 1.0, top_a_val);
+                        let t = sampling::sample_token_with_rng(
+                            &p,
+                            temperature,
+                            1.0,
+                            top_a_val,
+                            seeded_rng.as_mut(),
+                        );
                         if t > 0 {
                             mask.accept(t);
                             Some(t)
@@ -1188,15 +1226,22 @@ impl RwkvActor {
                             None
                         }
                     } else {
-                        Some(sampling::sample_token(&p, temperature, top_p, top_a_val))
+                        Some(sampling::sample_token_with_rng(
+                            &p,
+                            temperature,
+                            top_p,
+                            top_a_val,
+                            seeded_rng.as_mut(),
+                        ))
                     }
                 };
                 #[cfg(not(feature = "grammar"))]
-                let token_opt: Option<u32> = Some(sampling::sample_token(
+                let token_opt: Option<u32> = Some(sampling::sample_token_with_rng(
                     probs.data(),
                     temperature,
                     top_p,
                     top_a_val,
+                    seeded_rng.as_mut(),
                 ));
 
                 let token = match token_opt {
@@ -1396,36 +1441,140 @@ impl RwkvActor {
 
 /// Layout: 4 × u32 little-endian dims (num_emb, head_size+2, num_layer, 1)
 /// followed by f32 little-endian data in row-major order.
+///
+/// After the tensor data, we append a BLAKE3 hash (32 bytes) for corruption
+/// detection, followed by a model metadata header:
+///   - 4 bytes: model version string length (u32 LE)
+///   - N bytes: model version string (e.g. "v7")
+///   - 4 bytes: web-rwkv version string length (u32 LE)
+///   - N bytes: web-rwkv version string
+///   - 32 bytes: final BLAKE3 hash of all preceding bytes
 fn serialize_state(t: &TensorCpu<f32>) -> Vec<u8> {
     let shape = t.shape();
     let data: Vec<f32> = t.data().iter().copied().collect();
-    let mut out = Vec::with_capacity(16 + data.len() * 4);
+    let mut out = Vec::with_capacity(16 + data.len() * 4 + 128);
+
+    // Dims
     for d in shape.iter() {
         out.extend_from_slice(&(d as u32).to_le_bytes());
     }
+    // Tensor data
     for x in data {
         out.extend_from_slice(&x.to_le_bytes());
     }
+
+    // Model metadata for cross-version compatibility checks
+    let model_version = env!("CARGO_PKG_VERSION", "0.1.0");
+    let web_rwkv_version = "0.10.0"; // TODO: read from Cargo.toml at build time
+
+    // Append model version string
+    out.extend_from_slice(&(model_version.len() as u32).to_le_bytes());
+    out.extend_from_slice(model_version.as_bytes());
+
+    // Append web-rwkv version string
+    out.extend_from_slice(&(web_rwkv_version.len() as u32).to_le_bytes());
+    out.extend_from_slice(web_rwkv_version.as_bytes());
+
+    // Final BLAKE3 hash of everything above
+    let hash = blake3::hash(&out);
+    out.extend_from_slice(hash.as_bytes());
     out
 }
 
 fn deserialize_state(bytes: &[u8]) -> Result<(Vec<u32>, Vec<f32>), EngineError> {
-    if bytes.len() < 16 || !(bytes.len() - 16).is_multiple_of(4) {
-        return Err(EngineError::Backend("state bytes malformed".into()));
+    // Minimum: 16 bytes (4×u32 dims) + 32 bytes (BLAKE3 hash).
+    // Old format: no metadata, just 4 dims + data + 32 byte hash.
+    // New format: 4 dims + data + metadata strings + 32 byte hash.
+    if bytes.len() < 48 {
+        return Err(EngineError::Backend("state bytes too short".into()));
     }
+
+    // Separate hash from payload (last 32 bytes)
+    let payload_len = bytes.len() - 32;
+    let (payload, stored_hash) = bytes.split_at(payload_len);
+
+    // Verify BLAKE3 hash
+    let computed_hash = blake3::hash(payload);
+    if computed_hash.as_bytes() != stored_hash {
+        return Err(EngineError::Backend(
+            "state checksum mismatch — data may be corrupted or from a different model version"
+                .into(),
+        ));
+    }
+
+    if (payload.len() - 16) % 4 != 0 {
+        return Err(EngineError::Backend(
+            "state bytes malformed (alignment)".into(),
+        ));
+    }
+
     let mut dims = [0u32; 4];
     for (i, d) in dims.iter_mut().enumerate() {
-        *d = u32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());
+        *d = u32::from_le_bytes(payload[i * 4..i * 4 + 4].try_into().unwrap());
     }
-    let tail = &bytes[16..];
-    let n = tail.len() / 4;
+
+    // Determine format: old (4 dims + data + hash) or new (4 dims + data + metadata + hash)
+    // After 4 dims, the rest is tensor data. We need to find where metadata starts.
+    // Metadata starts at a version-string-length marker that points past the tensor data.
+    // Since we don't know the exact tensor size from the header alone, we scan for
+    // a valid version string prefix in the last ~200 bytes.
+
+    // Tensor data: starts at byte 16, ends before the metadata marker.
+    // Simplified approach: just parse dims + all floats up to the metadata section.
+    // The metadata section (if present) starts with a u32 length for the model version.
+    // We walk backwards from the end of payload to find valid metadata.
+
+    // Try to locate metadata: the last variable-length section before hash
+    // has model_version_len (u32 LE) + model_version bytes + web_rwkv_len (u32 LE) + web_rwkv bytes.
+    // Minimum metadata header: 2 × 4 bytes (lengths) + 2 × 1 byte (min version strings) = 10 bytes
+    // We scan: look for a u32 at some position N bytes from end that is a plausible string length.
+
+    // For simplicity, find the tensor data end by looking for the metadata marker.
+    // The tensor data occupies bytes 16..payload_len-metadata_len-hash_len.
+    // We try to read metadata from the end of payload backwards.
+
+    let metadata_start = find_metadata_start(payload).unwrap_or(payload.len()); // No metadata found — old format
+    let tensor_data = &payload[16..metadata_start];
+
+    let n = tensor_data.len() / 4;
     let mut data = Vec::with_capacity(n);
     for i in 0..n {
         data.push(f32::from_le_bytes(
-            tail[i * 4..i * 4 + 4].try_into().unwrap(),
+            tensor_data[i * 4..i * 4 + 4].try_into().unwrap(),
         ));
     }
+
     Ok((dims.to_vec(), data))
+}
+
+/// Scan backwards in `payload` to find the metadata section start position.
+/// Returns `None` if no metadata is present (old format).
+fn find_metadata_start(payload: &[u8]) -> Option<usize> {
+    // Metadata section is at the end of the payload, before the 32-byte hash.
+    // It has: model_version_len (u32 LE) + model_version + web_rwkv_len (u32 LE) + web_rwkv
+    // We scan the last ~200 bytes looking for a plausible version string length.
+
+    let end = payload.len();
+    let search_start = end.saturating_sub(200);
+
+    // Walk backwards looking for a valid model version string length marker
+    // followed by the known model version prefix.
+    for start in (search_start..end.saturating_sub(8)).rev() {
+        let version_len =
+            u32::from_le_bytes(payload[start..start + 4].try_into().unwrap()) as usize;
+        // Plausible version string: 1-20 chars
+        if version_len > 0 && version_len < 20 && start + 4 + version_len + 4 <= end {
+            let version_end = start + 4 + version_len;
+            let web_rwkv_len =
+                u32::from_le_bytes(payload[version_end..version_end + 4].try_into().unwrap())
+                    as usize;
+            if web_rwkv_len > 0 && web_rwkv_len < 20 && version_end + 4 + web_rwkv_len <= end {
+                // Found plausible metadata
+                return Some(start);
+            }
+        }
+    }
+    None
 }
 
 impl RwkvActor {

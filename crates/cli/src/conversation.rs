@@ -104,6 +104,10 @@ pub struct ChatSession {
     pub temperature: f32,
     /// Generation cap.
     pub max_tokens: usize,
+    /// Deterministic seed for reproducible sampling (None = non-deterministic).
+    pub seed: Option<u64>,
+    /// If true, record per-token trace metadata for debugging.
+    pub record_trace: bool,
     /// Suppress terminal output (used by one-shot and scripted callers).
     quiet: bool,
     /// Turns that actually hit the model.
@@ -130,6 +134,8 @@ impl ChatSession {
             summary: String::new(),
             temperature: 0.8,
             max_tokens: 1024,
+            seed: None,
+            record_trace: false,
             quiet: false,
             model_turns: 0,
         }
@@ -145,6 +151,18 @@ impl ChatSession {
     pub fn with_sampling(mut self, temperature: f32, max_tokens: usize) -> Self {
         self.temperature = temperature;
         self.max_tokens = max_tokens;
+        self
+    }
+
+    /// Set a deterministic seed for reproducible generation.
+    pub fn with_seed(mut self, seed: u64) -> Self {
+        self.seed = Some(seed);
+        self
+    }
+
+    /// Enable per-token trace recording for debugging generations.
+    pub fn with_trace(mut self, enabled: bool) -> Self {
+        self.record_trace = enabled;
         self
     }
 
@@ -166,9 +184,7 @@ impl ChatSession {
     /// The greeting shown when a session starts, personalised if we know the user.
     pub fn greeting(&self) -> String {
         match &self.profile.name {
-            Some(name) => format!(
-                "Welcome back, {name}. What are we working on?"
-            ),
+            Some(name) => format!("Welcome back, {name}. What are we working on?"),
             None => "Hi — I'm RoCo. Ask me anything, or say \"what can you do?\"".to_string(),
         }
     }
@@ -208,15 +224,17 @@ impl ChatSession {
             StreamPrinter::new(self.prefix()).shared()
         };
 
-        let request = CompletionRequest {
+        let mut request = CompletionRequest {
             system: self.system_prompt(),
             prompt: context,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             prefill: Some(roco_engine::NO_THINK_PREFILL.to_string()),
             on_token: Some(streaming::on_token_for(&printer)),
+            seed: self.seed,
             ..Default::default()
         };
+        request.record_trace = self.record_trace;
 
         // `request` (and the `on_token` closure holding a clone of `printer`)
         // is consumed by `complete`, and the returned future is dropped at the
@@ -539,7 +557,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = session(dir.path());
         let ctx = s.build_context("hello there");
-        assert!(ctx.ends_with("User: hello there\nAssistant:"), "got {ctx:?}");
+        assert!(
+            ctx.ends_with("User: hello there\nAssistant:"),
+            "got {ctx:?}"
+        );
     }
 
     #[test]

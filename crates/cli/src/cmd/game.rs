@@ -13,7 +13,7 @@ use crate::rich_output as r;
 pub fn cmd_game(extra: &[&str]) {
     let scenario = extra
         .first()
-        .map(|s| *s)
+        .copied()
         .unwrap_or("a mysterious fantasy world");
 
     let backend = daemon::ensure_sync_backend();
@@ -224,6 +224,6 @@ pub fn cmd_game(extra: &[&str]) {
 mod tests {
     #[test]
     fn test_game_module_exists() {
-        assert!(true, "cmd_game function exists");
+        // Basic check to ensure the module is linked.
     }
 }

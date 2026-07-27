@@ -482,6 +482,7 @@ mod tests {
                     usage: TokenUsage::default(),
                     parsed: None,
                     think_trace: None,
+                    trace: Vec::new(),
                 })
             })
         }
@@ -535,6 +536,7 @@ mod tests {
                         usage: TokenUsage::default(),
                         parsed: None,
                         think_trace: None,
+                        trace: Vec::new(),
                     })
                 })
             }

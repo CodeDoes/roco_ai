@@ -63,12 +63,49 @@ pub trait ModelBackend: Send + Sync {
     /// with `preserve_state=true`, then return the session ID for reuse.
     /// The caller should then resume from this session with `session` set.
     /// Returns the session ID on success.
+    ///
+    /// Default implementation returns `EngineError::Backend("state tuning not supported")`.
+    /// Only RNN-based backends (RWKV) implement this meaningfully.
     fn bake_state<'a>(
+        &'a self,
+        _session_id: &'a str,
+        _system: &'a str,
+        _few_shots: &'a [(&'a str, &'a str)], // (user_prompt, assistant_response)
+    ) -> BoxFuture<'a, Result<String, EngineError>> {
+        Box::pin(async move {
+            Err(EngineError::Backend(
+                "state tuning not supported by this backend".into(),
+            ))
+        })
+    }
+}
+
+/// Optional trait for RNN-based backends that support state tuning.
+///
+/// Separated from [`ModelBackend`] because state tuning is only meaningful
+/// for recurrent (RNN) architectures like RWKV that carry a hidden state
+/// across turns. Transformer-based backends would have no-op defaults.
+///
+/// The method is named `tune_state` (not `bake_state`) to avoid name
+/// conflicts with the default `ModelBackend::bake_state`.
+pub trait StateTuning: Send + Sync {
+    /// Bake a system prompt and few-shot examples into a named session's
+    /// recurrent state, returning the session ID on success.
+    fn tune_state<'a>(
         &'a self,
         session_id: &'a str,
         system: &'a str,
-        few_shots: &'a [(&'a str, &'a str)], // (user_prompt, assistant_response)
+        few_shots: &'a [(&'a str, &'a str)],
     ) -> BoxFuture<'a, Result<String, EngineError>>;
+
+    /// Blend two session states element-wise: output = alpha * a + (1-alpha) * b.
+    fn blend_states<'a>(
+        &'a self,
+        session_a: &'a str,
+        session_b: &'a str,
+        alpha: f32,
+        output_session: &'a str,
+    ) -> BoxFuture<'a, Result<(), EngineError>>;
 }
 
 fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize) -> Option<String> {
@@ -312,13 +349,37 @@ impl ModelBackend for MockBackend {
                 return Err(EngineError::Backend("simulated failure".into()));
             }
             let snippet: String = req.prompt.chars().take(48).collect();
+            // Log the seed when provided for reproducibility debugging.
+            if let Some(s) = req.seed {
+                tracing::info!(seed = s, snippet = %snippet, "MockBackend completing with deterministic seed");
+            }
 
             let bnf_walk_text = req
                 .grammar
                 .as_ref()
                 .and_then(|g| mock_random_walk_bnf(g, req.max_tokens));
 
-            let result_text = bnf_walk_text.unwrap_or_else(|| {
+            let system_lower = req.system.to_lowercase();
+            let mut matched_text = bnf_walk_text;
+
+            if matched_text.is_none() {
+                if system_lower.contains("outliner") {
+                    matched_text = Some(r#"{"title": "The Time Freeze", "genre": "Sci-Fi", "tone": "Suspenseful", "chapters": [{"number": 1, "title": "The Device", "summary": "A clockmaker finds a device"}, {"number": 2, "title": "The Freeze", "summary": "He freezes time"}, {"number": 3, "title": "The Cost", "summary": "Time freezes permanently"}]}"#.to_string());
+                } else if system_lower.contains("worldbuilding") {
+                    matched_text = Some(r#"{"characters": [{"name": "Alistair", "description": "The clockmaker"}], "setting": "A dusty Victorian workshop"}"#.to_string());
+                } else if system_lower.contains("writer") {
+                    matched_text = Some(r#"{"title": "The Time Freeze", "content": "Alistair adjusted the gears. The ticking stopped. The world froze."}"#.to_string());
+                } else if system_lower.contains("reviewer") {
+                    matched_text = Some(
+                        r#"{"quality": "pass", "issues": "none", "suggestion": "none"}"#
+                            .to_string(),
+                    );
+                } else if system_lower.contains("summarizer") {
+                    matched_text = Some(r#"{"summary": "A clockmaker builds a device that freezes time, only to discover it has a terrible cost."}"#.to_string());
+                }
+            }
+
+            let result_text = matched_text.unwrap_or_else(|| {
                 serde_json::json!({ "result": format!("[{}] {}", self.name, snippet) }).to_string()
             });
             let parsed = serde_json::from_str(&result_text).ok();
@@ -347,6 +408,7 @@ impl ModelBackend for MockBackend {
                 },
                 parsed,
                 think_trace,
+                trace: Vec::new(),
             })
         })
     }

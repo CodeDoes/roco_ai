@@ -392,7 +392,8 @@ mod tests {
             "grammar": "story",
             "prefill": "In a land far away",
             "session": "story-session-1",
-            "preserve_state": true
+            "preserve_state": true,
+            "seed": 42
         }"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.model.as_deref(), Some("rwkv-7"));
@@ -406,6 +407,11 @@ mod tests {
         assert_eq!(req.prefill.as_deref(), Some("In a land far away"));
         assert_eq!(req.session.as_deref(), Some("story-session-1"));
         assert_eq!(req.preserve_state, Some(true));
+        assert_eq!(req.seed, Some(42));
+
+        // Verify seed propagates to engine request
+        let engine_req = req.into_engine();
+        assert_eq!(engine_req.seed, Some(42));
     }
 
     #[test]
@@ -426,6 +432,7 @@ mod tests {
                 completion_tokens: 5,
                 total_tokens: 15,
             },
+            trace: Vec::new(),
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("cmpl-abc123"));

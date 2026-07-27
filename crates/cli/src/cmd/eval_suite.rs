@@ -2,74 +2,198 @@
 //!
 //! Provides automated, offline deterministic evaluation of model outputs,
 //! grammar compliance, prompt robustness, and stream monotonicity across
-//! all registered benchmarks.
+//! all registered benchmarks. Unlike the unit tests that run with `cargo test`,
+//! this is a CLI-accessible command that produces a structured JSON report
+//! suitable for CI or manual review.
 
-use std::path::Path;
-
+/// Run the evaluation suite.
+///
+/// Supports `--json` / `-j` for machine-readable output and a benchmark name
+/// filter (default: `"all"`).
 pub fn cmd_eval_suite(extra: &[&str]) {
     let json_mode = extra.iter().any(|&a| a == "--json" || a == "-j");
-    let benchmark = extra
+    let target = extra
         .iter()
         .find(|&&a| !a.starts_with('-'))
         .copied()
         .unwrap_or("all");
 
+    let mut results: Vec<(&str, Result<(), String>)> = Vec::new();
+
     println!("================================================================");
     println!("  RoCo AI — Deterministic Evaluation Suite");
     println!("================================================================");
-    println!("Benchmark Target: {benchmark}");
-    println!("Running offline deterministic assertions...");
+    println!("  Target: {target}");
     println!();
 
-    let mut results = Vec::new();
+    // ── 1. Streaming / StreamPrinter ─────────────────────────────────────
+    if target == "all" || target == "streaming" {
+        results.push(eval("stream_monotonicity", || {
+            // The core invariant: visible text never shrinks across deltas.
+            let deltas = &[
+                "He",
+                "llo\n",
+                "wor",
+                "ld <thi",
+                "nk>z</think>",
+                "!\nUser: x",
+            ];
+            let mut p = crate::streaming::StreamPrinter::quiet();
+            let mut prev = String::new();
+            for d in deltas {
+                p.push(d);
+                let now = p.render(false);
+                if !now.starts_with(&prev) {
+                    return Err(format!("render shrank: {prev:?} -> {now:?}"));
+                }
+                prev = now;
+            }
+            Ok(())
+        }));
+    }
 
-    // 1. Grammar & BNF Compliance test
-    results.push(run_test("bnf_grammar_compliance", true, "All JSON schemas strictly adhered to GBNF constraints."));
-    // 2. Stream Monotonicity test
-    results.push(run_test("stream_monotonicity_invariant", true, "Visible text prefix never shrinks across token deltas."));
-    // 3. Sandbox Path Containment test
-    results.push(run_test("sandbox_path_containment", true, "Absolute paths and ../ traversals successfully blocked."));
-    // 4. Identity & Fast-Path test
-    results.push(run_test("identity_fast_path", true, "Deterministic identity queries answered without token overhead."));
-    // 5. LRU Cache Recency test
-    results.push(run_test("lru_cache_recency", true, "Hot keys survive churn under correct recency promotion."));
+    // ── 2. Think-block stripping ─────────────────────────────────────────
+    if target == "all" || target == "streaming" {
+        results.push(eval("think_blocks_hidden", || {
+            let rendered = crate::streaming::StreamPrinter::quiet()
+                .finish("<think>secret</think>Visible answer.");
+            if rendered.contains("secret") || rendered.contains("<think>") {
+                return Err("think block leaked through rendering".into());
+            }
+            if !rendered.contains("Visible answer.") {
+                return Err("content after think block was dropped".into());
+            }
+            Ok(())
+        }));
+    }
 
-    let passed_count = results.iter().filter(|r| r.1).count();
-    let total_count = results.len();
+    // ── 3. Hallucinated turn cutting ─────────────────────────────────────
+    if target == "all" || target == "streaming" {
+        results.push(eval("hallucinated_turn_cut", || {
+            let rendered = crate::streaming::StreamPrinter::quiet()
+                .finish("The answer is 4.\nUser: and 3+3?\nAssistant: 6");
+            if rendered.contains("\nUser:") || rendered.ends_with('6') {
+                return Err("hallucinated user turn was not cut".into());
+            }
+            Ok(())
+        }));
+    }
+
+    // ── 4. Partial marker holdback ───────────────────────────────────────
+    if target == "all" || target == "streaming" {
+        results.push(eval("partial_marker_holdback", || {
+            let mut p = crate::streaming::StreamPrinter::quiet();
+            p.push("hello <thi");
+            if p.render(false) != "hello " {
+                return Err(format!("partial <think> leaked: {:?}", p.render(false)));
+            }
+            p.push("nk>hidden</think> done");
+            if p.finish("hello <think>hidden</think> done") != "hello  done" {
+                return Err("unexpected finish output".into());
+            }
+            Ok(())
+        }));
+    }
+
+    // ── 5. Identity fast-path ────────────────────────────────────────────
+    if target == "all" || target == "identity" {
+        results.push(eval("identity_detection", || {
+            let cases = &[
+                ("who are you", true),
+                ("what's your name", true),
+                ("what can you do", true),
+                ("tell me a story", false),
+                ("what model are you", true),
+                ("write a poem", false),
+            ];
+            for (input, expected) in cases {
+                let detected = crate::identity::detect(input).is_some();
+                if detected != *expected {
+                    return Err(format!(
+                        "identity detection mismatch for {input:?}: \
+                         expected {expected}, got {detected}"
+                    ));
+                }
+            }
+            Ok(())
+        }));
+    }
+
+    // ── 6. Conversation context budgeting ────────────────────────────────
+    if target == "all" || target == "conversation" {
+        results.push(eval("context_keeps_whole_messages", || {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let backend = roco_engine::MockBackend::default();
+            let mut s = crate::conversation::ChatSession::new(
+                roco_protocol::ConversationState::new("eval".into(), "thorough"),
+                dir.path().join("s.json"),
+                "You are a test.",
+                &backend,
+            )
+            .quiet(true);
+            let long = "A".repeat(1200);
+            s.push("user", "hello");
+            s.push("assistant", &long);
+            let ctx = s.build_context("continue");
+            if !ctx.contains(&long) {
+                return Err("long assistant turn truncated in context".into());
+            }
+            Ok(())
+        }));
+    }
+
+    // ── 7. Eval-suite self-test: all tests defined ───────────────────────
+    let passed = results.iter().filter(|r| r.1.is_ok()).count();
+    let total = results.len();
 
     if json_mode {
         let json_out = serde_json::json!({
-            "benchmark": benchmark,
-            "passed": passed_count,
-            "total": total_count,
-            "success": passed_count == total_count,
-            "tests": results.iter().map(|(name, success, msg)| {
+            "target": target,
+            "passed": passed,
+            "total": total,
+            "success": passed == total,
+            "tests": results.iter().map(|(name, result)| {
                 serde_json::json!({
                     "name": name,
-                    "success": success,
-                    "message": msg
+                    "success": result.is_ok(),
+                    "message": match result {
+                        Ok(()) => "ok",
+                        Err(e) => e,
+                    }
                 })
             }).collect::<Vec<_>>()
         });
         println!("{}", serde_json::to_string_pretty(&json_out).unwrap());
     } else {
-        for (name, success, msg) in &results {
-            let status = if *success { "✅ PASS" } else { "❌ FAIL" };
-            println!("  {status} | {name:30} | {msg}");
+        for (name, result) in &results {
+            match result {
+                Ok(()) => {
+                    println!("  ✅ PASS | {name:30}");
+                }
+                Err(msg) => {
+                    println!("  ❌ FAIL | {name:30} | {msg}");
+                }
+            }
         }
         println!("----------------------------------------------------------------");
-        if passed_count == total_count {
-            println!("Result: ALL {total_count} DETERMINISTIC EVALUATIONS PASSED.");
+        let failed = total - passed;
+        if failed == 0 {
+            println!("  Result: ALL {total} DETERMINISTIC EVALUATIONS PASSED.");
         } else {
-            println!("Result: {passed_count}/{total_count} passed.");
+            println!("  Result: {passed}/{total} passed, {failed} failed.");
             std::process::exit(1);
         }
         println!("================================================================");
     }
 }
 
-fn run_test(name: &str, success: bool, msg: &str) -> (String, bool, String) {
-    (name.to_string(), success, msg.to_string())
+/// Run a single named evaluation.
+fn eval(name: &str, f: impl FnOnce() -> Result<(), String>) -> (&'static str, Result<(), String>) {
+    let result = f();
+    if result.is_err() {
+        eprintln!("[eval-suite] FAIL: {name}");
+    }
+    (Box::leak(name.to_string().into_boxed_str()), result)
 }
 
 #[cfg(test)]
@@ -77,12 +201,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_eval_suite_runs() {
-        let results = vec![
-            run_test("test_a", true, "ok"),
-            run_test("test_b", true, "ok"),
-        ];
-        assert_eq!(results.len(), 2);
-        assert!(results.iter().all(|r| r.1));
+    fn test_eval_suite_runs_without_panic() {
+        // Smoke test: run all evals and verify they complete.
+        let extra: &[&str] = &["all"];
+        // We can't easily capture stdout, but we can verify no panic.
+        cmd_eval_suite(extra);
+    }
+
+    #[test]
+    fn test_eval_suite_json_output() {
+        let extra: &[&str] = &["--json", "all"];
+        cmd_eval_suite(extra);
+    }
+
+    #[test]
+    fn test_eval_suite_specific_target() {
+        let extra: &[&str] = &["identity"];
+        cmd_eval_suite(extra);
+    }
+
+    #[test]
+    fn test_eval_helper_ok() {
+        let (name, result) = eval("test_ok", || Ok(()));
+        assert_eq!(name, "test_ok");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_eval_helper_err() {
+        let (name, result) = eval("test_err", || Err("something broke".into()));
+        assert_eq!(name, "test_err");
+        assert!(result.is_err());
     }
 }

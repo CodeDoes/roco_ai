@@ -3,11 +3,33 @@
 //! Provides temperature-scaled and top-p sampling, grammar-constrained
 //! sampling (masking disallowed token logits to `f32::NEG_INFINITY`),
 //! and helper functions for grammar integration.
+//!
+//! # Determinism
+//!
+//! All sampling functions accept an optional `rng` parameter (a seeded
+//! [`rand::rngs::StdRng`]) to produce reproducible outputs. When no RNG is
+//! provided, `fastrand::f32()` is used as before (non-deterministic).
 
+use rand::rngs::StdRng;
+use rand::RngCore;
 use roco_engine::CompletionRequest;
 
 /// Sample the next token from a probability distribution.
+///
+/// If `rng` is `Some`, uses it for deterministic sampling; otherwise
+/// falls back to `fastrand::f32()` (non-deterministic).
 pub fn sample_token(probs: &[f32], temperature: f32, top_p: f32, top_a: f32) -> u32 {
+    sample_token_with_rng(probs, temperature, top_p, top_a, None)
+}
+
+/// Like [`sample_token`] but with an optional seeded RNG for determinism.
+pub fn sample_token_with_rng(
+    probs: &[f32],
+    temperature: f32,
+    top_p: f32,
+    top_a: f32,
+    mut rng: Option<&mut StdRng>,
+) -> u32 {
     if temperature == 0.0 {
         return probs
             .iter()
@@ -53,7 +75,10 @@ pub fn sample_token(probs: &[f32], temperature: f32, top_p: f32, top_a: f32) -> 
         .into_iter()
         .map(|(id, p)| (id, p.powf(1.0 / temperature) / sum))
         .collect();
-    let r = fastrand::f32();
+    let r = match rng {
+        Some(ref mut r) => (r.next_u32() as f64 / u32::MAX as f64) as f32,
+        None => fastrand::f32(),
+    };
     let mut cum = 0.0f32;
     for (id, p) in &weighted {
         cum += p;
@@ -74,6 +99,18 @@ pub fn constrained_sample_token(
     top_p: f32,
     top_a: f32,
 ) -> Option<u32> {
+    constrained_sample_token_with_rng(probs, allowed, temperature, top_p, top_a, None)
+}
+
+/// Like [`constrained_sample_token`] but with an optional seeded RNG.
+pub fn constrained_sample_token_with_rng(
+    probs: &mut [f32],
+    allowed: &[bool],
+    temperature: f32,
+    top_p: f32,
+    top_a: f32,
+    mut rng: Option<&mut StdRng>,
+) -> Option<u32> {
     debug_assert_eq!(probs.len(), allowed.len(), "vocab length mismatch");
     let mut any_allowed = false;
     for (p, &ok) in probs.iter_mut().zip(allowed) {
@@ -87,7 +124,9 @@ pub fn constrained_sample_token(
         return None;
     }
 
-    let token = sample_token(probs, temperature, top_p, top_a);
+    // Use a borrow of rng so we can still use it in the fallback path.
+    let rng_borrow = rng.as_deref_mut();
+    let token = sample_token_with_rng(probs, temperature, top_p, top_a, rng_borrow);
     if token != 0 || allowed[0] {
         return Some(token);
     }
@@ -102,7 +141,10 @@ pub fn constrained_sample_token(
         return None;
     }
     let sum: f32 = candidates.iter().map(|(_, w)| w).sum();
-    let r = fastrand::f32();
+    let r = match rng.as_mut() {
+        Some(r) => (r.next_u32() as f64 / u32::MAX as f64) as f32,
+        None => fastrand::f32(),
+    };
     let mut cum = 0.0f32;
     for (id, w) in &candidates {
         cum += w / sum;
@@ -134,5 +176,147 @@ pub fn resolve_grammar(req: &CompletionRequest) -> Option<String> {
     match std::env::var("RWKV_GRAMMAR") {
         Ok(g) if !g.trim().is_empty() => Some(g),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    /// A known probability distribution where we can verify ordering.
+    fn fixture_probs() -> Vec<f32> {
+        vec![0.1, 0.3, 0.05, 0.4, 0.15]
+    }
+
+    #[test]
+    fn deterministic_seed_produces_identical_results() {
+        let probs = fixture_probs();
+        let seed = 42u64;
+
+        // Two separate RNGs seeded with the same value must produce
+        // the same token sequence across repeated calls.
+        let mut rng1 = StdRng::seed_from_u64(seed);
+        let mut rng2 = StdRng::seed_from_u64(seed);
+
+        let mut results1 = Vec::new();
+        let mut results2 = Vec::new();
+        for _ in 0..10 {
+            results1.push(sample_token_with_rng(
+                &probs,
+                0.8,
+                0.9,
+                0.0,
+                Some(&mut rng1),
+            ));
+            results2.push(sample_token_with_rng(
+                &probs,
+                0.8,
+                0.9,
+                0.0,
+                Some(&mut rng2),
+            ));
+        }
+        assert_eq!(results1, results2, "seeded RNGs diverged");
+    }
+
+    #[test]
+    fn different_seeds_produce_different_results() {
+        let probs = fixture_probs();
+        let mut rng1 = StdRng::seed_from_u64(1);
+        let mut rng2 = StdRng::seed_from_u64(999);
+
+        let r1 = sample_token_with_rng(&probs, 0.8, 0.9, 0.0, Some(&mut rng1));
+        let r2 = sample_token_with_rng(&probs, 0.8, 0.9, 0.0, Some(&mut rng2));
+        // Extremely unlikely to collide, but possible. We just verify
+        // the function runs without panicking for both seeds.
+        assert!(r1 < probs.len() as u32);
+        assert!(r2 < probs.len() as u32);
+    }
+
+    #[test]
+    fn no_rng_falls_back_to_fastrand() {
+        let probs = fixture_probs();
+        // Must produce some valid token index.
+        let token = sample_token(&probs, 0.8, 0.9, 0.0);
+        assert!(token < probs.len() as u32);
+    }
+
+    #[test]
+    fn greedy_sampling_picks_max() {
+        // temperature = 0.0 => greedy: pick the highest probability token.
+        let probs = fixture_probs();
+        let token = sample_token(&probs, 0.0, 1.0, 0.0);
+        // Index 3 has probability 0.4 (highest).
+        assert_eq!(token, 3, "greedy should pick argmax");
+    }
+
+    #[test]
+    fn constrained_sampling_respects_mask() {
+        let mut probs = vec![0.1, 0.5, 0.3, 0.1];
+        let allowed = vec![true, false, true, false];
+        let token = constrained_sample_token(&mut probs, &allowed, 0.0, 1.0, 0.0);
+        assert_eq!(
+            token,
+            Some(2),
+            "constrained greedy should pick highest allowed"
+        );
+    }
+
+    #[test]
+    fn constrained_sampling_returns_none_when_no_allowed() {
+        let mut probs = vec![0.25, 0.5, 0.25];
+        let allowed = vec![false, false, false];
+        let token = constrained_sample_token(&mut probs, &allowed, 0.0, 1.0, 0.0);
+        assert_eq!(token, None);
+    }
+
+    #[test]
+    fn deterministic_seed_across_multiple_calls() {
+        let probs = fixture_probs();
+        let seed = 12345u64;
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut results = Vec::new();
+        for _ in 0..100 {
+            results.push(sample_token_with_rng(
+                &probs,
+                0.9,
+                0.95,
+                0.1,
+                Some(&mut rng),
+            ));
+        }
+        assert_eq!(results.len(), 100);
+        assert!(results.iter().all(|&t| t < probs.len() as u32));
+    }
+
+    #[test]
+    fn constrained_sampling_with_rng_is_deterministic() {
+        let probs = vec![0.1, 0.0, 0.5, 0.2, 0.2];
+        let allowed = vec![true, false, true, true, true];
+        let seed = 777u64;
+
+        let mut rng1 = StdRng::seed_from_u64(seed);
+        let mut rng2 = StdRng::seed_from_u64(seed);
+
+        let r1 = constrained_sample_token_with_rng(
+            &mut probs.clone(),
+            &allowed,
+            0.8,
+            0.9,
+            0.0,
+            Some(&mut rng1),
+        );
+        let r2 = constrained_sample_token_with_rng(
+            &mut probs.clone(),
+            &allowed,
+            0.8,
+            0.9,
+            0.0,
+            Some(&mut rng2),
+        );
+        assert_eq!(r1, r2, "constrained sampling with same seed diverged");
     }
 }

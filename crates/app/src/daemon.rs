@@ -11,7 +11,7 @@
 //! up automatically. In production (binary installed system-wide), daemons are
 //! assumed pre-installed and spawned directly.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
@@ -92,7 +92,7 @@ pub fn default_detach_path(subcmd: &str, port: u16, ext: &str) -> PathBuf {
 
 /// Spawn a detached child process for `roco server` / `roco gateway`.
 /// Parent redirects stdio to a log file, writes a PID file, and returns.
-pub fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &PathBuf, pid_path: &PathBuf) {
+pub fn spawn_detached(subcmd: &str, extra: &[&str], log_path: &Path, pid_path: &Path) {
     let exe = std::env::current_exe().expect("failed to get current exe path");
     let mut child_args: Vec<String> = Vec::new();
     child_args.push(subcmd.to_string());
@@ -258,7 +258,7 @@ pub fn is_running(name: &str, port: u16) -> bool {
 ///    — the debug build of `roco-inferd` may hang on GPU)
 /// 2. Sibling of current exe
 /// 3. PATH lookup
-fn find_inferd(current_exe: &PathBuf) -> Option<PathBuf> {
+fn find_inferd(current_exe: &Path) -> Option<PathBuf> {
     if let Some(dir) = current_exe.parent() {
         // When running from target/debug/, prefer target/release/roco-inferd
         if dir.ends_with("target/debug") {
@@ -290,7 +290,7 @@ fn find_inferd(current_exe: &PathBuf) -> Option<PathBuf> {
 /// so the CLI never links wgpu). Falls back to `roco server` only if
 /// `roco-inferd` is missing, with a loud warning — that fallback cannot
 /// load a model anymore and will itself try to reach inferd.
-pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
+pub fn ensure_inference_daemon(roco_exe: &Path, port: u16) -> bool {
     if is_running("server", port) || is_running("inferd", port) {
         return true;
     }
@@ -302,20 +302,20 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
         let _ = std::fs::remove_file(&pid_file_path);
         // Append to existing log (don't truncate on re-start), rotating first.
         rotate_log_if_needed(&log_file_path);
-    let log_file = match std::fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&log_file_path)
-    {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!(
-                "Warning: failed to open log {}: {e}",
-                log_file_path.display()
-            );
-            return false;
-        }
-    };
+        let log_file = match std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&log_file_path)
+        {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!(
+                    "Warning: failed to open log {}: {e}",
+                    log_file_path.display()
+                );
+                return false;
+            }
+        };
         let log_clone = match log_file.try_clone() {
             Ok(c) => c,
             Err(_) => return false,
@@ -353,7 +353,7 @@ pub fn ensure_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
 
 /// Start a daemon if not already running. Safe to call from both sync and
 /// async contexts. Tries to detect an already-running instance first.
-pub fn ensure_daemon(exe: &PathBuf, subcmd: &str, port: u16, extra_args: &[&str]) -> bool {
+pub fn ensure_daemon(exe: &Path, subcmd: &str, port: u16, extra_args: &[&str]) -> bool {
     // Check if already running. If called from inside a tokio runtime
     // (e.g. gateway daemon), use a dedicated thread to avoid nested block_on.
     let already_running = if tokio::runtime::Handle::try_current().is_ok() {
@@ -536,14 +536,14 @@ pub fn stop_all() {
 }
 
 /// Reload the inference daemon by stopping any running process and starting a new one.
-pub fn reload_inference_daemon(roco_exe: &PathBuf, port: u16) -> bool {
+pub fn reload_inference_daemon(roco_exe: &Path, port: u16) -> bool {
     stop_inference();
     std::thread::sleep(std::time::Duration::from_millis(500));
     ensure_inference_daemon(roco_exe, port)
 }
 
 /// Reload the gateway daemon by stopping any running process and starting a new one.
-pub fn reload_gateway_daemon(_roco_exe: &PathBuf, port: u16) -> bool {
+pub fn reload_gateway_daemon(_roco_exe: &Path, port: u16) -> bool {
     stop_gateway();
     std::thread::sleep(std::time::Duration::from_millis(500));
     let log_path = log_path("gateway", port);
@@ -619,10 +619,7 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     let gp = gateway_port();
     // If there's already a gateway running, connect instantly.
     if is_running("gateway", gp) {
-        return Arc::new(RemoteBackend::new(format!(
-            "http://127.0.0.1:{}",
-            gp
-        )));
+        return Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)));
     }
 
     // Client starts Gateway; Gateway auto-starts inferd internally.
@@ -636,20 +633,13 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
 
     // Start and wait for Gateway
     ensure_daemon(&exe, "gateway", gp, &["--detach"]);
-    rt.block_on(wait_for_healthy(
-        gp,
-        Duration::from_secs(90),
-        "Gateway",
-    ))
-    .unwrap_or_else(|e| {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
-    });
+    rt.block_on(wait_for_healthy(gp, Duration::from_secs(90), "Gateway"))
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        });
 
-    Arc::new(RemoteBackend::new(format!(
-        "http://127.0.0.1:{}",
-        gp
-    )))
+    Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)))
 }
 
 /// Backend that wraps RemoteBackend with a dedicated tokio runtime, so it
@@ -747,14 +737,16 @@ impl roco_engine::ModelBackend for TokioBackend {
         // via block_on on a scoped thread to avoid the JoinHandle deadlock.
         let result = std::thread::scope(|s| {
             s.spawn(|| {
-                rt_handle.block_on(inner.bake_state(
-                    &session_id,
-                    &system,
-                    &few_shots
-                        .iter()
-                        .map(|(u, a)| (u.as_str(), a.as_str()))
-                        .collect::<Vec<_>>(),
-                ))
+                rt_handle.block_on(
+                    inner.bake_state(
+                        &session_id,
+                        &system,
+                        &few_shots
+                            .iter()
+                            .map(|(u, a)| (u.as_str(), a.as_str()))
+                            .collect::<Vec<_>>(),
+                    ),
+                )
             })
             .join()
             .unwrap_or(Err(roco_engine::EngineError::Backend(
@@ -981,7 +973,7 @@ mod tests {
             .map(|i| {
                 let b = backend.clone();
                 std::thread::spawn(move || {
-                    let req = roco_engine::CompletionRequest::new("sys", &format!("msg {i}"));
+                    let req = roco_engine::CompletionRequest::new("sys", format!("msg {i}"));
                     futures::executor::block_on(b.complete(req))
                 })
             })
@@ -1005,9 +997,11 @@ mod tests {
             Duration::from_secs(2),
             || {
                 let backend = make_backend();
-                let res = futures::executor::block_on(
-                    backend.bake_state("sess-1", "system prompt", &[("hi", "hello")]),
-                );
+                let res = futures::executor::block_on(backend.bake_state(
+                    "sess-1",
+                    "system prompt",
+                    &[("hi", "hello")],
+                ));
                 // MockBackend returns Ok for bake_state; we just care it doesn't hang.
                 let _ = res; // Ok or Err, not deadlocked
             },

@@ -49,6 +49,10 @@ pub struct OpenAiCompletionRequest {
     /// Preserve recurrent state after this completion (RoCo extension).
     #[serde(default)]
     pub preserve_state: Option<bool>,
+    /// Deterministic seed for reproducible sampling (RoCo extension).
+    /// Same seed + same prompt + same temperature = same output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
 }
 
 impl OpenAiCompletionRequest {
@@ -64,6 +68,7 @@ impl OpenAiCompletionRequest {
             thinking: self.thinking.unwrap_or(false),
             session: self.session,
             preserve_state: self.preserve_state.unwrap_or(false),
+            seed: self.seed,
             ..Default::default()
         }
     }
@@ -82,6 +87,7 @@ impl OpenAiCompletionRequest {
             prefill: req.prefill.clone(),
             session: req.session.clone(),
             preserve_state: Some(req.preserve_state),
+            seed: req.seed,
         }
     }
 }
@@ -97,6 +103,9 @@ pub struct OpenAiCompletionResponse {
     pub model: String,
     pub choices: Vec<OpenAiChoice>,
     pub usage: OpenAiUsage,
+    /// Per-token trace metadata (only populated when record_trace=true).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trace: Vec<roco_engine::TokenTrace>,
 }
 
 impl OpenAiCompletionResponse {
@@ -122,6 +131,7 @@ impl OpenAiCompletionResponse {
                 completion_tokens: resp.usage.completion_tokens,
                 total_tokens: resp.usage.total(),
             },
+            trace: resp.trace.clone(),
         }
     }
 }
@@ -277,6 +287,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn request_with_seed() {
+        let json = r#"{"prompt": "hello", "seed": 42, "temperature": 0}"#;
+        let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.seed, Some(42));
+        let engine = req.into_engine();
+        assert_eq!(engine.seed, Some(42));
+    }
+
+    #[test]
+    fn request_without_seed_defaults_to_none() {
+        let json = r#"{"prompt": "hello"}"#;
+        let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.seed.is_none());
+        let engine = req.into_engine();
+        assert!(engine.seed.is_none());
+    }
+
+    #[test]
+    fn seed_propagates_through_from_engine() {
+        let mut engine_req = CompletionRequest::new("sys", "prompt");
+        engine_req.seed = Some(999);
+        let wire = OpenAiCompletionRequest::from_engine(&engine_req);
+        assert_eq!(wire.seed, Some(999));
+        let back = wire.into_engine();
+        assert_eq!(back.seed, Some(999));
+    }
+
+    #[test]
     fn request_minimal_deserialize() {
         let json = r#"{"prompt": "Hello world"}"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
@@ -334,6 +372,7 @@ mod tests {
                 completion_tokens: 5,
                 total_tokens: 15,
             },
+            trace: Vec::new(),
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("cmpl-abc123"));

@@ -84,11 +84,11 @@ pub fn cmd_bless(extra: &[&str]) {
             let out_str = out_val.as_str().unwrap_or("");
             if let Some(name_line) = lines
                 .iter()
-                .position(|l| l.trim() == &format!("name: \"{}\".into(),", name))
+                .position(|l| l.trim() == format!("name: \"{}\".into(),", name))
             {
                 let mut oracle_line = None;
-                for i in name_line..lines.len() {
-                    let trimmed = lines[i].trim();
+                for (i, line) in lines.iter().enumerate().skip(name_line) {
+                    let trimmed = line.trim();
                     if trimmed.starts_with("oracle: Some(") || trimmed.starts_with("oracle: None,")
                     {
                         oracle_line = Some(i);

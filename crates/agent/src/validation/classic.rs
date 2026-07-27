@@ -503,7 +503,7 @@ impl ChapterValidator {
         // Check 2: Unmatched quotes
         let quote_count = text.matches('"').count();
         let _single_quote_count = text.matches('\'').count();
-        let quotes_ok = quote_count % 2 == 0;
+        let quotes_ok = quote_count.is_multiple_of(2);
         checks.push(ValidationCheck {
             name: "matching_quotes".into(),
             passed: quotes_ok,

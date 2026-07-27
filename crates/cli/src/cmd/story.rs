@@ -16,10 +16,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use roco_agent::AgentError;
 use roco_agent::mechanistic::{
     HandlerResult, MechanisticAgent, Plan as MechPlan, RepairConfig, Task,
 };
+use roco_agent::AgentError;
 use roco_engine::{CompletionRequest, ModelBackend};
 
 use roco_agent::tools::{ReadTool, Tool, WriteTool};
@@ -172,11 +172,7 @@ fn fix_paragraphs(text: &str) -> String {
             if !result.is_empty() && !result.ends_with('\n') {
                 result.push(' ');
             }
-            if result.is_empty() || result.ends_with('\n') {
-                result.push_str(line.trim_end());
-            } else {
-                result.push_str(line.trim_end());
-            }
+            result.push_str(line.trim_end());
             result.push('\n');
         }
 
@@ -208,8 +204,7 @@ fn fix_paragraphs(text: &str) -> String {
     let cleaned = cleaned.trim().to_string();
 
     // Final pass: ensure double-newlines between paragraphs
-    let result = cleaned.replace("\n\n\n", "\n\n");
-    result
+    cleaned.replace("\n\n\n", "\n\n")
 }
 
 /// Generate front matter for a story document.
@@ -659,6 +654,7 @@ fn repair_json(s: &str) -> String {
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn structured_complete_with_strategy<T>(
     backend: &dyn ModelBackend,
     system: &str,
@@ -667,6 +663,7 @@ fn structured_complete_with_strategy<T>(
     temperature: f32,
     max_tokens: usize,
     session_id: Option<&str>,
+    seed: Option<u64>,
 ) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
@@ -692,6 +689,7 @@ where
                 None
             },
             session: session_id.map(|s| s.to_string()),
+            seed,
             bnf_mask: None,
             ..Default::default()
         }));
@@ -883,19 +881,39 @@ fn find_or_create_workspace(prompt: &str) -> Result<Workspace, anyhow::Error> {
 // Command entry point
 // ═══════════════════════════════════════════════════════════════════════════
 
+fn parse_positional_prompt(args: &[&str]) -> Option<String> {
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i];
+        if arg.starts_with("--") {
+            if !arg.contains('=') && matches!(arg, "--strategy" | "--max-tokens" | "--seed") {
+                i += 1;
+            }
+        } else if !arg.starts_with('-') {
+            return Some(arg.to_string());
+        }
+        i += 1;
+    }
+    None
+}
+
 pub fn cmd_story(extra: &[&str]) {
     // Initialize the agent journal so components can log
     let _ = AgentJournal::init();
 
-    let prompt = extra.first().cloned().unwrap_or(
-        "Write a short story about a lighthouse keeper who discovers a message in a bottle.",
-    );
+    let prompt = parse_positional_prompt(extra).unwrap_or_else(|| {
+        "Write a short story about a lighthouse keeper who discovers a message in a bottle."
+            .to_string()
+    });
 
     let strategy_str = parse_opt("--strategy", extra).unwrap_or("state-tuned");
     let strategy_kind = StrategyKind::parse(strategy_str).unwrap_or(StrategyKind::StateTuned);
 
     let max_tok_str = parse_opt("--max-tokens", extra).unwrap_or("800");
     let max_tokens = max_tok_str.parse::<usize>().unwrap_or(800);
+
+    let seed_str = parse_opt("--seed", extra);
+    let seed = seed_str.and_then(|s| s.parse::<u64>().ok());
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -952,7 +970,7 @@ pub fn cmd_story(extra: &[&str]) {
 
         // ── Workspace setup ───────────────────────────────────────────
         AgentJournal::info("story", "Setting up workspace...");
-        let ws = create_story_workspace(prompt).unwrap();
+        let ws = create_story_workspace(&prompt).unwrap();
         let workspace_path = ws.root().to_string_lossy().to_string();
 
         println!("  Workspace: {workspace_path}\n");
@@ -980,6 +998,7 @@ pub fn cmd_story(extra: &[&str]) {
                     0.6,
                     300,
                     Some(SESSION_WRITER),
+                    seed,
                 )
                 .map_err(|e| AgentError::Internal(format!("outline generation failed: {e}")))?;
 
@@ -1046,6 +1065,7 @@ pub fn cmd_story(extra: &[&str]) {
                     0.7,
                     500,
                     Some(SESSION_WRITER),
+                    seed,
                 )
                 .map_err(|e| AgentError::Internal(format!("wiki generation failed: {e}")))?;
 
@@ -1133,9 +1153,9 @@ pub fn cmd_story(extra: &[&str]) {
                 AgentJournal::phase("story", &format!("Writing {label} (phase 3/6)..."));
 
                 let directive = if is_retry {
-                    prompt_revision(chapter_label, &chapter_title, &chapter_summary, &feedback, outline)
+                    prompt_revision(chapter_label, chapter_title, chapter_summary, &feedback, outline)
                 } else {
-                    prompt_chapter(chapter_label, &chapter_title, &chapter_summary, outline, &previous, chapter_num == 1)
+                    prompt_chapter(chapter_label, chapter_title, chapter_summary, outline, previous, chapter_num == 1)
                 };
 
                 let chapter: StoryChapter = structured_complete_with_strategy(
@@ -1146,6 +1166,7 @@ pub fn cmd_story(extra: &[&str]) {
                     temperature,
                     max_tokens,
                     Some(SESSION_WRITER),
+                    seed,
                 )
                 .map_err(|e| AgentError::Internal(format!("chapter generation failed: {e}")))?;
 
@@ -1201,6 +1222,7 @@ pub fn cmd_story(extra: &[&str]) {
                         0.3,
                         200,
                         Some(SESSION_VALIDATOR),
+                        seed,
                     )
                     .map(|v: StoryValidation| {
                         format!(
@@ -1263,6 +1285,7 @@ pub fn cmd_story(extra: &[&str]) {
                     0.5,
                     200,
                     Some(SESSION_WRITER),
+                    seed,
                 )
                 .map_err(|e| AgentError::Internal(format!("synopsis generation failed: {e}")))?;
 
@@ -1334,7 +1357,7 @@ pub fn cmd_story(extra: &[&str]) {
                 let synopsis = read_file("05-SYNOPSIS.md");
                 if !synopsis.is_empty() {
                     story.push_str(&synopsis);
-                    story.push_str("\n");
+                    story.push('\n');
                 }
 
                 // Write 06-STORY.md to workspace (with front matter)

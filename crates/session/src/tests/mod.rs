@@ -1,7 +1,4 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn session_store_exists() {
-        assert!(true);
-    }
+#[test]
+fn session_store_exists() {
+    // Basic check to ensure the module is linked.
 }

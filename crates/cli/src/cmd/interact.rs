@@ -1,7 +1,7 @@
 //! Interactive subcommand: `roco interact`.
 
 use crate::interact_cli::{self, InteractMode, PacingChoice};
-use crate::{daemon, parse_opt};
+use crate::{daemon, parse_opt, parse_seed};
 
 pub fn cmd_interact(extra: &[&str]) {
     // `--list-sessions` must not start the daemon chain — listing files has
@@ -17,6 +17,8 @@ pub fn cmd_interact(extra: &[&str]) {
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
     let pace_str = parse_opt("--pace", extra).unwrap_or("careful");
     let pacing = PacingChoice::from_label(pace_str);
+    let seed = parse_seed(extra);
+    let trace = extra.iter().any(|&a| a == "--trace" || a == "-t");
 
     // The first positional argument (anything not starting with `-`) is an
     // opening message. Previously `extra.first()` was used unconditionally,
@@ -48,7 +50,18 @@ pub fn cmd_interact(extra: &[&str]) {
 
     let backend = daemon::ensure_sync_backend();
 
-    if let Err(e) = interact_cli::run(mode, &*backend) {
+    // Enable per-token trace mode for debugging generations
+    if trace {
+        std::env::set_var("ROCO_TRACE", "1");
+    }
+
+    let result = if let Some(s) = seed {
+        interact_cli::run_with_seed(mode, &*backend, s)
+    } else {
+        interact_cli::run(mode, &*backend)
+    };
+
+    if let Err(e) = result {
         eprintln!("Session error: {e}");
         std::process::exit(1);
     }
@@ -57,7 +70,14 @@ pub fn cmd_interact(extra: &[&str]) {
 /// First argument that is neither a flag nor the value of a known flag.
 fn first_positional<'a>(args: &[&'a str]) -> Option<&'a str> {
     /// Flags that consume the following argument.
-    const VALUE_FLAGS: &[&str] = &["--prompt", "--resume", "--pace", "--model", "--session"];
+    const VALUE_FLAGS: &[&str] = &[
+        "--prompt",
+        "--resume",
+        "--pace",
+        "--model",
+        "--session",
+        "--seed",
+    ];
 
     let mut skip_next = false;
     for arg in args {

@@ -436,6 +436,7 @@ pub async fn eval_worldbuilding<B: ModelBackend + Send + Sync>(
 /// produce the chapter prose. This eval verifies that the model can produce
 /// a coherent chapter with proper formatting, no thinking contamination,
 /// and appropriate paragraph structure.
+#[allow(clippy::too_many_arguments)]
 pub async fn eval_chapter_write<B: ModelBackend + Send + Sync>(
     backend: &B,
     config: &StoryEvalConfig,

@@ -78,7 +78,7 @@ pub fn strip_code_fences(text: &str) -> String {
     };
 
     // Step 2: Find the first JSON-like start ({ or [) and trim everything before it
-    if let Some(json_start) = after_fences.find(|c: char| c == '{' || c == '[') {
+    if let Some(json_start) = after_fences.find(['{', '[']) {
         // Find the matching close
         let opening = after_fences[json_start..].chars().next().unwrap();
         let closing = if opening == '{' { '}' } else { ']' };
@@ -448,7 +448,7 @@ pub fn repair_truncated_json(s: &str) -> String {
             break;
         }
         // Try to find the matching opening brace for closing
-        let last_open = result.rfind(|c| c == '{' || c == '[');
+        let last_open = result.rfind(['{', '[']);
         let closing = match last_open {
             Some(pos) if result.as_bytes()[pos] == b'{' => '}',
             _ => ']',

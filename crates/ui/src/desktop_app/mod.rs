@@ -932,6 +932,7 @@ mod tests {
     }
 
     impl MockBackend {
+        #[allow(clippy::new_ret_no_self)]
         fn new(responses: Vec<String>) -> Arc<dyn ModelBackend> {
             Arc::new(MockBackend {
                 name: "mock",
@@ -961,6 +962,7 @@ mod tests {
                     usage: Default::default(),
                     parsed: None,
                     think_trace: None,
+                    trace: Vec::new(),
                 })
             })
         }
@@ -1581,7 +1583,7 @@ mod tests {
         assert_eq!(app.session_path, Some(path.clone()));
         assert!(app.status_message.contains("Loaded:"));
         assert!(
-            app.timeline_state.entries.len() >= 1,
+            !app.timeline_state.entries.is_empty(),
             "should have session_loaded timeline entry"
         );
 

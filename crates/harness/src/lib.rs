@@ -1,3 +1,8 @@
+#![allow(
+    clippy::items_after_test_module,
+    clippy::single_match,
+    clippy::new_without_default
+)]
 //! Real unified scaffold — all 11 domains + framework trait + mock backend.
 pub use framework::*;
 pub use r#loop::ExecutionLoop;

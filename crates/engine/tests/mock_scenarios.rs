@@ -81,7 +81,7 @@ async fn exact_error_sequence_fails_n_times_then_succeeds() {
 
     // First 3 calls should fail
     for i in 1..=3 {
-        let req = CompletionRequest::new("sys", &format!("call {i}"));
+        let req = CompletionRequest::new("sys", format!("call {i}"));
         let err = backend.complete(req).await.unwrap_err();
         assert!(
             format!("{err:?}").contains("simulated failure"),
@@ -188,7 +188,7 @@ async fn retry_after_failure_eventually_succeeds() {
     // Retry loop: try up to 5 times
     let mut last_error = None;
     for attempt in 1..=5 {
-        let req = CompletionRequest::new("sys", &format!("attempt {attempt}"));
+        let req = CompletionRequest::new("sys", format!("attempt {attempt}"));
         match backend.complete(req).await {
             Ok(resp) => {
                 assert!(resp.text.contains("retry-model"));
@@ -213,7 +213,7 @@ async fn retry_with_max_exceeded_returns_last_error() {
 
     let mut last_err = None;
     for attempt in 1..=3 {
-        let req = CompletionRequest::new("sys", &format!("attempt {attempt}"));
+        let req = CompletionRequest::new("sys", format!("attempt {attempt}"));
         match backend.complete(req).await {
             Ok(_) => {
                 panic!("Should not succeed before fail_count is exhausted");
@@ -456,7 +456,7 @@ async fn persistence_round_trip_recording_backend() {
 
     // Multiple completions
     for i in 0..3 {
-        let req = CompletionRequest::new("sys", &format!("round trip {i}"));
+        let req = CompletionRequest::new("sys", format!("round trip {i}"));
         let resp = backend.complete(req).await.unwrap();
         assert!(resp.text.contains("recording"));
     }

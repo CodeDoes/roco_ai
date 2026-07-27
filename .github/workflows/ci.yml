@@ -77,8 +77,8 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install system deps
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: "cargo test — agent-core + agent-story + engine"
-        run: cargo test -p roco-agent-core -p roco-agent-story -p roco-engine --no-fail-fast
+      - name: "cargo test — workspace"
+        run: cargo test --workspace --no-fail-fast
 
   clippy:
     name: "clippy"

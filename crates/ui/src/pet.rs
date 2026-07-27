@@ -383,8 +383,10 @@ mod tests {
 
     #[test]
     fn test_send_message_echo() {
-        let mut pet = DesktopPet::default();
-        pet.input_buf = "hello".into();
+        let mut pet = DesktopPet {
+            input_buf: "hello".into(),
+            ..Default::default()
+        };
 
         // Can't call send_message without a ctx, but we can push directly
         pet.messages.push(PetMessage {

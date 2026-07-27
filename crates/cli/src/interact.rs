@@ -109,6 +109,23 @@ pub fn run(mode: InteractMode, backend: &dyn roco_engine::ModelBackend) -> anyho
     }
 }
 
+/// Like [`run`] but with a deterministic seed for reproducible sampling.
+pub fn run_with_seed(
+    mode: InteractMode,
+    backend: &dyn roco_engine::ModelBackend,
+    seed: u64,
+) -> anyhow::Result<()> {
+    let _ = roco_app::agent_journal::AgentJournal::init();
+
+    match mode {
+        InteractMode::Prompt { prompt } => run_prompt_with_seed(backend, &prompt, seed),
+        InteractMode::Interactive { pacing, prompt } => {
+            run_interactive_with_seed(backend, pacing, prompt, seed)
+        }
+        InteractMode::Resume { session_id } => run_resume_with_seed(backend, &session_id, seed),
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Prompt Mode
 // ═════════════════════════════════════════════════════════════════════════════
@@ -136,6 +153,34 @@ fn run_prompt(backend: &dyn roco_engine::ModelBackend, prompt: &str) -> anyhow::
     Ok(())
 }
 
+fn run_prompt_with_seed(
+    backend: &dyn roco_engine::ModelBackend,
+    prompt: &str,
+    seed: u64,
+) -> anyhow::Result<()> {
+    let session_dir = get_sessions_dir();
+    std::fs::create_dir_all(&session_dir)?;
+    prune_old_sessions(&session_dir, MAX_SAVED_SESSIONS);
+
+    let session_id = format!("prompt_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let session_path = session_dir.join(format!("{}.json", session_id));
+
+    r::header("RoCo AI — Prompt (deterministic)");
+    r::info(&format!("Prompt: {}", prompt));
+    r::info(&format!("Seed: {}", seed));
+    r::dim(&format!("Session: {}", session_id));
+    println!();
+
+    let state = ConversationState::new(session_id.clone(), "auto-accept");
+    let mut chat =
+        ChatSession::new(state, session_path.clone(), CHAT_PERSONA, backend).with_seed(seed);
+
+    chat.turn(backend, prompt);
+
+    r::success(&format!("Session saved: {}", session_path.display()));
+    Ok(())
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Interactive Mode
 // ═════════════════════════════════════════════════════════════════════════════
@@ -156,6 +201,38 @@ fn run_interactive(
     let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend);
 
     r::header("RoCo AI — Chat");
+    println!("{}", chat.greeting());
+    r::dim("  Type your message and press Enter.  :h for help, :q to quit.");
+
+    let mut pacing_mode = pacing.to_interaction_mode();
+    let mut interaction = InteractionState::new(pacing_mode.clone(), 0);
+
+    if let Some(initial) = initial_prompt {
+        println!("\n{}You:{} {}", r::Colors::BOLD, r::Colors::RESET, initial);
+        run_turn(&mut chat, backend, &initial, &mut interaction, &pacing_mode);
+    }
+
+    repl_loop(&mut chat, backend, &mut pacing_mode, &mut interaction)
+}
+
+fn run_interactive_with_seed(
+    backend: &dyn roco_engine::ModelBackend,
+    pacing: PacingChoice,
+    initial_prompt: Option<String>,
+    seed: u64,
+) -> anyhow::Result<()> {
+    let session_dir = get_sessions_dir();
+    std::fs::create_dir_all(&session_dir)?;
+    prune_old_sessions(&session_dir, MAX_SAVED_SESSIONS);
+
+    let session_id = format!("interact_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let session_path = session_dir.join(format!("{}.json", session_id));
+
+    let state = ConversationState::new(session_id, pacing.label());
+    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend).with_seed(seed);
+
+    r::header("RoCo AI — Chat (deterministic)");
+    r::info(&format!("Seed: {}", seed));
     println!("{}", chat.greeting());
     r::dim("  Type your message and press Enter.  :h for help, :q to quit.");
 
@@ -227,6 +304,42 @@ fn run_resume(backend: &dyn roco_engine::ModelBackend, session_id: &str) -> anyh
     repl_loop(&mut chat, backend, &mut pacing_mode, &mut interaction)
 }
 
+fn run_resume_with_seed(
+    backend: &dyn roco_engine::ModelBackend,
+    session_id: &str,
+    seed: u64,
+) -> anyhow::Result<()> {
+    let session_dir = get_sessions_dir();
+    let session_path = session_dir.join(format!("{}.json", session_id));
+
+    if !session_path.exists() {
+        eprintln!("Session not found: {}", session_path.display());
+        eprintln!("Available sessions:");
+        list_sessions();
+        std::process::exit(1);
+    }
+
+    let state = ConversationState::load(&session_path)
+        .map_err(|e| anyhow::anyhow!("Failed to load session: {e}"))?;
+
+    r::header(&format!(
+        "Resuming Session: {} (deterministic, seed={})",
+        state.id, seed
+    ));
+    r::info(&format!(
+        "{} messages, pacing: {}",
+        state.messages.len(),
+        state.pacing
+    ));
+
+    let pacing = PacingChoice::from_label(&state.pacing);
+    let mut pacing_mode = pacing.to_interaction_mode();
+    let mut interaction = InteractionState::new(pacing_mode.clone(), state.messages.len());
+    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, backend).with_seed(seed);
+
+    repl_loop(&mut chat, backend, &mut pacing_mode, &mut interaction)
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Shared REPL
 // ═════════════════════════════════════════════════════════════════════════════
@@ -258,7 +371,8 @@ fn repl_loop(
         }
 
         if let Some(cmd) = as_command(input) {
-            if handle_command(&cmd, chat, pacing, interaction).map_err(|e| anyhow::anyhow!("{e}"))?
+            if handle_command(&cmd, chat, pacing, interaction)
+                .map_err(|e| anyhow::anyhow!("{e}"))?
             {
                 break;
             }
@@ -815,7 +929,10 @@ mod tests {
             .filter(|n| n.ends_with(".json"))
             .collect();
         assert_eq!(left.len(), 4, "got {left:?}");
-        assert!(left.contains(&"s09.json".to_string()), "newest kept: {left:?}");
+        assert!(
+            left.contains(&"s09.json".to_string()),
+            "newest kept: {left:?}"
+        );
         assert!(!left.contains(&"s00.json".to_string()), "oldest dropped");
     }
 
@@ -834,5 +951,4 @@ mod tests {
     fn prune_tolerates_a_missing_directory() {
         assert_eq!(prune_old_sessions(Path::new("/nonexistent/roco/xyz"), 5), 0);
     }
-
 }

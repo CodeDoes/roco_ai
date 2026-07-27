@@ -1,7 +1,4 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn basic_smoke() {
-        assert!(true);
-    }
+#[test]
+fn basic_smoke() {
+    // Basic check to ensure the module is linked.
 }

@@ -62,6 +62,12 @@ pub enum JobEvent {
     Cancelled { job_id: String },
 }
 
+impl Default for JobQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JobQueue {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(1000);

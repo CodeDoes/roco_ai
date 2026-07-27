@@ -36,6 +36,12 @@ pub fn parse_opt<'a>(name: &str, args: &'a [&str]) -> Option<&'a str> {
         .find_map(|w| if w[0] == name { Some(w[1]) } else { None })
 }
 
+/// Parse a `--seed` argument from args, returning `Some(seed)` if present.
+/// Supports both `--seed=42` and `--seed 42` formats.
+pub fn parse_seed(args: &[&str]) -> Option<u64> {
+    parse_opt("--seed", args).and_then(|s| s.parse::<u64>().ok())
+}
+
 /// Run a cargo subcommand and exit with its status code.
 pub fn run_cargo(cmd: &str, args: &[&str], extra: &[&str]) {
     let code = run_cargo_get_code(cmd, args, extra);
@@ -76,6 +82,9 @@ pub fn help(sub: Option<&str>) {
         Some("gpu-check") => help_gpu_check(),
         Some("reload") => help_reload(),
         Some("jobs") => help_jobs(),
+        Some("stats") | Some("review") => help_stats(),
+        Some("inspect") => help_inspect(),
+        Some("eval-suite") => help_eval_suite(),
         Some("whoami") => help_whoami(),
         Some("version") | Some("--version") => help_version(),
         _ => help_root(),
@@ -109,6 +118,10 @@ fn help_root() {
     eprintln!("  rwkv         Smoke-test the RWKV backend");
     eprintln!("  grammar      Grammar-constrained decode test");
     eprintln!("  gpu-check    Show Vulkan device + model info");
+    eprintln!("  stats        Story/workspace statistics and review");
+    eprintln!("  inspect      Model & system inspection (caches, sessions, config)");
+    eprintln!("  eval-suite   Deterministic evaluation suite\n");
+    eprintln!("Identity:");
     eprintln!("  whoami       Show what RoCo is and what it knows about you");
     eprintln!("  version      Show version\n");
     eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_CONFIG / ~/.config/roco/config.toml");
@@ -157,30 +170,10 @@ fn help_stop() {
 fn help_story() {
     eprintln!("roco story — Structured short story pipeline\n");
     eprintln!("Usage:");
-    eprintln!("  roco story <premise>           Generate a story from a premise");
-    eprintln!("  roco story <premise> --strategy <s>  Strategy: meticulous|collaborative|fast");
-    eprintln!("  roco story <premise> --max-tokens <n>  Max tokens per chapter\n");
-    std::process::exit(0);
-}
-
-fn help_interact() {
-    eprintln!("roco interact — Interactive chat REPL\n");
-    eprintln!("Usage:");
-    eprintln!("  roco interact                       Start interactive chat");
-    eprintln!("  roco interact <text>                 Chat with an opening message");
-    eprintln!("  roco interact --prompt <text>        One-shot: generate, save, exit");
-    eprintln!("  roco interact --resume <session>     Resume a saved session");
-    eprintln!("  roco interact --list-sessions        List saved sessions");
-    eprintln!("  roco interact --pace <mode>          Pacing: auto|careful|rolling|planning\n");
-    eprintln!("Responses stream token-by-token as they are generated.\n");
-    eprintln!("In-chat commands:");
-    eprintln!("  :help            Show all commands");
-    eprintln!("  :whoami          What RoCo knows about you");
-    eprintln!("  :whois           What RoCo is");
-    eprintln!("  :name <you>      Tell RoCo your name");
-    eprintln!("  :remember <fact> Remember something about you");
-    eprintln!("  :forget          Forget everything about you");
-    eprintln!("  :quit            Save and exit\n");
+    eprintln!("  roco story <premise>                    Generate a story from a premise");
+    eprintln!("  roco story <premise> --strategy <s>     Strategy: meticulous|collaborative|fast");
+    eprintln!("  roco story <premise> --max-tokens <n>   Max tokens per chapter");
+    eprintln!("  roco story --seed <n>                   Set deterministic seed for sampling\n");
     std::process::exit(0);
 }
 
@@ -298,5 +291,76 @@ fn help_jobs() {
     eprintln!("roco jobs — Show daemon status and active jobs\n");
     eprintln!("Usage:");
     eprintln!("  roco jobs                 Show inference daemon health and active jobs\n");
+    std::process::exit(0);
+}
+
+fn help_stats() {
+    eprintln!("roco stats — Story & Workspace Statistics\n");
+    eprintln!("Usage:");
+    eprintln!("  roco stats [directory]           Show story/workspace stats");
+    eprintln!("  roco stats --json                 JSON output");
+    eprintln!("  roco stats [dir] --json           JSON output for directory\n");
+    eprintln!("Analyzes a story directory for:");
+    eprintln!("  - Chapter count, word count, character count");
+    eprintln!("  - Estimated reading time");
+    eprintln!("  - Outline completeness\n");
+    std::process::exit(0);
+}
+
+fn help_interact() {
+    eprintln!("roco interact — Interactive chat REPL\n");
+    eprintln!("Usage:");
+    eprintln!("  roco interact                       Start interactive chat");
+    eprintln!("  roco interact <text>                 Chat with an opening message");
+    eprintln!("  roco interact --prompt <text>        One-shot: generate, save, exit");
+    eprintln!("  roco interact --resume <session>     Resume a saved session");
+    eprintln!("  roco interact --list-sessions        List saved sessions");
+    eprintln!("  roco interact --pace <mode>          Pacing: auto|careful|rolling|planning");
+    eprintln!("  roco interact --seed <n>             Set deterministic seed for sampling");
+    eprintln!(
+        "  roco interact --trace                 Enable per-token trace logging for debugging\n"
+    );
+    eprintln!("Responses stream token-by-token as they are generated.\n");
+    eprintln!("In-chat commands:");
+    eprintln!("  :help            Show all commands");
+    eprintln!("  :whoami          What RoCo knows about you");
+    eprintln!("  :whois           What RoCo is");
+    eprintln!("  :name <you>      Tell RoCo your name");
+    eprintln!("  :remember <fact> Remember something about you");
+    eprintln!("  :forget          Forget everything about you");
+    eprintln!("  :quit            Save and exit\n");
+    std::process::exit(0);
+}
+
+fn help_inspect() {
+    eprintln!("roco inspect — Model & System Inspection\n");
+    eprintln!("Usage:");
+    eprintln!("  roco inspect                      Show all system information");
+    eprintln!("  roco inspect caches               Show cache storage details");
+    eprintln!("  roco inspect sessions             List saved sessions");
+    eprintln!("  roco inspect config               Show configuration & env vars");
+    eprintln!("  roco inspect model                Show model file information");
+    eprintln!("  roco inspect seed                 Show determinism/seed info");
+    eprintln!("  roco inspect --json               JSON output\n");
+    eprintln!("Provides interpretability into model state, session cache,");
+    eprintln!("generation parameters, and configuration. Useful for debugging");
+    eprintln!("determinism and understanding model behaviour.\n");
+    std::process::exit(0);
+}
+
+fn help_eval_suite() {
+    eprintln!("roco eval-suite — Deterministic Evaluation Suite\n");
+    eprintln!("Usage:");
+    eprintln!("  roco eval-suite                   Run all deterministic evaluations");
+    eprintln!("  roco eval-suite streaming          Run only streaming tests");
+    eprintln!("  roco eval-suite identity           Run only identity tests");
+    eprintln!("  roco eval-suite conversation       Run only conversation tests");
+    eprintln!("  roco eval-suite --json             JSON output\n");
+    eprintln!("Runs offline deterministic assertions to verify:");
+    eprintln!("  - Stream monotonicity (text never shrinks)");
+    eprintln!("  - Think-block stripping");
+    eprintln!("  - Hallucinated turn cutting");
+    eprintln!("  - Identity fast-path detection");
+    eprintln!("  - Context budgeting\n");
     std::process::exit(0);
 }

@@ -250,6 +250,8 @@ struct WireRequest {
     session: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     preserve_state: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<u64>,
 }
 
 /// Parse one complete SSE line, recording any usage it carries.
@@ -336,6 +338,7 @@ async fn remote_complete(
         prefill: req.prefill.clone(),
         session: req.session.clone(),
         preserve_state: if req.preserve_state { Some(true) } else { None },
+        seed: req.seed,
     };
 
     let mut builder = client
@@ -419,9 +422,11 @@ async fn remote_complete(
 
         // A final event may arrive without a trailing newline.
         if !pending.trim().is_empty() {
-            if let Some(delta) =
-                parse_sse_line(&pending, &mut prompt_tokens, &mut reported_completion_tokens)
-            {
+            if let Some(delta) = parse_sse_line(
+                &pending,
+                &mut prompt_tokens,
+                &mut reported_completion_tokens,
+            ) {
                 full.push_str(&delta);
                 delta_count += 1;
                 if let Some(cb) = &on_token {
@@ -455,6 +460,7 @@ async fn remote_complete(
             },
             parsed: None,
             think_trace: None,
+            trace: Vec::new(),
         });
     }
 
@@ -498,6 +504,7 @@ async fn remote_complete(
         },
         parsed: None,
         think_trace: None,
+        trace: Vec::new(),
     })
 }
 
@@ -629,8 +636,8 @@ mod tests {
         // succeeds — a misconfiguration would silently fall back to the
         // unbounded default client.
         let _ = build_client();
-        assert!(CONNECT_TIMEOUT_SECS > 0);
-        assert!(POOL_IDLE_TIMEOUT_SECS > 0);
-        assert!(POOL_MAX_IDLE_PER_HOST > 0);
+        const { assert!(CONNECT_TIMEOUT_SECS > 0) };
+        const { assert!(POOL_IDLE_TIMEOUT_SECS > 0) };
+        const { assert!(POOL_MAX_IDLE_PER_HOST > 0) };
     }
 }

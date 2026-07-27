@@ -150,6 +150,8 @@ async fn bake_context(backend: &RemoteBackend, session: &str) -> std::result::Re
         estimated_prompt_tokens: 0,
         deadline_ms: 30000,
         thinking: false,
+        seed: None,
+        record_trace: false,
     };
     backend
         .complete(req)
@@ -180,6 +182,8 @@ async fn run_test(
             on_token: None,
             preserve_state: false,
             thinking: false,
+            seed: None,
+            record_trace: false,
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 60000,

@@ -92,8 +92,8 @@ fn extract_after_thinking(text: &str) -> &str {
         let rest = &text[idx..];
         // skip past "response" or whitespace
         let rest = rest.trim_start();
-        if rest.starts_with("response") {
-            &rest[8..]
+        if let Some(stripped) = rest.strip_prefix("response") {
+            stripped
         } else {
             rest
         }
@@ -162,6 +162,8 @@ async fn bake_single_shot(
         estimated_prompt_tokens: 0,
         deadline_ms: 30000,
         thinking: false,
+        seed: None,
+        record_trace: false,
     };
     backend
         .complete(req)
@@ -191,6 +193,8 @@ async fn run_test(
             on_token: None,
             preserve_state: false,
             thinking: false,
+            seed: None,
+            record_trace: false,
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 60000,
@@ -270,6 +274,8 @@ async fn main() {
             estimated_prompt_tokens: 0,
             deadline_ms: 30000,
             thinking: false,
+            seed: None,
+            record_trace: false,
         })
         .await;
 

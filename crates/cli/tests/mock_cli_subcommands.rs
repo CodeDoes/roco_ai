@@ -122,6 +122,8 @@ fn test_cli_story_pipeline() {
     let runner = MockCliRunner::new();
 
     let res = runner.run_binary(["story", "A clockmaker builds a device that freezes time"]);
+    println!("STDOUT:\n{}", res.stdout);
+    println!("STDERR:\n{}", res.stderr);
     res.assert_success();
     res.assert_stdout_contains("Generating story...");
     res.assert_stdout_contains("Workspace:");

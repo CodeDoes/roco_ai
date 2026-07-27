@@ -47,39 +47,63 @@ fn main() {
 
         // ── Evaluations ──────────────────────────────────────────────────
         "eval" => {
-            if has_help_flag(&extra) { help(Some("eval")); }
+            if has_help_flag(&extra) {
+                help(Some("eval"));
+            }
             cmd::eval::cmd_eval(&extra);
         }
         "bless" => {
-            if has_help_flag(&extra) { help(Some("eval")); }
+            if has_help_flag(&extra) {
+                help(Some("eval"));
+            }
             cmd::eval::cmd_bless(&extra);
         }
 
         // ── RWKV backend smoke tests ─────────────────────────────────────
         "rwkv" => {
-            if has_help_flag(&extra) { help(Some("rwkv")); }
+            if has_help_flag(&extra) {
+                help(Some("rwkv"));
+            }
             run_cargo(
                 "run",
-                &["-p", "roco-inference", "--example", "rwkv_test", "--release"],
+                &[
+                    "-p",
+                    "roco-inference",
+                    "--example",
+                    "rwkv_test",
+                    "--release",
+                ],
                 &extra,
             );
         }
         "grammar" => {
-            if has_help_flag(&extra) { help(Some("grammar")); }
+            if has_help_flag(&extra) {
+                help(Some("grammar"));
+            }
             run_cargo(
                 "run",
-                &["-p", "roco-inference", "--example", "grammar_smoke", "--release"],
+                &[
+                    "-p",
+                    "roco-inference",
+                    "--example",
+                    "grammar_smoke",
+                    "--release",
+                ],
                 &extra,
             );
         }
 
         // ── GPU / Jobs ───────────────────────────────────────────────────
         "gpu-check" => {
-            if has_help_flag(&extra) { help(Some("gpu-check")); }
+            if has_help_flag(&extra) {
+                help(Some("gpu-check"));
+            }
             cmd::gpu::cmd_gpu_check(&extra);
         }
         "jobs" | "inferd-jobs" | "inferd-status" => {
-            if has_help_flag(&extra) { help(Some("jobs")); }
+            if has_help_flag(&extra) {
+                help(Some("jobs"));
+            }
             cmd::jobs::cmd_jobs(&extra);
         }
 
@@ -93,8 +117,14 @@ fn main() {
             match sub_cmd {
                 Some("start") => {
                     let exe = std::env::current_exe().expect("exe");
-                    if roco_cli::daemon::ensure_inference_daemon(&exe, roco_cli::daemon::INFERENCE_PORT) {
-                        println!("✓ roco-inferd started on port {}.", roco_cli::daemon::INFERENCE_PORT);
+                    if roco_cli::daemon::ensure_inference_daemon(
+                        &exe,
+                        roco_cli::daemon::INFERENCE_PORT,
+                    ) {
+                        println!(
+                            "✓ roco-inferd started on port {}.",
+                            roco_cli::daemon::INFERENCE_PORT
+                        );
                     }
                 }
                 Some("stop") => {
@@ -104,7 +134,11 @@ fn main() {
                     #[cfg(feature = "net")]
                     cmd::server::cmd_inferd_reload(&extra[1..]);
                     #[cfg(not(feature = "net"))]
-                    need_feature("inferd reload", "net", "cargo build -p roco-cli --features net");
+                    need_feature(
+                        "inferd reload",
+                        "net",
+                        "cargo build -p roco-cli --features net",
+                    );
                 }
                 Some("status") | Some("jobs") => {
                     cmd::jobs::cmd_jobs(&extra[1..]);
@@ -135,8 +169,16 @@ fn main() {
             match sub_cmd {
                 Some("start") => {
                     let exe = std::env::current_exe().expect("exe");
-                    if roco_cli::daemon::ensure_daemon(&exe, "gateway", roco_cli::daemon::GATEWAY_PORT, &["--detach"]) {
-                        println!("✓ Gateway started on port {}.", roco_cli::daemon::GATEWAY_PORT);
+                    if roco_cli::daemon::ensure_daemon(
+                        &exe,
+                        "gateway",
+                        roco_cli::daemon::GATEWAY_PORT,
+                        &["--detach"],
+                    ) {
+                        println!(
+                            "✓ Gateway started on port {}.",
+                            roco_cli::daemon::GATEWAY_PORT
+                        );
                     }
                 }
                 Some("stop") => {
@@ -146,14 +188,25 @@ fn main() {
                     #[cfg(feature = "net")]
                     cmd::server::cmd_gateway_reload(&extra[1..]);
                     #[cfg(not(feature = "net"))]
-                    need_feature("gateway reload", "net", "cargo build -p roco-cli --features net");
+                    need_feature(
+                        "gateway reload",
+                        "net",
+                        "cargo build -p roco-cli --features net",
+                    );
                 }
                 Some("status") => {
-                    let running = roco_cli::daemon::is_running("gateway", roco_cli::daemon::GATEWAY_PORT);
+                    let running =
+                        roco_cli::daemon::is_running("gateway", roco_cli::daemon::GATEWAY_PORT);
                     if running {
-                        println!("✓ Gateway is running on port {}.", roco_cli::daemon::GATEWAY_PORT);
+                        println!(
+                            "✓ Gateway is running on port {}.",
+                            roco_cli::daemon::GATEWAY_PORT
+                        );
                     } else {
-                        println!("✗ Gateway is not running on port {}.", roco_cli::daemon::GATEWAY_PORT);
+                        println!(
+                            "✗ Gateway is not running on port {}.",
+                            roco_cli::daemon::GATEWAY_PORT
+                        );
                     }
                 }
                 Some("help") => {
@@ -197,22 +250,32 @@ fn main() {
 
         // ── Desktop GUI ──────────────────────────────────────────────────
         "gui" => {
-            if has_help_flag(&extra) { help(Some("gui")); }
+            if has_help_flag(&extra) {
+                help(Some("gui"));
+            }
             #[cfg(feature = "desktop")]
             cmd::desktop::cmd_gui(&extra);
             #[cfg(not(feature = "desktop"))]
-            need_feature("gui", "desktop", "cargo build -p roco-cli --features desktop");
+            need_feature(
+                "gui",
+                "desktop",
+                "cargo build -p roco-cli --features desktop",
+            );
         }
 
         // ── Desktop pet ──────────────────────────────────────────────────
         "pet" => {
-            if has_help_flag(&extra) { help(Some("pet")); }
+            if has_help_flag(&extra) {
+                help(Some("pet"));
+            }
             cmd::pet::cmd_pet(&extra);
         }
 
         // ── Story mode (interactive writing assistant) ───────────────────
         "story-mode" | "sm" => {
-            if has_help_flag(&extra) { help(Some("story")); }
+            if has_help_flag(&extra) {
+                help(Some("story"));
+            }
             let story_name = parse_opt("--story", &extra);
             let command = extra.first().copied();
             match command {
@@ -228,31 +291,43 @@ fn main() {
 
         // ── Structured story pipeline ────────────────────────────────────
         "story" => {
-            if has_help_flag(&extra) { help(Some("story")); }
+            if has_help_flag(&extra) {
+                help(Some("story"));
+            }
             cmd::story::cmd_story(&extra);
         }
 
         // ── Game / HTML / Code / Interact ────────────────────────────────
         "game" => {
-            if has_help_flag(&extra) { help(Some("game")); }
+            if has_help_flag(&extra) {
+                help(Some("game"));
+            }
             cmd::game::cmd_game(&extra);
         }
         "html" => {
-            if has_help_flag(&extra) { help(Some("html")); }
+            if has_help_flag(&extra) {
+                help(Some("html"));
+            }
             cmd::html::cmd_html(&extra);
         }
         "code" | "coder" => {
-            if has_help_flag(&extra) { help(Some("code")); }
+            if has_help_flag(&extra) {
+                help(Some("code"));
+            }
             cmd::coder::cmd_coder(&extra);
         }
         "interact" => {
-            if has_help_flag(&extra) { help(Some("interact")); }
+            if has_help_flag(&extra) {
+                help(Some("interact"));
+            }
             cmd::interact::cmd_interact(&extra);
         }
 
         // ── Export ───────────────────────────────────────────────────────
         "export" => {
-            if has_help_flag(&extra) { help(Some("export")); }
+            if has_help_flag(&extra) {
+                help(Some("export"));
+            }
             cmd::export::run(
                 extra.first().copied().unwrap_or("."),
                 parse_opt("--format", &extra),
@@ -262,25 +337,42 @@ fn main() {
 
         // ── Stats & Review ───────────────────────────────────────────────
         "stats" | "review" => {
-            if has_help_flag(&extra) { help(Some("stats")); }
+            if has_help_flag(&extra) {
+                help(Some("stats"));
+            }
             cmd::stats::cmd_stats(&extra);
+        }
+
+        // ── Inspect (interpretability, state, config) ────────────────────
+        "inspect" => {
+            if has_help_flag(&extra) {
+                help(Some("inspect"));
+            }
+            cmd::inspect::cmd_inspect(&extra);
         }
 
         // ── Deterministic Eval Suite ─────────────────────────────────────
         "eval-suite" => {
-            if has_help_flag(&extra) { help(Some("eval-suite")); }
+            if has_help_flag(&extra) {
+                help(Some("eval-suite"));
+            }
             cmd::eval_suite::cmd_eval_suite(&extra);
         }
 
         // ── Identity ─────────────────────────────────────────────────────
         "whoami" | "who-am-i" => {
-            if has_help_flag(&extra) { help(Some("whoami")); }
+            if has_help_flag(&extra) {
+                help(Some("whoami"));
+            }
             roco_cli::identity::cmd_whoami(&extra);
         }
 
         // ── Version ─────────────────────────────────────────────────────
         "version" | "--version" => {
-            eprintln!("RoCo AI v{} — collaborative writing assistant", env!("CARGO_PKG_VERSION"));
+            eprintln!(
+                "RoCo AI v{} — collaborative writing assistant",
+                env!("CARGO_PKG_VERSION")
+            );
             std::process::exit(0);
         }
 

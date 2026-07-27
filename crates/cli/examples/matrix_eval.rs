@@ -155,6 +155,8 @@ async fn main() {
                 output_schema: None,
                 estimated_prompt_tokens: 0,
                 deadline_ms: 60000,
+                seed: None,
+                record_trace: false,
             })
             .await;
         let ms = start.elapsed().as_millis();
@@ -223,6 +225,8 @@ async fn main() {
                 on_token: None,
                 preserve_state: false,
                 thinking: false,
+                seed: None,
+                record_trace: false,
                 output_schema: None,
                 estimated_prompt_tokens: 0,
                 deadline_ms: 60000,

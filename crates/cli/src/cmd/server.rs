@@ -24,7 +24,7 @@ pub fn cmd_gateway(extra: &[&str]) {
     let ws_dir = PathBuf::from(ws_dir_str);
 
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
-    let is_child = extra.iter().any(|&a| a == "--_child-gateway");
+    let is_child = extra.contains(&"--_child-gateway");
     let log_path = parse_opt("--log-file", extra)
         .map(PathBuf::from)
         .unwrap_or_else(|| daemon::default_detach_path("gateway", port, "log"));
@@ -70,7 +70,7 @@ pub fn cmd_server(extra: &[&str]) {
     let port_str = parse_opt("--port", extra).unwrap_or("8080");
     let port = port_str.parse::<u16>().unwrap_or(8080);
     let story_mode = extra.iter().any(|&a| a == "--story" || a == "-s");
-    let stdio_lsp = extra.iter().any(|&a| a == "--stdio-lsp");
+    let stdio_lsp = extra.contains(&"--stdio-lsp");
     let inference_url = parse_opt("--inference-url", extra)
         .map(|s| s.to_string())
         .unwrap_or_else(|| {
@@ -78,7 +78,7 @@ pub fn cmd_server(extra: &[&str]) {
         });
 
     let detach = extra.iter().any(|&a| a == "--detach" || a == "-d");
-    let is_child = extra.iter().any(|&a| a == "--_child-server");
+    let is_child = extra.contains(&"--_child-server");
     let log_path = parse_opt("--log-file", extra)
         .map(PathBuf::from)
         .unwrap_or_else(|| daemon::default_detach_path("server", port, "log"));

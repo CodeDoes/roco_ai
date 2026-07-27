@@ -440,7 +440,7 @@ impl StoryIdeaGenerator {
         let structural_fit = if let Some(structure) = preferred_structure {
             let act_count = structure.act_descriptions().len();
             let chapters_count = idea.suggested_chapters.len();
-            if chapters_count % act_count != 0 && chapters_count < act_count {
+            if !chapters_count.is_multiple_of(act_count) && chapters_count < act_count {
                 score -= 1.0;
                 issues.push(format!(
                     "Chapter count ({}) is too small to fully cover the {:?} structure phases (requires {}).",

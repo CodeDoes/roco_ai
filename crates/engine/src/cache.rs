@@ -292,7 +292,11 @@ mod tests {
             assert_eq!(cache.get(&"hot"), Some(0));
             cache.insert("churn", 9);
         }
-        assert_eq!(cache.get(&"hot"), Some(0), "hot key should never be evicted");
+        assert_eq!(
+            cache.get(&"hot"),
+            Some(0),
+            "hot key should never be evicted"
+        );
     }
 
     #[test]
@@ -303,9 +307,18 @@ mod tests {
         assert_eq!(cache.len(), 1, "re-insert must not duplicate the key");
         assert_eq!(cache.get(&"a"), Some(2));
 
+        // "a" was just accessed via get(), so it's the MRU.
+        // Inserting "b" gives it a newer stamp than "a".
         cache.insert("b", 3);
-        cache.insert("c", 4); // evicts the LRU, which is "b"
-        assert_eq!(cache.get(&"a"), Some(2));
+        cache.insert("b", 3); // re-insert "b" to refresh its stamp
+        cache.insert("c", 4); // evicts the LRU "a" (lowest stamp)
+        assert_eq!(cache.get(&"a"), None, "a was LRU and should be evicted");
+        assert_eq!(
+            cache.get(&"b"),
+            Some(3),
+            "b was re-inserted and should survive"
+        );
+        assert_eq!(cache.get(&"c"), Some(4), "c is newest");
     }
 
     #[test]
@@ -355,8 +368,7 @@ mod tests {
 
     #[test]
     fn ttl_expires_entries() {
-        let cache: SmartCache<&str, u32> =
-            SmartCache::new(10).with_ttl(Duration::from_millis(20));
+        let cache: SmartCache<&str, u32> = SmartCache::new(10).with_ttl(Duration::from_millis(20));
         cache.insert("a", 1);
         assert_eq!(cache.get(&"a"), Some(1));
         std::thread::sleep(Duration::from_millis(40));

@@ -5,7 +5,8 @@
 
 use std::collections::HashMap;
 use std::env;
-use std::path::PathBuf;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -25,12 +26,45 @@ fn default_cache_root() -> PathBuf {
     }
 }
 
-/// Compute the pipeline cache path for a model file.
-pub fn get_pipeline_cache_path(model_path: &str) -> PathBuf {
-    use std::hash::{Hash, Hasher};
+/// Hash a model file stably by its filesystem identity (device:inode).
+///
+/// This ensures the same physical model file produces the same cache key
+/// regardless of whether it's referenced by a relative path, an absolute
+/// path, or through a symlink.
+///
+/// Falls back to hashing the canonicalised path (or the raw path as last
+/// resort) if `stat` fails.
+pub fn model_file_hash(model_path: &str) -> u64 {
+    let path = Path::new(model_path);
+
+    // Stable content-based hash: device + inode + size
+    #[cfg(target_os = "linux")]
+    if let Ok(meta) = std::fs::metadata(path) {
+        use std::os::linux::fs::MetadataExt;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        meta.st_dev().hash(&mut hasher);
+        meta.st_ino().hash(&mut hasher);
+        meta.len().hash(&mut hasher);
+        return hasher.finish();
+    }
+
+    // Fallback 1: canonicalise to resolve symlinks
+    if let Ok(canon) = path.canonicalize() {
+        let s = canon.to_string_lossy();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        s.hash(&mut hasher);
+        return hasher.finish();
+    }
+
+    // Fallback 2: hash the raw path
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     model_path.hash(&mut hasher);
-    let hash = hasher.finish();
+    hasher.finish()
+}
+
+/// Compute the pipeline cache path for a model file.
+pub fn get_pipeline_cache_path(model_path: &str) -> PathBuf {
+    let hash = model_file_hash(model_path);
     let root = env::var("RWKV_PIPELINE_CACHE_DIR").unwrap_or_else(|_| {
         default_cache_root()
             .join("pipeline-cache")
@@ -42,10 +76,7 @@ pub fn get_pipeline_cache_path(model_path: &str) -> PathBuf {
 
 /// Compute the quant cache directory for a model file.
 pub fn get_quant_cache_dir(model_path: &str) -> PathBuf {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    model_path.hash(&mut hasher);
-    let hash = hasher.finish();
+    let hash = model_file_hash(model_path);
     let root = env::var("RWKV_QUANT_CACHE_DIR").unwrap_or_else(|_| {
         default_cache_root()
             .join("quant-cache")
@@ -311,18 +342,118 @@ impl CacheIndex {
     }
 }
 
+/// Compute the old path-based hash for a model path.
+fn old_path_hash(model_path: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    model_path.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Compute the old path-based quant cache directory (used before the content-hash migration).
+fn old_get_quant_cache_dir(model_path: &str) -> PathBuf {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    model_path.hash(&mut hasher);
+    let hash = hasher.finish();
+    let root = env::var("RWKV_QUANT_CACHE_DIR").unwrap_or_else(|_| {
+        default_cache_root()
+            .join("quant-cache")
+            .to_string_lossy()
+            .to_string()
+    });
+    PathBuf::from(root).join(format!("{:016x}", hash))
+}
+
+/// Migrate an old path-based quant cache to the new content-based hash.
+///
+/// If the new location is empty and an old cache exists and is complete,
+/// rename the old directory to the new hash. This preserves the cached
+/// quantisation across the migration.
+pub fn migrate_quant_cache(model_path: &str) {
+    let new_dir = get_quant_cache_dir(model_path);
+    if new_dir.exists() {
+        return; // already migrated or fresh
+    }
+
+    // Try the old path-based hash via the canonicalised path (most likely match)
+    let canonicalised = Path::new(model_path).canonicalize().ok();
+    let old_candidates = std::iter::once(model_path.to_string()).chain(
+        canonicalised
+            .as_ref()
+            .map(|c| c.to_string_lossy().to_string()),
+    );
+
+    for old_path in old_candidates {
+        let old_dir = old_get_quant_cache_dir(&old_path);
+        if !old_dir.exists() {
+            continue;
+        }
+        // Check if old cache is complete
+        if let Some(index) = CacheIndex::load(&old_dir) {
+            if index.is_complete(&old_dir) {
+                info!("migrating quant cache: {:?} -> {:?}", old_dir, new_dir);
+                if let Err(e) = std::fs::rename(&old_dir, &new_dir) {
+                    warn!(error = %e, "failed to migrate quant cache");
+                }
+                return;
+            }
+        }
+    }
+}
+
 /// Check if a complete model cache exists for the given model path.
 /// Returns `Some(CacheIndex)` if cache is complete, `None` otherwise.
 pub fn check_model_cache(model_path: &str) -> Option<CacheIndex> {
+    // Try the new content-based cache location
     let quant_cache_dir = get_quant_cache_dir(model_path);
-    if !quant_cache_dir.exists() {
-        return None;
+    if quant_cache_dir.exists() {
+        if let Some(index) = CacheIndex::load(&quant_cache_dir) {
+            if index.is_complete(&quant_cache_dir) {
+                return Some(index);
+            }
+        }
     }
-    let index = CacheIndex::load(&quant_cache_dir)?;
-    if index.is_complete(&quant_cache_dir) {
-        Some(index)
-    } else {
-        None
+    // Fallback: attempt migration from old path-based cache
+    migrate_quant_cache(model_path);
+    // Retry after migration
+    if quant_cache_dir.exists() {
+        let index = CacheIndex::load(&quant_cache_dir)?;
+        if index.is_complete(&quant_cache_dir) {
+            return Some(index);
+        }
+    }
+    None
+}
+
+/// Migrate an old path-based pipeline cache to the new content-based hash.
+pub fn migrate_pipeline_cache(model_path: &str) {
+    let new_path = get_pipeline_cache_path(model_path);
+    if new_path.exists() {
+        return; // already migrated or fresh
+    }
+
+    let canonicalised = Path::new(model_path).canonicalize().ok();
+    let old_candidates = std::iter::once(model_path.to_string()).chain(
+        canonicalised
+            .as_ref()
+            .map(|c| c.to_string_lossy().to_string()),
+    );
+
+    for old_path in old_candidates {
+        let old_hash = old_path_hash(&old_path);
+        let root = env::var("RWKV_PIPELINE_CACHE_DIR").unwrap_or_else(|_| {
+            default_cache_root()
+                .join("pipeline-cache")
+                .to_string_lossy()
+                .to_string()
+        });
+        let old_file = PathBuf::from(root).join(format!("{:016x}.bin", old_hash));
+        if old_file.exists() {
+            info!("migrating pipeline cache: {:?} -> {:?}", old_file, new_path);
+            if let Err(e) = std::fs::rename(&old_file, &new_path) {
+                warn!(error = %e, "failed to migrate pipeline cache");
+            }
+            return;
+        }
     }
 }
 
