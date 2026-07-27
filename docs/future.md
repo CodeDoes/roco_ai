@@ -51,29 +51,7 @@ This document catalogs concrete improvements beyond the current state, organized
 - One `cargo check` compiles ~40% fewer crate boundaries
 - Changes to wire types touch exactly 1 crate instead of 3
 
-### 7. Extract `ModelBackend::bake_state` into a standalone trait
-**Rationale:** `bake_state` is only meaningful for RNN-based backends (RWKV). Transformer backends (if added later) would have a no-op default. This violates Interface Segregation.
-
-**Approach:**
-```rust
-/// Optional trait for RNN-based backends that support state tuning.
-pub trait StateTuning: Send + Sync {
-    fn tune_state<'a>(...) -> BoxFuture<'a, Result<String, EngineError>>;
-    fn blend_states<'a>(...) -> BoxFuture<'a, Result<(), EngineError>>;
-}
-```
-- `RwkvBackend` implements `roco_engine::StateTuning` (with `tune_state` + `blend_states`)
-- `RemoteBackend` implements `roco_engine::StateTuning` (HTTP proxy to inferd)
-- `MockBackend`, `RecordingBackend`, UI mock, and test backends do NOT implement it (default error from `ModelBackend::bake_state`)
-- `ModelBackend::bake_state` has a default error impl, so existing callers continue to work
-
-**Status:** Completed
-
-**Implementation notes:**
-- `roco_engine::ModelBackend::bake_state` changed to a default impl returning `EngineError::Backend("state tuning not supported by this backend")`
-- `roco_engine::StateTuning` trait already existed with `tune_state` + `blend_states`; now `RwkvBackend` and `RemoteBackend` implement it
-- Removed `bake_state` from mock backends, `TokioBackend`, `PlanBackend`, `EmptyPlanBackend`, UI mock, and test backends — they rely on the default error impl
-- Callers in `story.rs`, `server/routes.rs`, and examples continue calling `backend.bake_state()` which works for backends with custom impl and returns error for others
+---
 
 ### 9. Decouple the gateway's daemon lifecycle from the CLI
 **Rationale:** `roco gateway start` manages daemon lifecycle (start inferd, health-check, restart on crash). This logic lives in the CLI binary, making it impossible to use the gateway as a library without daemon-management side effects.
@@ -219,6 +197,5 @@ pub trait StateTuning: Send + Sync {
 | P1 | Modularity | 6. Crate consolidation | 3-5 days | High — halves build time, simplifies navigation |
 | P1 | Interpretability | 14. Token trace logging | 2 days | Medium — enables debugging bad generations |
 | P2 | UX | 2. Progress bar | 1 day | Medium — better feedback for long gen |
-| P2 | ~~Modularity~~ | ~~7. Extract StateTuning trait~~ | ~~1 day~~ | ~~Medium — cleaner trait hierarchy~~ |
 | P3 | Interpretability | 16. Debug REPL | 3 days | Low — power-user tooling |
 | P3 | Testing | 21. Fuzz grammar engine | 2 days | Low — security hardening |
