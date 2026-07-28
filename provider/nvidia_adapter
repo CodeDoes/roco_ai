@@ -1,0 +1,20 @@
+{
+  "kind": "nvidia",
+  "base_url": "https://integrate.api.nvidia.com/v1",
+  "auth_env": "NVIDIA_API_KEY",
+  "default_model": "qwen/qwen3-next-80b-a3b-instruct",
+  "models": [
+    "qwen/qwen3-next-80b-a3b-instruct",
+    "nvidia/nemotron-3-super-120b-a12b",
+    "z-ai/glm-5.2",
+    "minimaxai/minimax-m3"
+  ],
+  "capacity_cost": {
+    "local_gpu_gb": 0,
+    "local_cache_gb": 0,
+    "cpu_model": 0,
+    "cpu_ram_gb": 0,
+    "kilo_tencent": 0,
+    "nvidia_gpu": 1
+  }
+}
