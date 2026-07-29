@@ -28,21 +28,50 @@ AI-assisted collaborative writing tool powered by a local LLM (RWKV-7 2.9B).
 
 ---
 
-## Crate Inventory & Test Map (Condensed from `USE_CASES_AND_GAPS.md`)
+## Crate Inventory & Test Map
 
-RoCo AI consists of 19 workspace crates organized as follows:
+RoCo AI consists of 18 workspace crates organized as follows:
 
 | Category | Crates | Description |
 |---|---|---|
-| **Production Agents** | `agent` | Story generation pipelines, ReAct agent loop, outline revision, pacing & quality steering |
-| **App & State** | `app`, `core`, `session`, `workspace` | AppContext binding, session store, persistent timeline, sandboxed file workspace |
-| **LLM & Grammar** | `inference`, `inferd`, `infer-client`, `engine`, `grammar`, `bnf-engine` | `web-rwkv` GPU thread, inference daemon, token-level kbnf BNF grammar decoder |
-| **Transport & Server** | `server`, `gateway`, `cli`, `chat-common`, `message`, `protocol` | HTTP server, gateway routing, CLI commands, shared chat protocol types |
-| **UI & Validation** | `ui`, `validation`, `tools` | Desktop widgets (editor, link graph, pacing), multi-layer verifiers, file/execution tools |
+| **Agents & Tools** | `agent` | Story generation pipelines, ReAct agent loop, outline revision, pacing & quality steering |
+| **App & State** | `app`, `session`, `workspace` | AppContext binding, session store, persistent timeline, sandboxed file workspace |
+| **LLM Engine** | `engine`, `engine-gpu` | `engine`: trait + types + grammar + mock. `engine-gpu`: RwkvBackend (web-rwkv/WGPU) |
+| **Inference** | `inferd`, `infer-client` | Inference daemon, remote inference client |
+| **Transport & Server** | `server`, `gateway`, `cli`, `protocol` | HTTP server, gateway (unified API), CLI commands, shared chat protocol types |
+| **UI** | `ui` | Desktop widgets (editor, link graph, pacing) |
+| **Testing** | `harness` | Mock execution framework for offline testing |
+| **GPU Backends** | `rwkv7-vulkan` | Vulkan compute backend (optional) |
 
-### Existing Tests & Test Coverage Goals
-- **Unit & Integration Test Coverage:** `crates/app/tests/facade.rs`, `crates/engine/src/tests/eval_suite.rs`, `crates/ui/tests/token0_probe.rs`, unit tests in `session`, `workspace`, `grammar`, `message`, `validation`, `chat-common`, `gateway`, `tools`.
-- **Primary Coverage Gaps to Fill:** Expanding integration test suites for `cli`, `ui`, `server`, and full-stack session persistence under high concurrency.
+### Architecture: Engine vs Engine-GPU
+
+The LLM engine is split into two crates for dependency isolation:
+
+- **`roco-engine`** (14 dependent crates): Trait definitions (`ModelBackend`), types (`CompletionRequest`/`CompletionResponse`), BNF grammar engine, mock backend. No GPU dependency.
+- **`roco-engine-gpu`** (2 dependent crates): `RwkvBackend` implementation using web-rwkv/WGPU. Only compiled when real inference is needed.
+
+This separation keeps build times fast for most crates while isolating GPU dependencies.
+
+### Gateway: Unified HTTP API
+
+The gateway (`roco-gateway`) is the unified HTTP API endpoint with three deployment modes:
+
+1. **Full mode**: Gateway + local backend (no inferd needed)
+2. **Proxy mode**: Gateway + inferd (existing behavior)
+3. **Workspace-only mode**: Gateway + no backend (session/workspace management)
+
+Gateway routes include:
+- Direct inference: `/complete`, `/bake`, `/vocab`, `/v1/completions`
+- Sessions: CRUD, bake, generate, streaming
+- Workspaces: CRUD, file operations
+- Jobs: create, stream, cancel
+
+The `server` crate remains for standalone `inferd` daemon use case.
+
+### Existing Tests
+- **Unit tests**: 229+ tests pass across all crates
+- **Integration tests**: `app/tests/facade.rs`, `engine/src/tests/eval_suite.rs`, `ui/tests/`
+- **Primary gaps**: `cli`, `ui`, full-stack session persistence under high concurrency
 
 ---
 
@@ -65,17 +94,21 @@ RoCo AI consists of 19 workspace crates organized as follows:
 
 ---
 
-## Architectural Goal: Resolving `SIMPLICITY_AND_SAFETY_DEEP_DIVE.md`
+## Architecture Status
 
-A primary ongoing engineering objective is to **resolve the issues identified in `docs/SIMPLICITY_AND_SAFETY_DEEP_DIVE.md`**, making that document historical and less relevant over time:
+### Completed
+- ✅ **Engine split**: `engine` (trait/types/mock) + `engine-gpu` (RwkvBackend) — clear dependency separation
+- ✅ **Gateway unification**: Single HTTP API with optional backend support (local/proxy/workspace-only modes)
+- ✅ **bnf-engine removed**: 57-line re-export wrapper eliminated
+- ✅ **Session workspace switching**: `Session::set_workspace()` method added
+- ✅ **Build portability**: `check_mold.sh` script for linker verification
 
-1. **Crate Consolidation:** Consolidate the 19 workspace crates down to 6–8 unified crates:
-   - Merge `message`, `chat-common`, `protocol` → `roco-protocol`
-   - Merge `agent`, `validation`, `tools` → `roco-agent`
-   - Consolidate `engine`, `inference`, `grammar` → `roco-engine`
-2. **Harness Isolation:** Move the `local_agent` mock framework out of `crates/app/src/` into a dedicated package (`crates/roco-harness` or integration tests) to separate live production app logic from mock evaluation scaffolds.
-3. **Linker & Build Portability:** Add fallback checks for developer systems lacking `mold` so `cargo build` succeeds seamlessly out of the box.
-4. **Unified Workspace Sandboxing:** Standardize workspace path containment and timeline management across GUI, CLI, and server interfaces.
+### Remaining Work
+- **Crate consolidation**: Merge `protocol` modules, consolidate `agent` with `validation`/`tools`
+- **Deduplicate types**: Remove duplicate `Agent`, `BakeRequest`/`BakeResponse`, etc. across crates
+- **Harness cleanup**: Replace 10 identical `Agent` structs with generic `MockAgent`
+- **Placeholder tests**: Replace stub test modules with real tests
+- **TODO resolution**: Complete unfinished story route handlers in CLI
 
 ---
 
