@@ -13,6 +13,8 @@
 pub mod job;
 pub mod session;
 pub mod workspace;
+#[cfg(test)]
+pub mod tests;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -127,28 +129,28 @@ impl Gateway {
 
         let app = AxumRouter::new()
             // Health
-            .route("/health", get(handle_health))
+            .route("/health", get(handle_health_test))
             // Direct inference (server-compatible routes)
-            .route("/complete", post(handle_direct_complete))
-            .route("/bake", post(handle_direct_bake))
-            .route("/vocab", get(handle_vocab))
-            .route("/v1/completions", post(handle_openai_completions))
+            .route("/complete", post(handle_direct_complete_test))
+            .route("/bake", post(handle_direct_bake_test))
+            .route("/vocab", get(handle_vocab_test))
+            .route("/v1/completions", post(handle_openai_completions_test))
             // Sessions
-            .route("/sessions", post(handle_create_session))
-            .route("/sessions/:id", get(handle_get_session))
-            .route("/sessions/:id", delete(handle_delete_session))
-            .route("/sessions/:id/bake", post(handle_bake_session))
-            .route("/sessions/:id/complete", post(handle_complete_session))
+            .route("/sessions", post(handle_create_session_test))
+            .route("/sessions/:id", get(handle_get_session_test))
+            .route("/sessions/:id", delete(handle_delete_session_test))
+            .route("/sessions/:id/bake", post(handle_bake_session_test))
+            .route("/sessions/:id/complete", post(handle_complete_session_test))
             .route("/sessions/:id/eos", post(handle_feed_eos))
-            .route("/sessions/:id/tokens", get(handle_get_tokens))
-            .route("/sessions/:id/status", get(handle_get_session_status))
+            .route("/sessions/:id/tokens", get(handle_get_tokens_test))
+            .route("/sessions/:id/status", get(handle_get_session_status_test))
             // Workspaces
-            .route("/workspaces", get(handle_list_workspaces))
-            .route("/workspaces", post(handle_create_workspace))
-            .route("/workspaces/:id", get(handle_get_workspace))
-            .route("/workspaces/:id/files", get(handle_list_files))
-            .route("/workspaces/:id/files/*path", get(handle_read_file))
-            .route("/workspaces/:id/files/*path", post(handle_write_file))
+            .route("/workspaces", get(handle_list_workspaces_test))
+            .route("/workspaces", post(handle_create_workspace_test))
+            .route("/workspaces/:id", get(handle_get_workspace_test))
+            .route("/workspaces/:id/files", get(handle_list_files_test))
+            .route("/workspaces/:id/files/*path", get(handle_read_file_test))
+            .route("/workspaces/:id/files/*path", post(handle_write_file_test))
             // Jobs
             .route("/jobs", post(handle_create_job))
             .route("/jobs/:id", get(handle_get_job))
@@ -208,7 +210,7 @@ async fn job_worker(state: GatewayState) {
 // ── Direct Inference Handlers (server-compatible) ───────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
-struct DirectCompleteRequest {
+pub struct DirectCompleteRequest {
     system: Option<String>,
     prompt: String,
     #[serde(default)]
@@ -221,7 +223,7 @@ struct DirectCompleteRequest {
     thinking: bool,
 }
 
-async fn handle_direct_complete(
+pub async fn handle_direct_complete_test(
     State(state): State<GatewayState>,
     Json(req): Json<DirectCompleteRequest>,
 ) -> impl IntoResponse {
@@ -264,13 +266,13 @@ async fn handle_direct_complete(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct DirectBakeRequest {
+pub struct DirectBakeRequest {
     session_id: String,
     system: String,
     few_shots: Vec<(String, String)>,
 }
 
-async fn handle_direct_bake(
+pub async fn handle_direct_bake_test(
     State(state): State<GatewayState>,
     Json(req): Json<DirectBakeRequest>,
 ) -> impl IntoResponse {
@@ -302,7 +304,7 @@ async fn handle_direct_bake(
     }
 }
 
-async fn handle_vocab(State(state): State<GatewayState>) -> impl IntoResponse {
+pub async fn handle_vocab_test(State(state): State<GatewayState>) -> impl IntoResponse {
     if let Some(backend) = &state.backend {
         match backend.vocab_bytes() {
             Some(vocab) => Json(vocab).into_response(),
@@ -330,7 +332,7 @@ async fn handle_vocab(State(state): State<GatewayState>) -> impl IntoResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct OpenAICompletionRequest {
+pub struct OpenAICompletionRequest {
     model: Option<String>,
     prompt: String,
     #[serde(default = "default_max_tokens")]
@@ -340,7 +342,7 @@ struct OpenAICompletionRequest {
     stream: Option<bool>,
 }
 
-async fn handle_openai_completions(
+pub async fn handle_openai_completions_test(
     State(state): State<GatewayState>,
     Json(req): Json<OpenAICompletionRequest>,
 ) -> impl IntoResponse {
@@ -403,11 +405,11 @@ struct CreateSessionResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct CreateSessionRequest {
+pub struct CreateSessionRequest {
     workspace_id: Option<String>,
 }
 
-async fn handle_create_session(
+pub async fn handle_create_session_test(
     State(state): State<GatewayState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> impl IntoResponse {
@@ -423,7 +425,7 @@ async fn handle_create_session(
     })
 }
 
-async fn handle_get_session(
+pub async fn handle_get_session_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -433,7 +435,7 @@ async fn handle_get_session(
     }
 }
 
-async fn handle_delete_session(
+pub async fn handle_delete_session_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -442,12 +444,12 @@ async fn handle_delete_session(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct BakeRequest {
+pub struct BakeRequest {
     system: String,
     few_shots: Vec<(String, String)>,
 }
 
-async fn handle_bake_session(
+pub async fn handle_bake_session_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
     Json(req): Json<BakeRequest>,
@@ -503,7 +505,7 @@ async fn handle_bake_session(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct CompleteRequest {
+pub struct CompleteRequest {
     prompt: String,
     #[serde(default)]
     stream: bool,
@@ -521,7 +523,7 @@ fn default_max_tokens() -> usize {
     512
 }
 
-async fn handle_complete_session(
+pub async fn handle_complete_session_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
     Json(req): Json<CompleteRequest>,
@@ -620,7 +622,7 @@ async fn handle_feed_eos(
     }
 }
 
-async fn handle_get_tokens(
+pub async fn handle_get_tokens_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -630,7 +632,7 @@ async fn handle_get_tokens(
     }
 }
 
-async fn handle_get_session_status(
+pub async fn handle_get_session_status_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -653,18 +655,18 @@ struct WorkspaceListResponse {
     workspaces: Vec<workspace::Workspace>,
 }
 
-async fn handle_list_workspaces(State(state): State<GatewayState>) -> impl IntoResponse {
+pub async fn handle_list_workspaces_test(State(state): State<GatewayState>) -> impl IntoResponse {
     Json(WorkspaceListResponse {
         workspaces: state.workspaces.list_all(),
     })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct CreateWorkspaceRequest {
+pub struct CreateWorkspaceRequest {
     id: Option<String>,
 }
 
-async fn handle_create_workspace(
+pub async fn handle_create_workspace_test(
     State(state): State<GatewayState>,
     Json(req): Json<CreateWorkspaceRequest>,
 ) -> impl IntoResponse {
@@ -677,7 +679,7 @@ async fn handle_create_workspace(
     }
 }
 
-async fn handle_get_workspace(
+pub async fn handle_get_workspace_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -687,7 +689,7 @@ async fn handle_get_workspace(
     }
 }
 
-async fn handle_list_files(
+pub async fn handle_list_files_test(
     State(state): State<GatewayState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -697,7 +699,7 @@ async fn handle_list_files(
     }
 }
 
-async fn handle_read_file(
+pub async fn handle_read_file_test(
     State(state): State<GatewayState>,
     Path((id, path)): Path<(String, String)>,
 ) -> impl IntoResponse {
@@ -708,11 +710,11 @@ async fn handle_read_file(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct WriteFileRequest {
+pub struct WriteFileRequest {
     content: String,
 }
 
-async fn handle_write_file(
+pub async fn handle_write_file_test(
     State(state): State<GatewayState>,
     Path((id, path)): Path<(String, String)>,
     Json(req): Json<WriteFileRequest>,
@@ -931,7 +933,7 @@ struct HealthResponse {
     workspaces: usize,
 }
 
-async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
+pub async fn handle_health_test(State(state): State<GatewayState>) -> impl IntoResponse {
     let (status_code, backend_mode, inferd_status) = if state.backend.is_some() {
         (StatusCode::OK, "local".to_string(), None)
     } else {
