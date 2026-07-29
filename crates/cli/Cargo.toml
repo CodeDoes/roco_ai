@@ -13,8 +13,10 @@ path = "src/bin/roco.rs"
 
 [features]
 default = ["net"]
-# Desktop GUI (egui). Off by default.
-desktop = ["dep:eframe", "dep:roco_ui", "dep:tray-icon", "dep:image"]
+# Desktop GUI (egui) without tray icon — works on all systems.
+gui = ["dep:eframe", "dep:roco_ui"]
+# Desktop GUI with system tray icon (requires glib on Linux).
+desktop = ["gui", "dep:tray-icon", "dep:image"]
 # HTTP server / gateway / story façade. Off by default — use `roco-inferd` for
 # model serving; enable this only when working on the HTTP surface.
 net = ["dep:roco-server", "dep:roco-gateway", "dep:axum"]

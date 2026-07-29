@@ -258,13 +258,13 @@ fn main() {
             if has_help_flag(&extra) {
                 help(Some("gui"));
             }
-            #[cfg(feature = "desktop")]
+            #[cfg(any(feature = "gui", feature = "desktop"))]
             cmd::desktop::cmd_gui(&extra);
-            #[cfg(not(feature = "desktop"))]
+            #[cfg(not(any(feature = "gui", feature = "desktop")))]
             need_feature(
                 "gui",
-                "desktop",
-                "cargo build -p roco-cli --features desktop",
+                "gui",
+                "cargo build -p roco-cli --features gui",
             );
         }
 

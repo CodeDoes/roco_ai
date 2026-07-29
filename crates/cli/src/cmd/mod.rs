@@ -17,7 +17,7 @@ pub mod stats;
 pub mod story;
 pub mod story_mode;
 
-#[cfg(feature = "desktop")]
+#[cfg(any(feature = "gui", feature = "desktop"))]
 pub mod desktop;
 
 #[cfg(feature = "net")]
