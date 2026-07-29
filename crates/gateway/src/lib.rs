@@ -128,6 +128,11 @@ impl Gateway {
         let app = AxumRouter::new()
             // Health
             .route("/health", get(handle_health))
+            // Direct inference (server-compatible routes)
+            .route("/complete", post(handle_direct_complete))
+            .route("/bake", post(handle_direct_bake))
+            .route("/vocab", get(handle_vocab))
+            .route("/v1/completions", post(handle_openai_completions))
             // Sessions
             .route("/sessions", post(handle_create_session))
             .route("/sessions/:id", get(handle_get_session))
@@ -200,6 +205,195 @@ async fn job_worker(state: GatewayState) {
     }
 }
 
+// ── Direct Inference Handlers (server-compatible) ───────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DirectCompleteRequest {
+    system: Option<String>,
+    prompt: String,
+    #[serde(default)]
+    temperature: f32,
+    #[serde(default = "default_max_tokens")]
+    max_tokens: usize,
+    grammar: Option<String>,
+    session: Option<String>,
+    #[serde(default)]
+    thinking: bool,
+}
+
+async fn handle_direct_complete(
+    State(state): State<GatewayState>,
+    Json(req): Json<DirectCompleteRequest>,
+) -> impl IntoResponse {
+    if let Some(backend) = &state.backend {
+        let comp_req = roco_engine::CompletionRequest {
+            system: req.system.unwrap_or_default(),
+            prompt: req.prompt,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            grammar: req.grammar,
+            session: req.session,
+            thinking: req.thinking,
+            ..Default::default()
+        };
+
+        match backend.complete(comp_req).await {
+            Ok(resp) => Json(resp).into_response(),
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Inference error: {e}"),
+            )
+                .into_response(),
+        }
+    } else {
+        // Proxy to inferd
+        let url = format!("{}/complete", state.inferd_url);
+        match state.inferd_client.post(&url).json(&req).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.bytes().await.unwrap_or_default();
+                (status, body).into_response()
+            }
+            Err(e) => (
+                axum::http::StatusCode::BAD_GATEWAY,
+                format!("Inferd error: {e}"),
+            )
+                .into_response(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DirectBakeRequest {
+    session_id: String,
+    system: String,
+    few_shots: Vec<(String, String)>,
+}
+
+async fn handle_direct_bake(
+    State(state): State<GatewayState>,
+    Json(req): Json<DirectBakeRequest>,
+) -> impl IntoResponse {
+    if let Some(backend) = &state.backend {
+        let few_shots: Vec<(&str, &str)> = req.few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect();
+        
+        match roco_engine::bake_into_session(backend.as_ref(), &req.session_id, &req.system, &few_shots).await {
+            Ok(()) => axum::http::StatusCode::OK.into_response(),
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Bake error: {e}"),
+            )
+                .into_response(),
+        }
+    } else {
+        let url = format!("{}/bake", state.inferd_url);
+        match state.inferd_client.post(&url).json(&req).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.bytes().await.unwrap_or_default();
+                (status, body).into_response()
+            }
+            Err(e) => (
+                axum::http::StatusCode::BAD_GATEWAY,
+                format!("Inferd error: {e}"),
+            )
+                .into_response(),
+        }
+    }
+}
+
+async fn handle_vocab(State(state): State<GatewayState>) -> impl IntoResponse {
+    if let Some(backend) = &state.backend {
+        match backend.vocab_bytes() {
+            Some(vocab) => Json(vocab).into_response(),
+            None => (
+                axum::http::StatusCode::NOT_IMPLEMENTED,
+                "Backend does not expose vocabulary",
+            )
+                .into_response(),
+        }
+    } else {
+        let url = format!("{}/vocab", state.inferd_url);
+        match state.inferd_client.get(&url).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.bytes().await.unwrap_or_default();
+                (status, body).into_response()
+            }
+            Err(e) => (
+                axum::http::StatusCode::BAD_GATEWAY,
+                format!("Inferd error: {e}"),
+            )
+                .into_response(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OpenAICompletionRequest {
+    model: Option<String>,
+    prompt: String,
+    #[serde(default = "default_max_tokens")]
+    max_tokens: usize,
+    #[serde(default = "default_temperature")]
+    temperature: f32,
+    stream: Option<bool>,
+}
+
+async fn handle_openai_completions(
+    State(state): State<GatewayState>,
+    Json(req): Json<OpenAICompletionRequest>,
+) -> impl IntoResponse {
+    if let Some(backend) = &state.backend {
+        let comp_req = roco_engine::CompletionRequest {
+            prompt: req.prompt,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            ..Default::default()
+        };
+
+        match backend.complete(comp_req).await {
+            Ok(resp) => {
+                Json(serde_json::json!({
+                    "id": "cmpl-{}",
+                    "object": "text_completion",
+                    "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                    "model": "roco-local",
+                    "choices": [{
+                        "text": resp.text,
+                        "index": 0,
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": resp.usage.prompt_tokens,
+                        "completion_tokens": resp.usage.completion_tokens,
+                        "total_tokens": resp.usage.prompt_tokens + resp.usage.completion_tokens
+                    }
+                })).into_response()
+            }
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Inference error: {e}"),
+            )
+                .into_response(),
+        }
+    } else {
+        let url = format!("{}/v1/completions", state.inferd_url);
+        match state.inferd_client.post(&url).json(&req).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.bytes().await.unwrap_or_default();
+                (status, body).into_response()
+            }
+            Err(e) => (
+                axum::http::StatusCode::BAD_GATEWAY,
+                format!("Inferd error: {e}"),
+            )
+                .into_response(),
+        }
+    }
+}
+
 // ── Session Handlers ────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -208,7 +402,7 @@ struct CreateSessionResponse {
     workspace_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct CreateSessionRequest {
     workspace_id: Option<String>,
 }
@@ -247,7 +441,7 @@ async fn handle_delete_session(
     axum::http::StatusCode::NO_CONTENT
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct BakeRequest {
     system: String,
     few_shots: Vec<(String, String)>,
@@ -308,7 +502,7 @@ async fn handle_bake_session(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct CompleteRequest {
     prompt: String,
     #[serde(default)]
@@ -465,7 +659,7 @@ async fn handle_list_workspaces(State(state): State<GatewayState>) -> impl IntoR
     })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct CreateWorkspaceRequest {
     id: Option<String>,
 }
@@ -513,7 +707,7 @@ async fn handle_read_file(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct WriteFileRequest {
     content: String,
 }
@@ -531,7 +725,7 @@ async fn handle_write_file(
 
 // ── Job Handlers ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct CreateJobRequest {
     session_id: String,
     prompt: String,
