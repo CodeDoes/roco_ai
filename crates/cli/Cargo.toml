@@ -21,7 +21,7 @@ net = ["dep:roco-server", "dep:roco-gateway", "dep:axum"]
 
 [dependencies]
 roco-engine = { path = "../engine" }
-roco-bnf-engine = { path = "../bnf-engine" }
+
 roco-protocol = { path = "../protocol" }
 reqwest = { workspace = true, features = ["blocking", "json"] }
 roco-agent = { path = "../agent" }

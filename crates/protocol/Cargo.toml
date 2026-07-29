@@ -14,7 +14,7 @@ tracing.workspace = true
 tokio = { workspace = true, features = ["time"] }
 chrono = { version = "0.4", features = ["serde"] }
 roco-engine = { path = "../engine" }
-roco-bnf-engine = { path = "../bnf-engine" }
+
 
 [dev-dependencies]
 schoolmarm = "0.1"

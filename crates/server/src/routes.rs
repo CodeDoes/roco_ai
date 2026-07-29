@@ -68,7 +68,7 @@ fn build_mask_or_error(
     let Some(vocab) = backend.vocab_bytes() else {
         return Ok(None);
     };
-    roco_bnf_engine::create_bnf_mask(grammar, &vocab)
+    roco_engine::create_bnf_mask(grammar, &vocab)
         .map(Some)
         .map_err(|e| {
             format!(

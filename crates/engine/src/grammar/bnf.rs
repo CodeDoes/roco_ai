@@ -5,7 +5,7 @@
 //!
 //! This is the replacement for the old `BnfConstraint` + schoolmarm fallback
 //! architecture which was removed. All grammar enforcement is now done
-//! through `roco_bnf_engine::BnfEngine` (wrapping kbnf).
+//! through `roco_engine::BnfEngine` (wrapping kbnf).
 
 pub use crate::kbnf_compat::gbnf_to_kbnf;
 

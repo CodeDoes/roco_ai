@@ -100,7 +100,7 @@ const FILL_IN_MIDDLE: &str = include_str!("../../../../GBNF/fill_in_middle.bnf")
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roco_bnf_engine::BnfEngine;
+    use crate::BnfEngine;
 
     /// ASCII byte vocabulary: empty sentinel + the printable range plus a few
     /// control bytes the grammars use (newline). Deliberately excludes `<`

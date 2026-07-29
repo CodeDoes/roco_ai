@@ -34,5 +34,5 @@ grammar = []
 
 [dev-dependencies]
 roco-agent = { path = "../agent" }
-roco-bnf-engine = { path = "../bnf-engine" }
+
 anyhow.workspace = true

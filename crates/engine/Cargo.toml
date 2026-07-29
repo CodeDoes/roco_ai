@@ -25,4 +25,4 @@ ahash = "0.8"
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 jsonschema = "0.18"
 schoolmarm = "0.1"
-roco-bnf-engine = { path = "../bnf-engine" }
+

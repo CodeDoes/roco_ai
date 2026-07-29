@@ -23,7 +23,7 @@
 //!
 //! All grammars here use kbnf-native syntax (`#'...'` regex strings, `{}`
 //! repetition, `[]` optionality, `;` terminators) so they can be fed
-//! directly to `roco_bnf_engine::create_bnf_mask` without conversion.
+//! directly to `roco_engine::create_bnf_mask` without conversion.
 
 // ── Grammar source ──────────────────────────────────────────────────────
 
@@ -342,7 +342,7 @@ mod tests {
             if grammar.is_empty() {
                 continue;
             }
-            let engine = roco_bnf_engine::BnfEngine::new(grammar, &vocab)
+            let engine = roco_engine::BnfEngine::new(grammar, &vocab)
                 .unwrap_or_else(|e| panic!("{} failed: {e:?}\ngrammar: {grammar}", spec.name()));
             assert!(
                 engine.allowed_count() > 0,
@@ -360,7 +360,7 @@ mod tests {
             if grammar.is_empty() {
                 continue;
             }
-            let mut engine = roco_bnf_engine::BnfEngine::new(grammar, &vocab)
+            let mut engine = roco_engine::BnfEngine::new(grammar, &vocab)
                 .unwrap_or_else(|e| panic!("{} failed: {e:?}\ngrammar: {grammar}", spec.name()));
             let tokens = tokenize(&vocab, sample(spec));
             assert!(

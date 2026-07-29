@@ -60,6 +60,12 @@ impl Session {
         self.last_accessed_at = now_secs();
     }
 
+    /// Switch this session to a different workspace.
+    pub fn set_workspace(&mut self, workspace_id: impl Into<String>) {
+        self.workspace_id = workspace_id.into();
+        self.touch();
+    }
+
     pub fn is_active(&self) -> bool {
         matches!(self.status, SessionStatus::Idle | SessionStatus::Generating)
     }
@@ -213,5 +219,15 @@ mod tests {
 
         mgr.archive(&id);
         assert_eq!(mgr.get(&id).unwrap().status, SessionStatus::Archived);
+    }
+
+    #[test]
+    fn session_switch_workspace() {
+        let mgr = SessionManager::new();
+        let id = mgr.create("ws-1");
+        assert_eq!(mgr.get(&id).unwrap().workspace_id, "ws-1");
+
+        mgr.update(&id, |s| s.set_workspace("ws-2"));
+        assert_eq!(mgr.get(&id).unwrap().workspace_id, "ws-2");
     }
 }

@@ -178,7 +178,7 @@ mod tests {
         for b in 0x21u8..=0x7Eu8 {
             vocab.push(vec![b]);
         }
-        let engine = roco_bnf_engine::BnfEngine::new(gbnf, &vocab).unwrap_or_else(|e| {
+        let engine = roco_engine::BnfEngine::new(gbnf, &vocab).unwrap_or_else(|e| {
             panic!("{label}: kbnf failed: {e:?}\n=== grammar ===\n{gbnf}\n===")
         });
         assert!(
