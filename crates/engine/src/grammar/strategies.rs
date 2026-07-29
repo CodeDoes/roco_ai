@@ -482,7 +482,26 @@ pub fn repair_truncated_json(s: &str) -> String {
 
 /// Strip markdown code fences and other common wrappers from model output.
 pub fn clean_json_output(text: &str) -> String {
-    let trimmed = text.trim();
+    let mut trimmed = text.trim();
+
+    // Strip <think> ... </think> blocks (reasoning tokens)
+    // Uses .find() for correct byte handling — no hardcoded offsets.
+    loop {
+        if let Some(end) = trimmed.find("</think>") {
+            let before = &trimmed[..end];
+            if let Some(start) = before.rfind("<think>") {
+                trimmed = &trimmed[end + "</think>".len()..];
+                continue;
+            }
+        }
+        break;
+    }
+    // Handle unclosed <think> at start of output
+    if let Some(close) = trimmed.find('>') {
+        if trimmed[..close].contains("<think") {
+            trimmed = trimmed[close + 1..].trim_start();
+        }
+    }
 
     // Try to extract JSON from markdown code blocks (most common)
     // Pattern: ```json ... ``` or ``` ... ```
@@ -987,5 +1006,33 @@ space ::= " "?
         assert_eq!(res.len(), 2);
         assert_eq!(res[0].name, "Alice");
         assert_eq!(res[1].name, "Bob");
+    }
+
+    #[test]
+    fn state_tuned_strips_thinking_tokens() {
+        let strategy = StateTunedStrategy;
+        let text = r#"<think>Okay, I need to output JSON.{"name":"Heidi","age":31}"#;
+        let result: Simple = strategy.parse(text).unwrap();
+        assert_eq!(
+            result,
+            Simple {
+                name: "Heidi".into(),
+                age: 31
+            }
+        );
+    }
+
+    #[test]
+    fn state_tuned_strips_unclosed_thinking() {
+        let strategy = StateTunedStrategy;
+        let text = "<think>Let me think...</think> {\"name\":\"Ivan\",\"age\":29}";
+        let result: Simple = strategy.parse(text).unwrap();
+        assert_eq!(
+            result,
+            Simple {
+                name: "Ivan".into(),
+                age: 29
+            }
+        );
     }
 }
