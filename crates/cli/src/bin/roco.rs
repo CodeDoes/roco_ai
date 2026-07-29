@@ -24,7 +24,7 @@ fn main() {
         .iter()
         .skip(1)
         .map(|s| s.as_str())
-        .filter(|&s| s != "--mock")
+        .filter(|&s| s != "--mock" && !s.is_empty())
         .collect();
     let sub = filtered_args.first().copied().unwrap_or("router");
     let extra: Vec<&str> = if filtered_args.is_empty() {

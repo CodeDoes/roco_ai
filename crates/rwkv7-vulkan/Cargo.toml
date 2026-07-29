@@ -1,0 +1,10 @@
+[package]
+name = "rwkv7-vulkan"
+version = "0.1.0"
+edition = "2021"
+description = "RWKV-7 inference with Vulkan support via web-rwkv/wgpu"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+web-rwkv = "0.10"
+tokio = { workspace = true }

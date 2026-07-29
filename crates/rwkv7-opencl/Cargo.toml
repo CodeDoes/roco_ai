@@ -1,0 +1,18 @@
+[package]
+name = "rwkv7-opencl"
+version = "0.1.0"
+edition = "2021"
+description = "RWKV-7 WKV kernel in OpenCL 3.0"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "rwkv7_opencl"
+path = "src/lib.rs"
+
+[dependencies]
+log = "0.4"
+
+[features]
+default = ["opencl"]
+opencl = []
+triton = []

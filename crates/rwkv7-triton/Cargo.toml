@@ -1,0 +1,19 @@
+[package]
+name = "rwkv7-triton"
+version = "0.1.0"
+edition = "2021"
+description = "RWKV-7 WKV kernel in Triton (CUDA/ROCm)"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "rwkv7_triton"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "wkv7_bench"
+harness = false

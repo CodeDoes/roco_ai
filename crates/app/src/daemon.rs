@@ -96,6 +96,10 @@ fn pid_dir() -> PathBuf {
     }
 }
 
+fn pid_path_for_port(name: &str, port: u16) -> PathBuf {
+    pid_dir().join(format!("{}_{}.pid", name, port))
+}
+
 fn pid_path(name: &str) -> PathBuf {
     pid_dir().join(format!("{}.pid", name))
 }
@@ -237,39 +241,59 @@ fn rotate_log_if_needed(path: &std::path::Path) {
 
 /// Check if a daemon is running via health endpoint or PID process check.
 pub fn is_running(name: &str, port: u16) -> bool {
-    let pid_file = pid_path(name);
-    if !pid_file.exists() {
-        return false;
+    let url = format!("http://127.0.0.1:{}/health", port);
+
+    // Primary check: query the HTTP health endpoint.
+    // If it responds with HTTP 200 OK, the service IS running on that port.
+    let healthy = if tokio::runtime::Handle::try_current().is_ok() {
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .ok()?;
+                rt.block_on(async {
+                    let client = health_client()?;
+                    let resp = client.get(&url).send().await.ok()?;
+                    Some(resp.status().is_success())
+                })
+            })
+            .join()
+            .unwrap_or(None)
+        })
+    } else {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .ok();
+        if let Some(rt) = rt {
+            rt.block_on(async {
+                let client = health_client()?;
+                let resp = client.get(&url).send().await.ok()?;
+                Some(resp.status().is_success())
+            })
+        } else {
+            None
+        }
+    };
+
+    if healthy == Some(true) {
+        return true;
     }
 
-    if let Some(pid) = read_pid(name) {
-        if !is_pid_alive(pid) {
-            // Process is dead; clean up stale PID file.
-            let _ = std::fs::remove_file(&pid_file);
-            return false;
+    // Secondary check: if health probe failed (e.g. still starting up),
+    // check if PID file exists and process is alive.
+    if let Some(pid) = read_pid_for_port(name, port) {
+        if is_pid_alive(pid) {
+            return true;
+        } else {
+            // Process is dead; clean up stale PID files.
+            let _ = std::fs::remove_file(pid_path_for_port(name, port));
+            let _ = std::fs::remove_file(pid_path(name));
         }
     }
 
-    let url = format!("http://127.0.0.1:{}/health", port);
-
-    let rt = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(_) => return true,
-    };
-
-    // Process is alive. Require a successful health response within 3s.
-    // A failing health check means it's either a different process that
-    // reused the PID, or our daemon has crashed after the fork.
-    let healthy = rt.block_on(async {
-        let client = health_client()?;
-        let resp = client.get(&url).send().await.ok()?;
-        Some(resp.status().is_success())
-    });
-
-    healthy.unwrap_or(false)
+    false
 }
 
 /// Locate the `roco-inferd` binary.
@@ -497,6 +521,16 @@ pub async fn wait_for_healthy(port: u16, timeout: Duration, label: &str) -> Resu
 /// Read a PID from a pidfile, returning `None` if the file doesn't exist or
 /// is unreadable.
 fn read_pid(name: &str) -> Option<u32> {
+    read_pid_for_port(name, gateway_port())
+}
+
+fn read_pid_for_port(name: &str, port: u16) -> Option<u32> {
+    let p_port = pid_path_for_port(name, port);
+    if let Ok(content) = std::fs::read_to_string(&p_port) {
+        if let Ok(pid) = content.trim().parse() {
+            return Some(pid);
+        }
+    }
     let p = pid_path(name);
     let content = std::fs::read_to_string(&p).ok()?;
     content.trim().parse().ok()

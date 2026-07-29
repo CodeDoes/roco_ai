@@ -407,7 +407,7 @@ async fn remote_complete(
                     "Remote completion HTTP request failed after max retries"
                 );
                 return Err(EngineError::Backend(format!(
-                    "inference API request failed: {e}"
+                    "inference API request failed: {e:?}"
                 )));
             }
         }
