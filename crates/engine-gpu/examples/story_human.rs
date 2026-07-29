@@ -21,7 +21,7 @@ use roco_agent::natural_feedback::FeedbackParser;
 use roco_agent::outline_editing::OutlineEditor;
 use roco_agent::story_direction::StoryDirection;
 use roco_agent::story_engine::{StoryConfig, StoryEngine};
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()

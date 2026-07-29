@@ -4493,6 +4493,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "roco-engine-gpu"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-set 0.5.3",
+ "blake3",
+ "fastrand",
+ "futures",
+ "half",
+ "md-5",
+ "memmap2",
+ "rand 0.8.7",
+ "roco-agent",
+ "roco-engine",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "web-rwkv",
+ "wgpu 29.0.4",
+]
+
+[[package]]
 name = "roco-gateway"
 version = "0.1.0"
 dependencies = [
@@ -4553,36 +4578,11 @@ dependencies = [
  "clap",
  "roco-app",
  "roco-engine",
- "roco-inference",
+ "roco-engine-gpu",
  "roco-server",
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "roco-inference"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bit-set 0.5.3",
- "blake3",
- "fastrand",
- "futures",
- "half",
- "md-5",
- "memmap2",
- "rand 0.8.7",
- "roco-agent",
- "roco-engine",
- "safetensors",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "web-rwkv",
- "wgpu 29.0.4",
 ]
 
 [[package]]

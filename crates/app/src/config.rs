@@ -11,7 +11,7 @@
 //!   - `RWKV_VOCAB` overrides `model.vocab`
 //!
 //! If no config file is found and no env var is set, the model is auto-detected
-//! via [`roco_inference::default_model_path`] (scans `models/` directory).
+//! via [`roco_engine_gpu::default_model_path`] (scans `models/` directory).
 
 use std::path::PathBuf;
 
@@ -137,7 +137,7 @@ impl RoCoConfig {
     ///
     /// Returns `Default::default()` (all `None`s / safe defaults) when no
     /// config file exists — so the model auto-detection in
-    /// [`roco_inference::default_model_path`] still works as a fallback.
+    /// [`roco_engine_gpu::default_model_path`] still works as a fallback.
     pub fn load() -> Self {
         let search_paths = Self::search_paths();
         for path in &search_paths {

@@ -2,7 +2,7 @@
 
 use std::env;
 
-use roco_inference::analyze_model_streaming;
+use roco_engine_gpu::analyze_model_streaming;
 
 fn find_model() -> anyhow::Result<String> {
     if let Ok(p) = env::var("RWKV_MODEL") {
@@ -73,7 +73,7 @@ fn main() -> anyhow::Result<()> {
             .filter(|t| {
                 matches!(
                     t.recommendation,
-                    roco_inference::QuantRecommendation::ScalarQuant
+                    roco_engine_gpu::QuantRecommendation::ScalarQuant
                 )
             })
             .count();

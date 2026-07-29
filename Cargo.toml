@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/engine",
-    "crates/inference",
+    "crates/engine-gpu",
     "crates/session",
     "crates/workspace",
     "crates/agent",

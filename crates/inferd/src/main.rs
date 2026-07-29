@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use roco_app::RoCoConfig;
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 use roco_server::{Server, ServerConfig};
 
 #[derive(Parser, Debug)]

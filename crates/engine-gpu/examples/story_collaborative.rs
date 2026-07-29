@@ -12,7 +12,7 @@
 use std::io::{self, Write};
 
 use roco_agent::story_engine::{StoryConfig, StoryEngine};
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()

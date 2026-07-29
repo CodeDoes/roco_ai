@@ -1,23 +1,33 @@
-//! Full Story Engine — demonstrates all features.
+//! Interactive Story Engine — dynamic, unlimited story generation.
 //!
-//! This example shows the complete story generation workflow:
-//! 1. Generate outline
-//! 2. Expand outline dynamically
-//! 3. Generate chapters with plot state tracking
-//! 4. Evaluate quality using model-as-judge
-//! 5. Revise chapters based on critique
-//! 6. Save/load story state
-//! 7. Publish final story
+//! This example demonstrates the new story engine features:
+//! - Dynamic outline expansion (no fixed chapter limit)
+//! - Plot state tracking (structured, not raw text)
+//! - Interactive mode (human-in-the-loop)
+//! - Chapter continuation (resume from where left off)
 //!
 //! Usage:
-//!   RWKV_MODEL=... cargo run --release --example story_full -p roco-cli \
-//!     --interactive --unlimited "Write an epic fantasy saga"
+//!   # Generate with default settings (3 chapters, non-interactive)
+//!   RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+//!     "Write a xianxia story about a lone cultivator"
+//!
+//!   # Interactive mode
+//!   RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+//!     --interactive "Write a dark fantasy"
+//!
+//!   # Unlimited chapters (continues until arc completes)
+//!   RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+//!     --unlimited "Write an epic saga"
+//!
+//!   # Specify chapter count
+//!   RWKV_MODEL=... cargo run --release --example story_engine -p roco-cli \
+//!     --chapters 10 "Write a mystery novel"
 
 use std::io::{self, Write};
 
+use roco_agent::interaction::{HumanAction, InteractionMode};
 use roco_agent::story_engine::{StoryConfig, StoryEngine};
-use roco_agent::story_persistence::StoryPersistence;
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -27,17 +37,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // Parse arguments
+    // Parse command line arguments
     let args: Vec<String> = std::env::args().collect();
     let mut config = StoryConfig::default();
     let mut premise = String::new();
-    let mut resume_path: Option<String> = None;
     let mut i = 1;
 
     while i < args.len() {
         match args[i].as_str() {
             "--interactive" => {
                 config.interactive = true;
+                config.interaction_mode = InteractionMode::FullControl;
+                i += 1;
+            }
+            "--batch" => {
+                i += 1;
+                if i < args.len() {
+                    let batch_size = args[i].parse().unwrap_or(3);
+                    config.interactive = true;
+                    config.interaction_mode = InteractionMode::ModerateControl { batch_size };
+                    i += 1;
+                }
+            }
+            "--go-ham" => {
+                config.interactive = false;
+                config.interaction_mode = InteractionMode::GoHam;
                 i += 1;
             }
             "--unlimited" => {
@@ -48,27 +72,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 i += 1;
                 if i < args.len() {
                     config.max_chapters = args[i].parse().unwrap_or(10);
+                    config.min_chapters = config.max_chapters;
                     i += 1;
                 }
             }
-            "--resume" => {
+            "--words" => {
                 i += 1;
                 if i < args.len() {
-                    resume_path = Some(args[i].clone());
-                    i += 1;
-                }
-            }
-            "--threshold" => {
-                i += 1;
-                if i < args.len() {
-                    config.quality_threshold = args[i].parse().unwrap_or(6.0);
-                    i += 1;
-                }
-            }
-            "--max-revisions" => {
-                i += 1;
-                if i < args.len() {
-                    config.max_revisions = args[i].parse().unwrap_or(2);
+                    config.words_per_chapter = args[i].parse().unwrap_or(400);
                     i += 1;
                 }
             }
@@ -82,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    if premise.is_empty() && resume_path.is_none() {
+    if premise.is_empty() {
         premise =
             "Write a short story about a lighthouse keeper who discovers a message in a bottle."
                 .to_string();
@@ -92,43 +103,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = RwkvBackend::from_env()?;
     println!("Model ready.\n");
 
-    // Create or resume story engine
-    let mut engine = if let Some(path) = resume_path {
-        println!("📂 Resuming story from: {path}");
-        let persistence = StoryPersistence::new(path.into());
-        let state = persistence.load()?;
-        println!("✅ Loaded story: {}", state.metadata.title);
-        println!("   Chapters: {}", state.metadata.chapter_count);
-        println!("   Words: {}", state.metadata.word_count);
-        println!("   Quality: {:.1}/10\n", state.metadata.average_quality);
-
-        // Recreate engine from state
-        // TODO: Implement StoryEngine::from_state()
-        StoryEngine::new(config.clone())?
-    } else {
-        StoryEngine::new(config.clone())?
-    };
-
+    // Create story engine
+    let mut engine = StoryEngine::new(config.clone())?;
     println!("Workspace: {}\n", engine.workspace_path().display());
 
     // Phase 1: Generate outline
-    if engine.outline().is_empty() {
-        println!("📝 Generating outline...");
-        engine.generate_outline(&backend, &premise)?;
-        println!(
-            "✅ Outline generated ({} chapters)\n",
-            engine.outline().len()
-        );
+    println!("📝 Generating outline...");
+    engine.generate_outline(&backend, &premise)?;
+    println!(
+        "✅ Outline generated ({} chapters)\n",
+        engine.outline().len()
+    );
 
-        // Print outline
-        for ch in engine.outline() {
-            println!("  Chapter {}: {} - {}", ch.number, ch.title, ch.summary);
-        }
-        println!();
+    // Print outline
+    for ch in engine.outline() {
+        println!("  Chapter {}: {} - {}", ch.number, ch.title, ch.summary);
     }
+    println!();
 
     // Phase 2: Generate chapters
-    let mut chapter_num = engine.chapters().len();
+    let mut chapter_num = 0;
     loop {
         // Check if we need more chapters in the outline
         if chapter_num >= engine.outline().len() {
@@ -185,42 +179,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  Engagement: {:.1}/10", critique.scores.engagement);
                     println!("  Plot coherence: {:.1}/10", critique.scores.plot_coherence);
 
-                    if critique.should_revise {
+                    if critique.should_revise && config.max_revisions > 0 {
                         println!("\n⚠️  Quality below threshold. Revisions needed:");
                         for (i, rev) in critique.priority_revisions.iter().enumerate() {
                             println!("  {}. {}", i + 1, rev);
                         }
 
-                        // Auto-revise up to max_revisions times
-                        let mut revision_count = 0;
-                        while revision_count < config.max_revisions && critique.should_revise {
-                            revision_count += 1;
-                            println!(
-                                "\n🔄 Revising (attempt {}/{})...",
-                                revision_count, config.max_revisions
-                            );
-
+                        // Auto-revise if not interactive
+                        if !config.interactive {
+                            println!("\n🔄 Auto-revising...");
                             let revised =
                                 engine.revise_chapter(&backend, chapter_num, &critique)?;
-                            println!("✅ Chapter revised ({} chars)", revised.len());
-
-                            // Re-evaluate
-                            match engine.evaluate_chapter_quality(&backend, chapter_num) {
-                                Ok(new_critique) => {
-                                    println!(
-                                        "📊 New quality: {:.1}/10",
-                                        new_critique.scores.overall
-                                    );
-                                    if !new_critique.should_revise {
-                                        println!("✅ Quality threshold met!");
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    println!("⚠️  Re-evaluation failed: {e}");
-                                    break;
-                                }
-                            }
+                            println!("✅ Chapter revised ({} chars)\n", revised.len());
                         }
                     }
                 }
@@ -230,19 +200,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // Save state periodically
-        if chapter_num % 3 == 0 {
-            println!("\n💾 Saving story state...");
-            // TODO: Implement engine.to_state() and save
-        }
+        // Check if we should pause for human input
+        if engine.should_pause() {
+            println!("\n{}", engine.human_prompt());
+            print!("Choice: ");
+            io::stdout().flush()?;
 
-        // Interactive mode
-        if config.interactive {
-            match prompt_user_action()? {
-                UserAction::Continue => {
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+
+            match input.trim().to_lowercase().as_str() {
+                "a" | "" => {
                     println!("Continuing...\n");
+                    engine.process_human_action(HumanAction::Accept);
                 }
-                UserAction::Revise => {
+                "r" => {
                     println!("🔍 Evaluating for revision...");
                     match engine.evaluate_chapter_quality(&backend, chapter_num) {
                         Ok(critique) => {
@@ -260,34 +232,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("⚠️  Evaluation failed: {e}\n");
                         }
                     }
+                    engine.process_human_action(HumanAction::Revise("revised".to_string()));
                 }
-                UserAction::Direct(dir) => {
-                    println!("📝 Direction noted: {}\n", dir);
-                    // TODO: Feed direction into next chapter generation
+                "s" => {
+                    println!("Skipping to next chapter...\n");
+                    engine.process_human_action(HumanAction::Skip);
                 }
-                UserAction::ContinueChapter => {
-                    println!("✍️  Continuing current chapter...\n");
-                    let continued = engine.continue_chapter(
-                        &backend,
-                        chapter_num,
-                        "Continue the scene naturally",
-                    )?;
-                    println!("✅ Chapter extended ({} chars total)\n", continued.len());
+                "j" => {
+                    print!("Jump to chapter: ");
+                    io::stdout().flush()?;
+                    let mut jump_input = String::new();
+                    io::stdin().read_line(&mut jump_input)?;
+                    if let Ok(n) = jump_input.trim().parse::<usize>() {
+                        println!("Jumping to chapter {}...\n", n);
+                        engine.process_human_action(HumanAction::JumpTo(n));
+                    }
                 }
-                UserAction::Quit => {
+                "x" => {
+                    println!("Accepting all remaining chapters...\n");
+                    engine.process_human_action(HumanAction::AcceptAll);
+                }
+                "g" => {
+                    println!("🚀 Going ham! Running without stopping...\n");
+                    engine.process_human_action(HumanAction::GoHam);
+                }
+                "q" => {
                     println!("\n🛑 Stopping story generation");
+                    engine.process_human_action(HumanAction::Stop);
                     break;
+                }
+                _ => {
+                    println!("Unknown command, continuing...\n");
                 }
             }
         }
 
-        // Check limits in non-interactive mode
-        if !config.interactive && config.max_chapters > 0 && chapter_num >= config.max_chapters {
-            println!(
-                "\n🎯 Reached target chapter count ({})",
-                config.max_chapters
-            );
-            break;
+        // Small delay between chapters (non-interactive mode)
+        if !config.interactive {
+            // Check if we should continue
+            if config.max_chapters > 0 && chapter_num >= config.max_chapters {
+                println!(
+                    "\n🎯 Reached target chapter count ({})",
+                    config.max_chapters
+                );
+                break;
+            }
         }
     }
 
@@ -320,53 +309,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n✨ Story generation complete!");
     println!("   Workspace: {}", ws_path.display());
     println!("   Full story: {}/06-STORY.md", ws_path.display());
-    println!("\nTo resume this story later:");
-    println!(
-        "   cargo run --release --example story_full -p roco-cli --resume {}",
-        ws_path.display()
-    );
 
     Ok(())
-}
-
-enum UserAction {
-    Continue,
-    Revise,
-    Direct(String),
-    ContinueChapter,
-    Quit,
-}
-
-fn prompt_user_action() -> Result<UserAction, io::Error> {
-    println!("What would you like to do?");
-    println!("  [c] Continue to next chapter");
-    println!("  [r] Revise last chapter");
-    println!("  [d] Give direction for next chapter");
-    println!("  [x] Continue/extend current chapter");
-    println!("  [q] Quit and publish");
-
-    print!("\nChoice: ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
-
-    match input.as_str() {
-        "c" | "" => Ok(UserAction::Continue),
-        "r" => Ok(UserAction::Revise),
-        "d" => {
-            print!("Direction: ");
-            io::stdout().flush()?;
-            let mut direction = String::new();
-            io::stdin().read_line(&mut direction)?;
-            Ok(UserAction::Direct(direction.trim().to_string()))
-        }
-        "x" => Ok(UserAction::ContinueChapter),
-        "q" => Ok(UserAction::Quit),
-        _ => {
-            println!("Unknown command, continuing...");
-            Ok(UserAction::Continue)
-        }
-    }
 }

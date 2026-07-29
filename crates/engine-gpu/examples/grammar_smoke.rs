@@ -1,7 +1,7 @@
 //! Grammar-constrained inference smoke test.
 
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 use std::env;
 
 const DEFAULT_GRAMMAR: &str = r#"root ::= "yes" | "no""#;

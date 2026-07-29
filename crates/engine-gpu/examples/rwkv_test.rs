@@ -1,7 +1,7 @@
 //! Quick inference test: load the model (SafeTensors), run a short completion.
 
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

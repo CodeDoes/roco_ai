@@ -3,7 +3,7 @@
 use std::io::Write;
 
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 
 #[derive(Clone, Copy)]
 enum PromptStyle {

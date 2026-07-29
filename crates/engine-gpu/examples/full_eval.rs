@@ -14,7 +14,7 @@ use roco_engine::util::{
     OUTLINE_SESSION,
 };
 use roco_engine::ModelBackend;
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 
 /// Prefill to suppress thinking contamination on intent-inference cases
 const INTENT_PREFILL: &str = "{\n  \"route\": \"";

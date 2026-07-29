@@ -4,7 +4,7 @@
 //! prefilling, and element-wise state blending.
 
 use roco_engine::{CompletionRequest, ModelBackend};
-use roco_inference::RwkvBackend;
+use roco_engine_gpu::RwkvBackend;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

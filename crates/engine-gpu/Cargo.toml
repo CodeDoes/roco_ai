@@ -1,10 +1,10 @@
 [package]
-name = "roco-inference"
+name = "roco-engine-gpu"
 version.workspace = true
 edition.workspace = true
 
 [lib]
-name = "roco_inference"
+name = "roco_engine_gpu"
 
 [dependencies]
 roco-engine = { path = "../engine" }
