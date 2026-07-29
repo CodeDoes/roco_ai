@@ -37,7 +37,11 @@ use workspace::WorkspaceManager;
 
 #[derive(Clone)]
 pub struct GatewayState {
-    /// HTTP client for talking to inferd.
+    /// Optional local backend for direct inference (no inferd hop).
+    /// When Some, inference requests are handled directly.
+    /// When None, requests are proxied to inferd.
+    pub backend: Option<Arc<dyn roco_engine::ModelBackend>>,
+    /// HTTP client for talking to inferd (used when backend is None).
     pub inferd_client: Client,
     /// Inferd base URL.
     pub inferd_url: String,
@@ -57,6 +61,8 @@ pub struct GatewayState {
 pub struct Gateway {
     pub host: String,
     pub port: u16,
+    /// Optional local backend for direct inference.
+    pub backend: Option<Arc<dyn roco_engine::ModelBackend>>,
     pub inferd_url: String,
     pub workspace_dir: std::path::PathBuf,
     pub rate_limit_per_minute: usize,
@@ -67,6 +73,7 @@ impl Default for Gateway {
         Self::new(
             "127.0.0.1".to_string(),
             8000,
+            None,
             "http://127.0.0.1:8080".to_string(),
             std::path::PathBuf::from("./workspaces"),
             60,
@@ -78,6 +85,7 @@ impl Gateway {
     pub fn new(
         host: String,
         port: u16,
+        backend: Option<Arc<dyn roco_engine::ModelBackend>>,
         inferd_url: String,
         workspace_dir: std::path::PathBuf,
         rate_limit_per_minute: usize,
@@ -85,6 +93,7 @@ impl Gateway {
         Self {
             host,
             port,
+            backend,
             inferd_url,
             workspace_dir,
             rate_limit_per_minute,
@@ -100,6 +109,7 @@ impl Gateway {
             .try_init();
 
         let state = GatewayState {
+            backend: self.backend.clone(),
             inferd_client: Client::new(),
             inferd_url: self.inferd_url.clone(),
             sessions: Arc::new(SessionManager::new()),
@@ -248,31 +258,53 @@ async fn handle_bake_session(
     Path(id): Path<String>,
     Json(req): Json<BakeRequest>,
 ) -> impl IntoResponse {
-    // Forward to inferd
-    let url = format!("{}/bake", state.inferd_url);
-    let body = serde_json::json!({
-        "session_id": id,
-        "system": req.system,
-        "few_shots": req.few_shots,
-    });
-
-    match state.inferd_client.post(&url).json(&body).send().await {
-        Ok(resp) => {
-            if resp.status().is_success() {
+    // Try local backend first
+    if let Some(backend) = &state.backend {
+        let session = id.clone();
+        let system = req.system.clone();
+        let few_shots: Vec<(&str, &str)> = req.few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect();
+        
+        match roco_engine::bake_into_session(backend.as_ref(), &session, &system, &few_shots).await {
+            Ok(()) => {
                 state.sessions.update(&id, |s| {
                     s.system_prompt = req.system;
                     s.baked_shots = req.few_shots.len();
                 });
                 axum::http::StatusCode::OK.into_response()
-            } else {
-                (axum::http::StatusCode::BAD_GATEWAY, "Inferd bake failed").into_response()
             }
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Local bake failed: {e}"),
+            )
+                .into_response(),
         }
-        Err(e) => (
-            axum::http::StatusCode::BAD_GATEWAY,
-            format!("Inferd unreachable: {e}"),
-        )
-            .into_response(),
+    } else {
+        // Proxy to inferd
+        let url = format!("{}/bake", state.inferd_url);
+        let body = serde_json::json!({
+            "session_id": id,
+            "system": req.system,
+            "few_shots": req.few_shots,
+        });
+
+        match state.inferd_client.post(&url).json(&body).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    state.sessions.update(&id, |s| {
+                        s.system_prompt = req.system;
+                        s.baked_shots = req.few_shots.len();
+                    });
+                    axum::http::StatusCode::OK.into_response()
+                } else {
+                    (axum::http::StatusCode::BAD_GATEWAY, "Inferd bake failed").into_response()
+                }
+            }
+            Err(e) => (
+                axum::http::StatusCode::BAD_GATEWAY,
+                format!("Inferd unreachable: {e}"),
+            )
+                .into_response(),
+        }
     }
 }
 
@@ -318,12 +350,42 @@ async fn handle_complete_session(
         let state_clone = state.clone();
         let job_id_clone = job_id.clone();
         tokio::spawn(async move {
-            run_job_on_inferd(state_clone, job_id_clone).await;
+            if state_clone.backend.is_some() {
+                run_job_local(state_clone, job_id_clone).await;
+            } else {
+                run_job_on_inferd(state_clone, job_id_clone).await;
+            }
         });
 
         Json(serde_json::json!({ "job_id": job_id, "status": "queued" })).into_response()
+    } else if let Some(backend) = &state.backend {
+        // Direct completion via local backend
+        let comp_req = roco_engine::CompletionRequest {
+            system: String::new(),
+            prompt: req.prompt.clone(),
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            grammar: req.grammar.clone(),
+            session: Some(id.clone()),
+            ..Default::default()
+        };
+
+        match backend.complete(comp_req).await {
+            Ok(resp) => {
+                state.sessions.update(&id, |s| {
+                    s.status = SessionStatus::Completed;
+                    s.accumulated_tokens.push(resp.text.clone());
+                });
+                Json(serde_json::json!({ "text": resp.text })).into_response()
+            }
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Local inference error: {e}"),
+            )
+                .into_response(),
+        }
     } else {
-        // Synchronous completion
+        // Proxy to inferd
         let url = format!("{}/complete", state.inferd_url);
         let body = serde_json::json!({
             "prompt": req.prompt,
@@ -336,7 +398,6 @@ async fn handle_complete_session(
         match state.inferd_client.post(&url).json(&body).send().await {
             Ok(resp) => {
                 let text = resp.text().await.unwrap_or_default();
-                // Update session with result
                 state.sessions.update(&id, |s| {
                     s.status = SessionStatus::Completed;
                     s.accumulated_tokens.push(text.clone());
@@ -669,22 +730,35 @@ async fn handle_proxy_to_inferd(State(state): State<GatewayState>, req: Request)
 struct HealthResponse {
     status: String,
     gateway: String,
-    inferd: String,
+    backend_mode: String,
+    inferd_status: Option<String>,
     active_sessions: usize,
     active_jobs: usize,
     workspaces: usize,
 }
 
 async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
-    // Check inferd health
-    let (status_code, inferd_status) = match state
-        .inferd_client
-        .get(format!("{}/health", state.inferd_url))
-        .send()
-        .await
-    {
-        Ok(resp) if resp.status().is_success() => (StatusCode::OK, "healthy".to_string()),
-        _ => (StatusCode::SERVICE_UNAVAILABLE, "unreachable".to_string()),
+    let (status_code, backend_mode, inferd_status) = if state.backend.is_some() {
+        (StatusCode::OK, "local".to_string(), None)
+    } else {
+        // Check inferd health
+        match state
+            .inferd_client
+            .get(format!("{}/health", state.inferd_url))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => (
+                StatusCode::OK,
+                "proxy".to_string(),
+                Some("healthy".to_string()),
+            ),
+            _ => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "proxy".to_string(),
+                Some("unreachable".to_string()),
+            ),
+        }
     };
 
     (
@@ -696,15 +770,61 @@ async fn handle_health(State(state): State<GatewayState>) -> impl IntoResponse {
                 "degraded".into()
             },
             gateway: env!("CARGO_PKG_VERSION").into(),
-            inferd: inferd_status,
+            backend_mode,
+            inferd_status,
             active_sessions: state.sessions.list_all().len(),
-            active_jobs: state.jobs.list_for_session("").len(), // TODO: fix this
+            active_jobs: state.jobs.list_for_session("").len(),
             workspaces: state.workspaces.list_all().len(),
         }),
     )
 }
 
 // ── Job Runner (background task) ───────────────────────────────────────
+
+async fn run_job_local(state: GatewayState, job_id: String) {
+    let job = match state.jobs.get(&job_id) {
+        Some(j) => j,
+        None => return,
+    };
+
+    let backend = match &state.backend {
+        Some(b) => b.clone(),
+        None => {
+            state.jobs.fail(&job_id, "no backend available".to_string());
+            return;
+        }
+    };
+
+    state.jobs.start(&job_id);
+    state.sessions.set_status(&job.session_id, SessionStatus::Generating);
+
+    let comp_req = roco_engine::CompletionRequest {
+        system: String::new(),
+        prompt: job.prompt.clone(),
+        temperature: job.temperature,
+        max_tokens: job.max_tokens,
+        grammar: job.grammar.clone(),
+        session: Some(job.session_id.clone()),
+        ..Default::default()
+    };
+
+    match backend.complete(comp_req).await {
+        Ok(resp) => {
+            // Send tokens one by one for streaming simulation
+            for token in resp.text.split_whitespace() {
+                let token = format!("{} ", token);
+                state.jobs.append_token(&job_id, &token);
+                state.sessions.append_tokens(&job.session_id, vec![token]);
+            }
+            state.jobs.complete(&job_id);
+            state.sessions.set_status(&job.session_id, SessionStatus::Completed);
+        }
+        Err(e) => {
+            state.jobs.fail(&job_id, format!("local inference error: {e}"));
+            state.sessions.set_status(&job.session_id, SessionStatus::Error);
+        }
+    }
+}
 
 async fn run_job_on_inferd(state: GatewayState, job_id: String) {
     let job = match state.jobs.get(&job_id) {

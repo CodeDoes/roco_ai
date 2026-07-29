@@ -52,7 +52,14 @@ pub fn cmd_gateway(extra: &[&str]) {
         .expect("Failed to build Tokio runtime");
 
     rt.block_on(async {
-        let gateway = Gateway::new(host.to_string(), port, target.to_string(), ws_dir, limit);
+        let gateway = Gateway::new(
+            host.to_string(),
+            port,
+            None, // No local backend, proxy to inferd
+            target.to_string(),
+            ws_dir,
+            limit,
+        );
         println!(
             "Starting API Gateway on {host}:{port} targeting {target} (limit: {limit}/min)..."
         );
