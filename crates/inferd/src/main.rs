@@ -22,7 +22,7 @@ struct Args {
     host: String,
 
     /// Bind port (default matches roco_app::daemon::INFERENCE_PORT)
-    #[arg(long, default_value_t = 8080)]
+    #[arg(long, default_value_t = 18080)]
     port: u16,
 }
 

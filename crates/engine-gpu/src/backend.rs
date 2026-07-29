@@ -69,11 +69,13 @@ impl RwkvBackend {
             .expect("failed to spawn rwkv actor thread");
 
         // Block with a timeout so a hanging GPU init doesn't freeze the
-        // process forever. Default 120s, overridable via RWKV_BACKEND_TIMEOUT.
+        // process forever. Debug builds are ~4x slower, so use 300s there.
+        // Default 120s for release, overridable via RWKV_BACKEND_TIMEOUT.
+        let default_timeout: u64 = if cfg!(debug_assertions) { 300 } else { 120 };
         let timeout_secs: u64 = std::env::var("RWKV_BACKEND_TIMEOUT")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(120);
+            .unwrap_or(default_timeout);
         let timeout = Duration::from_secs(timeout_secs);
         match ready_rx.recv_timeout(timeout) {
             Ok(Ok(())) => {}

@@ -688,9 +688,6 @@ impl RwkvActor {
             .quant(quant_layers)
             .quant_cache(quant_cache_dir.clone());
 
-        #[cfg(debug_assertions)]
-        warn!("Debug build detected! build_v7() may hang on some GPUs. Rebuild with `--release`.");
-
         let (runtime, state, initial_state) = match version {
             ModelVersion::V4 => {
                 let m = builder.build_v4().await?;
