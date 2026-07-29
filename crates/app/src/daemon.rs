@@ -681,7 +681,7 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
 
     // Client starts Gateway; Gateway auto-starts inferd internally.
     let exe = std::env::current_exe().expect("failed to get current exe path");
-    eprintln!("Starting Gateway & background inference service (first load: ~25s)...");
+    eprintln!("Starting Gateway & background inference service...");
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -691,6 +691,16 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     // Start and wait for Gateway
     ensure_daemon(&exe, "gateway", gp, &["--detach"]);
     rt.block_on(wait_for_healthy(gp, Duration::from_secs(90), "Gateway"))
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        });
+
+    // Gateway is up, but inferd may still be loading the model (3-5 min).
+    // Wait for inferd to be healthy before returning.
+    let inferd_port = inferd_port();
+    eprintln!("Waiting for inference server to load model (this may take a few minutes)...");
+    rt.block_on(wait_for_healthy(inferd_port, Duration::from_secs(600), "Inference server"))
         .unwrap_or_else(|e| {
             eprintln!("Error: {e}");
             std::process::exit(1);
