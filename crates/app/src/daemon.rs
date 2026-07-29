@@ -423,6 +423,8 @@ pub fn ensure_daemon(exe: &Path, subcmd: &str, port: u16, extra_args: &[&str]) -
     let mut args = vec![subcmd.to_string()];
     args.extend(extra_args.iter().map(|s| s.to_string()));
     args.push(format!("--port={}", port));
+    // Mark as child process so it doesn't try to re-detach or check is_running
+    args.push(format!("--_child-{subcmd}"));
 
     // stdout/stderr → log file (append, don't truncate on re-start), rotating
     // first so repeated restarts can't grow it without bound.
