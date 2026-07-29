@@ -690,6 +690,7 @@ impl RwkvActor {
 
         let (runtime, state, initial_state) = match version {
             ModelVersion::V4 => {
+                info!("building V4 model (may take several minutes)...");
                 let m = builder.build_v4().await?;
                 let b = web_rwkv::runtime::v4::Bundle::<f16>::new(m, 1);
                 let s = b.state();
@@ -698,6 +699,7 @@ impl RwkvActor {
                 (r, AnyState::V4(Box::new(s)), init)
             }
             ModelVersion::V5 => {
+                info!("building V5 model (may take several minutes)...");
                 let m = builder.build_v5().await?;
                 let b = web_rwkv::runtime::v5::Bundle::<f16>::new(m, 1);
                 let s = b.state();
@@ -706,6 +708,7 @@ impl RwkvActor {
                 (r, AnyState::V5(Box::new(s)), init)
             }
             ModelVersion::V6 => {
+                info!("building V6 model (may take several minutes)...");
                 let m = builder.build_v6().await?;
                 let b = web_rwkv::runtime::v6::Bundle::<f16>::new(m, 1);
                 let s = b.state();
@@ -714,7 +717,9 @@ impl RwkvActor {
                 (r, AnyState::V6(Box::new(s)), init)
             }
             ModelVersion::V7 => {
+                info!("building V7 model (may take several minutes)...");
                 let m = builder.build_v7().await?;
+                info!("V7 model built successfully");
                 let b = v7::Bundle::<f16>::new(m, 1);
                 let s = b.state();
                 let init = s.init();

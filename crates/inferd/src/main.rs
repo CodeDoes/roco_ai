@@ -36,7 +36,7 @@ fn main() {
 
     let args = Args::parse();
 
-    eprintln!("roco-inferd: loading RWKV model (wgpu)…");
+    eprintln!("roco-inferd: loading RWKV model (this may take 1-5 minutes on first run)...");
     let backend = match RwkvBackend::from_env() {
         Ok(b) => Arc::new(b),
         Err(e) => {
