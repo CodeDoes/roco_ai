@@ -1,185 +1,191 @@
-# RoCo AI
+# RoCo AI — System Onboarding
 
-AI-assisted collaborative writing tool powered by a local RWKV-7 SSM.
+AI-assisted collaborative writing tool. Backend: RWKV-7 SSM (2.9B params, 10k
+trained context). Think of it as an agentic scaffold around a recurrent
+state-space language model — the model generates tokens, everything else is
+orchestration, formatting, and state management.
 
 ```bash
 roco story "A lighthouse keeper discovers a hidden message in the fog"
-roco story --resume              # resume from latest workspace
-roco story --fix chapter 3       # regenerate a chapter (implies --resume)
-roco story --phase synopsis      # run one phase
-roco story --mock                # use mock backend, no real model
-roco interact                    # conversational chat mode
-roco gui                         # desktop GUI
-./run_tests.sh                   # full test suite
+roco story --resume              # find and continue latest workspace
+roco story --fix chapter 3       # regenerate chapter 3 in latest workspace
+roco story --phase synopsis      # run a single phase, resume from there
+roco story --mock                # mock backend, no real model (tests)
+roco gui                         # desktop app
 ```
 
-## Philosophy
+## 1. What This Thing Actually Is
 
-**Natural language first, CLI flags second.** The primary interaction is launching
-`roco` in a workspace directory and using natural language. CLI flags exist for
-automation but the design favors conversational control. `--fix` implies `--resume`
-(finds the latest workspace automatically).
-
-**Develop with `cargo run -- watch`.** Use `cargo run -- ...` or `cargo watch -x run`
-during development. Debug builds are fast enough; release builds are for deployment.
-
-## Architecture (3-tier)
+Two processes communicating over HTTP:
 
 ```
-CLI / GUI  ──→  gateway (HTTP)  ──→  inferd (token engine)
+frontend (CLI / GUI / gateway)  ←→  inferd (token engine)
 ```
 
-| Tier | Crate(s) | Responsibility |
-|---|---|---|
-| **Client** | `cli`, `ui` | Formats prompts, calls gateway, renders output. Owns all `System:`/`User:`/`Assistant:` formatting. |
-| **Gateway** | `gateway`, `app`, `session`, `workspace` | Session management, workspace routing, state caching, request orchestration. |
-| **Inferd** | `engine-gpu`, `inferd` | Pure token engine. Receives **raw text only** — no message format knowledge, no session concept. |
+- **inferd** (`crates/inferd/` + `crates/engine-gpu/`): loads the model into VRAM
+  (via Vulkan), accepts a prompt → runs inference → returns generated text. It
+  knows nothing about messages, sessions, or user personas. It receives: text,
+  state_id, grammar, temperature, max_tokens, stop. It returns: text.
 
-The engine is split (`engine` vs `engine-gpu`) to keep GPU deps out of the dependency
-chain. `engine` (traits, types, mock, grammar, JSON cleaning) compiles everywhere;
-`engine-gpu` (web-rwkv backend, actor) only when inference is needed.
+- **frontend** (`crates/cli/`, `crates/gateway/`, `crates/app/`, `crates/ui/`):
+  orchestrates the pipeline. Decides what text to send, what state to load/save,
+  which grammar to apply, and what to do with the output.
 
-HTTP servers:
-- **gateway** (`roco gateway`): unified API on port 18000, orchestrates sessions + caching
-- **inferd** (`roco-inferd`): standalone token server on 18080, spawned by gateway in dev mode
-- **server** (`roco server`): standalone inferd deployment without gateway
+RWKV-7 is a **State Space Model** (not a Transformer). Recurrent — linear memory
+in sequence length, constant VRAM per token. Because it's recurrent, "session"
+isn't a connection — it's a **vector of floats** (the model's latent state after
+processing N tokens). Save that vector → you've saved the session. Load it into
+the model → you're continuing from where you left off.
 
-## RWKV-7 SSM Model
+## 2. Directory Layout — What Goes Where and Why
 
-RWKV-7 is a State Space Model (not a Transformer). Key properties:
+Every command works relative to the current directory. All artifacts go in
+`.roco/` under that directory. That means:
 
-- **Linear memory** in sequence length — no quadratic attention. Constant VRAM per token.
-- **Trained context length**: 10240 tokens (from model filename `ctx10240`).
-- **Generalizes beyond trained context** — SSMs don't have a hard context window like Transformers.
-- **Quantization**: FP16 (`.st` safetensors format, `-f16` in filename).
-- **Model file**: `./models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st`
-- **Tokenizer**: `assets/vocab/rwkv_vocab_v20230424.json`
+- You `cd` into a project directory → `.roco/` is your project's scratch space
+- You can have different `.roco/` in different directories → isolated projects
+- No files leak into `~/.config/roco/` or `~/.local/share/roco/`
+- The entire project state is a single directory you can delete or archive
 
-The 2.9B parameter model is small enough to run on consumer GPUs via Vulkan.
-Outputs prose rather than JSON for most phases — fallback parsers handle this.
-
-## Inference Configuration
-
-Generation is controlled by composing several knobs:
-
-- **State-tune-bake**: Pre-load the model's recurrent state with format examples via `Bake` messages. Primes the output shape without grammar constraints.
-- **BNF grammar**: Hard token-level constraints via `kbnf` masks. Forces JSON structure when the model can follow it.
-- **Stop sequences**: Token sequences that halt generation (e.g. closing `}`).
-- **Temperature**: Sampling randomness (0.0 = deterministic, 0.7 default).
-- **Top-p / Top-k**: Nucleus + top-k sampling to filter low-probability tokens.
-- **Prefill**: Seed text fed before generation (e.g. `"{\n"` to jump-start JSON).
-
-These are composed into presets selected via `--strategy`:
-- `state-tuned`: bake only, no grammar. Relies on recurrent state priming.
-- `schema`: JSON schema + GBNF grammar for strict structural validation.
-- `loose-json`: relaxed grammar accepting JSON-like output with minor errors.
-- `grammar`: user-supplied GBNF grammar string.
-
-When grammar constraints fail (model outputs prose despite them), a fallback
-parser extracts structure from natural language output.
-
-## State Management
-
-Inferd maintains a **state pool** — `HashMap<String, Option<Tensor>>` with FIFO + LRU
-eviction (max 8 entries). State is the model's recurrent vector after processing text.
-
-| Operation | What it does |
-|---|---|
-| `state_id: "name"` | Load cached state from pool before generation |
-| `save_as: "name"` | Save resulting state to pool after generation |
-| `feed_eos("name")` | Load from pool, feed token 0 (EOS), save back — breaks repetition patterns |
-| `Bake { text, name }` | Process text through model, save under `name`. Primes output format. |
-| `save_state()` / `load_state(blob)` | Download/upload raw state tensor for persistence |
-
-Two named states:
-- `SESSION_WRITER` (`"story-writer"`): outline, wiki, chapters, synopsis
-- `SESSION_VALIDATOR` (`"story-validator"`): validation only — reset between chapters
-
-## Directory Layout
-
-All artifacts live in a local `.roco/` directory. Override the location with the
-`ROCO_DIR` environment variable. No user-level config (`~/.config/roco/`) — everything
-stays local and trackable.
+Override `.roco/` location with `$ROCO_DIR`. If `ROCO_DIR=/data/roco`, then
+config loads from `/data/roco/config.toml`, workspaces under `/data/roco/workspaces/`,
+stories under `/data/roco/stories/`. This is for headless/CI/docker setups where
+cwd isn't meaningful.
 
 ```
-.roco/
-├── config.toml              # model path, server ports, template settings
-├── agent-journal.md          # runtime log (TODO: migrate to JSONL)
+.roco/                              # ROCO_DIR env var overrides this
+├── config.toml                     # model path, server ports, template settings
+├── agent-journal.md                # runtime log (TODO: migrate to JSONL)
 ├── workspaces/
-│   └── {timestamp}_{slug}/   # one per story run
+│   └── {timestamp}_{slug}/
 │       ├── 01-OUTLINE.md
 │       ├── 02-WIKI.md
-│       ├── 03-CHAPTER_{N}.md
+│       ├── 03-CHAPTER_*.md
 │       ├── 04-VALIDATION.md
 │       ├── 05-SYNOPSIS.md
 │       └── 06-STORY.md
 └── stories/
-    └── {slug}.md             # published compiled story
+    └── {slug}.md                   # compiled final story
 ```
 
-Config is loaded from `$ROCO_DIR/config.toml` if `ROCO_DIR` is set, otherwise
-`.roco/config.toml`. Environment variables (`RWKV_MODEL`, `RWKV_VOCAB`) override
-config file values.
+## 3. Engine Split — Why Two Crates
 
-## Story Pipeline
+| Crate | Deps | Responsibility |
+|---|---|---|
+| `engine` | pure Rust, no GPU | Traits (`ModelBackend`), types (`CompletionRequest`, `TokenizeResult`), mock backend, grammar strategies, JSON helpers |
+| `engine-gpu` | `web-rwkv` (Vulkan) | `RwkvActor` (tokio actor managing model), `RwkvBackend` (implements `ModelBackend`) |
 
-6 phases, each with fallback parsers for the 2.9B model's prose output:
+Split ensures `engine` compiles everywhere (CI, docs, wasm targets). GPU deps
+only enter the build when `engine-gpu` is a dependency — which only happens when
+you need real inference. Tests compile against `engine` alone using `MockBackend`.
 
-```
-outline → wiki → chapters (×3, each validated) → synopsis → publish
-```
+## 4. inferd Architecture — Atomic Operations
 
-Prose fallback parsers handle the model's natural language output when it doesn't
-produce valid JSON:
+inferd's actor loop handles four messages:
 
-| Phase | Parses |
+| Message | Effect |
 |---|---|
-| Outline | `### Title:`, `### Genre:`, `### Chapter N:` headers |
-| Wiki | `Setting:`, `-**Name**: description` bullets |
-| Chapter | `Title:` / `#` / `##` headers + body |
-| Validation | `quality:`, `issues:`, `suggestion:` fields |
-| Synopsis | `Summary:` / `Synopsis:` prefix, or raw text |
+| `Complete { text, state_id, save_as, grammar, temp, max_tokens }` | Load `state_id` from pool, generate tokens starting from `text`, save resulting state as `save_as`, return output text |
+| `Bake { text, name }` | Load state from pool, feed `text` through model (no generation), save resulting state as `name`. Primes the recurrent state for a task. |
+| `FeedEos { name }` | Load state from pool, feed token 0 (EOS), save back. Breaks repetition cycles without consuming a generation slot. |
+| `SaveState / LoadState` | Serialize/deserialize the raw state tensor for persistence. |
+
+State pool: `HashMap<String, Option<Tensor>>`. Max 8 entries. FIFO + LRU
+eviction. Thread-safe (behind `Arc<RwLock<...>>`).
+
+## 5. Inference Parameters
+
+There is no single "strategy" — there are knobs that get composed:
+
+| Knob | What it does |
+|---|---|
+| **Grammar** | BNF grammar string → `kbnf`-compiled token mask. Forces token sequences to match a grammar (e.g. valid JSON). |
+| **Temperature** | Sampling temperature. 0.0 = greedy (always pick highest probability). Our 2.9B model starts repeating at ≥0.7. |
+| **Top-p** | Nucleus sampling. Only sample from tokens whose cumulative probability exceeds p. |
+| **Top-k** | Only sample from the k highest-probability tokens. |
+| **Prefill** | Initial tokens to feed before sampling begins. For JSON, `"{\n"` jump-starts the output. |
+| **Stop** | Token sequences that halt generation (e.g. `"}\n"` for JSON). |
+| **Bake (state tune)** | Feed few-shot examples through the model (no generation) to load the recurrent state with format expectations. |
+
+The CLI `--strategy` flag selects a preset composition of these knobs:
+- `state-tuned`: bake examples with no grammar, rely on recurrent state
+- `schema`: JSON schema grammar
+- `loose-json`: relaxed grammar, accepts JSON-like output
+- `grammar`: user-supplied grammar string
+
+## 6. State Management — Sessions Are Vectors
+
+"Session" in RWKV is the model's recurrent state — a vector of floats. You
+manage it explicitly with `state_id` (load) and `save_as` (save).
+
+Two named states used by the pipeline:
+
+| Name | Used for |
+|---|---|
+| `story-writer` | Outline, wiki, chapters, synopsis — accumulates the full context |
+| `story-validator` | Validation only — reset between chapters to prevent bleed |
+
+### Why feed_eos between operations
+
+The model's state carries momentum from everything it processed. Generating a
+long chapter leaves the state primed to keep writing prose. If you then validate
+without resetting, the validation result is contaminated by chapter-writing
+momentum. `feed_eos` forces the state through one EOS token, which breaks
+the repetition/continuation pattern without losing the state's knowledge of
+the story context.
+
+## 7. Story Pipeline — 6 Phases
+
+```
+outline → wiki → chapter (×N, each validated) → synopsis → publish
+```
+
+Each phase:
+1. Formulates a prompt with `System:` preamble, `User:` task, `Assistant:` prefix
+2. Sends to inferd as raw text (formatting is done by the pipeline, not inferd)
+3. Attempts to parse the output as JSON (with grammar-constrained generation)
+4. If JSON parsing fails, the phase should **fail loudly** — not silently fall back
+   to natural language heuristics
 
 ### Chapter Validation Loop
 
-Each chapter follows a retry cycle (up to 3 retries):
-
 ```
-write → validate → [if fail] revise with feedback → re-validate → [repeat] → accept
+write → validate → [if fail] revise with feedback → re-validate
+                   → [if pass] accept
+                   → [if max retries] accept latest revision anyway
 ```
 
-Validator state is reset before each validation call. Revision feedback (Issues +
-Suggestion lines) is fed into the next `prompt_revision()`. If max retries exhausted
-without a pass, the latest revision is accepted.
+Key detail: validator state is cleaned with `feed_eos` before each call.
+Validator has its own session to prevent writer state from bleeding into
+critique.
 
 ### Outline Data Flow
 
-The outline handler writes full markdown to `01-OUTLINE.md`. Downstream phases read
-this file directly so `chapter_outline_info()` extracts correct chapter titles and
-summaries for wiki and chapter prompts.
+Handler writes full markdown to `01-OUTLINE.md`. Downstream phases read this
+file. This is explicit — the outline text is persisted to disk so it can be
+re-read by any phase, not passed through in-memory.
 
-## Interaction Modes
+## 8. Prompt Format — Who Formats What
 
-- **`roco story`**: full pipeline (outline → publish). User intent is inferred from premise text.
-- **`roco interact`**: chat mode — conversational steering via ReAct loop (thought → action → observation).
-  The agent understands user intent and plans actions through the `MechanisticAgent` task router.
-- **`roco gui`**: desktop GUI with visual workspace browser.
-
-Action planning: `MechanisticAgent` routes tasks by `(type, domain)` pairs, e.g.
-`("compose", "outline")`, `("validate", "chapter")`. Each handler is a closure
-registered via `agent.register(type, domain, handler_fn)`.
-
-## Message Format
-
-Inferd receives raw text — no formatting. The CLI constructs the full prompt:
+inferd does NOT format prompts. It receives raw text and generates more text.
+The pipeline constructs:
 
 ```rust
-let prompt_text = format!("System: {}\n\nUser: {}\n\nAssistant:", system.trim(), prompt);
+let full_text = format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt);
+inferd.complete(CompletionRequest {
+    prompt: full_text,
+    state_id: Some("story-writer"),
+    save_as: Some("story-writer"),
+    grammar: json_schema_grammar(),
+    temperature: 0.6,
+    max_tokens: 500,
+    // ...
+})
 ```
 
-System prompts per phase:
+System prompts are task-specific:
 
-| Phase | System Prompt |
+| Phase | System prompt |
 |---|---|
 | Outline | `"You are a story outliner. Output valid JSON only."` |
 | Wiki | `"You are a worldbuilding assistant. Output valid JSON only."` |
@@ -187,65 +193,77 @@ System prompts per phase:
 | Validation | `"You are a quality reviewer. Be strict. Output valid JSON only."` |
 | Synopsis | `"You are a literary summarizer. Output valid JSON only."` |
 
-State tuning examples are baked into the model state before chapter writing and
-validation. These prime the recurrent state to output the expected JSON format.
-Bake examples use the same `System:\n\nUser:\n\nAssistant:` format as real generation.
+## 9. Eval-First Methodology — The Correct Order
 
-## Quality
+Prose fallback parsers should NOT exist. They exist because I violated the
+correct workflow: **evals first, workarounds never.**
 
-**Tests:** 1002+ pass, 0 failures. Run with `cargo test --workspace`.
-The mock backend (`ROCO_USE_MOCK_BACKEND=1`) returns canned responses keyed on
-prompt keywords for deterministic testing. Integration tests run the full pipeline
-against the mock.
+The correct workflow:
+1. **Set up the system correctly** — fix bugs in session mapping, feed_eos,
+   prompt formatting, state management
+2. **Run evals** against the real model to test each phase for JSON output
+   capability — use `crates/engine/src/story_evals.rs` and
+   `crates/cli/examples/format_eval.rs`
+3. **If evals show the model produces valid JSON** → remove prose fallback
+   parsers. A JSON parse failure is a system bug, handled by fixing the system,
+   not by parsing prose.
+4. **If evals show the model fails to produce JSON** → tune prompts,
+   baking examples, grammar, temperature until it works. The knobs exist for
+   this. Do not add workarounds.
 
-**E2E manual validation:** Run `./target/debug/roco story "<premise>"` against the
-real model. Use `scripts/wait-e2e.sh` (polls tmux + journal) instead of guessing
-sleep durations. Check workspace files for continuity and quality.
+As of this writing (post-fix), I have NOT run evals with the corrected system.
+The prose fallback parsers are placeholders that should be removed once evals
+confirm the model works.
 
-**Evals:** Not yet automated. Manual review of generated stories for coherence,
-outline adherence, and prose quality.
+### Existing Eval Infrastructure
 
-**Ablations:** Future work — compare chapter quality with/without wiki context,
-with/without bake tuning, with/without validation retry.
+| File | What it tests |
+|---|---|
+| `crates/engine/src/story_evals.rs` | Each pipeline stage: outline, wiki, chapter, validation, revision |
+| `crates/cli/examples/format_eval.rs` | 8 format specs × baked/fresh × N trials, measures format compliance, repetition, sensory density |
+| `crates/cli/examples/matrix_eval.rs` | Multi-parameter matrix eval |
+| `crates/cli/src/cmd/eval_suite.rs` | CLI command for running eval suites |
+| `evals/format_eval.sh`, `evals/grammar_eval.sh` | Shell runners |
+| `evals/results/` | JSON and Markdown reports from previous runs |
 
-## Known Issues
+## 10. Known Legacy Issues
 
 ### Harness Crate Duplication
 
 `crates/harness/src/` has 10 modules (`pet.rs`, `email.rs`, `html.rs`, ...) each
-defining `pub struct Agent;` implementing `DomainHarness` with identical code —
-only the domain name string differs (`"pet"`, `"email"`, etc.). This was originally
-meant to hold domain-specific test logic but never diverged. Should be collapsed
-into a single `MockAgent` taking the domain name as a constructor parameter.
+defining `pub struct Agent;` with identical `DomainHarness` impl — only the
+domain name string differs. Originally meant to hold domain-specific test
+fixtures but the logic never materialized. Should be collapsed into a single
+`MockAgent` that takes domain name as constructor parameter.
 
 ### Agent Journal Format
 
-Currently `.roco/agent-journal.md` in Markdown. For machine processing and structured
-querying, should be migrated to JSONL (one JSON object per line, with timestamp, level,
-phase, message fields).
+Currently `.roco/agent-journal.md` in Markdown. Should be JSONL for structured
+querying (one JSON object per line: timestamp, level, phase, message).
 
-## Key Files
+### Model-Specific Behavior
 
-| What | Where |
+2.9B parameter RWKV-7 model:
+- Starts repeating at temperature ≥ 0.7 (empirical)
+- Can produce NUL/control characters in output (stripped by `clean_json_output`)
+- Sometimes produces ````json``` wrappers or trailing `}` characters
+- May truncate output when the state carries too much context momentum
+
+## 11. Key Source Files
+
+| Component | Path |
 |---|---|
 | Story pipeline | `crates/cli/src/cmd/story.rs` |
-| JSON cleaning + prose fallbacks | `crates/engine/src/grammar/strategies.rs` |
+| Inferd actor (Complete, Bake, FeedEos) | `crates/engine-gpu/src/actor.rs` |
+| Inferd backend (maps old→new API) | `crates/engine-gpu/src/backend.rs` |
 | Mock backend | `crates/engine/src/backend.rs` |
-| Inferd actor (Bake, Complete, FeedEos) | `crates/engine-gpu/src/actor.rs` |
-| Bake API | `crates/engine-gpu/src/backend.rs` |
-| Gateway HTTP routes | `crates/gateway/src/lib.rs` |
-| Inferd server | `crates/inferd/src/main.rs` |
+| JSON helpers + grammar types | `crates/engine/src/grammar/strategies.rs` |
 | Protocol types | `crates/protocol/src/lib.rs` |
-| Workspace management | `crates/workspace/` |
-| Session management | `crates/session/` |
-| Config | `.roco/config.toml` |
-| Model | `./models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st` |
-| Tokenizer | `assets/vocab/rwkv_vocab_v20230424.json` |
+| Gateway HTTP routes | `crates/gateway/src/lib.rs` |
+| Story evals (per-stage model tests) | `crates/engine/src/story_evals.rs` |
+| Format eval (multi-format comparison) | `crates/cli/examples/format_eval.rs` |
+| Model file | `./models/rwkv7-g1h-2.9b-20260710-ctx10240-f16.st` |
+| Tokenizer vocab | `assets/vocab/rwkv_vocab_v20230424.json` |
 | E2E wait script | `scripts/wait-e2e.sh` |
-
-## More Info
-
-- `./PROGRESS.md` — current work tracking
-- `./docs/rfc/` — micro-RFCs
-- `./USE_CASES_AND_GAPS.md` — test coverage gaps
-- `./scout.sh` — live codebase introspection
+| Eval runners | `evals/*.sh` |
+| Config template | `.roco/config.toml` example |

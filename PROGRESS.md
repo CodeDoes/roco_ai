@@ -1,73 +1,58 @@
-# Refactoring: Stripping Format Logic from inferd
+# Pipeline Fixes + Eval-First Direction
 
-## Change Made
+## Fixed Bugs
 
-**inferd now only receives raw text.** The `RwkvActor` no longer adds
-`System:/User:/Assistant:` wrappers, `<think>` suppression, or implicit
-session-based state management. All formatting is the caller's (gateway)
-responsibility.
+| Bug | Root Cause | Fix |
+|---|---|---|
+| Session state lost between chapters | Mapped `session` → `state_id`+`save_as` only when `preserve_state=true` | Map both always — old code saved unconditionally when `session` was set |
+| `feed_eos` no-op | New code just reset in-memory state, didn't touch pool | Restored old behavior: load from pool, feed token 0 (EOS), save back to pool |
+| Mock backend silent | Matching on `req.system` which is now empty | Match on `req.prompt` with unique phase identifiers |
+| Control chars break JSON | Model emits NUL/control chars | Added `strip_control_chars()` in `clean_json_output()` |
+| Outline truncated at 800 tokens | `repair_truncated_json` wasn't being called | Now closes unclosed brackets |
+| Outline text data flow | Handler wrote full markdown but returned short summary without chapter details | Main pipeline reads the written file back |
+| `--fix` workspace discovery | Created fresh empty workspace instead of finding latest | `--fix` implies `--resume` |
+| Validator state bleed | Cross-chapter persistence in validator session | `feed_eos(SESSION_VALIDATOR)` before each validation |
+| Retry loop accepted without re-validate | Revised once then accepted unconditionally | Loop validates after each revision, up to 3 retries |
 
-### Files Changed
+## Architecture Change: inferd Only Receives Raw Text
 
-| File | Change |
-|---|---|
-| `crates/engine-gpu/src/actor.rs` | `CompleteReq`: replaced `system`/`preserve_state`/`session`/`thinking` with `state_id`/`save_as`. Added `Bake` message. `handle_complete`: removed all formatting — uses `prompt` as raw text. `FeedEos`: restored old behavior — loads session state, feeds token 0, saves back to pool. |
-| `crates/engine-gpu/src/backend.rs` | `RwkvBackend.complete()`: maps old `session` → `state_id` + `save_as` (always both, matching old implicit persistence). `tune_state`: uses `Bake` message with formatted `System:\n\nUser:\n\nAssistant:` text. |
-| `crates/engine/src/backend.rs` | MockBackend: routes on `prompt` keywords instead of `system` keywords. |
-| `crates/cli/src/cmd/story.rs` | `structured_complete_with_strategy`: formats `system`+`prompt` into raw text before sending. |
+**Before:** actor formatted `System:/User:/Assistant:` wrappers, handled `<think>`
+suppression, and managed implicit session-based state.
 
-### What Changed Semantically
+**After:** actor receives raw text only. `CompleteReq` has `state_id`/`save_as` for
+explicit state management. `Bake` is a separate message (feed text, save state).
+`FeedEos` loads from pool, feeds EOS token, saves back. Gateway owns formatting.
 
-**Before:** actor did:
-```
-if use_system { "System: {sys}\n\nUser: {prompt}\n\nAssistant:" }
-else { "User: {prompt}\n\nAssistant:" }
-```
-And `bake_state` used `CompleteReq` with `preserve_state=true, max_tokens=0`,
-but with `system=""` — so examples were formatted as `"User: ...\n\nAssistant:..."`,
-DIFFERENT from the real generation format.
+## Eval-First Direction
 
-**After:** actor just uses `prompt` as-is. Gateway formats:
-```
-"System: {sys}\n\nUser: {prompt}\n\nAssistant:"
-```
-Bake uses same format via `Bake` message. Same format = same state conditioning.
+The prose fallback parsers (`prose_to_outline`, `prose_to_wiki`, `prose_to_chapter`,
+`prose_to_validation`, `prose_to_synopsis`) are **wrong.** They were added because
+I assumed the 2.9B model can't output JSON. But that assumption was never validated
+with evals on a correctly-functioning pipeline.
 
-### Bugs Fixed
+The correct order:
+1. **Fix the system** (done — bugs above)
+2. **Run evals** to prove the model CAN output JSON given the right prompts, baking,
+   grammar, and temperature. Evaluate each phase separately.
+3. **If evals pass**, remove the prose fallback parsers. JSON parse failure = phase
+   failure = fix the system, not silently fall back.
+4. **If evals fail**, tune prompts/baking/grammar/temperature until they pass.
 
-1. **Backward compat mapping (session → state_id/save_as)** — Old code always
-   saved state when `session` was set (implicit persistence). The initial map
-   only saved when `preserve_state=true`, meaning chapters 2+ loaded the baked
-   state instead of continuing from chapter 1's output. Fixed: both `state_id`
-   and `save_as` are set whenever `session` is set.
+Existing eval infrastructure:
+- `crates/engine/src/story_evals.rs` — per-stage evals for outline, wiki, chapter,
+  validation, revision
+- `crates/cli/examples/format_eval.rs` — multi-format eval with state-tune delta
+- `evals/` — shell scripts + results
 
-2. **feed_eos (state reset between chapters)** — New code just reset the
-   in-memory state to blank and didn't touch the pool. Old code loaded the
-   session state, fed token 0 (EOS) through the model, and saved back to pool.
-   This prevented repetition patterns from bleeding between chapters. Fixed:
-   restored old behavior.
+The existing format_eval results show format_ok=false for everything, but those
+were run on the OLD buggy system (before session mapping fix, before feed_eos fix).
+Post-fix evals need to be run.
 
-3. **Mock backend keyword matching** — MockBackend was matching on `req.system`
-   (which is now empty) instead of `req.prompt`. Fixed: match on prompt
-   keywords with unique phase identifiers (outliner, worldbuilding, etc.).
+## Remaining Cleanup
 
-### Known Issues (model-level, pre-existing)
-
-1. **No progress indicator during model build** — 4+ minutes of silence
-2. **Model enters repetition loops** at temperature >= 0.7 (2.9B RNN limitation)
-3. **JSON output vs prose** — outline/wiki/chapter phases need prose fallback
-   parsers because the 2.9B model outputs prose, not JSON
-4. **Control characters in output** — model sometimes emits null bytes
-
-### Next Steps
-
-- [x] Remove formatting logic from actor
-- [x] Add `Bake` message to actor
-- [x] Update RwkvBackend to map old→new fields
-- [x] Update mock backend to use prompt text
-- [x] Update CLI to format prompts with system
-- [x] Fix backward compat mapping (session → always save)
-- [x] Fix feed_eos to properly EOS-process pool state
-- [ ] Run E2E test with real model
-- [ ] Verify chapters are unique and follow outline
-- [ ] Add regression tests for the bugs found
+- [ ] Run post-fix format_eval against real model to verify JSON output capability
+- [ ] Run post-fix story_evals to validate each pipeline phase
+- [ ] **Remove prose fallback parsers** if evals prove model can output JSON
+- [ ] Collapse harness crate's 10 × identical `Agent` structs into single `MockAgent`
+- [ ] Migrate `agent-journal.md` from Markdown to JSONL
+- [ ] Rename `StrategyKind`/`StrategySelector` if the name is confusing
