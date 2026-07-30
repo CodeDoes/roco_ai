@@ -215,16 +215,9 @@ impl ModelBackend for RwkvBackend {
 
             // Map old session/preserve_state to new state_id/save_as.
             //
-            // Old behavior: when `session` was set, the state was ALWAYS loaded
-            // from the pool AND saved back afterward (implicit persistence).
-            // `preserve_state` (without session) meant "keep current in-memory
-            // state across calls" — only used by `bake_state`, which now uses
-            // the explicit `Bake` message.
-            //
-            // New behavior: `state_id` loads a cached state, `save_as` saves
-            // the resulting state. Both are set when the old `session` was set.
-            let state_id = req.session.clone();
-            let save_as = req.session.clone();
+            // Map old session → init_state + state_slot for backward compat.
+            let init_state = req.session.clone();
+            let state_slot = req.session.clone();
 
             tx.send(
                 CompleteReq {
@@ -237,8 +230,8 @@ impl ModelBackend for RwkvBackend {
                     bnf_mask: req.bnf_mask,
                     reply: reply_tx,
                     on_token: req.on_token,
-                    state_id,
-                    save_as,
+                    init_state,
+                    state_slot,
                     deadline_ms: req.deadline_ms,
                     seed: req.seed.or_else(|| {
                         std::env::var("RWKV_DETERMINISTIC_SEED")
@@ -311,16 +304,6 @@ impl ModelBackend for RwkvBackend {
         })
     }
 
-    fn feed_eos(&self, session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
-        let tx = self.tx.clone().expect("rwkv backend already shut down");
-        Box::pin(async move {
-            tx.send(ActorMessage::FeedEos(session))
-                .await
-                .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
-            Ok(())
-        })
-    }
-
     fn bake_state<'a>(
         &'a self,
         session_id: &'a str,
@@ -359,6 +342,12 @@ impl ModelBackend for RwkvBackend {
                 .map_err(|e| EngineError::Backend(format!("rwkv load_state recv: {e}")))?
         })
     }
+
+    /// No-op: FeedEos is not a primitive operation. Callers should manage
+    /// state by saving/loading from cache or baking EOS text directly.
+    fn feed_eos(&self, _session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
+        Box::pin(async move { Ok(()) })
+    }
 }
 
 impl StateTuning for RwkvBackend {
@@ -378,16 +367,6 @@ impl StateTuning for RwkvBackend {
             .map(|(u, a)| (u.to_string(), a.to_string()))
             .collect::<Vec<_>>();
         Box::pin(async move {
-            // Reset to blank before baking
-            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-            tx.send(ActorMessage::Bake {
-                state_id: None,
-                text: String::new(),
-                name: String::new(),
-                reply: reply_tx,
-            }).await.ok();
-            let _ = reply_rx.await;
-
             for (_i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 // Format the example the same way the gateway will format
@@ -398,9 +377,9 @@ impl StateTuning for RwkvBackend {
                 let text = format!("{}User: {}\n\nAssistant:{}", sys_text, user_msg, assistant_msg);
                 tx.send(
                     ActorMessage::Bake {
-                        state_id: Some(session_id.clone()),
+                        init_state: Some(session_id.clone()),
                         text,
-                        name: session_id.clone(),
+                        state_slot: session_id.clone(),
                         reply: reply_tx,
                     }
                 )

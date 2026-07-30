@@ -345,9 +345,11 @@ pub struct CompleteReq {
         oneshot::Sender<Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError>>,
     pub on_token: roco_engine::OnToken,
     /// Load a named state from the cache before processing.
-    pub state_id: Option<String>,
+    /// None = start from blank state.
+    pub init_state: Option<String>,
     /// Save the resulting state under this name after processing.
-    pub save_as: Option<String>,
+    /// None = don't cache the resulting state.
+    pub state_slot: Option<String>,
     /// Wall-clock deadline for the entire completion in milliseconds.
     /// 0 = no deadline.
     pub deadline_ms: u64,
@@ -376,16 +378,14 @@ pub enum ActorMessage {
     /// Restore a recurrent state previously produced by `SaveState`.
     LoadState(Vec<u8>, oneshot::Sender<Result<(), EngineError>>),
     /// Baked state: feed text through model, save resulting state.
-    /// Loads `state_id` first if provided, then processes `text`,
-    /// then saves result as `name`.
+    /// Loads `init_state` first if provided (None = blank state),
+    /// then processes `text`, then saves result as `state_slot`.
     Bake {
-        state_id: Option<String>,
+        init_state: Option<String>,
         text: String,
-        name: String,
+        state_slot: String,
         reply: oneshot::Sender<Result<(), EngineError>>,
     },
-    /// Feed token 0 (EOS) to update recurrent state without generating.
-    FeedEos(Option<String>),
 }
 
 impl From<CompleteReq> for ActorMessage {
@@ -938,8 +938,8 @@ impl RwkvActor {
             mut bnf_mask,
             seed,
             record_trace,
-            state_id,
-            save_as,
+            init_state,
+            state_slot,
             reply,
             ..
         } = req;
@@ -952,14 +952,14 @@ impl RwkvActor {
             max_tokens = max_tokens,
             temperature = temperature,
             seed = seed,
-            state_id = state_id.as_deref().unwrap_or("none")
+            state_id = init_state.as_deref().unwrap_or("none")
         );
         let _guard = span.enter();
 
         let outcome: Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError> =
             async {
                 // Load cached state if specified.
-                if let Some(ref sid) = state_id {
+                if let Some(ref sid) = init_state {
                     if let Some(pos) = self.session_lru.iter().position(|s| s == sid) {
                         self.session_lru.remove(pos);
                     }
@@ -981,7 +981,7 @@ impl RwkvActor {
                         }
                     }
                 } else {
-                    // No state specified: start from blank
+                    // No init_state specified: start from blank
                     self.state
                         .load(self.initial_state.clone(), 0)
                         .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
@@ -1209,7 +1209,7 @@ impl RwkvActor {
                     // Save state under caller-specified name (e.g. for baking:
                     // process prompt+prefill tokens with max_tokens=0, then
                     // save the resulting state for later use).
-                    if let Some(ref sid) = save_as {
+                    if let Some(ref sid) = state_slot {
                         match self.state.back(0).await {
                             Ok(saved_state) => {
                                 self.state_pool.insert(sid.clone(), Some(saved_state));
@@ -1357,7 +1357,7 @@ impl RwkvActor {
                     // FIM session handling: after generating a reasonable INSERT,
                     // force-feed token 0 (end-of-sequence) to properly terminate
                     // the recurrent state, then break.
-                    if state_id.as_deref() == Some(FIM_SESSION_NAME) {
+                    if init_state.as_deref() == Some(FIM_SESSION_NAME) {
                         fim_tokens_generated += 1;
                         // Allow at least 8 tokens for the INSERT, max 64 before forcing end
                         if fim_tokens_generated >= 8 {
@@ -1400,7 +1400,7 @@ impl RwkvActor {
                 };
 
                 // Save state under caller-specified name
-                if let Some(ref sid) = save_as {
+                if let Some(ref sid) = state_slot {
                     match self.state.back(0).await {
                         Ok(saved_state) => {
                             self.state_pool.insert(sid.clone(), Some(saved_state));
@@ -1469,32 +1469,9 @@ impl RwkvActor {
                     let result = self.load_state_bytes(&bytes).await;
                     let _ = reply.send(result);
                 }
-                FeedEos(state_name) => {
-                    // Load session state from pool (or blank), feed EOS
-                    // through model, and save back to pool. This prevents
-                    // repetition patterns from bleeding between chapters
-                    // while preserving the baked output format state.
-                    if let Some(ref sid) = state_name {
-                        if let Some(Some(saved)) = self.state_pool.get(sid) {
-                            let _ = self.state.load(saved.clone(), 0);
-                        }
-                    }
-                    let _ = self
-                        .runtime
-                        .infer(RnnInput::new(
-                            vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
-                            self.token_chunk_size,
-                        ))
-                        .await;
-                    if let Some(ref sid) = state_name {
-                        if let Ok(tensor) = self.state.back(0).await {
-                            self.state_pool.insert(sid.clone(), Some(tensor));
-                        }
-                    }
-                }
-                Bake { state_id, text, name, reply } => {
-                    // Load cached state if specified
-                    if let Some(ref sid) = state_id {
+                Bake { init_state, text, state_slot, reply } => {
+                    // Load cached state if specified (None = blank state)
+                    if let Some(ref sid) = init_state {
                         if let Some(Some(saved)) = self.state_pool.get(sid) {
                             let _ = self.state.load(saved.clone(), 0);
                         } else {
@@ -1516,10 +1493,10 @@ impl RwkvActor {
                                     self.token_chunk_size,
                                 ))
                                 .await;
-                            // Save resulting state
+                            // Save resulting state under state_slot
                             if let Ok(tensor) = self.state.back(0).await {
-                                self.state_pool.insert(name.clone(), Some(tensor));
-                                info!(state = name, "bake complete");
+                                self.state_pool.insert(state_slot.clone(), Some(tensor));
+                                info!(state = state_slot, "bake complete");
                             }
                             let _ = reply.send(Ok(()));
                         }

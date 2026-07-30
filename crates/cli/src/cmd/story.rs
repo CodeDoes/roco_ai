@@ -752,265 +752,19 @@ fn repair_json(s: &str) -> String {
 /// This function extracts structure from the model's natural format:
 /// - ### Title: ...
 /// - ### Genre: ...
-/// - ### Tone: ...
-/// - ### Chapter N: Title
-///   (summary prose follows until next chapter or end)
-fn prose_to_outline(text: &str) -> Option<StoryOutline> {
-    let text = text.trim();
-
-    // Find ### Title:
-    let title = text
-        .lines()
-        .find(|l| l.trim_start().starts_with("### Title:"))
-        .and_then(|l| l.splitn(2, ':').nth(1))?
-        .trim()
-        .to_string();
-
-    let genre = text
-        .lines()
-        .find(|l| l.trim_start().starts_with("### Genre:"))
-        .and_then(|l| l.splitn(2, ':').nth(1))?
-        .trim()
-        .to_string();
-
-    let tone = text
-        .lines()
-        .find(|l| l.trim_start().starts_with("### Tone:"))
-        .and_then(|l| l.splitn(2, ':').nth(1))?
-        .trim()
-        .to_string();
-
-    // Extract chapters: ### Chapter N: Title
-    let mut chapters = Vec::new();
-    let mut current_chapter: Option<(u64, String, String)> = None;
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(caps) = trimmed.strip_prefix("### Chapter ") {
-            // Save previous chapter
-            if let Some((num, ch_title, ch_content)) = current_chapter.take() {
-                let summary = ch_content.trim().to_string();
-                if !summary.is_empty() {
-                    chapters.push(StoryChapterInfo {
-                        number: num,
-                        title: ch_title,
-                        summary,
-                    });
-                }
-            }
-            // Parse new chapter: "N: Title" or just "N"
-            let (num_str, ch_title) = if let Some(colon_pos) = caps.find(':') {
-                (&caps[..colon_pos], caps[colon_pos + 1..].trim().to_string())
-            } else {
-                (caps, String::new())
-            };
-            let num: u64 = num_str.trim().parse().ok()?;
-            current_chapter = Some((num, ch_title.to_string(), String::new()));
-        } else if let Some((_num, _ch_title, ref mut content)) = current_chapter.as_mut() {
-            if !trimmed.is_empty() && !trimmed.starts_with("###") {
-                if !content.is_empty() {
-                    content.push('\n');
-                }
-                content.push_str(trimmed);
-            }
-        }
-    }
-    // Save last chapter
-    if let Some((num, ch_title, ch_content)) = current_chapter.take() {
-        let summary = ch_content.trim().to_string();
-        if !summary.is_empty() {
-            chapters.push(StoryChapterInfo {
-                number: num,
-                title: ch_title,
-                summary,
-            });
-        }
-    }
-
-    if title.is_empty() || chapters.is_empty() {
-        return None;
-    }
-
-    Some(StoryOutline {
-        title,
-        genre,
-        tone,
-        chapters,
-    })
-}
-
-/// Try to parse a prose wiki (model output) into a StoryWiki.
+/// # Prose fallback parsers — DELETED
 ///
-/// The model often outputs characters and setting as prose sections.
-/// This extracts them into structured data.
-fn prose_to_wiki(text: &str) -> Option<StoryWiki> {
-    let text = text.trim();
-
-    // Find characters: look for lines starting with "- " or "* " that contain character info
-    let mut characters = Vec::new();
-    let mut setting = String::new();
-
-    // Try to extract setting from "Setting:" or "The setting is:" lines
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("Setting:") || trimmed.starts_with("The setting") {
-            setting = trimmed
-                .trim_start_matches(|c: char| c == 'S' || c == 's' || c == 'T' || c == 't' || c == ':' || c == ' ')
-                .trim()
-                .to_string();
-        }
-    }
-
-    // Try to extract characters from bullet points or numbered lists
-    for line in text.lines() {
-        let trimmed = line.trim();
-        // Look for character entries like "- **Name**: description" or "* Name - description"
-        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-            let content = trimmed.trim_start_matches(|c: char| c == '-' || c == '*').trim();
-            if content.contains(':') || content.contains('—') || content.contains('–') {
-                // Try to split into name and description
-                let (name, description) = if let Some(colon_pos) = content.find(':') {
-                    (&content[..colon_pos], &content[colon_pos + 1..])
-                } else if let Some(em_pos) = content.find('—') {
-                    (&content[..em_pos], &content[em_pos + 1..])
-                } else if let Some(ndash_pos) = content.find('–') {
-                    (&content[..ndash_pos], &content[ndash_pos + 1..])
-                } else {
-                    (content, "")
-                };
-                let name = name.trim().trim_matches(|c: char| c == '*' || c == '`').trim().to_string();
-                let description = description.trim().to_string();
-                if !name.is_empty() {
-                    characters.push(StoryCharacter {
-                        name,
-                        description,
-                        role: None,
-                        setting: String::new(),
-                    });
-                }
-            }
-        }
-    }
-
-    // If we found at least one character or a setting, return the wiki
-    if !characters.is_empty() || !setting.is_empty() {
-        Some(StoryWiki {
-            characters,
-            setting,
-        })
-    } else {
-        None
-    }
-}
-
-/// Try to parse a prose chapter (model output) into a StoryChapter.
+/// These were added as a workaround for the 2.9B model's inability to
+/// reliably produce JSON. They masked implementation bugs that should
+/// have been fixed through evals-first methodology.
 ///
-/// The model often outputs chapters with "Title:" and content as prose.
-fn prose_to_chapter(text: &str) -> Option<StoryChapter> {
-    let text = text.trim();
-
-    // Find title: look for "Title:" or "# Title" or "## Title"
-    let title = text
-        .lines()
-        .find(|l| {
-            let t = l.trim();
-            t.starts_with("Title:") || t.starts_with("# ") || t.starts_with("## ")
-        })
-        .and_then(|l| {
-            let t = l.trim();
-            if t.starts_with("Title:") {
-                t.splitn(2, ':').nth(1).map(|s| s.trim().to_string())
-            } else if t.starts_with("# ") {
-                Some(t.trim_start_matches("# ").trim().to_string())
-            } else if t.starts_with("## ") {
-                Some(t.trim_start_matches("## ").trim().to_string())
-            } else {
-                None
-            }
-        })?;
-
-    // Content is everything after the title line
-    let title_line_idx = text.lines().position(|l| {
-        let t = l.trim();
-        t.starts_with("Title:") || t.starts_with("# ") || t.starts_with("## ")
-    })?;
-
-    let content_lines: Vec<&str> = text.lines().skip(title_line_idx + 1).collect();
-    let content = content_lines
-        .iter()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    if title.is_empty() || content.is_empty() {
-        return None;
-    }
-
-    Some(StoryChapter { title, content })
-}
-
-/// Try to parse a prose synopsis (model output) into a StorySynopsis.
+/// If JSON parsing fails, the phase should fail loudly — the fix is
+/// to tune prompts/baking/grammar until the model produces valid JSON,
+/// not to silently fall back to natural language heuristics.
 ///
-/// The 2.9B model sometimes outputs prose like:
-///   Summary: A clockmaker builds a device that freezes time...
-/// or just a prose paragraph.
-fn prose_to_synopsis(text: &str) -> Option<StorySynopsis> {
-    let text = text.trim();
-
-    // Look for "Summary:" or "Synopsis:" prefix
-    let summary = text
-        .lines()
-        .find(|l| {
-            let t = l.trim().to_lowercase();
-            t.starts_with("summary:") || t.starts_with("synopsis:")
-        })
-        .and_then(|l| l.splitn(2, ':').nth(1))
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            // No prefix found — use the whole text as summary
-            Some(text.to_string())
-        });
-
-    summary.map(|s| StorySynopsis { summary: s })
-}
-
-/// Try to parse a prose validation (model output) into a StoryValidation.
-///
-/// The 2.9B model sometimes outputs prose like:
-///   quality: pass
-///   issues: none
-///   suggestion: none
-fn prose_to_validation(text: &str) -> Option<StoryValidation> {
-    let text = text.trim();
-
-    let quality = text
-        .lines()
-        .find(|l| l.trim().to_lowercase().starts_with("quality:"))
-        .and_then(|l| l.splitn(2, ':').nth(1))
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| s == "pass" || s == "fail" || s == "needs-work")?;
-
-    let issues = text
-        .lines()
-        .find(|l| l.trim().to_lowercase().starts_with("issues:"))
-        .and_then(|l| l.splitn(2, ':').nth(1))
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-
-    let suggestion = text
-        .lines()
-        .find(|l| l.trim().to_lowercase().starts_with("suggestion:"))
-        .and_then(|l| l.splitn(2, ':').nth(1))
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-
-    Some(StoryValidation {
-        quality,
-        issues,
-        suggestion,
-    })
-}
+/// Deleted functions: prose_to_outline, prose_to_wiki, prose_to_chapter,
+/// prose_to_synopsis, prose_to_validation. See git history for the original
+/// implementations.
 
 #[allow(clippy::too_many_arguments)]
 fn structured_complete_with_strategy<T>(
@@ -1022,7 +776,6 @@ fn structured_complete_with_strategy<T>(
     max_tokens: usize,
     session_id: Option<&str>,
     seed: Option<u64>,
-    prose_fallback: Option<&dyn Fn(&str) -> Option<T>>,
 ) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
@@ -1040,7 +793,6 @@ where
             format!("System: {}\n\nUser: {}\n\nAssistant:", system.trim(), prompt)
         };
         let text_res = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: String::new(),  // deprecated: actor ignores this
             prompt: prompt_text,
             grammar: if use_grammar {
                 Some(grammar.clone())
@@ -1049,7 +801,6 @@ where
             },
             temperature,
             max_tokens,
-            thinking: false,
             prefill: if use_grammar {
                 Some("{\n".into())
             } else {
@@ -1077,12 +828,9 @@ where
                 match strategy.parse::<T>(&repaired) {
                     Ok(val) => return Ok(val),
                     Err(_) => {
-                        // Try prose fallback before giving up
-                        if let Some(ref fallback) = prose_fallback {
-                            if let Some(val) = fallback(&text) {
-                                return Ok(val);
-                            }
-                        }
+                        // No prose fallback — phase fails loudly.
+                        // If the model can't produce valid JSON, fix the
+                        // prompts/baking/grammar, don't silently fall back.
                         last_err = format!("parse error: {orig_e}\nraw: {text}");
                     }
                 }
@@ -1447,7 +1195,6 @@ pub fn cmd_story(extra: &[&str]) {
                     800,
                     Some(SESSION_WRITER),
                     seed,
-                    Some(&prose_to_outline),
                 )
                 .map_err(|e| AgentError::Internal(format!("outline generation failed: {e}")))?;
 
@@ -1515,7 +1262,6 @@ pub fn cmd_story(extra: &[&str]) {
                     1500,
                     Some(SESSION_WRITER),
                     seed,
-                    Some(&prose_to_wiki),
                 )
                 .map_err(|e| AgentError::Internal(format!("wiki generation failed: {e}")))?;
 
@@ -1620,7 +1366,6 @@ pub fn cmd_story(extra: &[&str]) {
                     chapter_max_tokens,
                     Some(SESSION_WRITER),
                     seed,
-                    Some(&prose_to_chapter),
                 )
                 .map_err(|e| AgentError::Internal(format!("chapter generation failed: {e}")))?;
 
@@ -1677,7 +1422,6 @@ pub fn cmd_story(extra: &[&str]) {
                         200,
                         Some(SESSION_VALIDATOR),
                         seed,
-                        Some(&prose_to_validation),
                     )
                     .map(|v: StoryValidation| {
                         format!(
@@ -1741,7 +1485,6 @@ pub fn cmd_story(extra: &[&str]) {
                     400,
                     Some(SESSION_WRITER),
                     seed,
-                    Some(&prose_to_synopsis),
                 )
                 .map_err(|e| AgentError::Internal(format!("synopsis generation failed: {e}")))?;
 
@@ -1922,9 +1665,6 @@ pub fn cmd_story(extra: &[&str]) {
             println!("📚 Worldbuilding (skipped)\n");
             read_ws_file(&ws, "02-WIKI.md").unwrap_or_default()
         };
-        let _ = futures::executor::block_on(
-            backend.feed_eos(Some(SESSION_WRITER.to_string()))
-        );
 
         // Bake instructional state into writer session — primes OUTPUT FORMAT, not content
         // Examples have diverse themes (fantasy, sci-fi) but identical JSON output schema
@@ -1986,12 +1726,6 @@ pub fn cmd_story(extra: &[&str]) {
                 && phase_filter.as_deref() != Some("fix");
             if (should_run_chapter || existing_ch.is_none()) && !phase_restricted {
                 // Generate new chapter
-                // Feed EOS between chapters to prevent state bleeding
-                if i > 1 {
-                    let _ = futures::executor::block_on(
-                        backend.feed_eos(Some(SESSION_WRITER.to_string()))
-                    );
-                }
 
                 let chapter_label = format!("Chapter {i}");
                 let previous = chapter_texts.last().cloned().unwrap_or_default();
@@ -2018,13 +1752,6 @@ pub fn cmd_story(extra: &[&str]) {
                 let max_retries = 3;
                 let mut current_text = ch_result.output;
                 for attempt in 0..=max_retries {
-                    // Reset validator state to prevent cross-chapter bleed.
-                    // Each chapter's validation should start from a clean slate
-                    // so the validator doesn't remember previous chapters' issues.
-                    let _ = futures::executor::block_on(
-                        backend.feed_eos(Some(SESSION_VALIDATOR.to_string()))
-                    );
-
                     // Validation (always runs at least once for the initial version)
                     println!("  🔍 Validating {}...", &chapter_label);
                     let val_task = Task {
@@ -2170,226 +1897,3 @@ pub fn cmd_story(extra: &[&str]) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_prose_to_wiki_parses_characters_and_setting() {
-        let input = r#"
-Setting: A dark fantasy world where magic is dying.
-
-Characters:
-- **Elara**: A young mage who discovered a forbidden spell.
-- **Kael**: A grizzled swordsman fleeing his past.
-- **Morwen**: An ancient dragon bound to the world.
-
-The world is in turmoil.
-"#;
-        let result = prose_to_wiki(input);
-        assert!(result.is_some(), "should parse valid prose wiki");
-        let wiki = result.unwrap();
-        assert_eq!(wiki.characters.len(), 3, "should find 3 characters");
-        assert_eq!(wiki.characters[0].name, "Elara", "first char name");
-        assert_eq!(wiki.characters[2].description, "An ancient dragon bound to the world.", "third char desc");
-        assert!(wiki.setting.contains("magic is dying"), "setting should be detected");
-    }
-
-    #[test]
-    fn test_prose_to_wiki_returns_none_for_gibberish() {
-        let input = "asdfghjkl qwertyuiop";
-        let result = prose_to_wiki(input);
-        assert!(result.is_none(), "gibberish should not parse as wiki");
-    }
-
-    #[test]
-    fn test_prose_to_wiki_handles_empty_string() {
-        assert!(prose_to_wiki("").is_none());
-    }
-
-    #[test]
-    fn test_prose_to_chapter_parses_title_and_content() {
-        let input = r#"
-Title: The Awakening
-
-The sun rose over the mountains, casting long shadows across the valley.
-Elara stood at the edge of the cliff, her heart pounding in her chest.
-Below her, the ancient city lay in ruins, its secrets waiting to be uncovered.
-"#;
-        let result = prose_to_chapter(input);
-        assert!(result.is_some(), "should parse valid prose chapter");
-        let chapter = result.unwrap();
-        assert_eq!(chapter.title, "The Awakening", "chapter title");
-        assert!(chapter.content.contains("sun rose"), "content should have first line");
-        assert!(chapter.content.contains("secrets waiting"), "content should have last line");
-    }
-
-    #[test]
-    fn test_prose_to_chapter_with_hash_title() {
-        let input = "# The Awakening\n\nThe sun rose.";
-        let result = prose_to_chapter(input);
-        assert!(result.is_some(), "should parse # title");
-        assert_eq!(result.unwrap().title, "The Awakening");
-    }
-
-    #[test]
-    fn test_prose_to_chapter_with_double_hash_title() {
-        let input = "## The Awakening\n\nThe sun rose.";
-        let result = prose_to_chapter(input);
-        assert!(result.is_some(), "should parse ## title");
-        assert_eq!(result.unwrap().title, "The Awakening");
-    }
-
-    #[test]
-    fn test_prose_to_chapter_returns_none_for_no_title() {
-        let input = "Just some plain text without any title.";
-        let result = prose_to_chapter(input);
-        assert!(result.is_none(), "no title should yield none");
-    }
-
-    #[test]
-    fn test_prose_to_chapter_handles_empty_string() {
-        assert!(prose_to_chapter("").is_none());
-    }
-
-    #[test]
-    fn test_prose_to_outline_parses_title_genre_tone_and_chapters() {
-        let input = r#"
-### Title: The Crystal Cave
-### Genre: Fantasy
-### Tone: Mysterious
-
-### Chapter 1: The Discovery
-Elara finds a hidden cave beneath the old oak tree.
-The cave glows with an ethereal light.
-
-### Chapter 2: The Guardian
-A crystal serpent guards the heart of the cave.
-Elara must earn its trust.
-
-### Chapter 3: The Secret
-The cave holds the key to saving the kingdom.
-"#;
-        let result = prose_to_outline(input);
-        assert!(result.is_some(), "should parse valid prose outline");
-        let outline = result.unwrap();
-        assert_eq!(outline.title, "The Crystal Cave", "title");
-        assert_eq!(outline.genre, "Fantasy", "genre");
-        assert_eq!(outline.tone, "Mysterious", "tone");
-        assert_eq!(outline.chapters.len(), 3, "should find 3 chapters");
-        assert_eq!(outline.chapters[0].number, 1, "first chapter number");
-        assert_eq!(outline.chapters[0].title, "The Discovery", "first chapter title");
-        assert!(outline.chapters[0].summary.contains("hidden cave"), "first chapter summary");
-        assert_eq!(outline.chapters[1].title, "The Guardian", "second chapter title");
-        assert_eq!(outline.chapters[2].title, "The Secret", "third chapter title");
-    }
-
-    #[test]
-    fn test_prose_to_outline_returns_none_for_gibberish() {
-        let input = "asdfghjkl qwertyuiop";
-        let result = prose_to_outline(input);
-        assert!(result.is_none(), "gibberish should not parse as outline");
-    }
-
-    #[test]
-    fn test_prose_to_outline_handles_empty_string() {
-        assert!(prose_to_outline("").is_none());
-    }
-
-    #[test]
-    fn test_prose_to_outline_requires_title_and_chapters() {
-        // Missing chapters
-        let input = "### Title: Something\n### Genre: Sci-Fi\n### Tone: Dark";
-        assert!(prose_to_outline(input).is_none(), "no chapters should yield none");
-
-        // Missing title
-        let input2 = "### Genre: Sci-Fi\n### Tone: Dark\n### Chapter 1: Test\nsome text";
-        assert!(prose_to_outline(input2).is_none(), "no title should yield none");
-    }
-
-    #[test]
-    fn test_prose_to_outline_handles_chapters_without_titles() {
-        let input = r#"
-### Title: Test Story
-### Genre: Drama
-### Tone: Neutral
-
-### Chapter 1:
-Just some content without a title.
-
-### Chapter 2
-More content without a colon.
-"#;
-        let result = prose_to_outline(input);
-        assert!(result.is_some(), "should parse chapters even without titles");
-        let outline = result.unwrap();
-        assert_eq!(outline.chapters.len(), 2);
-        // Chapter without a colon after number gets empty title
-        assert_eq!(outline.chapters[1].title, "");
-    }
-
-    // ── prose_to_validation tests ────────────────────────────────────
-
-    #[test]
-    fn test_prose_to_validation_parses_pass() {
-        let input = "quality: pass\nissues: none\nsuggestion: none";
-        let result = prose_to_validation(input);
-        assert!(result.is_some(), "should parse validation prose");
-        let v = result.unwrap();
-        assert_eq!(v.quality, "pass");
-        assert_eq!(v.issues, "none");
-        assert_eq!(v.suggestion, "none");
-    }
-
-    #[test]
-    fn test_prose_to_validation_parses_fail_with_issues() {
-        let input = "Quality: fail\nIssues: Contains meta-commentary\nSuggestion: Remove thinking tags";
-        let result = prose_to_validation(input);
-        assert!(result.is_some(), "should parse fail validation");
-        let v = result.unwrap();
-        assert_eq!(v.quality, "fail");
-        assert_eq!(v.issues, "Contains meta-commentary");
-        assert_eq!(v.suggestion, "Remove thinking tags");
-    }
-
-    #[test]
-    fn test_prose_to_validation_returns_none_without_quality() {
-        let result = prose_to_validation("some random text without quality field");
-        assert!(result.is_none(), "should return None when quality is missing");
-    }
-
-    #[test]
-    fn test_prose_to_validation_returns_none_for_bad_quality() {
-        let result = prose_to_validation("quality: unknown\nissues: none\nsuggestion: none");
-        assert!(result.is_none(), "should return None for unrecognized quality value");
-    }
-
-    // ── prose_to_synopsis tests ──────────────────────────────────────
-
-    #[test]
-    fn test_prose_to_synopsis_with_summary_prefix() {
-        let input = "Summary: A lighthouse keeper finds a hidden message.";
-        let result = prose_to_synopsis(input);
-        assert!(result.is_some(), "should parse synopsis with Summary:");
-        let s = result.unwrap();
-        assert_eq!(s.summary, "A lighthouse keeper finds a hidden message.");
-    }
-
-    #[test]
-    fn test_prose_to_synopsis_with_synopsis_prefix() {
-        let input = "Synopsis: A robot learns to paint.";
-        let result = prose_to_synopsis(input);
-        assert!(result.is_some(), "should parse synopsis with Synopsis:");
-        let s = result.unwrap();
-        assert_eq!(s.summary, "A robot learns to paint.");
-    }
-
-    #[test]
-    fn test_prose_to_synopsis_without_prefix() {
-        let input = "A clockmaker builds a device that freezes time.";
-        let result = prose_to_synopsis(input);
-        assert!(result.is_some(), "should use full text as summary when no prefix");
-        let s = result.unwrap();
-        assert_eq!(s.summary, "A clockmaker builds a device that freezes time.");
-    }
-}
