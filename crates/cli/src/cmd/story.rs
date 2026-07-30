@@ -941,6 +941,68 @@ fn prose_to_chapter(text: &str) -> Option<StoryChapter> {
     Some(StoryChapter { title, content })
 }
 
+/// Try to parse a prose synopsis (model output) into a StorySynopsis.
+///
+/// The 2.9B model sometimes outputs prose like:
+///   Summary: A clockmaker builds a device that freezes time...
+/// or just a prose paragraph.
+fn prose_to_synopsis(text: &str) -> Option<StorySynopsis> {
+    let text = text.trim();
+
+    // Look for "Summary:" or "Synopsis:" prefix
+    let summary = text
+        .lines()
+        .find(|l| {
+            let t = l.trim().to_lowercase();
+            t.starts_with("summary:") || t.starts_with("synopsis:")
+        })
+        .and_then(|l| l.splitn(2, ':').nth(1))
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            // No prefix found — use the whole text as summary
+            Some(text.to_string())
+        });
+
+    summary.map(|s| StorySynopsis { summary: s })
+}
+
+/// Try to parse a prose validation (model output) into a StoryValidation.
+///
+/// The 2.9B model sometimes outputs prose like:
+///   quality: pass
+///   issues: none
+///   suggestion: none
+fn prose_to_validation(text: &str) -> Option<StoryValidation> {
+    let text = text.trim();
+
+    let quality = text
+        .lines()
+        .find(|l| l.trim().to_lowercase().starts_with("quality:"))
+        .and_then(|l| l.splitn(2, ':').nth(1))
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| s == "pass" || s == "fail" || s == "needs-work")?;
+
+    let issues = text
+        .lines()
+        .find(|l| l.trim().to_lowercase().starts_with("issues:"))
+        .and_then(|l| l.splitn(2, ':').nth(1))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    let suggestion = text
+        .lines()
+        .find(|l| l.trim().to_lowercase().starts_with("suggestion:"))
+        .and_then(|l| l.splitn(2, ':').nth(1))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    Some(StoryValidation {
+        quality,
+        issues,
+        suggestion,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn structured_complete_with_strategy<T>(
     backend: &dyn ModelBackend,
@@ -1609,7 +1671,7 @@ pub fn cmd_story(extra: &[&str]) {
                         200,
                         Some(SESSION_VALIDATOR),
                         seed,
-                        None,
+                        Some(&prose_to_validation),
                     )
                     .map(|v: StoryValidation| {
                         format!(
@@ -1673,7 +1735,7 @@ pub fn cmd_story(extra: &[&str]) {
                     400,
                     Some(SESSION_WRITER),
                     seed,
-                    None,
+                    Some(&prose_to_synopsis),
                 )
                 .map_err(|e| AgentError::Internal(format!("synopsis generation failed: {e}")))?;
 
@@ -2230,5 +2292,70 @@ More content without a colon.
         assert_eq!(outline.chapters.len(), 2);
         // Chapter without a colon after number gets empty title
         assert_eq!(outline.chapters[1].title, "");
+    }
+
+    // ── prose_to_validation tests ────────────────────────────────────
+
+    #[test]
+    fn test_prose_to_validation_parses_pass() {
+        let input = "quality: pass\nissues: none\nsuggestion: none";
+        let result = prose_to_validation(input);
+        assert!(result.is_some(), "should parse validation prose");
+        let v = result.unwrap();
+        assert_eq!(v.quality, "pass");
+        assert_eq!(v.issues, "none");
+        assert_eq!(v.suggestion, "none");
+    }
+
+    #[test]
+    fn test_prose_to_validation_parses_fail_with_issues() {
+        let input = "Quality: fail\nIssues: Contains meta-commentary\nSuggestion: Remove thinking tags";
+        let result = prose_to_validation(input);
+        assert!(result.is_some(), "should parse fail validation");
+        let v = result.unwrap();
+        assert_eq!(v.quality, "fail");
+        assert_eq!(v.issues, "Contains meta-commentary");
+        assert_eq!(v.suggestion, "Remove thinking tags");
+    }
+
+    #[test]
+    fn test_prose_to_validation_returns_none_without_quality() {
+        let result = prose_to_validation("some random text without quality field");
+        assert!(result.is_none(), "should return None when quality is missing");
+    }
+
+    #[test]
+    fn test_prose_to_validation_returns_none_for_bad_quality() {
+        let result = prose_to_validation("quality: unknown\nissues: none\nsuggestion: none");
+        assert!(result.is_none(), "should return None for unrecognized quality value");
+    }
+
+    // ── prose_to_synopsis tests ──────────────────────────────────────
+
+    #[test]
+    fn test_prose_to_synopsis_with_summary_prefix() {
+        let input = "Summary: A lighthouse keeper finds a hidden message.";
+        let result = prose_to_synopsis(input);
+        assert!(result.is_some(), "should parse synopsis with Summary:");
+        let s = result.unwrap();
+        assert_eq!(s.summary, "A lighthouse keeper finds a hidden message.");
+    }
+
+    #[test]
+    fn test_prose_to_synopsis_with_synopsis_prefix() {
+        let input = "Synopsis: A robot learns to paint.";
+        let result = prose_to_synopsis(input);
+        assert!(result.is_some(), "should parse synopsis with Synopsis:");
+        let s = result.unwrap();
+        assert_eq!(s.summary, "A robot learns to paint.");
+    }
+
+    #[test]
+    fn test_prose_to_synopsis_without_prefix() {
+        let input = "A clockmaker builds a device that freezes time.";
+        let result = prose_to_synopsis(input);
+        assert!(result.is_some(), "should use full text as summary when no prefix");
+        let s = result.unwrap();
+        assert_eq!(s.summary, "A clockmaker builds a device that freezes time.");
     }
 }

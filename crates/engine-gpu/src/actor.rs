@@ -1469,13 +1469,28 @@ impl RwkvActor {
                     let result = self.load_state_bytes(&bytes).await;
                     let _ = reply.send(result);
                 }
-                FeedEos(_state_name) => {
-                    // Reset to blank initial state. In the new design,
-                    // each generation loads its own state explicitly, so
-                    // no per-session EOS is needed.
+                FeedEos(state_name) => {
+                    // Load session state from pool (or blank), feed EOS
+                    // through model, and save back to pool. This prevents
+                    // repetition patterns from bleeding between chapters
+                    // while preserving the baked output format state.
+                    if let Some(ref sid) = state_name {
+                        if let Some(Some(saved)) = self.state_pool.get(sid) {
+                            let _ = self.state.load(saved.clone(), 0);
+                        }
+                    }
                     let _ = self
-                        .state
-                        .load(self.initial_state.clone(), 0);
+                        .runtime
+                        .infer(RnnInput::new(
+                            vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
+                            self.token_chunk_size,
+                        ))
+                        .await;
+                    if let Some(ref sid) = state_name {
+                        if let Ok(tensor) = self.state.back(0).await {
+                            self.state_pool.insert(sid.clone(), Some(tensor));
+                        }
+                    }
                 }
                 Bake { state_id, text, name, reply } => {
                     // Load cached state if specified

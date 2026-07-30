@@ -213,6 +213,19 @@ impl ModelBackend for RwkvBackend {
             let started = Instant::now();
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
+            // Map old session/preserve_state to new state_id/save_as.
+            //
+            // Old behavior: when `session` was set, the state was ALWAYS loaded
+            // from the pool AND saved back afterward (implicit persistence).
+            // `preserve_state` (without session) meant "keep current in-memory
+            // state across calls" — only used by `bake_state`, which now uses
+            // the explicit `Bake` message.
+            //
+            // New behavior: `state_id` loads a cached state, `save_as` saves
+            // the resulting state. Both are set when the old `session` was set.
+            let state_id = req.session.clone();
+            let save_as = req.session.clone();
+
             tx.send(
                 CompleteReq {
                     prompt: req.prompt,
@@ -224,18 +237,8 @@ impl ModelBackend for RwkvBackend {
                     bnf_mask: req.bnf_mask,
                     reply: reply_tx,
                     on_token: req.on_token,
-                    // Map old session/preserve_state to new state_id/save_as
-                    state_id: if req.session.is_some() && !req.preserve_state {
-                        req.session.clone()
-                    } else {
-                        None
-                    },
-                    save_as: if req.preserve_state {
-                        // Old callers expect state to be preserved under session name
-                        req.session.clone()
-                    } else {
-                        None
-                    },
+                    state_id,
+                    save_as,
                     deadline_ms: req.deadline_ms,
                     seed: req.seed.or_else(|| {
                         std::env::var("RWKV_DETERMINISTIC_SEED")

@@ -468,6 +468,13 @@ pub fn repair_truncated_json(s: &str) -> String {
 
 /// Strip markdown code fences and other common wrappers from model output.
 pub fn clean_json_output(text: &str) -> String {
+    // Strip ASCII control characters (U+0000–U+001F) except valid whitespace.
+    // The model sometimes emits NUL bytes or other control chars embedded in
+    // JSON strings, which cause serde_json to reject the output.
+    let text: String = text
+        .chars()
+        .filter(|&c| c == '\t' || c == '\n' || c == '\r' || c >= ' ')
+        .collect();
     let mut trimmed = text.trim();
 
     // Strip <think> ... </think> blocks (reasoning tokens)
@@ -1077,6 +1084,37 @@ space ::= " "?
             Simple {
                 name: "Ivan".into(),
                 age: 29
+            }
+        );
+    }
+
+    #[test]
+    fn state_tuned_strips_control_chars() {
+        // The model sometimes emits NUL bytes / other control chars in strings.
+        // clean_json_output should strip them before JSON parsing.
+        let strategy = StateTunedStrategy;
+        // \0 = NUL, \x01 = SOH (both control chars that serde_json rejects)
+        let text = "{\"name\":\"Hei\0di\",\"age\":31\x01}";
+        let result: Simple = strategy.parse(text).unwrap();
+        assert_eq!(
+            result,
+            Simple {
+                name: "Heidi".into(),
+                age: 31
+            }
+        );
+    }
+
+    #[test]
+    fn state_tuned_strips_control_chars_in_fenced_json() {
+        let strategy = StateTunedStrategy;
+        let text = "```json\n{\"name\":\"Bob\0\",\"age\":25}\n```";
+        let result: Simple = strategy.parse(text).unwrap();
+        assert_eq!(
+            result,
+            Simple {
+                name: "Bob".into(),
+                age: 25
             }
         );
     }
