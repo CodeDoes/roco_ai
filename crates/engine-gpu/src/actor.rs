@@ -331,7 +331,7 @@ impl AnyState {
 // ---------------------------------------------------------------------------
 
 pub struct CompleteReq {
-    pub system: String,
+    /// Raw text — inferd does NOT add System/User/Assistant formatting.
     pub prompt: String,
     pub prefill: Option<String>,
     pub max_tokens: usize,
@@ -343,20 +343,18 @@ pub struct CompleteReq {
     pub bnf_mask: Option<Box<dyn BnfMask>>,
     pub reply:
         oneshot::Sender<Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError>>,
-    pub preserve_state: bool,
     pub on_token: roco_engine::OnToken,
-    pub session: Option<String>,
+    /// Load a named state from the cache before processing.
+    pub state_id: Option<String>,
+    /// Save the resulting state under this name after processing.
+    pub save_as: Option<String>,
     /// Wall-clock deadline for the entire completion in milliseconds.
     /// 0 = no deadline.
     pub deadline_ms: u64,
     /// Deterministic seed for reproducible sampling.
-    /// When `Some(seed)`, the RNG is seeded deterministically.
-    /// When `None`, uses non-deterministic `fastrand` (default).
     pub seed: Option<u64>,
     /// Record per-token sampling metadata for trace logging.
     pub record_trace: bool,
-    /// Enable <think> reasoning tokens. When false, model skips thinking.
-    pub thinking: bool,
 }
 
 pub struct BlendReq {
@@ -373,11 +371,19 @@ pub enum ActorMessage {
     Cancel,
     #[cfg(feature = "grammar")]
     GetVocabBytes(oneshot::Sender<Vec<Vec<u8>>>),
-    /// Serialize the current recurrent state (incl. the per-head min-decay
-    /// channels) to bytes for downstream introspection / monitoring.
+    /// Serialize the current recurrent state to bytes.
     SaveState(oneshot::Sender<Result<Vec<u8>, EngineError>>),
     /// Restore a recurrent state previously produced by `SaveState`.
     LoadState(Vec<u8>, oneshot::Sender<Result<(), EngineError>>),
+    /// Baked state: feed text through model, save resulting state.
+    /// Loads `state_id` first if provided, then processes `text`,
+    /// then saves result as `name`.
+    Bake {
+        state_id: Option<String>,
+        text: String,
+        name: String,
+        reply: oneshot::Sender<Result<(), EngineError>>,
+    },
     /// Feed token 0 (EOS) to update recurrent state without generating.
     FeedEos(Option<String>),
 }
@@ -921,51 +927,39 @@ impl RwkvActor {
         // until `handle_complete` returns).
         rx: &mut mpsc::Receiver<ActorMessage>,
     ) {
-        // Destructure request fields for backward-compatible access.
-        // `reply` is held outside the fallible body so every path (Ok / Err /
-        // cancel) delivers exactly one response on the oneshot.
         let CompleteReq {
-            system,
             prompt,
             prefill,
             max_tokens,
             temperature,
             top_a,
-            preserve_state,
             on_token,
             grammar: _grammar,
-            session,
             mut bnf_mask,
             seed,
             record_trace,
-            thinking,
+            state_id,
+            save_as,
             reply,
             ..
         } = req;
 
-        // Create a seeded RNG for deterministic sampling when a seed is provided.
-        // Stored as `Option<StdRng>`; we borrow via `.as_mut()` at each call site
-        // to avoid move issues inside the async block.
         let mut seeded_rng: Option<StdRng> = seed.map(StdRng::seed_from_u64);
 
         let span = tracing::info_span!(
             "handle_complete",
-            system_len = system.len(),
             prompt_len = prompt.len(),
             max_tokens = max_tokens,
             temperature = temperature,
             seed = seed,
-            session = session.as_deref().unwrap_or("none")
+            state_id = state_id.as_deref().unwrap_or("none")
         );
         let _guard = span.enter();
 
         let outcome: Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError> =
             async {
-                let session_id = session.as_ref().cloned();
-                let is_fim_session = session_id.as_deref() == Some(FIM_SESSION_NAME);
-
-                // Load session state or reset
-                if let Some(ref sid) = session_id {
+                // Load cached state if specified.
+                if let Some(ref sid) = state_id {
                     if let Some(pos) = self.session_lru.iter().position(|s| s == sid) {
                         self.session_lru.remove(pos);
                     }
@@ -973,9 +967,9 @@ impl RwkvActor {
                     match self.state_pool.get(sid) {
                         Some(Some(saved)) => {
                             self.state.load(saved.clone(), 0).map_err(|e| {
-                                EngineError::Backend(format!("session load failed: {e}"))
+                                EngineError::Backend(format!("state load failed: {e}"))
                             })?;
-                            info!(session = sid, "loaded session state");
+                            info!(state = sid, "loaded cached state");
                         }
                         _ => {
                             self.state
@@ -983,54 +977,25 @@ impl RwkvActor {
                                 .map_err(|e| {
                                     EngineError::Backend(format!("state reset failed: {e}"))
                                 })?;
-                            info!(session = sid, "new session (blank state)");
+                            info!(state = sid, "cache miss — starting from blank");
                         }
                     }
-                } else if !preserve_state {
+                } else {
+                    // No state specified: start from blank
                     self.state
                         .load(self.initial_state.clone(), 0)
                         .map_err(|e| EngineError::Backend(format!("state reset failed: {e}")))?;
                 }
 
                 // Grammar constraint — passed in as opaque Box<dyn BnfMask>.
-                // Cannot be created here — kbnf types would overflow the compiler
-                // (E0275 against web-rwkv's TokioRuntime). The application layer
-                // builds the BnfMask from grammar + vocab_bytes and passes it in.
 
-                // Build prompt.
-                //
-                // When resuming a baked session (session_id.is_some()) the system
-                // prompt and few-shot context are already encoded in the recurrent
-                // state — re-prepending `System:` would double-feed it and make the
-                // model echo the scaffolding. So resumed calls feed only the
-                // incremental context. The bake call itself (preserve_state) also
-                // skips the System wrapper for the same reason.
-                let use_system = !system.is_empty() && session_id.is_none() && !preserve_state;
-                let full = if use_system {
-                    format!("System: {}\n\nUser: {prompt}\n\nAssistant:", system.trim())
-                } else {
-                    format!("User: {prompt}\n\nAssistant:")
-                };
+                // inferd does NOT add any System/User/Assistant formatting.
+                // The prompt text is used as-is — all formatting is the
+                // caller's responsibility.
+                let full = &prompt;
 
-                // Build prefill tokens.
-                //
-                // When thinking is false, prepend `` to suppress
-                // the model's natural tendency to open a think block.
-                // This closes a think block the model never opened,
-                // forcing it straight to output tokens.
-                //
-                // When a prefill is provided (e.g. {\n for JSON output),
-                // we append it after the think suppression.
-                let effective_prefill = if !thinking {
-                    let think_suppress = "</think>";
-                    match prefill {
-                        Some(pf) => Some(format!("{think_suppress}{pf}")),
-                        None => Some(think_suppress.to_string()),
-                    }
-                } else {
-                    prefill
-                };
-                let prefill_tokens = if let Some(pf) = effective_prefill {
+                // Build prefill tokens — no think suppression, caller controls content.
+                let prefill_tokens = if let Some(pf) = prefill {
                     Some(
                         self.tokenizer
                             .encode(pf.as_bytes())
@@ -1241,16 +1206,17 @@ impl RwkvActor {
                 }
 
                 if !first_token_sampled {
-                    // Save session state even when no tokens were generated
-                    // (e.g. max_tokens=0 bake calls that process prompt+prefill
-                    // through inference but don't sample anything).
-                    if let Some(ref sid) = session_id {
+                    // Save state under caller-specified name (e.g. for baking:
+                    // process prompt+prefill tokens with max_tokens=0, then
+                    // save the resulting state for later use).
+                    if let Some(ref sid) = save_as {
                         match self.state.back(0).await {
                             Ok(saved_state) => {
                                 self.state_pool.insert(sid.clone(), Some(saved_state));
+                                info!(state = sid, "saved baked state");
                             }
                             Err(e) => {
-                                warn!(session = sid, error = %e, "failed to save state (silent)")
+                                warn!(state = sid, error = %e, "failed to save state (silent)")
                             }
                         }
                     }
@@ -1391,7 +1357,7 @@ impl RwkvActor {
                     // FIM session handling: after generating a reasonable INSERT,
                     // force-feed token 0 (end-of-sequence) to properly terminate
                     // the recurrent state, then break.
-                    if is_fim_session {
+                    if state_id.as_deref() == Some(FIM_SESSION_NAME) {
                         fim_tokens_generated += 1;
                         // Allow at least 8 tokens for the INSERT, max 64 before forcing end
                         if fim_tokens_generated >= 8 {
@@ -1433,23 +1399,21 @@ impl RwkvActor {
                     String::from_utf8_lossy(&decoded).to_string()
                 };
 
-                // Save session state
-                if let Some(ref sid) = session_id {
+                // Save state under caller-specified name
+                if let Some(ref sid) = save_as {
                     match self.state.back(0).await {
                         Ok(saved_state) => {
                             self.state_pool.insert(sid.clone(), Some(saved_state));
-                            info!(
-                                session = sid,
-                                tokens = generated.len(),
-                                "saved session state"
-                            );
+                            info!(state = sid, tokens = generated.len(), "saved state");
                         }
-                        Err(e) => warn!(session = sid, error = %e, "failed to save session state"),
+                        Err(e) => warn!(state = sid, error = %e, "failed to save state"),
                     }
                     while self.state_pool.len() > self.max_sessions {
                         if let Some(oldest) = self.session_lru.pop_front() {
-                            self.state_pool.remove(&oldest);
-                            info!(session = oldest, "evicted session (LRU)");
+                            if self.state_pool.contains_key(&oldest) {
+                                self.state_pool.remove(&oldest);
+                                info!(state = oldest, "evicted (LRU)");
+                            }
                         } else {
                             break;
                         }
@@ -1505,26 +1469,47 @@ impl RwkvActor {
                     let result = self.load_state_bytes(&bytes).await;
                     let _ = reply.send(result);
                 }
-                FeedEos(session) => {
-                    let session_id = session.as_deref();
-                    // Load session state or use current
-                    if let Some(sid) = session_id {
+                FeedEos(_state_name) => {
+                    // Reset to blank initial state. In the new design,
+                    // each generation loads its own state explicitly, so
+                    // no per-session EOS is needed.
+                    let _ = self
+                        .state
+                        .load(self.initial_state.clone(), 0);
+                }
+                Bake { state_id, text, name, reply } => {
+                    // Load cached state if specified
+                    if let Some(ref sid) = state_id {
                         if let Some(Some(saved)) = self.state_pool.get(sid) {
                             let _ = self.state.load(saved.clone(), 0);
+                        } else {
+                            let _ = self.state.load(self.initial_state.clone(), 0);
                         }
+                    } else {
+                        let _ = self.state.load(self.initial_state.clone(), 0);
                     }
-                    // Feed token 0 (EOS) to update recurrent state
-                    let _ = self
-                        .runtime
-                        .infer(RnnInput::new(
-                            vec![RnnInputBatch::new(vec![0u32], RnnOption::Last)],
-                            self.token_chunk_size,
-                        ))
-                        .await;
-                    // Save updated state back to pool
-                    if let Some(sid) = session_id {
-                        if let Ok(tensor) = self.state.back(0).await {
-                            self.state_pool.insert(sid.to_string(), Some(tensor));
+                    // Tokenize and feed text through model
+                    let tokens = self.tokenizer
+                        .encode(text.as_bytes())
+                        .map_err(|e| EngineError::Backend(format!("bake tokenize: {e}")));
+                    match tokens {
+                        Ok(tokens) => {
+                            let _ = self
+                                .runtime
+                                .infer(RnnInput::new(
+                                    vec![RnnInputBatch::new(tokens, RnnOption::Last)],
+                                    self.token_chunk_size,
+                                ))
+                                .await;
+                            // Save resulting state
+                            if let Ok(tensor) = self.state.back(0).await {
+                                self.state_pool.insert(name.clone(), Some(tensor));
+                                info!(state = name, "bake complete");
+                            }
+                            let _ = reply.send(Ok(()));
+                        }
+                        Err(e) => {
+                            let _ = reply.send(Err(e));
                         }
                     }
                 }

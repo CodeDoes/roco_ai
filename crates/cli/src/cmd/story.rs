@@ -961,9 +961,16 @@ where
     let mut last_err = String::new();
 
     for _attempt in 0..3 {
+        // Format system + prompt into raw text. inferd does NOT add
+        // System/User/Assistant formatting — the gateway owns this.
+        let prompt_text = if system.is_empty() {
+            prompt.to_string()
+        } else {
+            format!("System: {}\n\nUser: {}\n\nAssistant:", system.trim(), prompt)
+        };
         let text_res = futures::executor::block_on(backend.complete(CompletionRequest {
-            system: system.to_string(),
-            prompt: prompt.to_string(),
+            system: String::new(),  // deprecated: actor ignores this
+            prompt: prompt_text,
             grammar: if use_grammar {
                 Some(grammar.clone())
             } else {
@@ -971,7 +978,7 @@ where
             },
             temperature,
             max_tokens,
-            thinking: false,  // Disable thinking for structured output — wastes tokens
+            thinking: false,
             prefill: if use_grammar {
                 Some("{\n".into())
             } else {

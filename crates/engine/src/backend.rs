@@ -363,22 +363,22 @@ impl ModelBackend for MockBackend {
                 .as_ref()
                 .and_then(|g| mock_random_walk_bnf(g, req.max_tokens, req.seed));
 
-            let system_lower = req.system.to_lowercase();
+            let prompt_lower = req.prompt.to_lowercase();
             let mut matched_text = bnf_walk_text;
 
             if matched_text.is_none() {
-                if system_lower.contains("outliner") {
+                if prompt_lower.contains("outliner") {
                     matched_text = Some(r#"{"title": "The Time Freeze", "genre": "Sci-Fi", "tone": "Suspenseful", "chapters": [{"number": 1, "title": "The Device", "summary": "A clockmaker finds a device"}, {"number": 2, "title": "The Freeze", "summary": "He freezes time"}, {"number": 3, "title": "The Cost", "summary": "Time freezes permanently"}]}"#.to_string());
-                } else if system_lower.contains("worldbuilding") {
+                } else if prompt_lower.contains("worldbuilding") || prompt_lower.contains("character") {
                     matched_text = Some(r#"{"characters": [{"name": "Alistair", "description": "The clockmaker"}], "setting": "A dusty Victorian workshop"}"#.to_string());
-                } else if system_lower.contains("writer") {
+                } else if prompt_lower.contains("writer") || prompt_lower.contains("fiction writer") {
                     matched_text = Some(r#"{"title": "The Time Freeze", "content": "Alistair adjusted the gears. The ticking stopped. The world froze."}"#.to_string());
-                } else if system_lower.contains("reviewer") {
+                } else if prompt_lower.contains("reviewer") || prompt_lower.contains("quality reviewer") {
                     matched_text = Some(
                         r#"{"quality": "pass", "issues": "none", "suggestion": "none"}"#
                             .to_string(),
                     );
-                } else if system_lower.contains("summarizer") {
+                } else if prompt_lower.contains("summarizer") || prompt_lower.contains("literary summarizer") {
                     matched_text = Some(r#"{"summary": "A clockmaker builds a device that freezes time, only to discover it has a terrible cost."}"#.to_string());
                 }
             }

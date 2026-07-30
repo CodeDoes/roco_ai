@@ -215,7 +215,6 @@ impl ModelBackend for RwkvBackend {
 
             tx.send(
                 CompleteReq {
-                    system: req.system,
                     prompt: req.prompt,
                     prefill: req.prefill,
                     max_tokens: req.max_tokens,
@@ -224,18 +223,26 @@ impl ModelBackend for RwkvBackend {
                     grammar: req.grammar,
                     bnf_mask: req.bnf_mask,
                     reply: reply_tx,
-                    preserve_state: req.preserve_state,
                     on_token: req.on_token,
-                    session: req.session,
+                    // Map old session/preserve_state to new state_id/save_as
+                    state_id: if req.session.is_some() && !req.preserve_state {
+                        req.session.clone()
+                    } else {
+                        None
+                    },
+                    save_as: if req.preserve_state {
+                        // Old callers expect state to be preserved under session name
+                        req.session.clone()
+                    } else {
+                        None
+                    },
                     deadline_ms: req.deadline_ms,
-                    // Resolve seed: per-request > env var > None (non-deterministic)
                     seed: req.seed.or_else(|| {
                         std::env::var("RWKV_DETERMINISTIC_SEED")
                             .ok()
                             .and_then(|s| s.parse::<u64>().ok())
                     }),
                     record_trace: req.record_trace,
-                    thinking: req.thinking,
                 }
                 .into(),
             )
@@ -368,33 +375,31 @@ impl StateTuning for RwkvBackend {
             .map(|(u, a)| (u.to_string(), a.to_string()))
             .collect::<Vec<_>>();
         Box::pin(async move {
-            // Reset session before baking so previous state doesn't bleed in
-            tx.send(ActorMessage::FeedEos(Some(session_id.clone())))
-                .await
-                .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
+            // Reset to blank before baking
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+            tx.send(ActorMessage::Bake {
+                state_id: None,
+                text: String::new(),
+                name: String::new(),
+                reply: reply_tx,
+            }).await.ok();
+            let _ = reply_rx.await;
 
-            for (i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
+            for (_i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                // Format the example the same way the gateway will format
+                // real prompts: System: ...\n\nUser: ...\n\nAssistant:{response}
+                let sys_text = if _system.is_empty() { String::new() } else {
+                    format!("System: {}\n\n", _system.trim())
+                };
+                let text = format!("{}User: {}\n\nAssistant:{}", sys_text, user_msg, assistant_msg);
                 tx.send(
-                    CompleteReq {
-                        system: String::new(),
-                        prompt: user_msg.clone(),
-                        prefill: Some(assistant_msg.clone()),
-                        max_tokens: 0, // process prompt+prefill only, no generation
-                        temperature: 0.0,
-                        top_a: None,
-                        grammar: None,
-                        bnf_mask: None,
+                    ActorMessage::Bake {
+                        state_id: Some(session_id.clone()),
+                        text,
+                        name: session_id.clone(),
                         reply: reply_tx,
-                        preserve_state: true,
-                        on_token: None,
-                        session: Some(session_id.clone()),
-                        deadline_ms: 60000,
-                        seed: None,
-                        record_trace: false,
-                        thinking: false, // no thinking during state baking
                     }
-                    .into(),
                 )
                 .await
                 .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
@@ -403,15 +408,6 @@ impl StateTuning for RwkvBackend {
                     .await
                     .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
                     .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
-
-                // Feed EOS (token 0) between examples to create clean
-                // boundaries in the recurrent state, matching the model's
-                // training distribution where token 0 separates examples.
-                if i + 1 < few_shots.len() {
-                    tx.send(ActorMessage::FeedEos(Some(session_id.clone())))
-                        .await
-                        .map_err(|e| EngineError::Backend(format!("rwkv feed_eos send: {e}")))?;
-                }
             }
 
             Ok(session_id)

@@ -1,55 +1,50 @@
-# Current Focus: Chapter Content Quality
+# Refactoring: Stripping Format Logic from inferd
 
-## Status After Full E2E Sweep (2026-07-30, 3rd run)
+## Change Made
 
-### ✅ Fixed Bugs
+**inferd now only receives raw text.** The `RwkvActor` no longer adds
+`System:/User:/Assistant:` wrappers, `<think>` suppression, or implicit
+session-based state management. All formatting is the caller's (gateway)
+responsibility.
 
-| Bug | Fix | Result |
-|---|---|---|
-| `feed_eos` was a silent no-op | Added `feed_eos` to `RemoteBackend` (HTTP POST to `/sessions/{id}/eos`) + fixed `TokioBackend` to delegate to inner | Chapters are no longer byte-identical |
-| Full previous chapter text in prompts | Changed to brief summary reference | Prompt sizes stay small (~571 vs 13963); no more anchoring on previous chapter opening |
+### Files Changed
 
-### ✅ What Works Now
-- All 3 chapters have **unique content** (different MD5 hashes)
-- Prompt sizes stay reasonable (482 → 571 → 571 tokens)
-- Pipeline completes in ~4 min (vs ~8 min before)
-- 8 files produced, story published
-- 1002 tests pass, 0 warnings
+| File | Change |
+|---|---|
+| `crates/engine-gpu/src/actor.rs` | `CompleteReq`: replaced `system`/`preserve_state`/`session`/`thinking` with `state_id`/`save_as`. Added `Bake` message. `handle_complete`: removed all formatting — uses `prompt` as raw text. |
+| `crates/engine-gpu/src/backend.rs` | `RwkvBackend`: maps old `session`/`preserve_state` to new `state_id`/`save_as`. `tune_state`: uses `Bake` message with formatted `System:\n\nUser:\n\nAssistant:` text. |
+| `crates/engine/src/backend.rs` | MockBackend: routes on `prompt` keywords instead of `system` keywords. |
+| `crates/cli/src/cmd/story.rs` | `structured_complete_with_strategy`: formats `system`+`prompt` into raw text before sending. |
 
-### ❌ Remaining Issues (Model Capability, not Code)
-- Chapters **don't follow the outline** — model generates its own stories
-- Chapters **don't connect** — each is a different unrelated scene
-- Story **doesn't match the premise** — "A robot learns to paint" → unrelated sci-fi
-- **Validation false-positive** — passes chapters that don't match the outline
+### What Changed Semantically
 
-### Root Cause
-The 2.9B model is too small to follow complex narrative instructions. It generates prose from its training data patterns, ignoring the detailed outline provided.
+**Before:** actor did:
+```
+if use_system { "System: {sys}\n\nUser: {prompt}\n\nAssistant:" }
+else { "User: {prompt}\n\nAssistant:" }
+```
+And `bake_state` used `CompleteReq` with `preserve_state=true, max_tokens=0`,
+but with `system=""` — so examples were formatted as `"User: ...\n\nAssistant:..."`,
+DIFFERENT from the real generation format.
 
-### What Would Help
-- **Better prompts**: shorter, more directive, with stronger JSON enforcement
-- **Lower temperature** (0.3-0.5) for more deterministic output
-- **BNF grammar enforcement** currently blocked by mock backend compatibility (see below)
-- **Larger model** would follow instructions better
+**After:** actor just uses `prompt` as-is. Gateway formats:
+```
+"System: {sys}\n\nUser: {prompt}\n\nAssistant:"
+```
+Bake uses same format via `Bake` message. Same format = same state conditioning.
 
-### BNF Grammar Blocker
-`StateTunedStrategy` returns empty grammar (no BNF). `SchemaStrategy` generates proper GBNF but breaks mock backend tests because `mock_random_walk_bnf` produces garbage with the limited mock vocabulary. Fixing this requires either:
-- Making the mock backend's BNF walk produce valid JSON for real schemas (complex)
-- Or adding grammar support to `StateTunedStrategy` only when the backend is not mock (no clean detection)
+### Bake State Flow (Backward Compat)
 
-## UX/DX Issues Documented from E2E
+The old `bake_state()` → `tune_state()` path still works. It now sends
+`ActorMessage::Bake` with the formatted text `"System: ...\n\nUser: ...\n\nAssistant:{response}"`.
+Examples are accumulated into a single named state via repeated `Bake` calls.
 
-1. **Silent 4-min model build** — No progress bar during V7 GPU kernel compilation
-2. **No streaming output** — User sees nothing during 85s generation
-3. **Gateway auto-start uses `cargo run`** — Compiles from source in dev mode
-4. **Validation false-positive** — Passes chapters with unrelated content
-5. **No `--mock` flag in help** — Added to code but not in CLI help text
-6. **Outline/worldbuilding retries invisible** — User sees "✓ Complete" but doesn't know if retries happened
-7. **No GPU pre-flight check** — Model loading fails silently only when user tries to generate
-8. **Chapters don't follow outline** — Model limitation, but no warning is shown to user
+### Next Steps
 
-## Next Actions
-- [x] Fix `feed_eos` being a no-op
-- [x] Fix prompt not including full previous chapter text
-- [ ] Consider: Add BNF grammar to `StateTunedStrategy` (blocked by mock backend)
-- [ ] Consider: Lower default temperature to 0.5 for more consistent output
-- [ ] Consider: Better prompts that enforce outline adherence
+- [x] Remove formatting logic from actor
+- [x] Add `Bake` message to actor
+- [x] Update RwkvBackend to map old→new fields
+- [x] Update mock backend to use prompt text
+- [x] Update CLI to format prompts with system
+- [ ] Run E2E test with real model
+- [ ] Verify chapters follow outline (or diagnose model limitation)
