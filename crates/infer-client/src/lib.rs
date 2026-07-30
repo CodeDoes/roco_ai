@@ -173,6 +173,35 @@ impl ModelBackend for RemoteBackend {
         let extra_headers = self.extra_headers.clone();
         Box::pin(async move { remote_complete(&client, &base_url, &extra_headers, req).await })
     }
+
+    fn feed_eos(
+        &self,
+        session: Option<String>,
+    ) -> BoxFuture<'_, Result<(), EngineError>> {
+        let base_url = self.base_url.clone();
+        let client = self.client.clone();
+        let extra_headers = self.extra_headers.clone();
+        Box::pin(async move {
+            let session_id = match session {
+                Some(id) => id,
+                None => return Ok(()),  // no session, nothing to reset
+            };
+            let url = format!("{}/sessions/{}/eos", base_url, session_id);
+            let mut req = client.post(&url);
+            for (k, v) in &extra_headers {
+                req = req.header(k, v);
+            }
+            match req.send().await {
+                Ok(resp) if resp.status().is_success() => Ok(()),
+                Ok(resp) => Err(EngineError::Backend(format!(
+                    "feed_eos failed: HTTP {}", resp.status()
+                ))),
+                Err(e) => Err(EngineError::Backend(format!(
+                    "feed_eos request failed: {e}"
+                ))),
+            }
+        })
+    }
 }
 
 impl StateTuning for RemoteBackend {

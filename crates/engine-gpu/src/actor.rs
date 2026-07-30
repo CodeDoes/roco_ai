@@ -355,6 +355,8 @@ pub struct CompleteReq {
     pub seed: Option<u64>,
     /// Record per-token sampling metadata for trace logging.
     pub record_trace: bool,
+    /// Enable <think> reasoning tokens. When false, model skips thinking.
+    pub thinking: bool,
 }
 
 pub struct BlendReq {
@@ -936,6 +938,7 @@ impl RwkvActor {
             mut bnf_mask,
             seed,
             record_trace,
+            thinking,
             reply,
             ..
         } = req;
@@ -1009,8 +1012,25 @@ impl RwkvActor {
                     format!("User: {prompt}\n\nAssistant:")
                 };
 
-                // Pre-fill if provided (for pre-think blocks, etc.)
-                let prefill_tokens = if let Some(pf) = prefill {
+                // Build prefill tokens.
+                //
+                // When thinking is false, prepend `` to suppress
+                // the model's natural tendency to open a think block.
+                // This closes a think block the model never opened,
+                // forcing it straight to output tokens.
+                //
+                // When a prefill is provided (e.g. {\n for JSON output),
+                // we append it after the think suppression.
+                let effective_prefill = if !thinking {
+                    let think_suppress = "</think>";
+                    match prefill {
+                        Some(pf) => Some(format!("{think_suppress}{pf}")),
+                        None => Some(think_suppress.to_string()),
+                    }
+                } else {
+                    prefill
+                };
+                let prefill_tokens = if let Some(pf) = effective_prefill {
                     Some(
                         self.tokenizer
                             .encode(pf.as_bytes())

@@ -171,10 +171,22 @@ fn help_stop() {
 fn help_story() {
     eprintln!("roco story — Structured short story pipeline\n");
     eprintln!("Usage:");
-    eprintln!("  roco story <premise>                    Generate a story from a premise");
-    eprintln!("  roco story <premise> --strategy <s>     Strategy: meticulous|collaborative|fast");
-    eprintln!("  roco story <premise> --max-tokens <n>   Max tokens per chapter");
-    eprintln!("  roco story --seed <n>                   Set deterministic seed for sampling\n");
+    eprintln!("  roco story <premise>                      Generate a story from a premise");
+    eprintln!("  roco story <premise> --resume             Resume from last completed phase");
+    eprintln!("  roco story <premise> --phase <name>       Run only one phase (outline|wiki|chapters|validation|synopsis)");
+    eprintln!("  roco story <premise> --fix chapter <n>    Regenerate a single chapter");
+    eprintln!("  roco story <premise> --workspace <path>   Use existing workspace directory");
+    eprintln!("  roco story <premise> --strategy <s>       Strategy: meticulous|collaborative|fast|state-tuned");
+    eprintln!("  roco story <premise> --max-tokens <n>     Max tokens per phase (default 800, chapters min 1500)");
+    eprintln!("  roco story <premise> --temperature <f>    Sampling temperature (default 0.7)");
+    eprintln!("  roco story <premise> --seed <n>           Deterministic seed for sampling\n");
+    eprintln!("Phases (in order): outline → wiki → chapters → validation → synopsis → publish\n");
+    eprintln!("The pipeline resumes automatically if the workspace already has completed phases.");
+    eprintln!("Examples:");
+    eprintln!("  roco story \"A lighthouse keeper finds a message in the fog\"");
+    eprintln!("  roco story --resume");
+    eprintln!("  roco story --phase synopsis                           # re-run only synopsis");
+    eprintln!("  roco story \"A detective in a cyberpunk city\" --fix chapter 3\n");
     std::process::exit(0);
 }
 

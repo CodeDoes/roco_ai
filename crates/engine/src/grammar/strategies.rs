@@ -455,21 +455,7 @@ pub fn repair_truncated_json(s: &str) -> String {
 
     // Close unclosed objects/arrays
     while depth > 0 {
-        // Determine what to close based on what was opened
-        let mut open_depth = 0;
-        for c in result.chars() {
-            match c {
-                '{' | '[' => open_depth += 1,
-                '}' | ']' => open_depth -= 1,
-                _ => {}
-            }
-        }
-        if open_depth <= 0 {
-            break;
-        }
-        // Try to find the matching opening brace for closing
-        let last_open = result.rfind(['{', '[']);
-        let closing = match last_open {
+        let closing = match result.rfind(['{', '[']) {
             Some(pos) if result.as_bytes()[pos] == b'{' => '}',
             _ => ']',
         };
@@ -489,7 +475,7 @@ pub fn clean_json_output(text: &str) -> String {
     loop {
         if let Some(end) = trimmed.find("</think>") {
             let before = &trimmed[..end];
-            if let Some(start) = before.rfind("<think>") {
+            if let Some(_start) = before.rfind("<think>") {
                 trimmed = &trimmed[end + "</think>".len()..];
                 continue;
             }
@@ -501,6 +487,38 @@ pub fn clean_json_output(text: &str) -> String {
         if trimmed[..close].contains("<think") {
             trimmed = trimmed[close + 1..].trim_start();
         }
+    }
+
+    // Strip <tool_use_code>...</tool_use_output> wrapper tags.
+    // Some models (e.g. RWKV fine-tuned) wrap structured output in these tags.
+    if let Some(start_tag_end) = trimmed.find(">") {
+        let tag = &trimmed[..start_tag_end + 1];
+        if tag.contains("<tool_use_code") {
+            trimmed = &trimmed[start_tag_end + 1..].trim_start();
+        }
+    }
+    // Strip closing </tool_use_output> or </tool_use_code> tag
+    if let Some(pos) = trimmed.rfind("</tool_use") {
+        trimmed = &trimmed[..pos].trim_end();
+    }
+
+    // Heuristic: model outputs **Title:** ... **Content:** ... instead of JSON.
+    // Extract and wrap in JSON structure.
+    if let Some(content_start) = trimmed.find("**Content:**") {
+        let after_marker = &trimmed[content_start + "**Content:**".len()..];
+        let content = after_marker.trim_start();
+        // Find title (look backwards for **Title:**)
+        let title = if let Some(title_pos) = trimmed.find("**Title:**") {
+            let after_title = &trimmed[title_pos + "**Title:**".len()..];
+            let title_end = after_title.find('\n').unwrap_or(after_title.len());
+            after_title[..title_end].trim().to_string()
+        } else {
+            "Untitled Chapter".to_string()
+        };
+        // Build JSON with properly escaped content
+        let escaped_title = title.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_content = content.replace('\\', "\\\\").replace('"', "\\\"");
+        return format!("{{\"title\": \"{escaped_title}\", \"content\": \"{escaped_content}\"}}");
     }
 
     // Try to extract JSON from markdown code blocks (most common)
@@ -515,8 +533,17 @@ pub fn clean_json_output(text: &str) -> String {
 
         // Find closing fence
         if let Some(end) = content_start.rfind("```") {
-            let json = &content_start[..end];
-            return json.trim().to_string();
+            let json = content_start[..end].trim();
+            // Validate extracted JSON; if broken, fall through to direct extraction
+            if serde_json::from_str::<serde_json::Value>(json).is_ok() {
+                return json.to_string();
+            }
+            // Try repair before falling through
+            let repaired = repair_truncated_json(json);
+            if serde_json::from_str::<serde_json::Value>(&repaired).is_ok() {
+                return repaired;
+            }
+            // Fall through to direct extraction below
         }
         // No closing fence — use everything after opening
         let json = content_start.trim();
@@ -534,7 +561,25 @@ pub fn clean_json_output(text: &str) -> String {
             ']'
         };
         if let Some(end) = trimmed[start..].rfind(end_char) {
-            return trimmed[start..=start + end].to_string();
+            let candidate = trimmed[start..=start + end].to_string();
+            // If it parses, we're done
+            if serde_json::from_str::<serde_json::Value>(&candidate).is_ok() {
+                return candidate;
+            }
+            // Try progressively shorter suffixes (model sometimes adds extra braces)
+            let mut slice = &trimmed[start..=start + end];
+            while slice.len() > 1 {
+                if let Some(last) = slice.rfind(end_char) {
+                    let shorter = &slice[..last];
+                    if serde_json::from_str::<serde_json::Value>(shorter).is_ok() {
+                        return shorter.to_string();
+                    }
+                    slice = shorter;
+                } else {
+                    break;
+                }
+            }
+            return candidate;
         }
         // No matching close found — assume truncated and repair
         let partial = &trimmed[start..];

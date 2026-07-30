@@ -277,13 +277,50 @@ impl StoryOutline {
 #[derive(Debug, Deserialize)]
 struct StoryWiki {
     characters: Vec<StoryCharacter>,
+    #[serde(deserialize_with = "string_or_setting_object")]
     setting: String,
 }
 
+/// Accept either a plain string or an object with name/description fields.
+/// Model sometimes outputs `{"name": "...", "description": "..."}` instead of a string.
+fn string_or_setting_object<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+    struct Visitor;
+    impl<'de> de::Visitor<'de> for Visitor {
+        type Value = String;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a string or object with name/description")
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<String, A::Error> {
+            let mut name = String::new();
+            let mut description = String::new();
+            while let Some((key, value)) = map.next_entry::<String, String>()? {
+                match key.as_str() {
+                    "name" => name = value,
+                    "description" => description = value,
+                    _ => {}
+                }
+            }
+            Ok(format!("{name}: {description}"))
+        }
+    }
+    deserializer.deserialize_any(Visitor)
+}
+
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct StoryCharacter {
     name: String,
     description: String,
+    role: Option<String>,
+    #[serde(default, deserialize_with = "string_or_setting_object")]
+    setting: String,
 }
 
 impl StoryWiki {
@@ -404,9 +441,9 @@ const SYSTEM_WIKI: &str = "You are a worldbuilding assistant. Output valid JSON 
 No thinking, no reasoning, no commentary. Only JSON.";
 
 /// System prompt for chapter writing.
-const SYSTEM_CHAPTER: &str = "You are a fiction writer. Write vivid, engaging prose. \
-Output valid JSON only. NEVER include thinking, reasoning, \
-or meta-commentary in your output. Only the JSON object.";
+const SYSTEM_CHAPTER: &str = "You are a fiction writer. Output valid JSON only. \
+The JSON must have 'title' (string) and 'content' (string with the story prose). \
+No thinking, no reasoning, no commentary. Only the JSON object.";
 
 /// System prompt for validation/review.
 const SYSTEM_VALIDATOR: &str = "You are a quality reviewer. Be strict. Output valid JSON only. \
@@ -435,44 +472,87 @@ fn prompt_wiki(premise: &str, outline: &str) -> String {
     )
 }
 
+/// Read a file from a workspace, returning None if it doesn't exist.
+fn read_ws_file(ws: &roco_workspace::Workspace, name: &str) -> Option<String> {
+    let path = ws.root().join(name);
+    if path.exists() {
+        std::fs::read_to_string(&path).ok()
+    } else {
+        None
+    }
+}
+
+/// Detect which chapters exist in a workspace (returns sorted chapter numbers).
+fn detect_chapters(ws: &roco_workspace::Workspace) -> Vec<usize> {
+    let mut chapters = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(ws.root()) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("03-CHAPTER_") && name.ends_with(".md") {
+                if let Some(num_str) = name.strip_prefix("03-CHAPTER_").and_then(|s| s.strip_suffix(".md")) {
+                    if let Ok(num) = num_str.parse::<usize>() {
+                        chapters.push(num);
+                    }
+                }
+            }
+        }
+    }
+    chapters.sort();
+    chapters
+}
+
+/// Find the latest story workspace directory.
+fn find_latest_workspace() -> Option<roco_workspace::Workspace> {
+    let base = std::env::current_dir().ok()?.join(".roco/workspaces");
+    if !base.exists() {
+        return None;
+    }
+    let mut entries: Vec<_> = std::fs::read_dir(&base)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .collect();
+    entries.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+    entries.into_iter().next().map(|e| {
+        let name = e.file_name().to_string_lossy().to_string();
+        // Use absolute path so workspace resolve works correctly
+        let abs_path = e.path().canonicalize().unwrap_or_else(|_| e.path());
+        roco_workspace::Workspace::from_existing(abs_path, WorkspaceKind::Agent)
+            .unwrap()
+            .with_name(name)
+    })
+}
+
 /// Prompt template for chapter writing (first attempt).
+///
+/// The 2.9B model needs extremely explicit instructions.
+/// We show the exact JSON structure and say "output ONLY this".
 fn prompt_chapter(
     label: &str,
     title: &str,
     summary: &str,
     outline: &str,
-    previous: &str,
+    _previous: &str,
     is_first: bool,
 ) -> String {
-    if is_first {
-        format!(
-            "Write {label}: {title}. \
-             {summary}\n\n\
-             ~400 words of vivid prose.\n\n\
-             Rules:\n\
-             - Write actual story prose, NOT meta-commentary or planning.\n\
-             - Start directly with the narrative, introducing the main character and setting.\n\
-             - Use paragraph breaks (double newlines) between scenes.\n\
-             - Do NOT include thinking, reasoning, or commentary.\n\n\
-             Full story outline:\n{outline}\n\n\
-             Output JSON with: title (string), content (string, the chapter prose)"
-        )
+    let context = if is_first {
+        String::new()
     } else {
-        format!(
-            "Write {label}: {title}. \
-             {summary}\n\n\
-             ~400 words of vivid prose.\n\n\
-             Rules:\n\
-             - Write actual story prose, NOT meta-commentary or planning.\n\
-             - Start directly with the narrative from the scene described above.\n\
-             - Use paragraph breaks (double newlines) between scenes.\n\
-             - Advance the plot toward the story's conclusion.\n\
-             - Do NOT include thinking, reasoning, or commentary.\n\n\
-             Previous chapter recap:\n{previous}\n\n\
-             Full story outline:\n{outline}\n\n\
-             Output JSON with: title (string), content (string, the chapter prose)"
-        )
-    }
+        format!("\nThis is {label}: {title}. Continue the story from where the previous chapter ended.\n")
+    };
+    format!(
+        "Write a chapter for this story.\n\n\
+         Scene: {summary}\n\n\
+         Story outline:\n{outline}\n{context}\n\
+         Rules:\n\
+         - Write vivid prose, 300-500 words.\n\
+         - Start with action or dialogue, not planning.\n\
+         - Use paragraph breaks between scenes.\n\n\
+         Output ONLY a JSON object. No other text.\n\
+         The JSON must have exactly two keys: title and content.\n\n\
+         Example:\n\
+         {{\"title\": \"Chapter Title\", \"content\": \"The full story text here...\"}}"
+    )
 }
 
 /// Prompt template for chapter revision (retry with feedback).
@@ -494,7 +574,10 @@ fn prompt_revision(
          - Use paragraph breaks (double newlines) between scenes.\n\
          - Do NOT include thinking, reasoning, or commentary.\n\n\
          Full story outline:\n{outline}\n\n\
-         Output JSON with: title (string), content (string, the chapter prose)"
+         Output ONLY a JSON object. No other text.\n\
+         The JSON must have exactly two keys: title and content.\n\n\
+         Example:\n\
+         {{\"title\": \"Chapter Title\", \"content\": \"The full story text here...\"}}"
     )
 }
 
@@ -514,9 +597,9 @@ fn prompt_validation(chapter_text: &str) -> String {
 /// Prompt template for synopsis.
 fn prompt_synopsis(chapters: &str) -> String {
     format!(
-        "Write a one-paragraph synopsis of the complete story based on these chapters:\n\n\
-         {chapters}\n\n\
-         Output JSON matching the schema: summary (string, one paragraph, ~100 words)"
+        "Based on these chapter texts, write a one-paragraph synopsis (~100 words):\n\n\
+{chapters}\n\n\
+Output a JSON object with exactly one key: 'summary' (string)."
     )
 }
 
@@ -654,6 +737,210 @@ fn repair_json(s: &str) -> String {
     result
 }
 
+/// Try to parse a prose outline (model output) into a StoryOutline.
+///
+/// The 2.9B model often writes narrative prose instead of JSON.
+/// This function extracts structure from the model's natural format:
+/// - ### Title: ...
+/// - ### Genre: ...
+/// - ### Tone: ...
+/// - ### Chapter N: Title
+///   (summary prose follows until next chapter or end)
+fn prose_to_outline(text: &str) -> Option<StoryOutline> {
+    let text = text.trim();
+
+    // Find ### Title:
+    let title = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("### Title:"))
+        .and_then(|l| l.splitn(2, ':').nth(1))?
+        .trim()
+        .to_string();
+
+    let genre = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("### Genre:"))
+        .and_then(|l| l.splitn(2, ':').nth(1))?
+        .trim()
+        .to_string();
+
+    let tone = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("### Tone:"))
+        .and_then(|l| l.splitn(2, ':').nth(1))?
+        .trim()
+        .to_string();
+
+    // Extract chapters: ### Chapter N: Title
+    let mut chapters = Vec::new();
+    let mut current_chapter: Option<(u64, String, String)> = None;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(caps) = trimmed.strip_prefix("### Chapter ") {
+            // Save previous chapter
+            if let Some((num, ch_title, ch_content)) = current_chapter.take() {
+                let summary = ch_content.trim().to_string();
+                if !summary.is_empty() {
+                    chapters.push(StoryChapterInfo {
+                        number: num,
+                        title: ch_title,
+                        summary,
+                    });
+                }
+            }
+            // Parse new chapter: "N: Title" or just "N"
+            let (num_str, ch_title) = if let Some(colon_pos) = caps.find(':') {
+                (&caps[..colon_pos], caps[colon_pos + 1..].trim().to_string())
+            } else {
+                (caps, String::new())
+            };
+            let num: u64 = num_str.trim().parse().ok()?;
+            current_chapter = Some((num, ch_title.to_string(), String::new()));
+        } else if let Some((_num, _ch_title, ref mut content)) = current_chapter.as_mut() {
+            if !trimmed.is_empty() && !trimmed.starts_with("###") {
+                if !content.is_empty() {
+                    content.push('\n');
+                }
+                content.push_str(trimmed);
+            }
+        }
+    }
+    // Save last chapter
+    if let Some((num, ch_title, ch_content)) = current_chapter.take() {
+        let summary = ch_content.trim().to_string();
+        if !summary.is_empty() {
+            chapters.push(StoryChapterInfo {
+                number: num,
+                title: ch_title,
+                summary,
+            });
+        }
+    }
+
+    if title.is_empty() || chapters.is_empty() {
+        return None;
+    }
+
+    Some(StoryOutline {
+        title,
+        genre,
+        tone,
+        chapters,
+    })
+}
+
+/// Try to parse a prose wiki (model output) into a StoryWiki.
+///
+/// The model often outputs characters and setting as prose sections.
+/// This extracts them into structured data.
+fn prose_to_wiki(text: &str) -> Option<StoryWiki> {
+    let text = text.trim();
+
+    // Find characters: look for lines starting with "- " or "* " that contain character info
+    let mut characters = Vec::new();
+    let mut setting = String::new();
+
+    // Try to extract setting from "Setting:" or "The setting is:" lines
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("Setting:") || trimmed.starts_with("The setting") {
+            setting = trimmed
+                .trim_start_matches(|c: char| c == 'S' || c == 's' || c == 'T' || c == 't' || c == ':' || c == ' ')
+                .trim()
+                .to_string();
+        }
+    }
+
+    // Try to extract characters from bullet points or numbered lists
+    for line in text.lines() {
+        let trimmed = line.trim();
+        // Look for character entries like "- **Name**: description" or "* Name - description"
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            let content = trimmed.trim_start_matches(|c: char| c == '-' || c == '*').trim();
+            if content.contains(':') || content.contains('—') || content.contains('–') {
+                // Try to split into name and description
+                let (name, description) = if let Some(colon_pos) = content.find(':') {
+                    (&content[..colon_pos], &content[colon_pos + 1..])
+                } else if let Some(em_pos) = content.find('—') {
+                    (&content[..em_pos], &content[em_pos + 1..])
+                } else if let Some(ndash_pos) = content.find('–') {
+                    (&content[..ndash_pos], &content[ndash_pos + 1..])
+                } else {
+                    (content, "")
+                };
+                let name = name.trim().trim_matches(|c: char| c == '*' || c == '`').trim().to_string();
+                let description = description.trim().to_string();
+                if !name.is_empty() {
+                    characters.push(StoryCharacter {
+                        name,
+                        description,
+                        role: None,
+                        setting: String::new(),
+                    });
+                }
+            }
+        }
+    }
+
+    // If we found at least one character or a setting, return the wiki
+    if !characters.is_empty() || !setting.is_empty() {
+        Some(StoryWiki {
+            characters,
+            setting,
+        })
+    } else {
+        None
+    }
+}
+
+/// Try to parse a prose chapter (model output) into a StoryChapter.
+///
+/// The model often outputs chapters with "Title:" and content as prose.
+fn prose_to_chapter(text: &str) -> Option<StoryChapter> {
+    let text = text.trim();
+
+    // Find title: look for "Title:" or "# Title" or "## Title"
+    let title = text
+        .lines()
+        .find(|l| {
+            let t = l.trim();
+            t.starts_with("Title:") || t.starts_with("# ") || t.starts_with("## ")
+        })
+        .and_then(|l| {
+            let t = l.trim();
+            if t.starts_with("Title:") {
+                t.splitn(2, ':').nth(1).map(|s| s.trim().to_string())
+            } else if t.starts_with("# ") {
+                Some(t.trim_start_matches("# ").trim().to_string())
+            } else if t.starts_with("## ") {
+                Some(t.trim_start_matches("## ").trim().to_string())
+            } else {
+                None
+            }
+        })?;
+
+    // Content is everything after the title line
+    let title_line_idx = text.lines().position(|l| {
+        let t = l.trim();
+        t.starts_with("Title:") || t.starts_with("# ") || t.starts_with("## ")
+    })?;
+
+    let content_lines: Vec<&str> = text.lines().skip(title_line_idx + 1).collect();
+    let content = content_lines
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.trim())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    if title.is_empty() || content.is_empty() {
+        return None;
+    }
+
+    Some(StoryChapter { title, content })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn structured_complete_with_strategy<T>(
     backend: &dyn ModelBackend,
@@ -664,6 +951,7 @@ fn structured_complete_with_strategy<T>(
     max_tokens: usize,
     session_id: Option<&str>,
     seed: Option<u64>,
+    prose_fallback: Option<&dyn Fn(&str) -> Option<T>>,
 ) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
@@ -683,6 +971,7 @@ where
             },
             temperature,
             max_tokens,
+            thinking: false,  // Disable thinking for structured output — wastes tokens
             prefill: if use_grammar {
                 Some("{\n".into())
             } else {
@@ -710,6 +999,12 @@ where
                 match strategy.parse::<T>(&repaired) {
                     Ok(val) => return Ok(val),
                     Err(_) => {
+                        // Try prose fallback before giving up
+                        if let Some(ref fallback) = prose_fallback {
+                            if let Some(val) = fallback(&text) {
+                                return Ok(val);
+                            }
+                        }
                         last_err = format!("parse error: {orig_e}\nraw: {text}");
                     }
                 }
@@ -721,8 +1016,9 @@ where
 
 fn extract_title(outline: &str) -> String {
     for line in outline.lines() {
-        if line.starts_with("Title:") {
-            return line.trim_start_matches("Title:").trim().to_string();
+        let trimmed = line.trim();
+        if let Some(val) = trimmed.strip_prefix("title:").or_else(|| trimmed.strip_prefix("Title:")) {
+            return val.trim().trim_matches('"').to_string();
         }
     }
     "Untitled Story".to_string()
@@ -750,8 +1046,9 @@ fn chapter_outline_info(outline: &str, chapter_num: usize) -> (String, String) {
 }
 fn extract_genre(outline: &str) -> String {
     for line in outline.lines() {
-        if line.starts_with("Genre:") {
-            return line.trim_start_matches("Genre:").trim().to_string();
+        let trimmed = line.trim();
+        if let Some(val) = trimmed.strip_prefix("genre:").or_else(|| trimmed.strip_prefix("Genre:")) {
+            return val.trim().trim_matches('"').to_string();
         }
     }
     "Unknown".to_string()
@@ -759,8 +1056,9 @@ fn extract_genre(outline: &str) -> String {
 
 fn extract_tone(outline: &str) -> String {
     for line in outline.lines() {
-        if line.starts_with("Tone:") {
-            return line.trim_start_matches("Tone:").trim().to_string();
+        let trimmed = line.trim();
+        if let Some(val) = trimmed.strip_prefix("tone:").or_else(|| trimmed.strip_prefix("Tone:")) {
+            return val.trim().trim_matches('"').to_string();
         }
     }
     "Unknown".to_string()
@@ -886,7 +1184,7 @@ fn parse_positional_prompt(args: &[&str]) -> Option<String> {
     while i < args.len() {
         let arg = args[i];
         if arg.starts_with("--") {
-            if !arg.contains('=') && matches!(arg, "--strategy" | "--max-tokens" | "--seed") {
+            if !arg.contains('=') && matches!(arg, "--strategy" | "--max-tokens" | "--seed" | "--temperature") {
                 i += 1;
             }
         } else if !arg.starts_with('-') {
@@ -915,10 +1213,35 @@ pub fn cmd_story(extra: &[&str]) {
     let seed_str = parse_opt("--seed", extra);
     let seed = seed_str.and_then(|s| s.parse::<u64>().ok());
 
+    let temp_str = parse_opt("--temperature", extra);
+    let temperature = temp_str.and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.7);
+
+    let mock = extra.iter().any(|&a| a == "--mock");
+    if mock {
+        std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
+        println!("  🎭 Using mock backend (no real model)\n");
+    }
+
     let progress = extra.iter().any(|&a| a == "--progress" || a == "-P");
     if progress {
         std::env::set_var("ROCO_PROGRESS", "1");
     }
+
+    // ── Resume / phase flags ──────────────────────────────────────
+    let resume = extra.iter().any(|&a| a == "--resume" || a == "-r");
+    let phase_filter = parse_opt("--phase", extra);
+    let fix_chapter = if let Some(idx) = extra.iter().position(|&a| a == "--fix") {
+        extra.get(idx + 1).and_then(|v| {
+            if v.starts_with("chapter") {
+                v.strip_prefix("chapter").and_then(|s| s.trim().parse::<usize>().ok())
+            } else {
+                v.parse::<usize>().ok()
+            }
+        })
+    } else {
+        None
+    };
+    let workspace_path = parse_opt("--workspace", extra);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -941,7 +1264,7 @@ pub fn cmd_story(extra: &[&str]) {
         let mut agent = MechanisticAgent::new()
             .with_repair(RepairConfig {
                 max_retries: 2,
-                temperature: 0.7,
+                temperature,
                 temperature_delta: 0.2,
                 temperature_floor: 0.3,
                 max_tokens,
@@ -975,11 +1298,56 @@ pub fn cmd_story(extra: &[&str]) {
 
         // ── Workspace setup ───────────────────────────────────────────
         AgentJournal::info("story", "Setting up workspace...");
-        let ws = create_story_workspace(&prompt).unwrap();
+
+        // Determine workspace: resume existing or create new
+        let (ws, existing_outline, existing_wiki, existing_chapters) =
+            if let Some(ref wp) = workspace_path {
+                let abs_wp = std::path::PathBuf::from(wp).canonicalize().unwrap_or_else(|_| std::path::PathBuf::from(wp));
+                let ws = roco_workspace::Workspace::from_existing(
+                    abs_wp,
+                    WorkspaceKind::Agent
+                ).unwrap();
+                let outline = read_ws_file(&ws, "01-OUTLINE.md");
+                let wiki = read_ws_file(&ws, "02-WIKI.md");
+                let chapters = detect_chapters(&ws);
+                (ws, outline, wiki, chapters)
+            } else if resume {
+                let ws = find_latest_workspace().unwrap_or_else(|| {
+                    eprintln!("No previous story workspace found. Run without --resume to start fresh.");
+                    std::process::exit(1);
+                });
+                let outline = read_ws_file(&ws, "01-OUTLINE.md");
+                let wiki = read_ws_file(&ws, "02-WIKI.md");
+                let chapters = detect_chapters(&ws);
+                (ws, outline, wiki, chapters)
+            } else {
+                let ws = create_story_workspace(&prompt).unwrap();
+                (ws, None, None, Vec::new())
+            };
         let workspace_path = ws.root().to_string_lossy().to_string();
 
         println!("  Workspace: {workspace_path}\n");
-        println!("  Pipeline: outline → worldbuilding → chapters → validation → synopsis → publish\n");
+
+        // Show what we're resuming from
+        if existing_outline.is_some() || !existing_chapters.is_empty()
+            || phase_filter.is_some() || fix_chapter.is_some()
+        {
+            println!("  Resuming from existing workspace:");
+            if existing_outline.is_some() { println!("    ✓ Outline exists"); }
+            if existing_wiki.is_some() { println!("    ✓ Wiki exists"); }
+            for &ch_num in &existing_chapters {
+                println!("    ✓ Chapter {ch_num} exists");
+            }
+            if let Some(ref pf) = phase_filter {
+                println!("    → Running only phase: {pf}");
+            }
+            if let Some(ch) = fix_chapter {
+                println!("    → Fixing chapter {ch}");
+            }
+            println!();
+        } else {
+            println!("  Pipeline: outline → worldbuilding → chapters → validation → synopsis → publish\n");
+        }
 
         // ── Handler: compose/outline ──────────────────────────────────
         let outline_strategy_clone = outline_strategy;
@@ -1000,10 +1368,11 @@ pub fn cmd_story(extra: &[&str]) {
                     SYSTEM_OUTLINE,
                     &prompt_outline(premise),
                     &outline_strategy_clone,
-                    0.6,
-                    300,
+                    temperature,
+                    800,
                     Some(SESSION_WRITER),
                     seed,
+                    Some(&prose_to_outline),
                 )
                 .map_err(|e| AgentError::Internal(format!("outline generation failed: {e}")))?;
 
@@ -1062,15 +1431,16 @@ pub fn cmd_story(extra: &[&str]) {
 
                 AgentJournal::phase("story", "Building world bible (phase 2/6)...");
 
-                let wiki: StoryWiki = structured_complete_with_strategy(
+                                let wiki: StoryWiki = structured_complete_with_strategy(
                     backend,
                     SYSTEM_WIKI,
                     &prompt_wiki(premise, outline),
                     &wiki_strategy_clone,
-                    0.7,
-                    500,
+                    temperature,
+                    1500,
                     Some(SESSION_WRITER),
                     seed,
+                    Some(&prose_to_wiki),
                 )
                 .map_err(|e| AgentError::Internal(format!("wiki generation failed: {e}")))?;
 
@@ -1153,7 +1523,7 @@ pub fn cmd_story(extra: &[&str]) {
                     chapter_label.to_string()
                 };
 
-                let temperature = if is_retry { 0.6 } else { 0.8 };
+                let chapter_temp = if is_retry { (temperature - 0.2).max(0.1) } else { temperature };
 
                 AgentJournal::phase("story", &format!("Writing {label} (phase 3/6)..."));
 
@@ -1163,15 +1533,19 @@ pub fn cmd_story(extra: &[&str]) {
                     prompt_chapter(chapter_label, chapter_title, chapter_summary, outline, previous, chapter_num == 1)
                 };
 
-                let chapter: StoryChapter = structured_complete_with_strategy(
+                // Chapters need more tokens — the model writes 300-500 words of prose
+                let chapter_max_tokens = max_tokens.max(1500);
+
+                                let chapter: StoryChapter = structured_complete_with_strategy(
                     backend,
                     SYSTEM_CHAPTER,
                     &directive,
                     &chapter_strategy_clone,
-                    temperature,
-                    max_tokens,
+                    chapter_temp,
+                    chapter_max_tokens,
                     Some(SESSION_WRITER),
                     seed,
+                    Some(&prose_to_chapter),
                 )
                 .map_err(|e| AgentError::Internal(format!("chapter generation failed: {e}")))?;
 
@@ -1228,6 +1602,7 @@ pub fn cmd_story(extra: &[&str]) {
                         200,
                         Some(SESSION_VALIDATOR),
                         seed,
+                        None,
                     )
                     .map(|v: StoryValidation| {
                         format!(
@@ -1288,9 +1663,10 @@ pub fn cmd_story(extra: &[&str]) {
                     &prompt_synopsis(chapters),
                     &synopsis_strategy_clone,
                     0.5,
-                    200,
+                    400,
                     Some(SESSION_WRITER),
                     seed,
+                    None,
                 )
                 .map_err(|e| AgentError::Internal(format!("synopsis generation failed: {e}")))?;
 
@@ -1412,34 +1788,63 @@ pub fn cmd_story(extra: &[&str]) {
         // ═══════════════════════════════════════════════════════════════
 
         // Phase 1: outline
-        println!("📝 Outline...");
-        AgentJournal::info("story", "Phase 1: Generating outline");
-        let plan = MechPlan {
-            tasks: vec![Task {
-                r#type: "compose".into(),
-                domain: "outline".into(),
-                spec: serde_json::json!({"premise": prompt}),
-            }],
+        let should_run_outline = existing_outline.is_none()
+            && phase_filter.as_deref() != Some("wiki")
+            && phase_filter.as_deref() != Some("chapter")
+            && phase_filter.as_deref() != Some("synopsis")
+            && phase_filter.as_deref() != Some("publish")
+            && fix_chapter.is_none();
+        let outline_text = if let Some(ref existing) = existing_outline {
+            println!("📝 Outline (existing)...");
+            println!("  ✓ Outline loaded from workspace\n");
+            existing.clone()
+        } else if should_run_outline {
+            println!("📝 Outline...");
+            AgentJournal::info("story", "Phase 1: Generating outline");
+            let plan = MechPlan {
+                tasks: vec![Task {
+                    r#type: "compose".into(),
+                    domain: "outline".into(),
+                    spec: serde_json::json!({"premise": prompt}),
+                }],
+            };
+            let outline_result = agent
+                .dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)?;
+            println!("  ✓ Outline complete\n");
+            outline_result.output
+        } else {
+            println!("📝 Outline (skipped)\n");
+            read_ws_file(&ws, "01-OUTLINE.md").unwrap_or_default()
         };
-        let outline_result = agent
-            .dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)?;
-        let outline_text = &outline_result.output;
-        println!("  ✓ Outline complete\n");
 
         // Phase 2: wiki
-        println!("📚 Worldbuilding...");
-        AgentJournal::info("story", "Phase 2: Building world bible");
-        let wiki_plan = MechPlan {
-            tasks: vec![Task {
-                r#type: "compose".into(),
-                domain: "wiki".into(),
-                spec: serde_json::json!({"premise": prompt, "outline": outline_text}),
-            }],
+        let should_run_wiki = existing_wiki.is_none()
+            && phase_filter.as_deref() != Some("outline")
+            && phase_filter.as_deref() != Some("chapter")
+            && phase_filter.as_deref() != Some("synopsis")
+            && phase_filter.as_deref() != Some("publish")
+            && fix_chapter.is_none();
+        let _wiki_text = if let Some(ref existing) = existing_wiki {
+            println!("📚 Worldbuilding (existing)...");
+            println!("  ✓ World bible loaded from workspace\n");
+            existing.clone()
+        } else if should_run_wiki {
+            println!("📚 Worldbuilding...");
+            AgentJournal::info("story", "Phase 2: Building world bible");
+            let wiki_plan = MechPlan {
+                tasks: vec![Task {
+                    r#type: "compose".into(),
+                    domain: "wiki".into(),
+                    spec: serde_json::json!({"premise": prompt, "outline": outline_text}),
+                }],
+            };
+            agent.dispatch_single(backend.as_ref(), &wiki_plan.tasks[0], &ws)?;
+            println!("  ✓ World bible complete\n");
+            read_ws_file(&ws, "02-WIKI.md").unwrap_or_default()
+        } else {
+            println!("📚 Worldbuilding (skipped)\n");
+            read_ws_file(&ws, "02-WIKI.md").unwrap_or_default()
         };
-        agent.dispatch_single(backend.as_ref(), &wiki_plan.tasks[0], &ws)?;
-        println!("  ✓ World bible complete\n");
-
-        // Reset writer session so outline/wiki state doesn't contaminate instructional baking
         let _ = futures::executor::block_on(
             backend.feed_eos(Some(SESSION_WRITER.to_string()))
         );
@@ -1481,55 +1886,78 @@ pub fn cmd_story(extra: &[&str]) {
         AgentJournal::info("story", "Phase 3: Writing chapters");
         let mut chapter_texts = Vec::new();
         for i in 1..=3 {
-            // Feed EOS between chapters to prevent state bleeding
-            if i > 1 {
-                let _ = futures::executor::block_on(
-                    backend.feed_eos(Some(SESSION_WRITER.to_string()))
-                );
-            }
-
-            let chapter_label = format!("Chapter {i}");
-            let previous = chapter_texts.last().cloned().unwrap_or_default();
-            let (chapter_title, chapter_summary) = chapter_outline_info(outline_text, i);
-
-            println!("  ✍️  {}...", &chapter_label);
-
-            let ch_task = Task {
-                r#type: "write".into(),
-                domain: "chapter".into(),
-                spec: serde_json::json!({
-                    "number": i,
-                    "label": chapter_label,
-                    "outline": outline_text,
-                    "previous": previous,
-                    "chapter_title": chapter_title,
-                    "chapter_summary": chapter_summary,
-                }),
+            // Check if we should skip this chapter
+            let chapter_exists = existing_chapters.contains(&i);
+            let should_run_chapter = if chapter_exists && fix_chapter != Some(i) {
+                // Chapter exists and we're not fixing it — only run if explicitly requesting chapters
+                phase_filter.as_deref() == Some("chapter")
+            } else {
+                // Chapter doesn't exist or we're fixing it — run unless we're only doing synopsis/publish
+                !matches!(phase_filter.as_deref(), Some("synopsis") | Some("publish"))
             };
-            let ch_result = agent
-                .dispatch_single(backend.as_ref(), &ch_task, &ws)?;
-            chapter_texts.push(ch_result.output.clone());
 
-            // Validation
-            println!("  🔍 Validating {}...", &chapter_label);
-            let val_task = Task {
-                r#type: "validate".into(),
-                domain: "chapter".into(),
-                spec: serde_json::json!({
-                    "number": i,
-                    "text": ch_result.output,
-                }),
+            // Load existing chapter text
+            let existing_ch = if chapter_exists {
+                read_ws_file(&ws, &format!("03-CHAPTER_{i}.md"))
+            } else {
+                None
             };
-            let val_result = agent
-                .dispatch_single(backend.as_ref(), &val_task, &ws)?;
 
-            // Self-correction loop: extract feedback from validation output directly
-            let val_entry = &val_result.output;
-            let needs_revision = val_entry.contains("Quality: fail")
-                || val_entry.contains("Quality: needs-work");
-            let revision_feedback: String = val_entry
-                .lines()
-                .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
+            // Don't run chapters if user specified a different phase, even if chapters are missing
+            let phase_restricted = phase_filter.is_some()
+                && phase_filter.as_deref() != Some("chapters")
+                && phase_filter.as_deref() != Some("fix");
+            if (should_run_chapter || existing_ch.is_none()) && !phase_restricted {
+                // Generate new chapter
+                // Feed EOS between chapters to prevent state bleeding
+                if i > 1 {
+                    let _ = futures::executor::block_on(
+                        backend.feed_eos(Some(SESSION_WRITER.to_string()))
+                    );
+                }
+
+                let chapter_label = format!("Chapter {i}");
+                let previous = chapter_texts.last().cloned().unwrap_or_default();
+                let (chapter_title, chapter_summary) = chapter_outline_info(&outline_text, i);
+
+                println!("  ✍️  {}...", &chapter_label);
+
+                let ch_task = Task {
+                    r#type: "write".into(),
+                    domain: "chapter".into(),
+                    spec: serde_json::json!({
+                        "number": i,
+                        "label": chapter_label,
+                        "outline": outline_text,
+                        "previous": previous,
+                        "chapter_title": chapter_title,
+                        "chapter_summary": chapter_summary,
+                    }),
+                };
+                let ch_result = agent
+                    .dispatch_single(backend.as_ref(), &ch_task, &ws)?;
+                chapter_texts.push(ch_result.output.clone());
+
+                // Validation
+                println!("  🔍 Validating {}...", &chapter_label);
+                let val_task = Task {
+                    r#type: "validate".into(),
+                    domain: "chapter".into(),
+                    spec: serde_json::json!({
+                        "number": i,
+                        "text": ch_result.output,
+                    }),
+                };
+                let val_result = agent
+                    .dispatch_single(backend.as_ref(), &val_task, &ws)?;
+
+                // Self-correction loop: extract feedback from validation output directly
+                let val_entry = &val_result.output;
+                let needs_revision = val_entry.contains("Quality: fail")
+                    || val_entry.contains("Quality: needs-work");
+                let revision_feedback: String = val_entry
+                    .lines()
+                    .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
                 .map(|l| l.to_string())
                 .collect::<Vec<_>>()
                 .join("
@@ -1564,9 +1992,14 @@ pub fn cmd_story(extra: &[&str]) {
                 println!("  ✓ {chapter_label} revised
 ");
             } else {
-                println!("  ✓ {chapter_label} quality check passed
-");
+                println!("  ✓ {chapter_label} quality check passed");
             }
+        } else {
+            // Load existing chapter
+            let ch_text = existing_ch.unwrap_or_default();
+            println!("  ✍️  Chapter {i} (existing)");
+            chapter_texts.push(ch_text);
+        }
         }
 
         // Phase 4: synopsis
@@ -1594,13 +2027,13 @@ pub fn cmd_story(extra: &[&str]) {
             domain: "chapter".into(),
             spec: serde_json::json!({}),
         };
-        let publish_result = agent
+        let _publish_result = agent
             .dispatch_single(backend.as_ref(), &publish_task, &ws)?;
 
         let outcome = agent
             .commit(
-                plan.clone(),
-                vec![outline_result, publish_result],
+                MechPlan { tasks: vec![] },
+                vec![],
                 &ws,
             )
             .unwrap();
@@ -1631,5 +2064,164 @@ pub fn cmd_story(extra: &[&str]) {
     if let Err(e) = pipeline_result {
         eprintln!("❌ Story pipeline failed: {e}");
         AgentJournal::warn("story", &format!("Pipeline failed: {e}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prose_to_wiki_parses_characters_and_setting() {
+        let input = r#"
+Setting: A dark fantasy world where magic is dying.
+
+Characters:
+- **Elara**: A young mage who discovered a forbidden spell.
+- **Kael**: A grizzled swordsman fleeing his past.
+- **Morwen**: An ancient dragon bound to the world.
+
+The world is in turmoil.
+"#;
+        let result = prose_to_wiki(input);
+        assert!(result.is_some(), "should parse valid prose wiki");
+        let wiki = result.unwrap();
+        assert_eq!(wiki.characters.len(), 3, "should find 3 characters");
+        assert_eq!(wiki.characters[0].name, "Elara", "first char name");
+        assert_eq!(wiki.characters[2].description, "An ancient dragon bound to the world.", "third char desc");
+        assert!(wiki.setting.contains("magic is dying"), "setting should be detected");
+    }
+
+    #[test]
+    fn test_prose_to_wiki_returns_none_for_gibberish() {
+        let input = "asdfghjkl qwertyuiop";
+        let result = prose_to_wiki(input);
+        assert!(result.is_none(), "gibberish should not parse as wiki");
+    }
+
+    #[test]
+    fn test_prose_to_wiki_handles_empty_string() {
+        assert!(prose_to_wiki("").is_none());
+    }
+
+    #[test]
+    fn test_prose_to_chapter_parses_title_and_content() {
+        let input = r#"
+Title: The Awakening
+
+The sun rose over the mountains, casting long shadows across the valley.
+Elara stood at the edge of the cliff, her heart pounding in her chest.
+Below her, the ancient city lay in ruins, its secrets waiting to be uncovered.
+"#;
+        let result = prose_to_chapter(input);
+        assert!(result.is_some(), "should parse valid prose chapter");
+        let chapter = result.unwrap();
+        assert_eq!(chapter.title, "The Awakening", "chapter title");
+        assert!(chapter.content.contains("sun rose"), "content should have first line");
+        assert!(chapter.content.contains("secrets waiting"), "content should have last line");
+    }
+
+    #[test]
+    fn test_prose_to_chapter_with_hash_title() {
+        let input = "# The Awakening\n\nThe sun rose.";
+        let result = prose_to_chapter(input);
+        assert!(result.is_some(), "should parse # title");
+        assert_eq!(result.unwrap().title, "The Awakening");
+    }
+
+    #[test]
+    fn test_prose_to_chapter_with_double_hash_title() {
+        let input = "## The Awakening\n\nThe sun rose.";
+        let result = prose_to_chapter(input);
+        assert!(result.is_some(), "should parse ## title");
+        assert_eq!(result.unwrap().title, "The Awakening");
+    }
+
+    #[test]
+    fn test_prose_to_chapter_returns_none_for_no_title() {
+        let input = "Just some plain text without any title.";
+        let result = prose_to_chapter(input);
+        assert!(result.is_none(), "no title should yield none");
+    }
+
+    #[test]
+    fn test_prose_to_chapter_handles_empty_string() {
+        assert!(prose_to_chapter("").is_none());
+    }
+
+    #[test]
+    fn test_prose_to_outline_parses_title_genre_tone_and_chapters() {
+        let input = r#"
+### Title: The Crystal Cave
+### Genre: Fantasy
+### Tone: Mysterious
+
+### Chapter 1: The Discovery
+Elara finds a hidden cave beneath the old oak tree.
+The cave glows with an ethereal light.
+
+### Chapter 2: The Guardian
+A crystal serpent guards the heart of the cave.
+Elara must earn its trust.
+
+### Chapter 3: The Secret
+The cave holds the key to saving the kingdom.
+"#;
+        let result = prose_to_outline(input);
+        assert!(result.is_some(), "should parse valid prose outline");
+        let outline = result.unwrap();
+        assert_eq!(outline.title, "The Crystal Cave", "title");
+        assert_eq!(outline.genre, "Fantasy", "genre");
+        assert_eq!(outline.tone, "Mysterious", "tone");
+        assert_eq!(outline.chapters.len(), 3, "should find 3 chapters");
+        assert_eq!(outline.chapters[0].number, 1, "first chapter number");
+        assert_eq!(outline.chapters[0].title, "The Discovery", "first chapter title");
+        assert!(outline.chapters[0].summary.contains("hidden cave"), "first chapter summary");
+        assert_eq!(outline.chapters[1].title, "The Guardian", "second chapter title");
+        assert_eq!(outline.chapters[2].title, "The Secret", "third chapter title");
+    }
+
+    #[test]
+    fn test_prose_to_outline_returns_none_for_gibberish() {
+        let input = "asdfghjkl qwertyuiop";
+        let result = prose_to_outline(input);
+        assert!(result.is_none(), "gibberish should not parse as outline");
+    }
+
+    #[test]
+    fn test_prose_to_outline_handles_empty_string() {
+        assert!(prose_to_outline("").is_none());
+    }
+
+    #[test]
+    fn test_prose_to_outline_requires_title_and_chapters() {
+        // Missing chapters
+        let input = "### Title: Something\n### Genre: Sci-Fi\n### Tone: Dark";
+        assert!(prose_to_outline(input).is_none(), "no chapters should yield none");
+
+        // Missing title
+        let input2 = "### Genre: Sci-Fi\n### Tone: Dark\n### Chapter 1: Test\nsome text";
+        assert!(prose_to_outline(input2).is_none(), "no title should yield none");
+    }
+
+    #[test]
+    fn test_prose_to_outline_handles_chapters_without_titles() {
+        let input = r#"
+### Title: Test Story
+### Genre: Drama
+### Tone: Neutral
+
+### Chapter 1:
+Just some content without a title.
+
+### Chapter 2
+More content without a colon.
+"#;
+        let result = prose_to_outline(input);
+        assert!(result.is_some(), "should parse chapters even without titles");
+        let outline = result.unwrap();
+        assert_eq!(outline.chapters.len(), 2);
+        // Chapter without a colon after number gets empty title
+        assert_eq!(outline.chapters[1].title, "");
     }
 }

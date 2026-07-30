@@ -675,7 +675,23 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
 
     let gp = gateway_port();
     // If there's already a gateway running, connect instantly.
+    // But still verify inferd is healthy — it may still be loading.
     if is_running("gateway", gp) {
+        let inferd_port = inferd_port();
+        if is_running("inferd", inferd_port) || is_running("server", inferd_port) {
+            return Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)));
+        }
+        // Gateway running but inferd not ready — wait for it.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build runtime");
+        eprintln!("Waiting for inference server to load model...");
+        rt.block_on(wait_for_healthy(inferd_port, Duration::from_secs(600), "Inference server"))
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
         return Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)));
     }
 
@@ -781,9 +797,21 @@ impl roco_engine::ModelBackend for TokioBackend {
 
     fn feed_eos(
         &self,
-        _session: Option<String>,
+        session: Option<String>,
     ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
-        Box::pin(async move { Ok(()) })
+        let inner = self.inner.clone();
+        let rt_handle = self.rt.handle().clone();
+        Box::pin(async move {
+            // Run on the dedicated tokio runtime to avoid deadlocking
+            let result = std::thread::scope(|s| {
+                s.spawn(move || rt_handle.block_on(inner.feed_eos(session)))
+                    .join()
+                    .unwrap_or(Err(roco_engine::EngineError::Backend(
+                        "TokioBackend feed_eos thread panicked".into(),
+                    )))
+            });
+            result
+        })
     }
 }
 

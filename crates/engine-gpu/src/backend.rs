@@ -235,6 +235,7 @@ impl ModelBackend for RwkvBackend {
                             .and_then(|s| s.parse::<u64>().ok())
                     }),
                     record_trace: req.record_trace,
+                    thinking: req.thinking,
                 }
                 .into(),
             )
@@ -391,6 +392,7 @@ impl StateTuning for RwkvBackend {
                         deadline_ms: 60000,
                         seed: None,
                         record_trace: false,
+                        thinking: false, // no thinking during state baking
                     }
                     .into(),
                 )
