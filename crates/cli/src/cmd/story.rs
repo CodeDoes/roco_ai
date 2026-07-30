@@ -2005,64 +2005,83 @@ pub fn cmd_story(extra: &[&str]) {
                 };
                 let ch_result = agent
                     .dispatch_single(backend.as_ref(), &ch_task, &ws)?;
-                chapter_texts.push(ch_result.output.clone());
 
-                // Validation
-                println!("  🔍 Validating {}...", &chapter_label);
-                let val_task = Task {
-                    r#type: "validate".into(),
-                    domain: "chapter".into(),
-                    spec: serde_json::json!({
-                        "number": i,
-                        "text": ch_result.output,
-                    }),
-                };
-                let val_result = agent
-                    .dispatch_single(backend.as_ref(), &val_task, &ws)?;
+                // Retry loop: validate → [if fail] revise → re-validate → repeat
+                let max_retries = 3;
+                let mut current_text = ch_result.output;
+                for attempt in 0..=max_retries {
+                    // Validation (always runs at least once for the initial version)
+                    println!("  🔍 Validating {}...", &chapter_label);
+                    let val_task = Task {
+                        r#type: "validate".into(),
+                        domain: "chapter".into(),
+                        spec: serde_json::json!({
+                            "number": i,
+                            "text": current_text,
+                        }),
+                    };
+                    let val_result = agent
+                        .dispatch_single(backend.as_ref(), &val_task, &ws)?;
 
-                // Self-correction loop: extract feedback from validation output directly
-                let val_entry = &val_result.output;
-                let needs_revision = val_entry.contains("Quality: fail")
-                    || val_entry.contains("Quality: needs-work");
-                let revision_feedback: String = val_entry
-                    .lines()
-                    .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
-                .map(|l| l.to_string())
-                .collect::<Vec<_>>()
-                .join("
-");
+                    let val_entry = &val_result.output;
+                    let needs_revision = val_entry.contains("Quality: fail")
+                        || val_entry.contains("Quality: needs-work");
 
-            if needs_revision {
-                println!("  ⚠️  {} needs revision — retrying...", &chapter_label);
-                AgentJournal::warn("story", &format!("{chapter_label} needs revision, retrying..."));
+                    if !needs_revision {
+                        println!("  ✓ {chapter_label} quality check passed");
+                        // Write final version (revision or original) to chapter_texts
+                        chapter_texts.push(current_text.clone());
+                        break;
+                    }
 
-                let retry_task = Task {
-                    r#type: "write".into(),
-                    domain: "chapter".into(),
-                    spec: serde_json::json!({
-                        "number": i,
-                        "label": chapter_label,
-                        "outline": outline_text,
-                        "previous": previous,
-                        "retry": true,
-                        "feedback": revision_feedback,
-                    }),
-                };
-                let retry_result = agent
-                    .dispatch_single(backend.as_ref(), &retry_task, &ws)?;
+                    if attempt >= max_retries {
+                        println!("  ⚠️  {chapter_label} still fails after {max_retries} retries — accepting latest version");
+                        AgentJournal::warn("story", &format!(
+                            "{chapter_label} still needs revision after {max_retries} retries, accepting"
+                        ));
+                        chapter_texts.push(current_text.clone());
+                        break;
+                    }
 
-                let filename = format!("03-CHAPTER_{i}.md");
-                let path = ws.resolve(&filename).unwrap();
-                let _ = WriteTool.call(json!({
-                    "path": path.to_string_lossy(),
-                    "content": &retry_result.output,
-                }));
-                chapter_texts[i - 1] = retry_result.output;
-                println!("  ✓ {chapter_label} revised
-");
-            } else {
-                println!("  ✓ {chapter_label} quality check passed");
-            }
+                    // Extract feedback from validation output
+                    let revision_feedback: String = val_entry
+                        .lines()
+                        .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    println!("  ⚠️  {} needs revision (attempt {}/{}) — retrying...",
+                        &chapter_label, attempt + 1, max_retries);
+                    AgentJournal::warn("story", &format!(
+                        "{chapter_label} needs revision (attempt {}/{}), retrying...",
+                        attempt + 1, max_retries
+                    ));
+
+                    let retry_task = Task {
+                        r#type: "write".into(),
+                        domain: "chapter".into(),
+                        spec: serde_json::json!({
+                            "number": i,
+                            "label": chapter_label,
+                            "outline": outline_text,
+                            "previous": previous,
+                            "retry": true,
+                            "feedback": revision_feedback,
+                        }),
+                    };
+                    let retry_result = agent
+                        .dispatch_single(backend.as_ref(), &retry_task, &ws)?;
+                    current_text = retry_result.output;
+
+                    // Write revision to file (will be overwritten if another revision follows)
+                    let filename = format!("03-CHAPTER_{i}.md");
+                    let path = ws.resolve(&filename).unwrap();
+                    let _ = WriteTool.call(json!({
+                        "path": path.to_string_lossy(),
+                        "content": &current_text,
+                    }));
+                }
         } else {
             // Load existing chapter
             let ch_text = existing_ch.unwrap_or_default();
