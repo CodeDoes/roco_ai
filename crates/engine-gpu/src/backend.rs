@@ -309,16 +309,15 @@ impl ModelBackend for RwkvBackend {
             .expect("rwkv backend already shut down (channel closed)");
         let text = text.to_string();
         let init_state = init_state.map(|s| s.to_string());
-        let state_slot_clone = state_slot.clone();
-        // state_slot is Option<&str> - need to convert to String for the Bake message
-        let state_slot_string = state_slot.expect("bake: state_slot must be set when baking").to_string();
+        let state_slot_str = state_slot.expect("bake: state_slot must be set when baking");
+        let state_slot_string = state_slot_str.to_string();
         Box::pin(async move {
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
             tx.send(
                 ActorMessage::Bake {
                     init_state,
                     text,
-                    state_slot: state_slot_string,
+                    state_slot: state_slot_string.clone(),
                     reply: reply_tx,
                 }
             )
@@ -328,7 +327,7 @@ impl ModelBackend for RwkvBackend {
                 .await
                 .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
                 .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
-            Ok(state_slot_clone.map(|s| s.to_string()).unwrap_or_default())
+            Ok(state_slot_string)
         })
     }
 
