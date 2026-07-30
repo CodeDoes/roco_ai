@@ -125,7 +125,7 @@ fn help_root() {
     eprintln!("Identity:");
     eprintln!("  whoami       Show what RoCo is and what it knows about you");
     eprintln!("  version      Show version\n");
-    eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_CONFIG / ~/.config/roco/config.toml");
+    eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_DIR/config.toml");
     std::process::exit(0);
 }
 

@@ -453,6 +453,15 @@ Check for meta-commentary and thinking contamination.";
 const SYSTEM_SYNOPSIS: &str = "You are a literary summarizer. Output valid JSON only. \
 No thinking, no reasoning.";
 
+/// Return the .roco directory, respecting $ROCO_DIR env var.
+fn roco_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("ROCO_DIR") {
+        PathBuf::from(dir)
+    } else {
+        std::env::current_dir().unwrap_or_default().join(".roco")
+    }
+}
+
 /// Prompt template for outline generation.
 fn prompt_outline(premise: &str) -> String {
     format!(
@@ -503,7 +512,7 @@ fn detect_chapters(ws: &roco_workspace::Workspace) -> Vec<usize> {
 
 /// Find the latest story workspace directory.
 fn find_latest_workspace() -> Option<roco_workspace::Workspace> {
-    let base = std::env::current_dir().ok()?.join(".roco/workspaces");
+    let base = roco_dir().join("workspaces");
     if !base.exists() {
         return None;
     }
@@ -1167,7 +1176,7 @@ fn sanitize_story_dirname(s: &str) -> String {
 }
 
 fn create_story_workspace(prompt: &str) -> Result<Workspace, anyhow::Error> {
-    let base = std::env::current_dir()?.join(".roco").join("workspaces");
+    let base = roco_dir().join("workspaces");
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1195,10 +1204,7 @@ fn publish_to_stories_dir(
     let slug = title_to_slug(title);
     let slug = if slug.is_empty() { "untitled" } else { &slug };
 
-    let stories_dir = std::env::current_dir()
-        .map_err(|e| format!("cwd: {e}"))?
-        .join(".roco")
-        .join("stories");
+    let stories_dir = roco_dir().join("stories");
 
     std::fs::create_dir_all(&stories_dir).map_err(|e| format!("create stories dir: {e}"))?;
 

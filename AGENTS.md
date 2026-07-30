@@ -56,30 +56,27 @@ RWKV-7 is a State Space Model (not a Transformer). Key properties:
 - **Tokenizer**: `assets/vocab/rwkv_vocab_v20230424.json`
 
 The 2.9B parameter model is small enough to run on consumer GPUs via Vulkan.
-Outputs prose rather than JSON for most phases — the caller handles this with fallback parsers.
+Outputs prose rather than JSON for most phases — fallback parsers handle this.
 
 ## Inference Configuration
 
-The "strategy" system controls how inferd generates tokens. It's composed of several
-independent knobs:
+Generation is controlled by composing several knobs:
 
-| Parameter | What it does |
-|---|---|
-| **State-tune-bake** | Pre-load the model's recurrent state with format examples via `Bake` messages. Primes output shape without grammar constraints. |
-| **BNF grammar** | Hard token-level constraints via `kbnf` masks. Forces JSON structure when the model can follow it. |
-| **Stop sequences** | Token sequences that halt generation (e.g. closing `}` to truncate at JSON boundary). |
-| **Temperature** | Sampling randomness (0.0 = deterministic, 0.7 default, lower for validation). |
-| **Top-p / Top-k** | Nucleus + top-k sampling to filter low-probability tokens. |
-| **Prefill** | Seed text fed before generation (e.g. `"{\n"` to jump-start JSON output). |
+- **State-tune-bake**: Pre-load the model's recurrent state with format examples via `Bake` messages. Primes the output shape without grammar constraints.
+- **BNF grammar**: Hard token-level constraints via `kbnf` masks. Forces JSON structure when the model can follow it.
+- **Stop sequences**: Token sequences that halt generation (e.g. closing `}`).
+- **Temperature**: Sampling randomness (0.0 = deterministic, 0.7 default).
+- **Top-p / Top-k**: Nucleus + top-k sampling to filter low-probability tokens.
+- **Prefill**: Seed text fed before generation (e.g. `"{\n"` to jump-start JSON).
 
-These are composed via `StrategySelector` and `StrategyKind`:
+These are composed into presets selected via `--strategy`:
 - `state-tuned`: bake only, no grammar. Relies on recurrent state priming.
 - `schema`: JSON schema + GBNF grammar for strict structural validation.
-- `loose-json`: relaxed grammar that accepts JSON-like output with minor errors.
+- `loose-json`: relaxed grammar accepting JSON-like output with minor errors.
 - `grammar`: user-supplied GBNF grammar string.
 
-When grammar fails (model outputs prose despite constraints), a fallback parser
-extracts structure from natural language output.
+When grammar constraints fail (model outputs prose despite them), a fallback
+parser extracts structure from natural language output.
 
 ## State Management
 
@@ -91,19 +88,18 @@ eviction (max 8 entries). State is the model's recurrent vector after processing
 | `state_id: "name"` | Load cached state from pool before generation |
 | `save_as: "name"` | Save resulting state to pool after generation |
 | `feed_eos("name")` | Load from pool, feed token 0 (EOS), save back — breaks repetition patterns |
-| `Bake { text, name }` | Process text through model from current state, save under `name`. Used to prime output format with examples. |
+| `Bake { text, name }` | Process text through model, save under `name`. Primes output format. |
 | `save_state()` / `load_state(blob)` | Download/upload raw state tensor for persistence |
 
-Two named states are managed:
+Two named states:
 - `SESSION_WRITER` (`"story-writer"`): outline, wiki, chapters, synopsis
 - `SESSION_VALIDATOR` (`"story-validator"`): validation only — reset between chapters
 
-The old `session`/`preserve_state` API is mapped to `state_id`/`save_as` for compatibility.
-
 ## Directory Layout
 
-All artifacts live under `.roco/` in the project root. Override with `ROCO_DIR` env var.
-No user-level config (`~/.config/roco/`) — keep everything local and trackable.
+All artifacts live in a local `.roco/` directory. Override the location with the
+`ROCO_DIR` environment variable. No user-level config (`~/.config/roco/`) — everything
+stays local and trackable.
 
 ```
 .roco/
@@ -121,20 +117,20 @@ No user-level config (`~/.config/roco/`) — keep everything local and trackable
     └── {slug}.md             # published compiled story
 ```
 
+Config is loaded from `$ROCO_DIR/config.toml` if `ROCO_DIR` is set, otherwise
+`.roco/config.toml`. Environment variables (`RWKV_MODEL`, `RWKV_VOCAB`) override
+config file values.
+
 ## Story Pipeline
 
-6 phases, each with the same retry loop:
+6 phases, each with fallback parsers for the 2.9B model's prose output:
 
 ```
 outline → wiki → chapters (×3, each validated) → synopsis → publish
 ```
 
-The 2.9B model outputs prose, not JSON, for all phases. Each phase tries:
-1. Grammar-constrained JSON (if `grammar` or `schema` strategy)
-2. JSON extraction + repair (`repair_json`, `repair_truncated_json`)
-3. Prose fallback parser (maps natural language to structured data)
-
-Prose fallback parsers:
+Prose fallback parsers handle the model's natural language output when it doesn't
+produce valid JSON:
 
 | Phase | Parses |
 |---|---|
@@ -154,13 +150,13 @@ write → validate → [if fail] revise with feedback → re-validate → [repea
 
 Validator state is reset before each validation call. Revision feedback (Issues +
 Suggestion lines) is fed into the next `prompt_revision()`. If max retries exhausted
-without a pass, the latest revision is accepted to avoid infinite loops.
+without a pass, the latest revision is accepted.
 
 ### Outline Data Flow
 
 The outline handler writes full markdown to `01-OUTLINE.md`. Downstream phases read
 this file directly so `chapter_outline_info()` extracts correct chapter titles and
-summaries for the wiki and chapter prompts.
+summaries for wiki and chapter prompts.
 
 ## Interaction Modes
 
@@ -179,7 +175,6 @@ Inferd receives raw text — no formatting. The CLI constructs the full prompt:
 
 ```rust
 let prompt_text = format!("System: {}\n\nUser: {}\n\nAssistant:", system.trim(), prompt);
-backend.complete(CompletionRequest { prompt: prompt_text, ... }).await;
 ```
 
 System prompts per phase:
@@ -193,9 +188,8 @@ System prompts per phase:
 | Synopsis | `"You are a literary summarizer. Output valid JSON only."` |
 
 State tuning examples are baked into the model state before chapter writing and
-validation. These examples show the exact JSON format expected, priming the recurrent
-state without needing grammar constraints. Bake examples use the same
-`System:\n\nUser:\n\nAssistant:` format as real generation.
+validation. These prime the recurrent state to output the expected JSON format.
+Bake examples use the same `System:\n\nUser:\n\nAssistant:` format as real generation.
 
 ## Quality
 
@@ -212,8 +206,7 @@ sleep durations. Check workspace files for continuity and quality.
 outline adherence, and prose quality.
 
 **Ablations:** Future work — compare chapter quality with/without wiki context,
-with/without bake tuning, with/without validation retry. Architecture supports
-swapping these independently.
+with/without bake tuning, with/without validation retry.
 
 ## Known Issues
 
@@ -239,7 +232,7 @@ phase, message fields).
 | JSON cleaning + prose fallbacks | `crates/engine/src/grammar/strategies.rs` |
 | Mock backend | `crates/engine/src/backend.rs` |
 | Inferd actor (Bake, Complete, FeedEos) | `crates/engine-gpu/src/actor.rs` |
-| Bake API + session mapping | `crates/engine-gpu/src/backend.rs` |
+| Bake API | `crates/engine-gpu/src/backend.rs` |
 | Gateway HTTP routes | `crates/gateway/src/lib.rs` |
 | Inferd server | `crates/inferd/src/main.rs` |
 | Protocol types | `crates/protocol/src/lib.rs` |
@@ -253,7 +246,6 @@ phase, message fields).
 ## More Info
 
 - `./PROGRESS.md` — current work tracking
-- `./docs/rfc/` — micro-RFCs for harness, security, rollback, inference protocol
-- `./docs/SIMPLICITY_AND_SAFETY_DEEP_DIVE.md` — system anatomy
+- `./docs/rfc/` — micro-RFCs
 - `./USE_CASES_AND_GAPS.md` — test coverage gaps
 - `./scout.sh` — live codebase introspection

@@ -251,10 +251,14 @@ impl AgentJournal {
         &self.path
     }
 
-    /// Get the default journal path (`.roco/agent-journal.md` in the cwd).
+    /// Get the default journal path (`$ROCO_DIR/agent-journal.md` or `.roco/agent-journal.md`).
     pub fn default_path() -> Result<PathBuf, String> {
-        let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {e}"))?;
-        Ok(cwd.join(".roco").join("agent-journal.md"))
+        let base = if let Ok(dir) = std::env::var("ROCO_DIR") {
+            PathBuf::from(dir)
+        } else {
+            std::env::current_dir().map_err(|e| format!("cannot get cwd: {e}"))?.join(".roco")
+        };
+        Ok(base.join("agent-journal.md"))
     }
 
     /// Initialize the global journal singleton. Must be called at least once

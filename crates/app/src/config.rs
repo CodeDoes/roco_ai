@@ -1,10 +1,8 @@
 //! RoCo configuration — model path, server settings, and general options.
 //!
 //! Config file search order (first found wins):
-//!   1. `$ROCO_CONFIG` — explicit config file path
-//!   2. `.roco/config.toml` in current directory
-//!   3. `~/.config/roco/config.toml`
-//!   4. `~/.roco/config.toml`
+//!   1. `$ROCO_DIR/config.toml` — ROCO_DIR env var overrides .roco/ location
+//!   2. `.roco/config.toml` — local project directory
 //!
 //! Environment variables always beat config file values:
 //!   - `RWKV_MODEL` overrides `model.path`
@@ -169,29 +167,14 @@ impl RoCoConfig {
     fn search_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        // 1. $ROCO_CONFIG — explicit path
-        if let Ok(p) = std::env::var("ROCO_CONFIG") {
-            paths.push(PathBuf::from(p));
+        // 1. $ROCO_DIR/config.toml — ROCO_DIR overrides .roco/ location
+        if let Ok(roco_dir) = std::env::var("ROCO_DIR") {
+            paths.push(PathBuf::from(roco_dir).join("config.toml"));
         }
 
         // 2. .roco/config.toml in current directory
         if let Ok(cwd) = std::env::current_dir() {
             paths.push(cwd.join(".roco").join("config.toml"));
-        }
-
-        // 3. ~/.config/roco/config.toml (XDG)
-        if let Ok(home) = std::env::var("HOME") {
-            paths.push(
-                PathBuf::from(home)
-                    .join(".config")
-                    .join("roco")
-                    .join("config.toml"),
-            );
-        }
-
-        // 4. ~/.roco/config.toml (legacy-style dotfile)
-        if let Ok(home) = std::env::var("HOME") {
-            paths.push(PathBuf::from(home).join(".roco").join("config.toml"));
         }
 
         paths
@@ -307,8 +290,7 @@ mod tests {
     #[test]
     fn test_search_paths_order() {
         let paths = RoCoConfig::search_paths();
-        // First should be $ROCO_CONFIG if set, but we can check structure
-        assert!(paths.len() >= 3); // .roco/config.toml + ~/.config/roco + ~/.roco
+        // Should find at least .roco/config.toml in cwd
         assert!(paths
             .iter()
             .any(|p| p.to_string_lossy().contains(".roco/config.toml")));
@@ -329,14 +311,14 @@ mod tests {
         "#;
         fs::write(&config_path, content).unwrap();
 
-        // Temporarily set ROCO_CONFIG to this path
-        std::env::set_var("ROCO_CONFIG", config_path.to_string_lossy().as_ref());
+        // Temporarily set ROCO_DIR to the dir containing config.toml
+        std::env::set_var("ROCO_DIR", dir.to_string_lossy().as_ref());
         let cfg = RoCoConfig::load();
         assert_eq!(cfg.model.path.unwrap(), "/roundtrip/model.st");
         assert_eq!(cfg.server.port, 7070);
 
         fs::remove_dir_all(&dir).ok();
-        std::env::remove_var("ROCO_CONFIG");
+        std::env::remove_var("ROCO_DIR");
     }
 
     #[test]

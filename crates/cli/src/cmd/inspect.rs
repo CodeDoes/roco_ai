@@ -252,7 +252,7 @@ fn inspect_config(json_mode: bool) {
         "rwkv_backend_timeout": std::env::var("RWKV_BACKEND_TIMEOUT").unwrap_or_else(|_| "(not set, default 120s)".into()),
         "rwkv_adapter": std::env::var("RWKV_ADAPTER").unwrap_or_else(|_| "(not set, auto)".into()),
         "rwkv_deterministic_seed": std::env::var("RWKV_DETERMINISTIC_SEED").unwrap_or_else(|_| "(not set)".into()),
-        "roco_config": std::env::var("ROCO_CONFIG").unwrap_or_else(|_| "(not set)".into()),
+        "roco_dir": std::env::var("ROCO_DIR").unwrap_or_else(|_| "(not set, default ./.roco)".into()),
         "profile_path": identity_default_profile_path(),
     });
 
@@ -274,7 +274,7 @@ fn inspect_config(json_mode: bool) {
             info["rwkv_backend_timeout"]
         );
         println!("    RWKV_ADAPTER (env):      {}", info["rwkv_adapter"]);
-        println!("    ROCO_CONFIG (env):       {}", info["roco_config"]);
+        println!("    ROCO_DIR (env):          {}", info["roco_dir"]);
         println!("    Profile path:            {}", info["profile_path"]);
         println!("    Mock backend:            {}", info["mock_backend"]);
         let seed_info = info["rwkv_deterministic_seed"].as_str().unwrap_or("");
