@@ -81,14 +81,15 @@ you need real inference. Tests compile against `engine` alone using `MockBackend
 
 ## 4. inferd Architecture — Atomic Operations
 
-inferd's actor loop handles four messages:
+inferd's actor loop handles these operations:
 
-| Message | Effect |
+| Operation | Effect |
 |---|---|
-| `Complete { text, state_id, save_as, grammar, temp, max_tokens }` | Load `state_id` from pool, generate tokens starting from `text`, save resulting state as `save_as`, return output text |
-| `Bake { text, name }` | Load state from pool, feed `text` through model (no generation), save resulting state as `name`. Primes the recurrent state for a task. |
-| `FeedEos { name }` | Load state from pool, feed token 0 (EOS), save back. Breaks repetition cycles without consuming a generation slot. |
+| `Complete { text, init_state, state_slot, grammar, temp, max_tokens }` | Load `init_state` from cache (or blank if None), generate tokens from `text`, save resulting state as `state_slot` (or don't cache if None), return output text |
+| `Bake { text, init_state, state_slot }` | Load `init_state` (or blank), feed `text` through model (no generation), save resulting state as `state_slot`. Primes the recurrent state. |
 | `SaveState / LoadState` | Serialize/deserialize the raw state tensor for persistence. |
+
+FeedEos is NOT an inferd primitive. Callers manage state reset by saving/loading from cache or baking EOS text directly.
 
 State pool: `HashMap<String, Option<Tensor>>`. Max 8 entries. FIFO + LRU
 eviction. Thread-safe (behind `Arc<RwLock<...>>`).
@@ -195,25 +196,24 @@ System prompts are task-specific:
 
 ## 9. Eval-First Methodology — The Correct Order
 
-Prose fallback parsers should NOT exist. They exist because I violated the
-correct workflow: **evals first, workarounds never.**
+Prose fallback parsers should NOT exist. They were deleted in commit f3bab52.
+They existed because I violated the correct workflow: **evals first, workarounds
+never.**
 
-The correct workflow:
-1. **Set up the system correctly** — fix bugs in session mapping, feed_eos,
-   prompt formatting, state management
-2. **Run evals** against the real model to test each phase for JSON output
-   capability — use `crates/engine/src/story_evals.rs` and
-   `crates/cli/examples/format_eval.rs`
-3. **If evals show the model produces valid JSON** → remove prose fallback
-   parsers. A JSON parse failure is a system bug, handled by fixing the system,
-   not by parsing prose.
-4. **If evals show the model fails to produce JSON** → tune prompts,
-   baking examples, grammar, temperature until it works. The knobs exist for
-   this. Do not add workarounds.
+The correct order:
+1. **Tests** (unit + integration) — prove the code works correctly in isolation
+   (mock backend, deterministic, fast).
+2. **Evals** — prove the model CAN produce correct output (valid JSON, coherent
+   chapters) given correct inputs from the fixed pipeline. Each phase tested
+   separately against the real model.
+3. **Manual E2E** — run the full pipeline, manually review output quality.
 
-As of this writing (post-fix), I have NOT run evals with the corrected system.
-The prose fallback parsers are placeholders that should be removed once evals
-confirm the model works.
+Prose fallback parsers were added before step 2, masking bugs that should have
+been fixed by tuning prompts/baking/grammar. A JSON parse failure is a system
+bug — handle it by fixing the system, not by parsing prose.
+
+As of this writing (post-fix), evals have NOT been run on the corrected system.
+They should be run next to confirm each phase produces valid JSON.
 
 ### Existing Eval Infrastructure
 

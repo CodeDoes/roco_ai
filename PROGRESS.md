@@ -1,58 +1,65 @@
-# Pipeline Fixes + Eval-First Direction
+# Done this round
 
-## Fixed Bugs
+## 1. FeedEos removed from inferd
 
-| Bug | Root Cause | Fix |
+`FeedEos` is no longer an inferd primitive. The actor no longer has the
+`FeedEos` message variant. `RwkvBackend::feed_eos` is now a no-op (falls
+through to the trait default).
+
+Callers that need to "reset" state between operations (e.g. validator
+state between chapters) should manage their own state by saving/loading
+from cache, or baking EOS text directly.
+
+## 2. State fields renamed: `init_state` / `state_slot`
+
+Old names → New names:
+
+| Old | New | Meaning |
 |---|---|---|
-| Session state lost between chapters | Mapped `session` → `state_id`+`save_as` only when `preserve_state=true` | Map both always — old code saved unconditionally when `session` was set |
-| `feed_eos` no-op | New code just reset in-memory state, didn't touch pool | Restored old behavior: load from pool, feed token 0 (EOS), save back to pool |
-| Mock backend silent | Matching on `req.system` which is now empty | Match on `req.prompt` with unique phase identifiers |
-| Control chars break JSON | Model emits NUL/control chars | Added `strip_control_chars()` in `clean_json_output()` |
-| Outline truncated at 800 tokens | `repair_truncated_json` wasn't being called | Now closes unclosed brackets |
-| Outline text data flow | Handler wrote full markdown but returned short summary without chapter details | Main pipeline reads the written file back |
-| `--fix` workspace discovery | Created fresh empty workspace instead of finding latest | `--fix` implies `--resume` |
-| Validator state bleed | Cross-chapter persistence in validator session | `feed_eos(SESSION_VALIDATOR)` before each validation |
-| Retry loop accepted without re-validate | Revised once then accepted unconditionally | Loop validates after each revision, up to 3 retries |
+| `state_id` | `init_state` | State slot to load before processing (None = blank) |
+| `save_as` | `state_slot` | State slot to save result into (None = don't cache) |
+| `Bake.state_id` | `Bake.init_state` | Same |
+| `Bake.name` | `Bake.state_slot` | Same |
 
-## Architecture Change: inferd Only Receives Raw Text
+## 3. Prose fallback parsers deleted
 
-**Before:** actor formatted `System:/User:/Assistant:` wrappers, handled `<think>`
-suppression, and managed implicit session-based state.
+All 5 functions + 20+ tests deleted from story.rs:
+- `prose_to_outline`, `prose_to_wiki`, `prose_to_chapter`
+- `prose_to_synopsis`, `prose_to_validation`
+- `prose_fallback` parameter removed from `structured_complete_with_strategy`
 
-**After:** actor receives raw text only. `CompleteReq` has `state_id`/`save_as` for
-explicit state management. `Bake` is a separate message (feed text, save state).
-`FeedEos` loads from pool, feeds EOS token, saves back. Gateway owns formatting.
+Phases now fail loudly on JSON parse failure instead of silently falling
+back to natural language heuristics.
 
-## Eval-First Direction
+## Remaining (not yet done)
 
-The prose fallback parsers (`prose_to_outline`, `prose_to_wiki`, `prose_to_chapter`,
-`prose_to_validation`, `prose_to_synopsis`) are **wrong.** They were added because
-I assumed the 2.9B model can't output JSON. But that assumption was never validated
-with evals on a correctly-functioning pipeline.
+1. **Remove `system`/`session`/`preserve_state` from `CompletionRequest`** —
+   would break ~50 callers across engine, agent, app, protocol, ui crates.
+   Needs a careful pass.
 
-The correct order:
-1. **Fix the system** (done — bugs above)
-2. **Run evals** to prove the model CAN output JSON given the right prompts, baking,
-   grammar, and temperature. Evaluate each phase separately.
-3. **If evals pass**, remove the prose fallback parsers. JSON parse failure = phase
-   failure = fix the system, not silently fall back.
-4. **If evals fail**, tune prompts/baking/grammar/temperature until they pass.
+2. **Remove `think_trace` from `CompletionResponse`** — tied to #1.
 
-Existing eval infrastructure:
-- `crates/engine/src/story_evals.rs` — per-stage evals for outline, wiki, chapter,
-  validation, revision
-- `crates/cli/examples/format_eval.rs` — multi-format eval with state-tune delta
-- `evals/` — shell scripts + results
+3. **Remove `feed_eos` from `ModelBackend` trait** — only possible after
+   #1 and #2 are done and all callers updated.
 
-The existing format_eval results show format_ok=false for everything, but those
-were run on the OLD buggy system (before session mapping fix, before feed_eos fix).
-Post-fix evals need to be run.
+4. **Update eval.rs, story_evals.rs, cases.rs** — use `init_state`/`state_slot`
+   instead of `system`/`session`/`preserve_state`. These are in the engine
+   crate and affect compile.
 
-## Remaining Cleanup
+5. **Migrate agent journal to JSONL** — new sessions should use the
+   JSONL format with `session-init`, `user-message`, `tool-call`, etc.
 
-- [ ] Run post-fix format_eval against real model to verify JSON output capability
-- [ ] Run post-fix story_evals to validate each pipeline phase
-- [ ] **Remove prose fallback parsers** if evals prove model can output JSON
-- [ ] Collapse harness crate's 10 × identical `Agent` structs into single `MockAgent`
-- [ ] Migrate `agent-journal.md` from Markdown to JSONL
-- [ ] Rename `StrategyKind`/`StrategySelector` if the name is confusing
+6. **Bake special token substitution** — `[EOX]` → token-0, end-sequence
+   support like `[0, "asdasd"]`. Not yet implemented.
+
+## Questions for you
+
+1. **Bake token substitution**: Should I implement `[EOX]` → token-0
+   substitution and end-sequence format parsing now, or is the current
+   raw-text Bake sufficient for now?
+
+2. **CompletionRequest cleanup**: Should I batch-fix all ~50 callers in
+   one pass (removing system/session/preserve_state), or do it piecemeal?
+
+3. **JSONL sessions**: Should I start writing new session entries in JSONL
+   format in the agent journal, or wait until the full migration?
