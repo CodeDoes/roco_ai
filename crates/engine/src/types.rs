@@ -193,6 +193,17 @@ pub struct CompletionRequest {
     /// Default: false (no trace, zero memory overhead).
     #[serde(default)]
     pub record_trace: bool,
+    // DEPRECATED: these fields will be removed in a future cleanup;
+    // they exist only to maintain backward compatibility with callers
+    // that still use the old request format.
+    #[serde(default, skip)]
+    pub system: String,
+    #[serde(default, skip)]
+    pub session: Option<String>,
+    #[serde(default, skip)]
+    pub preserve_state: bool,
+    #[serde(default, skip)]
+    pub thinking: bool,
 }
 
 fn default_temperature() -> f32 {
@@ -221,6 +232,11 @@ impl Clone for CompletionRequest {
             record_trace: self.record_trace,
             on_token: None,
             bnf_mask: None,
+            // DEPRECATED stub fields for backward compatibility during cleanup
+            system: self.system.clone(),
+            session: self.session.clone(),
+            preserve_state: self.preserve_state,
+            thinking: self.thinking,
         }
     }
 }
@@ -243,9 +259,16 @@ impl std::fmt::Debug for CompletionRequest {
             .field("record_trace", &self.record_trace)
             .field("on_token", &self.on_token.as_ref().map(|_| "<callback>"))
             .field("bnf_mask", &self.bnf_mask.as_ref().map(|_| "<BnfMask>"))
+            // DEPRECATED stub fields (will be removed after migration)
+            .field("system", &self.system)
+            .field("session", &self.session.as_deref())
+            .field("preserve_state", &self.preserve_state)
+            .field("thinking", &self.thinking)
             .finish()
     }
 }
+
+// Duplicate impl removed - resolved E0119 conflicting implementations of trait `Debug` for type `types::CompletionRequest`
 
 impl Default for CompletionRequest {
     fn default() -> Self {
@@ -265,6 +288,11 @@ impl Default for CompletionRequest {
             seed: None,
             record_trace: false,
             bnf_mask: None,
+            // DEPRECATED stub fields for backward compatibility during cleanup
+            system: String::new(),
+            session: None,
+            preserve_state: false,
+            thinking: false,
         }
     }
 }
@@ -280,6 +308,12 @@ impl CompletionRequest {
     /// Create a builder for convenient construction with validation.
     pub fn builder() -> CompletionRequestBuilder {
         CompletionRequestBuilder::default()
+    }
+
+    /// DEPRECATED: stub for backward compatibility.
+    pub fn from_openai(_openai: &CompletionRequest) -> Self {
+        // Temporary placeholder until migration complete
+        Self::default()
     }
 }
 
@@ -496,6 +530,11 @@ impl CompletionRequestBuilder {
             record_trace: b.record_trace.unwrap_or(false),
             on_token: b.on_token,
             bnf_mask: b.bnf_mask,
+            // DEPRECATED stub fields for backward compatibility during cleanup
+            system: String::new(),
+            session: None,
+            preserve_state: false,
+            thinking: false,
         }
     }
 }
