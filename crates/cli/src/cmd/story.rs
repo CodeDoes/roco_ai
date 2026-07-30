@@ -1877,10 +1877,12 @@ pub fn cmd_story(extra: &[&str]) {
                     spec: serde_json::json!({"premise": prompt}),
                 }],
             };
-            let outline_result = agent
+            let _outline_result = agent
                 .dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)?;
+            // Read back the markdown file (handler writes full chapter details there)
+            let outline_text = read_ws_file(&ws, "01-OUTLINE.md").unwrap_or_default();
             println!("  ✓ Outline complete\n");
-            outline_result.output
+            outline_text
         } else {
             println!("📝 Outline (skipped)\n");
             read_ws_file(&ws, "01-OUTLINE.md").unwrap_or_default()
