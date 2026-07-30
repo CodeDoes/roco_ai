@@ -1380,7 +1380,7 @@ pub fn cmd_story(extra: &[&str]) {
                 let wiki = read_ws_file(&ws, "02-WIKI.md");
                 let chapters = detect_chapters(&ws);
                 (ws, outline, wiki, chapters)
-            } else if resume {
+            } else if resume || fix_chapter.is_some() {
                 let ws = find_latest_workspace().unwrap_or_else(|| {
                     eprintln!("No previous story workspace found. Run without --resume to start fresh.");
                     std::process::exit(1);
@@ -1895,7 +1895,7 @@ pub fn cmd_story(extra: &[&str]) {
             && phase_filter.as_deref() != Some("synopsis")
             && phase_filter.as_deref() != Some("publish")
             && fix_chapter.is_none();
-        let _wiki_text = if let Some(ref existing) = existing_wiki {
+        let _wiki_text: String = if let Some(ref existing) = existing_wiki {
             println!("📚 Worldbuilding (existing)...");
             println!("  ✓ World bible loaded from workspace\n");
             existing.clone()
@@ -2012,6 +2012,13 @@ pub fn cmd_story(extra: &[&str]) {
                 let max_retries = 3;
                 let mut current_text = ch_result.output;
                 for attempt in 0..=max_retries {
+                    // Reset validator state to prevent cross-chapter bleed.
+                    // Each chapter's validation should start from a clean slate
+                    // so the validator doesn't remember previous chapters' issues.
+                    let _ = futures::executor::block_on(
+                        backend.feed_eos(Some(SESSION_VALIDATOR.to_string()))
+                    );
+
                     // Validation (always runs at least once for the initial version)
                     println!("  🔍 Validating {}...", &chapter_label);
                     let val_task = Task {
