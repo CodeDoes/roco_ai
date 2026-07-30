@@ -133,7 +133,7 @@ impl OutlineValidator {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    .system(system)
+                    
                     .prompt(prompt)
                     .grammar_opt(grammar)
                     .temperature(0.3)

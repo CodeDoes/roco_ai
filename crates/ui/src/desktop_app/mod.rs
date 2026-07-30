@@ -961,8 +961,7 @@ mod tests {
                     text,
                     usage: Default::default(),
                     parsed: None,
-                    think_trace: None,
-                    trace: Vec::new(),
+                                        trace: Vec::new(),
                 })
             })
         }

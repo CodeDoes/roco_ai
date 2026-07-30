@@ -345,11 +345,7 @@ impl ModificationPlan {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    .system(
-                        "You are a story planning assistant. Output valid JSON only. \
-                     No thinking, no reasoning, only JSON.",
-                    )
-                    .prompt(prompt)
+                    .prompt(format!("System: You are a story planning assistant. Output valid JSON only. No thinking, no reasoning, only JSON.\n\nUser: {}\n\nAssistant:", prompt))
                     .grammar_opt(grammar)
                     .temperature(0.4)
                     .max_tokens(400)

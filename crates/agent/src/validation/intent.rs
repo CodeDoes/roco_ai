@@ -466,11 +466,7 @@ impl IntentClassifier {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    .system(
-                        "You classify user intent for a story-writing assistant. \
-                     Output valid JSON only. No thinking, no reasoning. Only JSON.",
-                    )
-                    .prompt(prompt)
+                    .prompt(format!("System: You classify user intent for a story-writing assistant. Output valid JSON only. No thinking, no reasoning. Only JSON.\n\nUser: {}\n\nAssistant:", prompt))
                     .grammar_opt(schema.to_gbnf("Classification").ok())
                     .temperature(self.temperature)
                     .max_tokens(self.max_tokens)

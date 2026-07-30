@@ -233,7 +233,7 @@ mod tests {
     #[tokio::test]
     async fn complete_with_retry_succeeds_on_first_try() {
         let backend = MockBackend::new("mock", 0);
-        let req = CompletionRequest::new("", "hello");
+        let req = CompletionRequest::new("hello");
         let config = RetryConfig::default();
         let result = complete_with_retry(&backend, req, &config).await;
         assert!(
@@ -246,7 +246,7 @@ mod tests {
     #[tokio::test]
     async fn complete_with_retry_retries_on_failure() {
         let backend = MockBackend::new("mock", 3);
-        let req = CompletionRequest::new("", "hello");
+        let req = CompletionRequest::new("hello");
         let config = RetryConfig {
             max_retries: 5,
             ..Default::default()
@@ -262,7 +262,7 @@ mod tests {
     #[tokio::test]
     async fn complete_with_retry_exhausts_retries() {
         let backend = MockBackend::new("mock", 10);
-        let req = CompletionRequest::new("", "hello");
+        let req = CompletionRequest::new("hello");
         let config = RetryConfig {
             max_retries: 2,
             ..Default::default()

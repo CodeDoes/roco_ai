@@ -523,8 +523,6 @@ impl StoryModeAgent {
         let result: Result<SynopsisResponse, String> = {
             let text = futures::executor::block_on(
                 backend.complete(CompletionRequest {
-                    system: "You are a literary summarizer. Output valid JSON only. No thinking."
-                        .to_string(),
                     prompt: symptoms_prompt,
                     grammar,
                     temperature: 0.5,
@@ -1422,9 +1420,13 @@ fn state_tuned_json<T: serde::de::DeserializeOwned>(
     temperature: f32,
     max_tokens: usize,
 ) -> Result<T, String> {
+    let full_prompt = if system.is_empty() {
+        prompt.to_string()
+    } else {
+        format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt)
+    };
     let text = futures::executor::block_on(backend.complete(CompletionRequest {
-        system: system.to_string(),
-        prompt: prompt.to_string(),
+        prompt: full_prompt,
         grammar: None, // State-tuned: no grammar constraint
         temperature,
         max_tokens,

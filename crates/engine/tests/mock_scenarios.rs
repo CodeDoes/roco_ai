@@ -87,7 +87,7 @@ impl StateTuning for RecordingBackend {
 #[tokio::test]
 async fn exact_completion_returns_expected_text() {
     let backend = MockBackend::new("test-model", 0);
-    let req = CompletionRequest::new("system", "Hello world");
+    let req = CompletionRequest::new("Hello world");
 
     let resp = backend.complete(req).await.unwrap();
     assert!(resp.text.contains("test-model"));
@@ -104,7 +104,7 @@ async fn exact_error_sequence_fails_n_times_then_succeeds() {
 
     // First 3 calls should fail
     for i in 1..=3 {
-        let req = CompletionRequest::new("sys", format!("call {i}"));
+        let req = CompletionRequest::new(format!("call {i}"));
         let err = backend.complete(req).await.unwrap_err();
         assert!(
             format!("{err:?}").contains("simulated failure"),
@@ -113,7 +113,7 @@ async fn exact_error_sequence_fails_n_times_then_succeeds() {
     }
 
     // 4th call succeeds
-    let req = CompletionRequest::new("sys", "call 4");
+    let req = CompletionRequest::new("call 4");
     let resp = backend.complete(req).await.unwrap();
     assert!(resp.text.contains("err-model"));
 }
@@ -121,7 +121,7 @@ async fn exact_error_sequence_fails_n_times_then_succeeds() {
 #[tokio::test]
 async fn completion_usage_reports_tokens() {
     let backend = MockBackend::default();
-    let mut req = CompletionRequest::new("system", "prompt text here");
+    let mut req = CompletionRequest::new("prompt text here");
     req.estimated_prompt_tokens = 42;
 
     let resp = backend.complete(req).await.unwrap();
@@ -148,7 +148,7 @@ async fn streaming_callback_receives_tokens() {
     let tokens = Arc::new(std::sync::Mutex::new(Vec::new()));
     let tokens_clone = tokens.clone();
 
-    let mut req = CompletionRequest::new("sys", "stream test");
+    let mut req = CompletionRequest::new("stream test");
     req.on_token = Some(Box::new(move |tok: &str| {
         tokens_clone.lock().unwrap().push(tok.to_string());
     }));
@@ -176,7 +176,7 @@ async fn cancellation_interrupts_in_flight_completion() {
     assert!(result.is_ok(), "interrupt should succeed");
 
     // After interrupt, a new completion should still work
-    let req = CompletionRequest::new("sys", "after cancel");
+    let req = CompletionRequest::new("after cancel");
     let resp = backend.complete(req).await.unwrap();
     assert!(resp.text.contains("cancel-model"));
 }
@@ -189,7 +189,7 @@ async fn streaming_with_cancellation_stops_token_callback() {
     let tokens = Arc::new(AtomicUsize::new(0));
     let tokens_clone = tokens.clone();
 
-    let mut req = CompletionRequest::new("sys", "stream cancel test");
+    let mut req = CompletionRequest::new("stream cancel test");
     req.on_token = Some(Box::new(move |_tok: &str| {
         tokens_clone.fetch_add(1, Ordering::Relaxed);
     }));
@@ -211,7 +211,7 @@ async fn retry_after_failure_eventually_succeeds() {
     // Retry loop: try up to 5 times
     let mut last_error = None;
     for attempt in 1..=5 {
-        let req = CompletionRequest::new("sys", format!("attempt {attempt}"));
+        let req = CompletionRequest::new(format!("attempt {attempt}"));
         match backend.complete(req).await {
             Ok(resp) => {
                 assert!(resp.text.contains("retry-model"));
@@ -236,7 +236,7 @@ async fn retry_with_max_exceeded_returns_last_error() {
 
     let mut last_err = None;
     for attempt in 1..=3 {
-        let req = CompletionRequest::new("sys", format!("attempt {attempt}"));
+        let req = CompletionRequest::new(format!("attempt {attempt}"));
         match backend.complete(req).await {
             Ok(_) => {
                 panic!("Should not succeed before fail_count is exhausted");
@@ -263,8 +263,7 @@ async fn tool_approval_and_execution_flow() {
 
     // Simulate tool: generate a completion (as the tool would)
     let req = CompletionRequest::new(
-        "You are a writing tool.",
-        "Write a chapter titled 'The Beginning'",
+"Write a chapter titled 'The Beginning'",
     );
     let resp = backend.complete(req).await.unwrap();
     assert!(
@@ -280,7 +279,7 @@ async fn tool_failure_triggers_rollback() {
     let backend = MockBackend::new("tool-model", 1); // First call fails
 
     // Step 1: first attempt fails
-    let req1 = CompletionRequest::new("sys", "write chapter 1");
+    let req1 = CompletionRequest::new("write chapter 1");
     let err = backend.complete(req1).await.unwrap_err();
     assert!(
         format!("{err:?}").contains("simulated failure"),
@@ -291,7 +290,7 @@ async fn tool_failure_triggers_rollback() {
     let state_before = backend.save_state().await.unwrap();
 
     // Step 3: retry (this should succeed after the initial fail is consumed)
-    let req2 = CompletionRequest::new("sys", "write chapter 1 (retry)");
+    let req2 = CompletionRequest::new("write chapter 1 (retry)");
     let resp = backend.complete(req2).await.unwrap();
     assert!(
         resp.text.contains("tool-model"),
@@ -337,7 +336,7 @@ async fn interrupted_generation_can_resume() {
     let backend = MockBackend::new("story-model", 0);
 
     // Generate first chunk
-    let req1 = CompletionRequest::new("A storyteller", "Chapter 1: The Beginning");
+    let req1 = CompletionRequest::new("Chapter 1: The Beginning");
     let resp1 = backend.complete(req1).await.unwrap();
 
     // Save state at this point (simulates checkpoint)
@@ -348,7 +347,7 @@ async fn interrupted_generation_can_resume() {
 
     // Later: restore state and continue
     backend.load_state(checkpoint).await.unwrap();
-    let req2 = CompletionRequest::new("A storyteller", "Continue from where you left off.");
+    let req2 = CompletionRequest::new("Continue from where you left off.");
     let resp2 = backend.complete(req2).await.unwrap();
 
     // Both responses should be valid
@@ -387,8 +386,7 @@ async fn outline_edit_changes_subsequent_generation() {
 
     // Step 1: Generate outline
     let outline_req = CompletionRequest::new(
-        "You are a story planner.",
-        "Create an outline for a fantasy story about a lost city.",
+"Create an outline for a fantasy story about a lost city.",
     );
     let outline_resp = backend.complete(outline_req).await.unwrap();
     assert!(
@@ -398,8 +396,7 @@ async fn outline_edit_changes_subsequent_generation() {
 
     // Step 2: Edit outline (simulated by changing system prompt)
     let chapter_req = CompletionRequest::new(
-        "Outline: A fantasy story about a lost city. Chapter 1: The Discovery.",
-        "Write chapter 1 based on the outline.",
+"Write chapter 1 based on the outline.",
     );
     let chapter_resp = backend.complete(chapter_req).await.unwrap();
     assert!(
@@ -409,8 +406,7 @@ async fn outline_edit_changes_subsequent_generation() {
 
     // Step 3: Edit the premise and regenerate
     let revised_req = CompletionRequest::new(
-        "OUTLINE REVISED: The lost city is actually an ancient starship. Chapter 1: The Crash Site.",
-        "Rewrite chapter 1 with the revised outline.",
+"Rewrite chapter 1 with the revised outline.",
     );
     let revised_resp = backend.complete(revised_req).await.unwrap();
     // MockBackend echoes the prompt snippet, so text contains the
@@ -460,7 +456,7 @@ async fn persistence_mix_two_states() {
     let state_a = backend.save_state().await.unwrap();
 
     // Do a completion to change state
-    let req = CompletionRequest::new("sys", "change state");
+    let req = CompletionRequest::new("change state");
     let _ = backend.complete(req).await.unwrap();
     let state_b = backend.save_state().await.unwrap();
 
@@ -479,7 +475,7 @@ async fn persistence_round_trip_recording_backend() {
 
     // Multiple completions
     for i in 0..3 {
-        let req = CompletionRequest::new("sys", format!("round trip {i}"));
+        let req = CompletionRequest::new(format!("round trip {i}"));
         let resp = backend.complete(req).await.unwrap();
         assert!(resp.text.contains("recording"));
     }
@@ -497,7 +493,7 @@ async fn backend_with_latency_respects_delay() {
     backend.latency_ms = 10; // 10ms delay
 
     let start = std::time::Instant::now();
-    let req = CompletionRequest::new("sys", "timing test");
+    let req = CompletionRequest::new("timing test");
     backend.complete(req).await.unwrap();
     let elapsed = start.elapsed();
 
@@ -513,14 +509,14 @@ async fn backend_respects_set_fail_count() {
     backend.set_fail_count(2);
 
     // Now 2 calls should fail
-    let req1 = CompletionRequest::new("sys", "fail 1");
+    let req1 = CompletionRequest::new("fail 1");
     assert!(backend.complete(req1).await.is_err());
 
-    let req2 = CompletionRequest::new("sys", "fail 2");
+    let req2 = CompletionRequest::new("fail 2");
     assert!(backend.complete(req2).await.is_err());
 
     // 3rd succeeds
-    let req3 = CompletionRequest::new("sys", "succeed");
+    let req3 = CompletionRequest::new("succeed");
     assert!(backend.complete(req3).await.is_ok());
 }
 
@@ -529,12 +525,12 @@ async fn think_trace_extraction() {
     let backend = MockBackend::default();
 
     // Without thinking mode
-    let req = CompletionRequest::new("sys", "no think");
+    let req = CompletionRequest::new("no think");
     let resp = backend.complete(req).await.unwrap();
     assert!(resp.think_trace.is_none());
 
     // With thinking mode
-    let mut req_think = CompletionRequest::new("sys", "think mode");
+    let mut req_think = CompletionRequest::new("think mode");
     req_think.thinking = true;
     let resp = backend.complete(req_think).await.unwrap();
     let trace = resp
@@ -555,13 +551,13 @@ async fn record_trace_token_metadata() {
     let backend = MockBackend::default();
 
     // Without record_trace
-    let req = CompletionRequest::new("sys", "no trace");
+    let req = CompletionRequest::new("no trace");
     let resp = backend.complete(req).await.unwrap();
     assert!(resp.trace.is_empty());
 
     // With record_trace
     let req_trace = CompletionRequest::builder()
-        .system("sys")
+        
         .prompt("trace test")
         .record_trace(true)
         .build();

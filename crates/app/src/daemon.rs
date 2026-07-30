@@ -793,28 +793,8 @@ impl roco_engine::ModelBackend for TokioBackend {
         state: Vec<u8>,
     ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         self.inner.load_state(state)
-    }
-
-    fn feed_eos(
-        &self,
-        session: Option<String>,
-    ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
-        let inner = self.inner.clone();
-        let rt_handle = self.rt.handle().clone();
-        Box::pin(async move {
-            // Run on the dedicated tokio runtime to avoid deadlocking
-            let result = std::thread::scope(|s| {
-                s.spawn(move || rt_handle.block_on(inner.feed_eos(session)))
-                    .join()
-                    .unwrap_or(Err(roco_engine::EngineError::Backend(
-                        "TokioBackend feed_eos thread panicked".into(),
-                    )))
-            });
-            result
-        })
-    }
 }
-
+    }
 /// Return a backend that works from synchronous code (uses a dedicated tokio
 /// runtime so reqwest calls inside `futures::executor::block_on` function).
 pub fn ensure_sync_backend() -> Arc<dyn roco_engine::ModelBackend> {

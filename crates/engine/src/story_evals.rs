@@ -1271,7 +1271,6 @@ async fn do_complete(
 ) -> Result<String, String> {
     let resp = backend
         .complete(CompletionRequest {
-            system: system.to_string(),
             prompt: prompt.to_string(),
             grammar: None,
             temperature,

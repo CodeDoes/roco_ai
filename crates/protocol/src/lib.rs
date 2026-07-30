@@ -10,7 +10,7 @@
 //! The server speaks an OpenAI-compatible `/v1/completions` endpoint.
 //! `OpenAiCompletionRequest` and `OpenAiCompletionResponse` map directly
 //! to the OpenAI HTTP body shape, with RoCo-specific extensions
-//! (`thinking`, `grammar`, `prefill`, `session`, `preserve_state`).
+//! (`grammar`, `prefill`, `init_state`, `state_slot`).
 
 use roco_engine::CompletionRequest;
 use serde::{Deserialize, Serialize};
@@ -32,23 +32,19 @@ pub struct OpenAiCompletionRequest {
     #[serde(default)]
     pub model: Option<String>,
     pub prompt: String,
-    pub system: Option<String>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<usize>,
     pub stream: Option<bool>,
-    /// Enable think-trace extraction (RoCo extension).
-    #[serde(default)]
-    pub thinking: Option<bool>,
     /// Grammar name for constrained decoding (RoCo extension).
     pub grammar: Option<String>,
-    /// Prefill text to inject after "Assistant:" (RoCo extension).
+    /// Prefill text to inject after the prompt (RoCo extension).
     pub prefill: Option<String>,
-    /// Named recurrent-state session to load/save (RoCo extension).
+    /// Load state from this cache slot before processing (RoCo extension).
     #[serde(default)]
-    pub session: Option<String>,
-    /// Preserve recurrent state after this completion (RoCo extension).
+    pub init_state: Option<String>,
+    /// Save resulting state to this cache slot (RoCo extension).
     #[serde(default)]
-    pub preserve_state: Option<bool>,
+    pub state_slot: Option<String>,
     /// Deterministic seed for reproducible sampling (RoCo extension).
     /// Same seed + same prompt + same temperature = same output.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,15 +55,13 @@ impl OpenAiCompletionRequest {
     /// Convert to the engine's `CompletionRequest`, consuming self.
     pub fn into_engine(self) -> CompletionRequest {
         CompletionRequest {
-            system: self.system.unwrap_or_default(),
             prompt: self.prompt,
             prefill: self.prefill,
             grammar: self.grammar,
             temperature: self.temperature.unwrap_or(0.2),
             max_tokens: self.max_tokens.unwrap_or(512),
-            thinking: self.thinking.unwrap_or(false),
-            session: self.session,
-            preserve_state: self.preserve_state.unwrap_or(false),
+            init_state: self.init_state,
+            state_slot: self.state_slot,
             seed: self.seed,
             ..Default::default()
         }
@@ -78,15 +72,13 @@ impl OpenAiCompletionRequest {
         Self {
             model: None,
             prompt: req.prompt.clone(),
-            system: Some(req.system.clone()).filter(|s| !s.is_empty()),
             temperature: Some(req.temperature),
             max_tokens: Some(req.max_tokens),
             stream: None,
-            thinking: Some(req.thinking),
             grammar: req.grammar.clone(),
             prefill: req.prefill.clone(),
-            session: req.session.clone(),
-            preserve_state: Some(req.preserve_state),
+            init_state: req.init_state.clone(),
+            state_slot: req.state_slot.clone(),
             seed: req.seed,
         }
     }
@@ -306,7 +298,7 @@ mod tests {
 
     #[test]
     fn seed_propagates_through_from_engine() {
-        let mut engine_req = CompletionRequest::new("sys", "prompt");
+        let mut engine_req = CompletionRequest::new("prompt");
         engine_req.seed = Some(999);
         let wire = OpenAiCompletionRequest::from_engine(&engine_req);
         assert_eq!(wire.seed, Some(999));
@@ -405,7 +397,7 @@ mod tests {
 
     #[test]
     fn engine_round_trip() {
-        let engine_req = CompletionRequest::new("system", "hello");
+        let engine_req = CompletionRequest::new("hello");
         let wire = OpenAiCompletionRequest::from_engine(&engine_req);
         assert_eq!(wire.prompt, "hello");
         assert_eq!(wire.system.as_deref(), Some("system"));
@@ -416,7 +408,7 @@ mod tests {
 
     #[test]
     fn engine_round_trip_empty_system() {
-        let engine_req = CompletionRequest::new("", "hello");
+        let engine_req = CompletionRequest::new("hello");
         let wire = OpenAiCompletionRequest::from_engine(&engine_req);
         assert_eq!(wire.prompt, "hello");
         // Empty system should become None on the wire

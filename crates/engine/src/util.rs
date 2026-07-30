@@ -218,16 +218,14 @@ pub fn session_complete(
     temperature: f32,
     max_tokens: usize,
     prefill: Option<&str>,
-) -> Result<String, String> {
+    ) -> Result<String, String> {
     futures::executor::block_on(backend.complete(CompletionRequest {
-        system: String::new(),
         prompt: prompt.to_string(),
         grammar: grammar.map(String::from),
         temperature,
         max_tokens,
         prefill: prefill.map(String::from),
-        session: Some(session.to_string()),
-        preserve_state: true,
+        state_slot: Some(session.to_string()),
         ..Default::default()
     }))
     .map_err(|e| format!("model error in session {session}: {e}"))
@@ -273,8 +271,7 @@ pub fn model_complete(
     prefill: Option<&str>,
 ) -> Result<String, String> {
     futures::executor::block_on(backend.complete(CompletionRequest {
-        system: system.to_string(),
-        prompt: prompt.to_string(),
+        prompt: format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt),
         grammar: grammar.map(String::from),
         temperature,
         max_tokens,
@@ -282,9 +279,9 @@ pub fn model_complete(
         ..Default::default()
     }))
     .map_err(|e| format!("model error: {e}"))
+
     .map(|r| r.text)
 }
-
 /// One-off model call with JSON deserialization. No session.
 pub fn structured_complete<T>(
     backend: &dyn ModelBackend,

@@ -145,12 +145,15 @@ impl TokenUsage {
 }
 
 /// A completion request to a model backend.
+///
+/// inferd receives raw text only — no System/User/Assistant formatting.
+/// All formatting is the caller's responsibility. State is managed
+/// explicitly via init_state (load from cache) and state_slot (save to cache).
+/// None = start blank / don't cache.
 #[derive(Serialize, Deserialize)]
 pub struct CompletionRequest {
-    #[serde(default)]
-    pub system: String,
     pub prompt: String,
-    /// Text appended after "Assistant: " so the model sees it as its own
+    /// Text appended after the prompt so the model sees it as its own
     /// completed output (e.g. pre-filled think blocks, assistant role-play).
     pub prefill: Option<String>,
     pub output_schema: Option<String>,
@@ -162,13 +165,12 @@ pub struct CompletionRequest {
     pub max_tokens: usize,
     #[serde(default)]
     pub estimated_prompt_tokens: usize,
-    #[serde(default)]
-    pub thinking: bool,
-    #[serde(default)]
-    pub preserve_state: bool,
+    /// Load state from this cache slot before processing. None = start blank.
+    pub init_state: Option<String>,
+    /// Save resulting state to this cache slot. None = don't cache.
+    pub state_slot: Option<String>,
     #[serde(skip)]
     pub on_token: OnToken,
-    pub session: Option<String>,
     /// Wall-clock deadline for the entire completion (including prompt
     /// processing and all generated tokens). Specified in milliseconds.
     /// 0 = no deadline (default). When exceeded, the backend cancels
@@ -204,7 +206,6 @@ fn default_max_tokens() -> usize {
 impl Clone for CompletionRequest {
     fn clone(&self) -> Self {
         Self {
-            system: self.system.clone(),
             prompt: self.prompt.clone(),
             prefill: self.prefill.clone(),
             output_schema: self.output_schema.clone(),
@@ -213,9 +214,8 @@ impl Clone for CompletionRequest {
             top_a: self.top_a,
             max_tokens: self.max_tokens,
             estimated_prompt_tokens: self.estimated_prompt_tokens,
-            thinking: self.thinking,
-            preserve_state: self.preserve_state,
-            session: self.session.clone(),
+            init_state: self.init_state.clone(),
+            state_slot: self.state_slot.clone(),
             deadline_ms: self.deadline_ms,
             seed: self.seed,
             record_trace: self.record_trace,
@@ -228,7 +228,6 @@ impl Clone for CompletionRequest {
 impl std::fmt::Debug for CompletionRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompletionRequest")
-            .field("system", &self.system)
             .field("prompt", &self.prompt)
             .field("prefill", &self.prefill)
             .field("output_schema", &self.output_schema)
@@ -237,9 +236,8 @@ impl std::fmt::Debug for CompletionRequest {
             .field("top_a", &self.top_a)
             .field("max_tokens", &self.max_tokens)
             .field("estimated_prompt_tokens", &self.estimated_prompt_tokens)
-            .field("thinking", &self.thinking)
-            .field("preserve_state", &self.preserve_state)
-            .field("session", &self.session)
+            .field("init_state", &self.init_state)
+            .field("state_slot", &self.state_slot)
             .field("deadline_ms", &self.deadline_ms)
             .field("seed", &self.seed)
             .field("record_trace", &self.record_trace)
@@ -252,7 +250,6 @@ impl std::fmt::Debug for CompletionRequest {
 impl Default for CompletionRequest {
     fn default() -> Self {
         Self {
-            system: String::new(),
             prompt: String::new(),
             prefill: None,
             output_schema: None,
@@ -261,10 +258,9 @@ impl Default for CompletionRequest {
             top_a: None,
             max_tokens: 512,
             estimated_prompt_tokens: 0,
-            thinking: false,
-            preserve_state: false,
+            init_state: None,
+            state_slot: None,
             on_token: None,
-            session: None,
             deadline_ms: 0,
             seed: None,
             record_trace: false,
@@ -274,9 +270,8 @@ impl Default for CompletionRequest {
 }
 
 impl CompletionRequest {
-    pub fn new(system: impl Into<String>, prompt: impl Into<String>) -> Self {
+    pub fn new(prompt: impl Into<String>) -> Self {
         Self {
-            system: system.into(),
             prompt: prompt.into(),
             ..Default::default()
         }
@@ -291,12 +286,8 @@ impl CompletionRequest {
 /// Builder pattern for [`CompletionRequest`].
 ///
 /// Encapsulates common presets and applies env-var overrides automatically.
-/// Every caller that constructs a `CompletionRequest` repeats the same
-/// pattern: set system, prompt, temperature, prefill, etc. This builder
-/// eliminates that duplication and ensures consistent field handling.
 #[derive(Default)]
 pub struct CompletionRequestBuilder {
-    system: Option<String>,
     prompt: Option<String>,
     prefill: Option<String>,
     output_schema: Option<String>,
@@ -304,13 +295,12 @@ pub struct CompletionRequestBuilder {
     temperature: Option<f32>,
     top_a: Option<f32>,
     max_tokens: Option<usize>,
-    thinking: Option<bool>,
-    preserve_state: Option<bool>,
-    session: Option<String>,
+    init_state: Option<String>,
+    state_slot: Option<String>,
     deadline_ms: Option<u64>,
     seed: Option<u64>,
     /// NOTE: OnToken is already Option<Box<dyn Fn...>>, so we store it directly.
-    on_token: OnToken, // OnToken is already Option<Box<dyn Fn...>>
+    on_token: OnToken,
     bnf_mask: Option<Box<dyn BnfMask>>,
     record_trace: Option<bool>,
 }
@@ -318,7 +308,6 @@ pub struct CompletionRequestBuilder {
 impl std::fmt::Debug for CompletionRequestBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompletionRequestBuilder")
-            .field("system", &self.system)
             .field("prompt", &self.prompt)
             .field("prefill", &self.prefill)
             .field("output_schema", &self.output_schema)
@@ -326,9 +315,8 @@ impl std::fmt::Debug for CompletionRequestBuilder {
             .field("temperature", &self.temperature)
             .field("top_a", &self.top_a)
             .field("max_tokens", &self.max_tokens)
-            .field("thinking", &self.thinking)
-            .field("preserve_state", &self.preserve_state)
-            .field("session", &self.session)
+            .field("init_state", &self.init_state)
+            .field("state_slot", &self.state_slot)
             .field("deadline_ms", &self.deadline_ms)
             .field("seed", &self.seed)
             .field("record_trace", &self.record_trace)
@@ -341,7 +329,6 @@ impl std::fmt::Debug for CompletionRequestBuilder {
 impl Clone for CompletionRequestBuilder {
     fn clone(&self) -> Self {
         Self {
-            system: self.system.clone(),
             prompt: self.prompt.clone(),
             prefill: self.prefill.clone(),
             output_schema: self.output_schema.clone(),
@@ -349,9 +336,8 @@ impl Clone for CompletionRequestBuilder {
             temperature: self.temperature,
             top_a: self.top_a,
             max_tokens: self.max_tokens,
-            thinking: self.thinking,
-            preserve_state: self.preserve_state,
-            session: self.session.clone(),
+            init_state: self.init_state.clone(),
+            state_slot: self.state_slot.clone(),
             deadline_ms: self.deadline_ms,
             seed: self.seed,
             record_trace: self.record_trace,
@@ -362,19 +348,13 @@ impl Clone for CompletionRequestBuilder {
 }
 
 impl CompletionRequestBuilder {
-    /// Set the system prompt.
-    pub fn system(mut self, s: impl Into<String>) -> Self {
-        self.system = Some(s.into());
-        self
-    }
-
     /// Set the user prompt.
     pub fn prompt(mut self, p: impl Into<String>) -> Self {
         self.prompt = Some(p.into());
         self
     }
 
-    /// Set prefill text injected after "Assistant:".
+    /// Set prefill text injected after the prompt.
     pub fn prefill(mut self, p: impl Into<String>) -> Self {
         self.prefill = Some(p.into());
         self
@@ -416,21 +396,15 @@ impl CompletionRequestBuilder {
         self
     }
 
-    /// Enable think-trace extraction.
-    pub fn thinking(mut self, enabled: bool) -> Self {
-        self.thinking = Some(enabled);
+    /// Load state from this cache slot before processing. None = start blank.
+    pub fn init_state(mut self, s: impl Into<String>) -> Self {
+        self.init_state = Some(s.into());
         self
     }
 
-    /// Preserve recurrent state after completion.
-    pub fn preserve_state(mut self, enabled: bool) -> Self {
-        self.preserve_state = Some(enabled);
-        self
-    }
-
-    /// Set session name for state management.
-    pub fn session(mut self, s: impl Into<String>) -> Self {
-        self.session = Some(s.into());
+    /// Save resulting state to this cache slot. None = don't cache.
+    pub fn state_slot(mut self, s: impl Into<String>) -> Self {
+        self.state_slot = Some(s.into());
         self
     }
 
@@ -470,27 +444,6 @@ impl CompletionRequestBuilder {
         self
     }
 
-    /// Apply a chat preset (system prompt for conversational use).
-    pub fn chat_preset(mut self) -> Self {
-        self.system = self.system.or_else(|| {
-            Some("Hold a natural conversation. Answer concisely. Match the user's tone.".into())
-        });
-        self.temperature.get_or_insert(0.8);
-        self.max_tokens.get_or_insert(1024);
-        self.prefill.get_or_insert(" thinking response".into());
-        self
-    }
-
-    /// Apply a story preset.
-    pub fn story_preset(mut self) -> Self {
-        self.system = self.system.or_else(|| {
-            Some("You are a creative writing assistant. Write engaging, vivid prose.".into())
-        });
-        self.temperature.get_or_insert(0.9);
-        self.max_tokens.get_or_insert(2048);
-        self
-    }
-
     /// Apply a grammar-constrained preset.
     pub fn grammar_preset(mut self, gbnf: impl Into<String>) -> Self {
         self.grammar = Some(gbnf.into());
@@ -526,7 +479,6 @@ impl CompletionRequestBuilder {
     pub fn build(self) -> CompletionRequest {
         let b = self.apply_env_overrides();
         CompletionRequest {
-            system: b.system.unwrap_or_default(),
             prompt: b
                 .prompt
                 .expect("CompletionRequestBuilder: prompt is required"),
@@ -537,9 +489,8 @@ impl CompletionRequestBuilder {
             top_a: b.top_a,
             max_tokens: b.max_tokens.unwrap_or(512),
             estimated_prompt_tokens: 0,
-            thinking: b.thinking.unwrap_or(false),
-            preserve_state: b.preserve_state.unwrap_or(false),
-            session: b.session,
+            init_state: b.init_state,
+            state_slot: b.state_slot,
             deadline_ms: b.deadline_ms.unwrap_or(0),
             seed: b.seed,
             record_trace: b.record_trace.unwrap_or(false),
@@ -567,7 +518,6 @@ pub struct CompletionResponse {
     pub text: String,
     pub usage: TokenUsage,
     pub parsed: Option<serde_json::Value>,
-    pub think_trace: Option<String>,
     /// Per-token trace metadata. Only populated when the corresponding
     /// `CompletionRequest::record_trace` is true.
     #[serde(default)]
@@ -614,8 +564,7 @@ mod tests {
 
     #[test]
     fn completion_request_new_sets_fields() {
-        let req = CompletionRequest::new("system prompt", "user message");
-        assert_eq!(req.system, "system prompt");
+        let req = CompletionRequest::new("user message");
         assert_eq!(req.prompt, "user message");
         assert_eq!(req.temperature, 0.2);
         assert_eq!(req.max_tokens, 512);
@@ -623,12 +572,11 @@ mod tests {
 
     #[test]
     fn completion_request_deserialize_minimal() {
-        let json = r#"{"system": "test", "prompt": "hello", "temperature": 0.5, "max_tokens": 10}"#;
+        let json = r#"{"prompt": "hello", "temperature": 0.5, "max_tokens": 10}"#;
         let req: CompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.prompt, "hello");
         assert_eq!(req.temperature, 0.5);
         assert_eq!(req.max_tokens, 10);
-        assert_eq!(req.system, "test");
     }
 
     // ── Builder tests ───────────────────────────────────────────────────
@@ -644,55 +592,30 @@ mod tests {
     #[test]
     fn builder_sets_all_fields() {
         let req = CompletionRequest::builder()
-            .system("You are a helpful assistant.")
             .prompt("Tell me a story")
             .temperature(0.8)
             .max_tokens(2048)
             .seed(42)
             .top_a(0.5)
-            .thinking(true)
-            .preserve_state(true)
-            .session("test-session")
+            .init_state("story-writer")
+            .state_slot("story-writer")
             .deadline_ms(30000)
             .grammar("story")
             .output_schema("json")
             .prefill("Once upon a time")
             .build();
 
-        assert_eq!(req.system, "You are a helpful assistant.");
         assert_eq!(req.prompt, "Tell me a story");
         assert!((req.temperature - 0.8).abs() < 1e-6);
         assert_eq!(req.max_tokens, 2048);
         assert_eq!(req.seed, Some(42));
         assert!((req.top_a.unwrap() - 0.5).abs() < 1e-6);
-        assert!(req.thinking);
-        assert!(req.preserve_state);
-        assert_eq!(req.session.as_deref(), Some("test-session"));
+        assert_eq!(req.init_state.as_deref(), Some("story-writer"));
+        assert_eq!(req.state_slot.as_deref(), Some("story-writer"));
         assert_eq!(req.deadline_ms, 30000);
         assert_eq!(req.grammar.as_deref(), Some("story"));
         assert_eq!(req.output_schema.as_deref(), Some("json"));
         assert_eq!(req.prefill.as_deref(), Some("Once upon a time"));
-    }
-
-    #[test]
-    fn builder_chat_preset_applies_defaults() {
-        let req = CompletionRequest::builder()
-            .prompt("Hello")
-            .chat_preset()
-            .build();
-        assert_eq!(req.temperature, 0.8);
-        assert_eq!(req.max_tokens, 1024);
-        assert!(req.prefill.is_some());
-    }
-
-    #[test]
-    fn builder_story_preset_applies_defaults() {
-        let req = CompletionRequest::builder()
-            .prompt("A tale")
-            .story_preset()
-            .build();
-        assert_eq!(req.temperature, 0.9);
-        assert_eq!(req.max_tokens, 2048);
     }
 
     #[test]

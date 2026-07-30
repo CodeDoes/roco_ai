@@ -182,19 +182,19 @@ impl Scheduler {
         let due = self.due();
         let mut outcomes = Vec::with_capacity(due.len());
         for task in due {
+            // Build the prompt
             let prompt = if let Some(ref payload) = task.payload {
                 format!(
-                    "{}
-
-Payload: {}",
+                    "{}\n\nPayload: {}",
                     task.description, payload
                 )
             } else {
                 task.description.clone()
             };
+
+            // Execute the task
             let req = CompletionRequest::new(
-                "You are executing a scheduled task. Produce only the result.",
-                prompt,
+                format!("System: You are executing a scheduled task. Produce only the result.\n\nUser: {}\n\nAssistant:", prompt),
             );
             let resp = backend
                 .complete(req)
@@ -205,6 +205,8 @@ Payload: {}",
                 description: task.description.clone(),
                 output: resp.text.clone(),
             });
+
+            // Reschedule or remove
             if task.kind == "periodic" {
                 if let Some(iv) = task.interval {
                     let iv = iv.max(1);

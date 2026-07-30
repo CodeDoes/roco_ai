@@ -23,6 +23,8 @@ use crate::types::{CompletionRequest, TokenUsage};
 pub struct EvalCase {
     pub name: String,
     pub description: String,
+    /// DEPRECATED: system prompt. The caller should format System/User/Assistant
+    /// into `prompt` directly. Kept for backward compat with existing eval cases.
     pub system: String,
     pub prompt: String,
     pub expected_hints: Vec<String>,
@@ -41,10 +43,10 @@ pub struct EvalCase {
     pub bnf_mask: Option<Box<dyn crate::BnfMask>>,
     #[serde(default)]
     pub prefill: Option<String>,
-    /// Optional named recurrent-state session to resume from (state-tuning).
+    /// DEPRECATED: use `state_slot` in CompletionRequest instead.
     #[serde(default)]
     pub session: Option<String>,
-    /// Whether to persist the resulting state into the session after this call.
+    /// DEPRECATED: inferd no longer uses this.
     #[serde(default)]
     pub preserve_state: bool,
     pub category: EvalCategory,
@@ -169,14 +171,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let mut errors: Vec<String> = Vec::new();
     let mut checks: Vec<CheckResult> = Vec::new();
 
-    let full_input = if case.system.is_empty() {
-        format!("User: {}\n\nAssistant:", case.prompt)
-    } else {
-        format!(
-            "System: {}\n\nUser: {}\n\nAssistant:",
-            case.system, case.prompt
-        )
-    };
+    let full_input = format!("User: {}\n\nAssistant:", case.prompt);
 
     let on_token: crate::types::OnToken = match trace_path {
         Some(path) => {
@@ -231,13 +226,10 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let bnf_mask = case.bnf_mask;
 
     let request = CompletionRequest {
-        system: case.system.clone(),
         prompt: case.prompt.clone(),
         grammar: case.grammar.clone(),
         bnf_mask,
         prefill: case.prefill.clone(),
-        session: case.session.clone(),
-        preserve_state: case.preserve_state,
         temperature: case.temperature,
         max_tokens: case.max_tokens,
         on_token,
@@ -633,40 +625,29 @@ pub const FIM_FEW_SHOT: &[(&str, &str)] = &[
 /// See [`STATE_TUNE_EXAMPLES.md`](https://github.com/roco-ai/roco/blob/main/STATE_TUNE_EXAMPLES.md#3-eval-bake_fim_session--fill-in-the-middle)
 /// for the full catalog with example pairs.
 pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(backend: &B) -> Result<(), String> {
-    // Single-shot per example: each (user, assistant) pair is sent as one
-    // completion with the answer as prefill and max_tokens=0 (process through
-    // inference, no generation). Token-0 (feed_eos) boundaries between examples
-    // create clean separation in the recurrent state, matching the model's
-    // training distribution.
+    // Build a single text concatenating all FIM examples, feed through model
+    // with max_tokens=0 (no generation) into the named session slot.
     let system = "You are RoCo, a collaborative story-writing assistant. \
         Given the text BEFORE the cursor and the text AFTER the cursor, write \
         ONLY the short passage that connects them. Never repeat the BEFORE or \
         AFTER text, never add commentary.";
+    let mut text = String::new();
     for (i, (context, answer)) in FIM_FEW_SHOT.iter().enumerate() {
-        let req = CompletionRequest {
-            system: if i == 0 {
-                system.to_string()
-            } else {
-                String::new()
-            },
-            prompt: context.to_string(),
-            prefill: Some(answer.to_string()),
-            temperature: 0.0,
-            max_tokens: 0, // no generation — just process prompt+prefill
-            session: Some(FIM_SESSION.to_string()),
-            preserve_state: true,
-            ..Default::default()
-        };
-        if let Err(e) = backend.complete(req).await {
-            return Err(format!("FIM bake example {i}: {e}"));
+        if i == 0 && !system.is_empty() {
+            text.push_str(&format!("System: {}\n\n", system.trim()));
         }
-        // Token-0 boundary between examples
-        if i + 1 < FIM_FEW_SHOT.len() {
-            backend
-                .feed_eos(Some(FIM_SESSION.to_string()))
-                .await
-                .map_err(|e| format!("feed_eos after FIM example {i}: {e}"))?;
-        }
+        text.push_str(&format!("User: {}\n\nAssistant:{}", context, answer));
+    }
+    let req = CompletionRequest {
+        prompt: text,
+        prefill: None,
+        temperature: 0.0,
+        max_tokens: 0,
+        state_slot: Some(FIM_SESSION.to_string()),
+        ..Default::default()
+    };
+    if let Err(e) = backend.complete(req).await {
+        return Err(format!("FIM bake: {e}"));
     }
     Ok(())
 }

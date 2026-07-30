@@ -379,7 +379,7 @@ impl MechanisticAgent {
             prompt.insert_str(0, &format!("{}\n\n", ctx_block));
         }
         let grammar = Some(INTENT_GRAMMAR.to_string());
-        let resp = backend_call(backend, "", &prompt, grammar.as_deref(), 128, 0.2).await?;
+        let resp = backend_call(backend, &prompt, grammar.as_deref(), 128, 0.2).await?;
 
         let mut intent: Intent = serde_json::from_str(&resp).map_err(|e| {
             AgentError::Internal(format!(
@@ -446,7 +446,7 @@ impl MechanisticAgent {
                 prompt.insert_str(0, &format!("{}\n\n", ctx_block));
             }
 
-            match backend_call(backend, "", &prompt, grammar.as_deref(), max_tokens, temp).await {
+            match backend_call(backend, &prompt, grammar.as_deref(), max_tokens, temp).await {
                 Ok(resp) => match serde_json::from_str::<Plan>(&resp) {
                     Ok(plan) => return Ok(plan),
                     Err(e) => {
@@ -587,14 +587,12 @@ impl BaseAgent for MechanisticAgent {
 /// from the struct can still use it.
 async fn backend_call(
     backend: &dyn ModelBackend,
-    system: &str,
     prompt: &str,
     grammar: Option<&str>,
     max_tokens: usize,
     temperature: f32,
 ) -> Result<String, AgentError> {
     let req = CompletionRequest {
-        system: system.to_string(),
         prompt: prompt.to_string(),
         grammar: grammar.map(|s| s.to_string()),
         temperature,

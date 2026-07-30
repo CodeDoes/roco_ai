@@ -265,7 +265,7 @@ impl StoryIdeaGenerator {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    .system(system)
+                    
                     .prompt(full_prompt)
                     .temperature(self.brainstorm_temperature)
                     .max_tokens(self.max_tokens)
@@ -347,7 +347,7 @@ impl StoryIdeaGenerator {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    .system(system)
+                    
                     .prompt(prompt)
                     .temperature(self.expand_temperature)
                     .max_tokens(self.max_tokens)

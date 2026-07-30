@@ -339,8 +339,7 @@ impl Plan {
         }
         // Model subtask path.
         let req = CompletionRequest::new(
-            "You are executing one step of a plan. Produce only the result of this step.",
-            prompt,
+            format!("System: You are executing one step of a plan. Produce only the result of this step.\n\nUser: {}\n\nAssistant:", prompt),
         );
         let resp = backend
             .complete(req)
@@ -402,7 +401,6 @@ impl Planner {
             dependency-tracked plan. Respond with a single JSON object matching the plan schema.";
         let grammar = plan_grammar();
         let req = CompletionRequest {
-            system: system.to_string(),
             prompt: format!("Goal: {task}"),
             grammar: Some(grammar),
             max_tokens: 1024,
@@ -481,8 +479,7 @@ mod tests {
                     text: format!("```json\n{json}\n```"),
                     usage: TokenUsage::default(),
                     parsed: None,
-                    think_trace: None,
-                    trace: Vec::new(),
+                                        trace: Vec::new(),
                 })
             })
         }
@@ -522,8 +519,7 @@ mod tests {
                         text: "{\"task\":\"x\",\"steps\":[]}".to_string(),
                         usage: TokenUsage::default(),
                         parsed: None,
-                        think_trace: None,
-                        trace: Vec::new(),
+                                                trace: Vec::new(),
                     })
                 })
             }

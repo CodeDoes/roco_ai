@@ -174,34 +174,6 @@ impl ModelBackend for RemoteBackend {
         Box::pin(async move { remote_complete(&client, &base_url, &extra_headers, req).await })
     }
 
-    fn feed_eos(
-        &self,
-        session: Option<String>,
-    ) -> BoxFuture<'_, Result<(), EngineError>> {
-        let base_url = self.base_url.clone();
-        let client = self.client.clone();
-        let extra_headers = self.extra_headers.clone();
-        Box::pin(async move {
-            let session_id = match session {
-                Some(id) => id,
-                None => return Ok(()),  // no session, nothing to reset
-            };
-            let url = format!("{}/sessions/{}/eos", base_url, session_id);
-            let mut req = client.post(&url);
-            for (k, v) in &extra_headers {
-                req = req.header(k, v);
-            }
-            match req.send().await {
-                Ok(resp) if resp.status().is_success() => Ok(()),
-                Ok(resp) => Err(EngineError::Backend(format!(
-                    "feed_eos failed: HTTP {}", resp.status()
-                ))),
-                Err(e) => Err(EngineError::Backend(format!(
-                    "feed_eos request failed: {e}"
-                ))),
-            }
-        })
-    }
 }
 
 impl StateTuning for RemoteBackend {
@@ -280,23 +252,19 @@ impl StateTuning for RemoteBackend {
 #[derive(serde::Serialize)]
 struct WireRequest {
     prompt: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    system: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thinking: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     grammar: Option<String>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     prefill: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    session: Option<String>,
+    init_state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    preserve_state: Option<bool>,
+    state_slot: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<u64>,
 }
@@ -376,15 +344,13 @@ async fn remote_complete(
 
     let wire = WireRequest {
         prompt: req.prompt.clone(),
-        system: req.system.clone(),
         temperature: Some(req.temperature),
         max_tokens: Some(req.max_tokens),
-        thinking: if req.thinking { Some(true) } else { None },
         grammar: req.grammar.clone(),
         stream,
         prefill: req.prefill.clone(),
-        session: req.session.clone(),
-        preserve_state: if req.preserve_state { Some(true) } else { None },
+        init_state: req.init_state.clone(),
+        state_slot: req.state_slot.clone(),
         seed: req.seed,
     };
 
@@ -541,8 +507,7 @@ async fn remote_complete(
                 completion_tokens,
             },
             parsed: None,
-            think_trace: None,
-            trace: Vec::new(),
+                        trace: Vec::new(),
         });
     }
 
@@ -590,8 +555,7 @@ async fn remote_complete(
             completion_tokens,
         },
         parsed: None,
-        think_trace: None,
-        trace,
+                trace,
     })
 }
 

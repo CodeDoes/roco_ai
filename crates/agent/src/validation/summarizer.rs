@@ -179,11 +179,7 @@ impl StorySummarizer {
         let completion_result = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    .system(
-                        "You are a literary summarizer. Output valid JSON only. \
-                     Do NOT include thinking, reasoning, or meta-commentary.",
-                    )
-                    .prompt(prompt)
+                    .prompt(format!("System: You are a literary summarizer. Output valid JSON only. Do NOT include thinking, reasoning, or meta-commentary.\n\nUser: {}\n\nAssistant:", prompt))
                     .grammar_opt(grammar)
                     .temperature(self.temperature)
                     .max_tokens(self.max_tokens)

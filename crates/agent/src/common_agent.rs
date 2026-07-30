@@ -352,7 +352,7 @@ impl Agent {
             .prompt(prompt)
             .temperature(subtask.temperature)
             .max_tokens(subtask.max_tokens)
-            .thinking(self.config.enable_think)
+            
             .build();
         let resp = backend
             .complete(req)

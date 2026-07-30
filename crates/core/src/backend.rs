@@ -9,24 +9,28 @@ use serde::de::DeserializeOwned;
 use crate::error::RoCoResult;
 
 /// A completion request sent to any backend.
+///
+/// inferd receives raw text only — no System/User/Assistant formatting.
+/// State is managed explicitly via init_state (load from cache) and
+/// state_slot (save to cache). None = start blank / don't cache.
 #[derive(Debug, Clone, Default)]
 pub struct CompletionRequest {
-    pub system: String,
     pub prompt: String,
     pub grammar: Option<String>,
     pub temperature: f32,
     pub max_tokens: usize,
     pub prefill: Option<String>,
-    pub session: Option<String>,
+    /// Load state from this cache slot before processing. None = start blank.
+    pub init_state: Option<String>,
+    /// Save resulting state to this cache slot. None = don't cache.
+    pub state_slot: Option<String>,
     pub bnf_mask: Option<Box<dyn std::any::Any + Send + Sync>>,
     pub on_token: Option<Box<dyn Fn(&str) + Send + Sync>>,
-    pub preserve_state: bool,
 }
 
 impl CompletionRequest {
-    pub fn new(system: impl Into<String>, prompt: impl Into<String>) -> Self {
+    pub fn new(prompt: impl Into<String>) -> Self {
         Self {
-            system: system.into(),
             prompt: prompt.into(),
             temperature: 0.7,
             max_tokens: 512,
@@ -49,8 +53,13 @@ impl CompletionRequest {
         self
     }
 
-    pub fn with_session(mut self, s: impl Into<String>) -> Self {
-        self.session = Some(s.into());
+    pub fn with_init_state(mut self, s: impl Into<String>) -> Self {
+        self.init_state = Some(s.into());
+        self
+    }
+
+    pub fn with_state_slot(mut self, s: impl Into<String>) -> Self {
+        self.state_slot = Some(s.into());
         self
     }
 }
@@ -81,9 +90,6 @@ pub trait ModelBackend: Send + Sync {
     /// Generate text from a prompt.
     async fn complete(&self, req: CompletionRequest) -> RoCoResult<CompletionResponse>;
 
-    /// Feed an EOS token into a session to reset state without losing context.
-    async fn feed_eos(&self, session_id: Option<String>) -> RoCoResult<()>;
-
     /// Return the model name / identifier.
     fn name(&self) -> &str;
 
@@ -112,19 +118,20 @@ pub trait ModelBackend: Send + Sync {
     }
 }
 
-/// Optional: state-tuning for RNN-based backends (RWKV).
+/// State-tuning for RNN-based backends (RWKV).
 ///
-/// This is a separate trait so that transformer backends — or mocks — are
-/// not forced to provide a meaningless `bake_state` implementation.
+/// Feed text through the model (no generation) to prime the recurrent state.
+/// Separated from ModelBackend so transformer backends don't need it.
 #[async_trait]
 pub trait StateTuning: ModelBackend {
-    /// Bake few-shot examples into a named session to prime the recurrent
-    /// state, bypassing replay.
-    async fn bake_state(
+    /// Feed text through the model and save the resulting state.
+    /// init_state: load from this cache slot (None = blank).
+    /// state_slot: save resulting state here (None = don't cache).
+    async fn bake(
         &self,
-        session_id: &str,
-        system: &str,
-        few_shots: &[(&str, &str)],
+        text: &str,
+        init_state: Option<&str>,
+        state_slot: Option<&str>,
     ) -> RoCoResult<String>;
 }
 
@@ -149,10 +156,6 @@ impl ModelBackend for MockBackend {
         })
     }
 
-    async fn feed_eos(&self, _session_id: Option<String>) -> RoCoResult<()> {
-        Ok(())
-    }
-
     fn name(&self) -> &str {
         "mock"
     }
@@ -160,17 +163,14 @@ impl ModelBackend for MockBackend {
 
 #[async_trait]
 impl StateTuning for MockBackend {
-    async fn bake_state(
+    async fn bake(
         &self,
-        session_id: &str,
-        _system: &str,
-        _few_shots: &[(&str, &str)],
+        _text: &str,
+        _init_state: Option<&str>,
+        _state_slot: Option<&str>,
     ) -> RoCoResult<String> {
         Err(crate::error::RoCoError::Backend(
-            "bake_state not supported by MockBackend".into(),
+            "bake not supported by MockBackend".into(),
         ))
     }
 }
-
-
-

@@ -36,8 +36,7 @@ impl ModelBackend for TestBackend {
                 text: "ok".into(),
                 usage: roco_engine::TokenUsage::default(),
                 parsed: None,
-                think_trace: None,
-                trace: Vec::new(),
+                                trace: Vec::new(),
             })
         })
     }

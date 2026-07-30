@@ -51,31 +51,20 @@ pub trait ModelBackend: Send + Sync {
         None
     }
 
-    /// Feed token 0 (EOS/end-of-document boundary) to update recurrent state.
-    /// During training, token 0 separates documents — omitting it between
-    /// state-tuning examples leaves the state in a distribution mismatch.
-    /// Default is no-op; RwkvBackend overrides to inject raw token 0.
-    fn feed_eos(&self, _session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
-        Box::pin(async move { Ok(()) })
-    }
-
-    /// Bake a state-tuned session: process a system prompt + few-shot examples
-    /// with `preserve_state=true`, then return the session ID for reuse.
-    /// The caller should then resume from this session with `session` set.
-    /// Returns the session ID on success.
+    /// Feed raw text through the model (no generation) and save the resulting
+    /// state. Used to prime the recurrent state with few-shot examples or
+    /// context without consuming tokens.
     ///
-    /// Default implementation returns `EngineError::Backend("state tuning not supported")`.
-    /// Only RNN-based backends (RWKV) implement this meaningfully.
-    fn bake_state<'a>(
+    /// Default: not supported (returns error).
+    fn bake<'a>(
         &'a self,
-        _session_id: &'a str,
-        _system: &'a str,
-        _few_shots: &'a [(&'a str, &'a str)], // (user_prompt, assistant_response)
+        text: &'a str,
+        init_state: Option<&'a str>,
+        state_slot: Option<&'a str>,
     ) -> BoxFuture<'a, Result<String, EngineError>> {
+        let _ = (text, init_state, state_slot);
         Box::pin(async move {
-            Err(EngineError::Backend(
-                "state tuning not supported by this backend".into(),
-            ))
+            Err(EngineError::Backend("bake not supported by this backend".into()))
         })
     }
 }
@@ -85,9 +74,6 @@ pub trait ModelBackend: Send + Sync {
 /// Separated from [`ModelBackend`] because state tuning is only meaningful
 /// for recurrent (RNN) architectures like RWKV that carry a hidden state
 /// across turns. Transformer-based backends would have no-op defaults.
-///
-/// The method is named `tune_state` (not `bake_state`) to avoid name
-/// conflicts with the default `ModelBackend::bake_state`.
 pub trait StateTuning: Send + Sync {
     /// Bake a system prompt and few-shot examples into a named session's
     /// recurrent state, returning the session ID on success.
@@ -393,17 +379,6 @@ impl ModelBackend for MockBackend {
                 cb(&result_text);
             }
 
-            let (final_text, think_trace) = if req.thinking {
-                let trace = format!("thinking about '{}'...", snippet);
-                let think_text = format!(" thinking{} response\n{}", trace, result_text);
-                if let Some(ref cb) = req.on_token {
-                    cb(&think_text);
-                }
-                (think_text, Some(trace))
-            } else {
-                (result_text, None)
-            };
-
             let trace = if req.record_trace {
                 vec![TokenTrace {
                     token_id: 42,
@@ -419,13 +394,12 @@ impl ModelBackend for MockBackend {
             };
 
             Ok(CompletionResponse {
-                text: final_text,
+                text: result_text,
                 usage: TokenUsage {
                     prompt_tokens: req.estimated_prompt_tokens,
                     completion_tokens: 16,
                 },
                 parsed,
-                think_trace,
                 trace,
             })
         })
@@ -484,29 +458,23 @@ pub async fn bake_persona(
     system: &str,
     examples: &[(&str, &str)],
 ) -> Result<Vec<u8>, EngineError> {
+    // Build a single text that concatenates all examples, then feed it
+    // through the model with max_tokens=0 (process no generation).
+    let mut text = String::new();
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
-        // Single shot: user prompt + assistant answer as prefill in ONE request
-        // with max_tokens=0 (process through inference, no generation). This
-        // avoids contaminating the state with the model's own noisy output.
-        let req = CompletionRequest {
-            system: if i == 0 {
-                system.to_string()
-            } else {
-                String::new()
-            },
-            prompt: user_msg.to_string(),
-            prefill: Some(assistant_msg.to_string()),
-            temperature: 0.0,
-            max_tokens: 0, // process prompt+prefill only, no generation
-            preserve_state: i > 0,
-            ..Default::default()
-        };
-        backend.complete(req).await?;
-        // Feed EOS (token 0) between examples to match training distribution
-        if i + 1 < examples.len() {
-            backend.feed_eos(None).await?;
+        if i == 0 && !system.is_empty() {
+            text.push_str(&format!("System: {}\n\n", system.trim()));
         }
+        text.push_str(&format!("User: {}\n\nAssistant:{}", user_msg, assistant_msg));
     }
+    let req = CompletionRequest {
+        prompt: text,
+        prefill: None,
+        temperature: 0.0,
+        max_tokens: 0,
+        ..Default::default()
+    };
+    backend.complete(req).await?;
     backend.save_state().await
 }
 
@@ -547,33 +515,24 @@ pub async fn bake_into_session(
     system: &str,
     examples: &[(&str, &str)],
 ) -> Result<(), EngineError> {
+    // Build a single text concatenating all examples, feed through model
+    // with max_tokens=0 (no generation) into the named session slot.
+    let mut text = String::new();
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
-        // Single shot: user prompt + assistant answer as prefill in ONE request
-        // with max_tokens=0 (process through inference, no generation). This
-        // avoids contaminating the state with the model's own noisy output.
-        let req = CompletionRequest {
-            system: if i == 0 {
-                system.to_string()
-            } else {
-                String::new()
-            },
-            prompt: user_msg.to_string(),
-            prefill: Some(assistant_msg.to_string()),
-            temperature: 0.0,
-            max_tokens: 0, // process prompt+prefill only, no generation
-            preserve_state: true,
-            session: Some(session.to_string()),
-            ..Default::default()
-        };
-        backend.complete(req).await?;
-        // Feed EOS (token 0) between examples to match training distribution
-        // where token 0 separates documents. Without this, the recurrent state
-        // accumulates across examples in a way that does not match how the
-        // model was trained (see RWKV-v5 make_data.py).
-        if i + 1 < examples.len() {
-            backend.feed_eos(Some(session.to_string())).await?;
+        if i == 0 && !system.is_empty() {
+            text.push_str(&format!("System: {}\n\n", system.trim()));
         }
+        text.push_str(&format!("User: {}\n\nAssistant:{}", user_msg, assistant_msg));
     }
+    let req = CompletionRequest {
+        prompt: text,
+        prefill: None,
+        temperature: 0.0,
+        max_tokens: 0,
+        state_slot: Some(session.to_string()),
+        ..Default::default()
+    };
+    backend.complete(req).await?;
     Ok(())
 }
 
@@ -626,30 +585,24 @@ pub async fn bake_no_think_session(
     system: &str,
     examples: &[(&str, &str)],
 ) -> Result<(), EngineError> {
+    // Build a single text concatenating all examples, feed through model
+    // with max_tokens=0 (no generation) into the named session slot.
+    let mut text = String::new();
     for (i, (user_msg, assistant_msg)) in examples.iter().enumerate() {
-        // Single shot: user prompt + assistant answer as prefill in ONE request
-        // with max_tokens=0 (process through inference, no generation). This
-        // avoids contaminating the state with the model's own noisy output.
-        let req = CompletionRequest {
-            system: if i == 0 {
-                system.to_string()
-            } else {
-                String::new()
-            },
-            prompt: user_msg.to_string(),
-            prefill: Some(assistant_msg.to_string()),
-            temperature: 0.0,
-            max_tokens: 0, // process prompt+prefill only, no generation
-            preserve_state: true,
-            session: Some(session.to_string()),
-            ..Default::default()
-        };
-        backend.complete(req).await?;
-        // Feed EOS (token 0) between examples to match training distribution
-        if i + 1 < examples.len() {
-            backend.feed_eos(Some(session.to_string())).await?;
+        if i == 0 && !system.is_empty() {
+            text.push_str(&format!("System: {}\n\n", system.trim()));
         }
+        text.push_str(&format!("User: {}\n\nAssistant:{}", user_msg, assistant_msg));
     }
+    let req = CompletionRequest {
+        prompt: text,
+        prefill: None,
+        temperature: 0.0,
+        max_tokens: 0,
+        state_slot: Some(session.to_string()),
+        ..Default::default()
+    };
+    backend.complete(req).await?;
     Ok(())
 }
 
@@ -661,32 +614,11 @@ mod tests {
     async fn mock_backend_returns_parseable_json() {
         let b = MockBackend::default();
         let resp = b
-            .complete(CompletionRequest::new("sys", "do the thing"))
+            .complete(CompletionRequest::new("do the thing"))
             .await
             .unwrap();
         assert!(resp.parsed.is_some());
         assert!(resp.text.contains("mock") || resp.text.contains("result"));
-    }
-
-    #[tokio::test]
-    async fn mock_backend_thinking_extracts_trace() {
-        let b = MockBackend::default();
-        let resp = b
-            .complete(CompletionRequest::new("sys", "hello"))
-            .await
-            .unwrap();
-        assert!(resp.think_trace.is_none(), "no trace when thinking=false");
-
-        let mut req = CompletionRequest::new("sys", "do the thing");
-        req.thinking = true;
-        let resp = b.complete(req).await.unwrap();
-        let trace = resp
-            .think_trace
-            .expect("think_trace should be Some when thinking=true");
-        assert!(!trace.is_empty());
-        assert!(resp.text.starts_with(" thinking"));
-        assert!(resp.text.contains(" response"));
-        assert!(resp.text.contains(&trace));
     }
 
     #[tokio::test]
@@ -712,14 +644,15 @@ mod tests {
             ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
                 Box::pin(async move { Err(EngineError::Backend("unimplemented".into())) })
             }
-            fn bake_state<'a>(
+            fn bake<'a>(
                 &'a self,
-                _session_id: &'a str,
-                _system: &'a str,
-                _few_shots: &'a [(&'a str, &'a str)],
+                text: &'a str,
+                init_state: Option<&'a str>,
+                state_slot: Option<&'a str>,
             ) -> BoxFuture<'a, Result<String, EngineError>> {
+                let _ = (text, init_state, state_slot);
                 Box::pin(
-                    async move { Err(EngineError::Backend("bake_state not supported".into())) },
+                    async move { Err(EngineError::Backend("bake not supported".into())) },
                 )
             }
         }
@@ -741,9 +674,7 @@ mod tests {
     async fn mock_backend_mix_states() {
         let b = MockBackend::default();
         let a = b.save_state().await.unwrap();
-        let mut req_b = CompletionRequest::new("sys", "hello");
-        req_b.thinking = true;
-        let _ = b.complete(req_b).await.unwrap();
+        let _ = b.complete(CompletionRequest::new("hello")).await.unwrap();
         let b_state = b.save_state().await.unwrap();
         let mixed = b.mix_states(a, b_state, 0.3).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&mixed).unwrap();
@@ -757,7 +688,7 @@ mod tests {
         let b = MockBackend::default();
         b.interrupt().await.unwrap();
         let resp = b
-            .complete(CompletionRequest::new("sys", "hello"))
+            .complete(CompletionRequest::new("hello"))
             .await
             .unwrap();
         assert!(resp.text.contains("result"));
@@ -795,8 +726,6 @@ mod tests {
         let resp = b
             .complete(CompletionRequest {
                 prompt: "Thanks!".into(),
-                preserve_state: true,
-                session: Some(session.into()),
                 ..Default::default()
             })
             .await
@@ -809,7 +738,7 @@ mod tests {
         let b = MockBackend::default();
         let tokens = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
         let tokens_clone = tokens.clone();
-        let mut req = CompletionRequest::new("sys", "hello");
+        let mut req = CompletionRequest::new("hello");
         req.on_token = Some(Box::new(move |tok: &str| {
             tokens_clone.lock().push(tok.to_string());
         }));
@@ -819,21 +748,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mock_backend_on_token_invoked_for_thinking() {
+    async fn mock_backend_on_token_invoked_for_completion() {
         let b = MockBackend::default();
         let tokens = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
         let tokens_clone = tokens.clone();
-        let mut req = CompletionRequest::new("sys", "think hello");
-        req.thinking = true;
+        let req = CompletionRequest::new("hello");
+        let mut req = req;
         req.on_token = Some(Box::new(move |tok: &str| {
             tokens_clone.lock().push(tok.to_string());
         }));
         let _resp = b.complete(req).await.unwrap();
         let collected = tokens.lock();
-        // Should have at least 2 calls: result_text + think_text
         assert!(
-            collected.len() >= 2,
-            "on_token should be called at least twice for thinking, got {}",
+            !collected.is_empty(),
+            "on_token should be called at least once, got {}",
             collected.len()
         );
     }

@@ -255,7 +255,7 @@ mod tests {
                 .await
                 .unwrap();
             let resp = backend
-                .complete(CompletionRequest::new("sys", "prompt"))
+                .complete(CompletionRequest::new("prompt"))
                 .await
                 .unwrap();
             assert!(!resp.text.is_empty());

@@ -159,7 +159,7 @@ pub fn cmd_eval_suite(extra: &[&str]) {
             if !live_daemon && !force {
                 let mock = roco_engine::MockBackend::default();
                 let req1 = roco_engine::CompletionRequest::builder()
-                    .system("You are a deterministic oracle.")
+                    
                     .prompt("Count to 5.")
                     .temperature(0.0)
                     .max_tokens(20)
@@ -182,7 +182,7 @@ pub fn cmd_eval_suite(extra: &[&str]) {
 
             let backend = crate::daemon::ensure_sync_backend();
             let req1 = roco_engine::CompletionRequest::builder()
-                .system("You are a deterministic oracle.")
+                
                 .prompt("Output the numbers 1 to 5.")
                 .temperature(0.0)
                 .max_tokens(20)

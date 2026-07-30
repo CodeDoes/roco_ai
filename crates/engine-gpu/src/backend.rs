@@ -213,12 +213,6 @@ impl ModelBackend for RwkvBackend {
             let started = Instant::now();
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
-            // Map old session/preserve_state to new state_id/save_as.
-            //
-            // Map old session → init_state + state_slot for backward compat.
-            let init_state = req.session.clone();
-            let state_slot = req.session.clone();
-
             tx.send(
                 CompleteReq {
                     prompt: req.prompt,
@@ -230,8 +224,8 @@ impl ModelBackend for RwkvBackend {
                     bnf_mask: req.bnf_mask,
                     reply: reply_tx,
                     on_token: req.on_token,
-                    init_state,
-                    state_slot,
+                    init_state: req.init_state,
+                    state_slot: req.state_slot,
                     deadline_ms: req.deadline_ms,
                     seed: req.seed.or_else(|| {
                         std::env::var("RWKV_DETERMINISTIC_SEED")
@@ -288,8 +282,7 @@ impl ModelBackend for RwkvBackend {
                 text,
                 usage,
                 parsed,
-                think_trace: None,
-                trace,
+                                trace,
             })
         })
     }
@@ -304,13 +297,37 @@ impl ModelBackend for RwkvBackend {
         })
     }
 
-    fn bake_state<'a>(
+    fn bake<'a>(
         &'a self,
-        session_id: &'a str,
-        system: &'a str,
-        few_shots: &'a [(&'a str, &'a str)],
+        text: &'a str,
+        init_state: Option<&'a str>,
+        state_slot: Option<&'a str>,
     ) -> BoxFuture<'a, Result<String, EngineError>> {
-        self.tune_state(session_id, system, few_shots)
+        let tx = self
+            .tx
+            .clone()
+            .expect("rwkv backend already shut down (channel closed)");
+        let text = text.to_string();
+        let init_state = init_state.map(|s| s.to_string());
+        let state_slot = state_slot.map(|s| s.to_string());
+        Box::pin(async move {
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+            tx.send(
+                ActorMessage::Bake {
+                    init_state,
+                    text,
+                    state_slot,
+                    reply: reply_tx,
+                }
+            )
+            .await
+            .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
+            reply_rx
+                .await
+                .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
+                .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;
+            Ok(state_slot.unwrap_or_default())
+        })
     }
 
     fn save_state(&self) -> BoxFuture<'_, Result<Vec<u8>, EngineError>> {
@@ -343,11 +360,6 @@ impl ModelBackend for RwkvBackend {
         })
     }
 
-    /// No-op: FeedEos is not a primitive operation. Callers should manage
-    /// state by saving/loading from cache or baking EOS text directly.
-    fn feed_eos(&self, _session: Option<String>) -> BoxFuture<'_, Result<(), EngineError>> {
-        Box::pin(async move { Ok(()) })
-    }
 }
 
 impl StateTuning for RwkvBackend {
