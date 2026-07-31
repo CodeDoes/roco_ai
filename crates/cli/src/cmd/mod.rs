@@ -17,6 +17,7 @@ pub mod session;
 pub mod stats;
 pub mod story;
 pub mod story_mode;
+pub mod workspace;
 
 #[cfg(any(feature = "gui", feature = "desktop"))]
 pub mod desktop;

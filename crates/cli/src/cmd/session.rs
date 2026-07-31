@@ -26,7 +26,7 @@ pub fn cmd_session(extra: &[&str]) {
     .to_vec();
 
     match sub {
-        "create" => cmd_session_create(&args),
+        "create" | "new" => cmd_session_create(&args),
         "list" => cmd_session_list(),
         "show" => cmd_session_show(&args),
         "delete" => cmd_session_delete(&args),

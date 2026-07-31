@@ -69,6 +69,8 @@ pub fn help(sub: Option<&str>) {
         Some("gateway") => help_gateway(),
         Some("stop") => help_stop(),
         Some("story") | Some("story-mode") | Some("sm") => help_story(),
+        Some("session") => help_session(),
+        Some("workspace") => help_workspace(),
         Some("interact") => help_interact(),
         Some("eval") | Some("bless") => help_eval(),
         Some("gui") => help_gui(),

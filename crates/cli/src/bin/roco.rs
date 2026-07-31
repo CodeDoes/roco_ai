@@ -341,6 +341,12 @@ fn main() {
             }
             cmd::session::cmd_session(&extra);
         }
+        "workspace" => {
+            if has_help_flag(&extra) {
+                help(Some("workspace"));
+            }
+            cmd::workspace::cmd_workspace(&extra);
+        }
 
         // ── Export ───────────────────────────────────────────────────────
         "export" => {
