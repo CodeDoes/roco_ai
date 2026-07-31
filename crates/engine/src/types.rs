@@ -689,8 +689,8 @@ mod tests {
         assert!(backend_err.help().is_some());
 
         let empty = EngineError::EmptyResponse;
-        // EmptyResponse has no help text
-        assert!(empty.help().is_none());
+        // EmptyResponse has help text suggesting retry
+        assert!(empty.help().is_some());
 
         let budget = EngineError::BudgetExceeded { used: 100, max: 200 };
         assert!(budget.help().is_none());
