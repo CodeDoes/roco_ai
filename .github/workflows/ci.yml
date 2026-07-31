@@ -53,7 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install system deps (egui: libgl, libxcb, ...)
+      - name: Install system deps (egui: libgl, libxcb, &hellip;)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1-mesa-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev mold clang
       - name: "cargo check - desktop feature"
         run: cargo check -p roco-cli --features desktop
