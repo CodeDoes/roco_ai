@@ -143,7 +143,7 @@ fn test_session_persistence_across_turns() {
 fn test_session_long_conversation() {
     let dir = temp_dir();
     let session_dir = dir.join(".roco").join("sessions");
-    let _ = fs::create_dir_all(&session_dir);
+    fs::create_dir_all(&session_dir).expect("failed to create session dir");
 
     let mut state = roco_protocol::ConversationState::new("long_test".to_string(), "careful");
 
