@@ -149,8 +149,12 @@ fn help_inferd() {
 fn help_session() {
     eprintln!("roco session — Persistent multi-turn chat control\n");
     eprintln!("Usage:");
-    eprintln!("  roco session create                      Create a new chat session and print its ID");
-    eprintln!("  roco session <session_id> -p \"<prompt>\"   Resume a session and run a single turn\n");
+    eprintln!(
+        "  roco session create                      Create a new chat session and print its ID"
+    );
+    eprintln!(
+        "  roco session <session_id> -p \"<prompt>\"   Resume a session and run a single turn\n"
+    );
     eprintln!("Options:");
     eprintln!("  -p, --prompt <string>                    The chat prompt text to append\n");
     std::process::exit(0);

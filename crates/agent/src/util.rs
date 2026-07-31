@@ -50,7 +50,9 @@ pub fn parse_structured_response<T: DeserializeOwned>(text: &str) -> Result<T, S
         Ok(val) => return Ok(val),
         Err(e) => {
             // Log/trace the raw parse failure
-            tracing::warn!("Direct JSON parse failed: {e}. Attempting automated fallback healing...");
+            tracing::warn!(
+                "Direct JSON parse failed: {e}. Attempting automated fallback healing..."
+            );
         }
     }
 

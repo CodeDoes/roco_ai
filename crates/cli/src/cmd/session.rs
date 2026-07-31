@@ -3,10 +3,10 @@
 //! Provides CLI interfaces to create persistent session IDs and run individual
 //! prompts against them, appending messages to a local session transcript file.
 
-use roco_protocol::ConversationState;
 use crate::conversation::ChatSession;
 use crate::interact_cli::{get_sessions_dir, CHAT_PERSONA};
 use crate::{daemon, parse_opt};
+use roco_protocol::ConversationState;
 
 pub fn cmd_session(extra: &[&str]) {
     let command = extra.first().copied().unwrap_or("help");
@@ -35,7 +35,9 @@ pub fn cmd_session(extra: &[&str]) {
                 .unwrap_or("");
 
             if prompt.is_empty() {
-                eprintln!("Error: -p or --prompt option is required when interacting with a session.");
+                eprintln!(
+                    "Error: -p or --prompt option is required when interacting with a session."
+                );
                 eprintln!("Usage: roco session <session_id> -p \"prompt_text\"");
                 std::process::exit(1);
             }
@@ -68,8 +70,12 @@ pub fn cmd_session(extra: &[&str]) {
 fn print_help() {
     println!("RoCo AI — Session Management\n");
     println!("Usage:");
-    println!("  roco session create                      Create a new chat session and print its ID");
-    println!("  roco session <session_id> -p \"<prompt>\"   Resume a session and run a single turn\n");
+    println!(
+        "  roco session create                      Create a new chat session and print its ID"
+    );
+    println!(
+        "  roco session <session_id> -p \"<prompt>\"   Resume a session and run a single turn\n"
+    );
     println!("Options:");
     println!("  -p, --prompt <string>                    The chat prompt text to append\n");
     println!("Examples:");
