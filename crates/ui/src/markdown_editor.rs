@@ -650,8 +650,8 @@ impl MarkdownEditor {
                     .rect_filled(range_rect.expand(2.0), 2.0, color.gamma_multiply(0.2));
                 ui.painter().rect_stroke(
                     range_rect.expand(2.0),
-                    2.0,
-                    Stroke::new(2.0, color),
+                    2.0_f32,
+                    Stroke::new(2.0_f32, color),
                     egui::StrokeKind::Inside,
                 );
 
@@ -859,8 +859,8 @@ impl MarkdownEditor {
             .rect_filled(bubble_rect, 8.0, Color32::from_rgb(255, 250, 220));
         ui.painter().rect_stroke(
             bubble_rect,
-            8.0,
-            Stroke::new(1.0, Color32::from_rgb(200, 180, 0)),
+            8.0_f32,
+            Stroke::new(1.0_f32, Color32::from_rgb(200, 180, 0)),
             egui::StrokeKind::Inside,
         );
 

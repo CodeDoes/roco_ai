@@ -13,6 +13,7 @@ pub mod interact;
 pub mod jobs;
 pub mod pet;
 pub mod router;
+pub mod session;
 pub mod stats;
 pub mod story;
 pub mod story_mode;

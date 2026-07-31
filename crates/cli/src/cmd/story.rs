@@ -824,10 +824,18 @@ where
         }));
 
         let text = match text_res {
-            Ok(resp) => resp.text,
+            Ok(resp) => {
+                // Handle empty responses gracefully
+                if resp.text.trim().is_empty() {
+                    last_err = "empty response from model".to_string();
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    continue;
+                }
+                resp.text
+            }
             Err(e) => {
                 last_err = format!("model error: {e}");
-                std::thread::sleep(std::time::Duration::from_millis(200));
+                std::thread::sleep(std::time::Duration::from_millis(500));
                 continue;
             }
         };
@@ -1224,6 +1232,13 @@ pub fn cmd_story(extra: &[&str]) {
                     seed,
                 )
                 .map_err(|e| AgentError::Internal(format!("outline generation failed: {e}")))?;
+
+                // Validate outline has minimum content
+                if outline.chapters.is_empty() || outline.title.is_empty() {
+                    return Err(AgentError::Internal(
+                        "outline missing chapters or title".to_string()
+                    ));
+                }
 
                 // Build formatted markdown with front matter
                 let title = &outline.title;
@@ -1884,6 +1899,16 @@ pub fn cmd_story(extra: &[&str]) {
                     let retry_result = agent
                         .dispatch_single(backend.as_ref(), &retry_task, &ws)?;
                     current_text = retry_result.output;
+
+                    // Validate retry output isn't empty or degenerate
+                    if current_text.trim().is_empty() || current_text.len() < 50 {
+                        AgentJournal::warn("story", &format!(
+                            "{chapter_label} revision produced too little output ({} chars) — keeping previous version",
+                            current_text.len()
+                        ));
+                        // Keep previous version
+                        current_text = chapter_texts.last().cloned().unwrap_or_default();
+                    }
 
                     // Write revision to file (will be overwritten if another revision follows)
                     let filename = format!("03-CHAPTER_{i}.md");

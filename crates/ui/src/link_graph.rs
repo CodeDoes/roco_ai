@@ -303,7 +303,7 @@ impl LinkGraph {
                 // Node circle
                 painter.circle_filled(screen_pos, radius, node.color);
                 painter.circle_stroke(screen_pos, radius, Stroke::new(
-                    if is_selected { 3.0 } else { 1.5 },
+                    if is_selected { 3.0_f32 } else { 1.5_f32 },
                     if is_selected { Color32::WHITE } else { Color32::from_rgba_premultiplied(255, 255, 255, 100) },
                 ));
 

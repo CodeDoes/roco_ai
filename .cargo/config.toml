@@ -10,8 +10,6 @@
 # 2 codegen threads. Total cap ~8 threads, leaving 1 of 8 cores free.
 
 [build]
-# sccache wrapper unsets CARGO_INCREMENTAL (which sccache rejects).
-rustc-wrapper = "sccache-wrap"
 jobs = 4
 
 [term]

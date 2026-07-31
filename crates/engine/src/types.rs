@@ -636,4 +636,86 @@ mod tests {
     fn builder_panics_without_prompt() {
         let _req = CompletionRequest::builder().build();
     }
+
+    // ── Pending tests for features not yet implemented ──────────────────
+
+    /// TokenTrace serialization round-trip (pending trace feature).
+    #[test]
+    #[ignore = "pending TokenTrace serialization feature"]
+    fn trace_serialization_roundtrip() {
+        let trace = TokenTrace {
+            token_id: 42,
+            token_str: "hello".to_string(),
+            probability: 0.95,
+            temperature: 0.7,
+            top_p_cut: 0.9,
+            grammar_masked: true,
+            selected_by_grammar: true,
+        };
+        let json = serde_json::to_string(&trace).unwrap();
+        let roundtrip: TokenTrace = serde_json::from_str(&json).unwrap();
+        assert_eq!(roundtrip.token_id, 42);
+        assert!((roundtrip.probability - 0.95).abs() < 1e-6);
+    }
+
+    /// CompletionResponse with trace field serializes correctly.
+    #[test]
+    #[ignore = "pending trace serialization feature"]
+    fn response_with_trace_serializes() {
+        let resp = CompletionResponse {
+            text: "hello world".to_string(),
+            usage: TokenUsage {
+                prompt_tokens: 5,
+                completion_tokens: 3,
+            },
+            parsed: None,
+            trace: vec![TokenTrace {
+                token_id: 1,
+                token_str: "hello".to_string(),
+                probability: 0.9,
+                temperature: 0.5,
+                top_p_cut: 0.95,
+                grammar_masked: false,
+                selected_by_grammar: true,
+            }],
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("hello world"));
+        assert!(json.contains("trace"));
+    }
+
+    /// EngineError help text for all variants.
+    #[test]
+    #[ignore = "pending comprehensive error help text"]
+    fn engine_error_help_text_coverage() {
+        let backend_err = EngineError::Backend("adapter".to_string());
+        assert!(backend_err.help().is_some());
+
+        let empty = EngineError::EmptyResponse;
+        assert!(empty.help().is_some());
+
+        let budget = EngineError::BudgetExceeded {
+            used: 100,
+            max: 200,
+        };
+        assert!(budget.help().is_some());
+
+        let timeout = EngineError::TimedOut { ms: 5000 };
+        assert!(timeout.help().is_some());
+    }
+
+    /// Session blending with three or more states.
+    #[test]
+    #[ignore = "pending multi-state blend feature"]
+    fn blend_three_states() {
+        // Placeholder: requires blend_states to support 3+ states
+        // Currently only 2-state blend is implemented
+    }
+
+    /// Grammar-constrained response with invalid token rejection.
+    #[test]
+    #[ignore = "pending grammar mask testing"]
+    fn grammar_mask_rejects_invalid_tokens() {
+        // Placeholder: requires a concrete grammar and token validation
+    }
 }

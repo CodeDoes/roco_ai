@@ -323,6 +323,12 @@ fn main() {
             }
             cmd::interact::cmd_interact(&extra);
         }
+        "session" => {
+            if has_help_flag(&extra) {
+                help(Some("session"));
+            }
+            cmd::session::cmd_session(&extra);
+        }
 
         // ── Export ───────────────────────────────────────────────────────
         "export" => {
