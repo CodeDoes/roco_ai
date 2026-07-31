@@ -824,10 +824,18 @@ where
         }));
 
         let text = match text_res {
-            Ok(resp) => resp.text,
+            Ok(resp) => {
+                // Handle empty responses gracefully
+                if resp.text.trim().is_empty() {
+                    last_err = "empty response from model".to_string();
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    continue;
+                }
+                resp.text
+            }
             Err(e) => {
                 last_err = format!("model error: {e}");
-                std::thread::sleep(std::time::Duration::from_millis(200));
+                std::thread::sleep(std::time::Duration::from_millis(500));
                 continue;
             }
         };
