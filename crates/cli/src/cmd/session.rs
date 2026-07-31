@@ -10,8 +10,7 @@
 use std::path::PathBuf;
 
 use crate::interact_cli::{self, InteractMode};
-use crate::{daemon, parse_opt, rich_output as r};
-use roco_app::agent_journal::AgentJournal;
+use crate::{daemon, parse_opt};
 use roco_protocol::ConversationState;
 
 const SESSIONS_DIR: &str = ".roco/sessions";
@@ -19,7 +18,7 @@ const SESSIONS_DIR: &str = ".roco/sessions";
 /// Entry point for `roco session` subcommand.
 pub fn cmd_session(extra: &[&str]) {
     let sub = extra.first().copied().unwrap_or("list");
-    let args: Vec<&str> = extra[if extra.first().map(|s| **s == sub).unwrap_or(false) { 1.. } else { 0.. }].to_vec();
+    let args: Vec<&str> = extra[if extra.first().map(|s| *s == sub).unwrap_or(false) { 1.. } else { 0.. }].to_vec();
 
     match sub {
         "create" => cmd_session_create(&args),
@@ -80,19 +79,14 @@ fn cmd_session_list() {
             let entry = entry.ok()?;
             let path = entry.path();
             if path.extension()? == "json" {
-                Some((path, entry.file_name()))
+                Some(path)
             } else {
                 None
             }
         })
         .collect();
 
-    sessions.sort_by_key(|(path, _)| {
-        path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string()
-    });
+    sessions.sort_by_key(|p| p.file_stem().unwrap().to_string_lossy().to_string());
 
     if sessions.is_empty() {
         println!("No sessions found.");
@@ -100,9 +94,9 @@ fn cmd_session_list() {
     }
 
     println!("Sessions ({} total):\n", sessions.len());
-    for (path, _name) in &sessions {
-        let content = std::fs::read_to_string(path).unwrap_or_default();
-        let state: ConversationState = serde_json::from_str(&content).unwrap_or(ConversationState::default());
+    for path in &sessions {
+        let state = ConversationState::load(path)
+            .unwrap_or_else(|_| ConversationState::new("error".to_string(), "careful"));
         let msg_count = state.messages.len();
         let updated = state.updated_at.clone();
         println!("  {:<35} {} messages  (updated: {})", path.file_stem().unwrap().to_string_lossy(), msg_count, updated);
@@ -205,12 +199,6 @@ fn cmd_session_chat(session_id: &str, args: &[&str]) {
     }
 
     // Load existing state
-    let content = std::fs::read_to_string(&session_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to read session: {e}");
-            std::process::exit(1);
-        });
-
     let mut state = ConversationState::load(&session_path)
         .unwrap_or_else(|e| {
             eprintln!("Error: Failed to read session: {e}");
@@ -221,12 +209,7 @@ fn cmd_session_chat(session_id: &str, args: &[&str]) {
     state.add_message("user", &prompt);
 
     // Save updated state
-    let updated_json = serde_json::to_string_pretty(&state)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to serialize session: {e}");
-            std::process::exit(1);
-        });
-    std::fs::write(&session_path, updated_json)
+    state.save(&session_path)
         .unwrap_or_else(|e| {
             eprintln!("Error: Failed to save session: {e}");
             std::process::exit(1);
