@@ -212,7 +212,7 @@ impl ChangeTimeline {
                     painter.vline(
                         line_x,
                         line_top..=line_bottom,
-                        egui::Stroke::new(1.5, ui.visuals().weak_text_color()),
+                        egui::Stroke::new(1.5_f32, ui.visuals().weak_text_color()),
                     );
 
                     for (i, entry) in state.entries.iter().enumerate() {
