@@ -92,6 +92,9 @@ pub fn build_prompt(
 
 /// Build the role-prefixed inference prompt from system + user text.
 /// This is the form used by `rwkv_backend` for single-turn inference.
+///
+/// DEPRECATED: prompt formatting is the caller's responsibility; inferd
+/// receives raw text only. Kept only for any legacy references.
 pub fn build_inference_prompt(system: &str, prompt: &str, preserve_state: bool) -> String {
     if system.is_empty() {
         format!("User: {prompt}\n\nAssistant:")

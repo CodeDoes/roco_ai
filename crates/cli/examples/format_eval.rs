@@ -173,10 +173,7 @@ async fn bake_format(backend: &RemoteBackend, spec: &FormatSpec, session: &str) 
         a2.lines().next().unwrap_or("")
     );
 
-    if let Err(e) = backend.feed_eos(Some(session.to_string())).await {
-        eprintln!("  [WARN] feed_eos failed: {e}");
-    }
-
+    // bake_state handles state creation/reset on the server; feed_eos was removed.
     match backend
         .bake_state(
             session,
@@ -283,23 +280,22 @@ async fn run_one(
     let start = Instant::now();
     let resp = backend
         .complete(CompletionRequest {
-            system: String::new(),
+            // Load session state; preserve_state:false means we don't save back
+            init_state: Some(session.to_string()),
             prompt,
             grammar,
             temperature: 0.8,
             max_tokens: 500,
-            session: Some(session.to_string()),
             prefill: None,
             bnf_mask: None,
             top_a: None,
             on_token: None,
-            preserve_state: false,
-            thinking: false,
             seed: None,
             record_trace: false,
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 60000,
+            ..Default::default()
         })
         .await;
     let latency_ms = start.elapsed().as_millis() as u64;
@@ -443,10 +439,9 @@ async fn main() {
     for spec in &formats {
         eprintln!("─── {} — {} ───", spec.name(), spec.desc());
 
-        // Fresh session: no baking.
         for t in 0..trials {
+            // Fresh session: unique sid starts blank; no feed_eos needed.
             let sid = format!("fmt-{}-fresh-t{t}", spec.name());
-            let _ = backend.feed_eos(Some(sid.clone())).await;
             eprint!("  fresh  trial {t}...");
             let mut r = run_one(&backend, spec, &sid, t).await;
             r.baked = false;
@@ -466,7 +461,6 @@ async fn main() {
             for t in 0..trials {
                 // Re-bake only on the first trial; reuse the baked state after.
                 if t == 0 {
-                    let _ = backend.feed_eos(Some(bake_sid.clone())).await;
                     bake_format(&backend, spec, &bake_sid).await;
                 }
                 eprint!("  baked  trial {t}...");

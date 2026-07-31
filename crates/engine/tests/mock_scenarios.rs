@@ -310,7 +310,7 @@ async fn tool_state_preservation() {
     // First call — set state
     let req1 = CompletionRequest {
         prompt: "First operation".into(),
-        preserve_state: true,
+        state_slot: Some("tool-state".to_string()),
         ..Default::default()
     };
     backend.complete(req1).await.unwrap();
@@ -322,7 +322,7 @@ async fn tool_state_preservation() {
     backend.load_state(state).await.unwrap();
     let req2 = CompletionRequest {
         prompt: "Second operation".into(),
-        preserve_state: true,
+        state_slot: Some("tool-state".to_string()),
         ..Default::default()
     };
     let resp = backend.complete(req2).await.unwrap();
@@ -361,9 +361,9 @@ async fn interrupted_generation_restores_saved_state() {
 
     // Generate with state preservation
     let req1 = CompletionRequest {
-        system: "system".into(),
-        prompt: "Chapter 1".into(),
-        preserve_state: true,
+        // System text embedded in prompt; state saved to slot
+        prompt: "System: system\n\nChapter 1".into(),
+        state_slot: Some("stateful-story".to_string()),
         ..Default::default()
     };
     backend.complete(req1).await.unwrap();
@@ -518,32 +518,6 @@ async fn backend_respects_set_fail_count() {
     // 3rd succeeds
     let req3 = CompletionRequest::new("succeed");
     assert!(backend.complete(req3).await.is_ok());
-}
-
-#[tokio::test]
-async fn think_trace_extraction() {
-    let backend = MockBackend::default();
-
-    // Without thinking mode
-    let req = CompletionRequest::new("no think");
-    let resp = backend.complete(req).await.unwrap();
-    assert!(resp.think_trace.is_none());
-
-    // With thinking mode
-    let mut req_think = CompletionRequest::new("think mode");
-    req_think.thinking = true;
-    let resp = backend.complete(req_think).await.unwrap();
-    let trace = resp
-        .think_trace
-        .expect("Should have think_trace when thinking=true");
-    assert!(!trace.is_empty(), "Trace should not be empty");
-    // MockBackend produces: " thinkingthinking about '...' response\n{...}"
-    // The text starts with " thinking" (space + thinking) from the think block
-    assert!(
-        resp.text.contains("think mode"),
-        "Response should contain think mode reference: {}",
-        resp.text
-    );
 }
 
 #[tokio::test]

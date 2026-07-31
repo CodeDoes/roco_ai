@@ -147,13 +147,13 @@ async fn bake_single_shot(
     }
     transcript.push_str("\n\n");
     let req = CompletionRequest {
-        system: system.to_string(),
-        prompt: transcript,
+        // System text embedded in prompt; init_state+state_slot to load & save baked state
+        prompt: format!("System: {}\n\n{}", system, transcript),
         prefill: Some(" ".to_string()),
         temperature: 0.0,
         max_tokens: 2,
-        session: Some(session.to_string()),
-        preserve_state: true,
+        init_state: Some(session.to_string()),
+        state_slot: Some(session.to_string()),
         grammar: None,
         bnf_mask: None,
         top_a: None,
@@ -161,9 +161,9 @@ async fn bake_single_shot(
         output_schema: None,
         estimated_prompt_tokens: 0,
         deadline_ms: 30000,
-        thinking: false,
         seed: None,
         record_trace: false,
+        ..Default::default()
     };
     backend
         .complete(req)
@@ -181,23 +181,22 @@ async fn run_test(
     let start = Instant::now();
     let resp = backend
         .complete(CompletionRequest {
-            system: String::new(),
+            // System text embedded in prompt; load session state without saving back
             prompt: prompt.to_string(),
+            init_state: session.map(|s| s.to_string()),
             temperature: 0.8,
             max_tokens: 600,
-            session: session.map(|s| s.to_string()),
             prefill: None,
             grammar: None,
             bnf_mask: None,
             top_a: None,
             on_token: None,
-            preserve_state: false,
-            thinking: false,
             seed: None,
             record_trace: false,
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 60000,
+            ..Default::default()
         })
         .await;
 
@@ -244,7 +243,6 @@ async fn main() {
 
     // ── A: Root bake + story bake → targeted prompts ────────────────
     eprintln!("─── A: Root tune + story memory ───");
-    let _ = backend.feed_eos(Some("root-story".to_string())).await;
     let _ = bake_single_shot(
         &backend,
         "root-story",
@@ -259,13 +257,13 @@ async fn main() {
     );
     let _ = backend
         .complete(CompletionRequest {
-            system: String::new(),
+            // System text embedded in prompt; init_state+state_slot to load & save baked context
             prompt: story_transcript,
             prefill: Some(" ".to_string()),
             temperature: 0.0,
             max_tokens: 2,
-            session: Some("root-story".to_string()),
-            preserve_state: true,
+            init_state: Some("root-story".to_string()),
+            state_slot: Some("root-story".to_string()),
             grammar: None,
             bnf_mask: None,
             top_a: None,
@@ -273,9 +271,9 @@ async fn main() {
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 30000,
-            thinking: false,
             seed: None,
             record_trace: false,
+            ..Default::default()
         })
         .await;
 
@@ -296,7 +294,6 @@ async fn main() {
 
     // ── B: No bake, everything in prompt ────────────────────────────
     eprintln!("─── B: All in prompt ───");
-    let _ = backend.feed_eos(Some("no-bake".to_string())).await;
     let r_b1 = run_test(
         &backend,
         "B1) Ch1 full prompt",

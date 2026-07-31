@@ -135,13 +135,16 @@ async fn bake_context(backend: &RemoteBackend, session: &str) -> std::result::Re
          User: Here is the world bible:\n{WIKI}\n\nAssistant: I understand the world and characters."
     );
     let req = CompletionRequest {
-        system: "You are a story writer. Remember the story world details.".to_string(),
-        prompt: transcript,
+        // System text embedded in prompt; init_state+state_slot to load & save baked context
+        prompt: format!(
+            "System: You are a story writer. Remember the story world details.\n\n{}",
+            transcript
+        ),
+        init_state: Some(session.to_string()),
+        state_slot: Some(session.to_string()),
         prefill: Some(" thinking response".to_string()),
         temperature: 0.0,
         max_tokens: 4,
-        session: Some(session.to_string()),
-        preserve_state: true,
         grammar: None,
         bnf_mask: None,
         top_a: None,
@@ -149,9 +152,9 @@ async fn bake_context(backend: &RemoteBackend, session: &str) -> std::result::Re
         output_schema: None,
         estimated_prompt_tokens: 0,
         deadline_ms: 30000,
-        thinking: false,
         seed: None,
         record_trace: false,
+        ..Default::default()
     };
     backend
         .complete(req)
@@ -170,23 +173,22 @@ async fn run_test(
     let start = Instant::now();
     let resp = backend
         .complete(CompletionRequest {
-            system: system.to_string(),
-            prompt: prompt.to_string(),
+            // System text embedded in prompt; load session state without saving back
+            prompt: format!("System: {}\n\n{}", system, prompt),
+            init_state: session.map(|s| s.to_string()),
             temperature: 0.8,
             max_tokens: 500,
-            session: session.map(|s| s.to_string()),
             prefill: None,
             grammar: None,
             bnf_mask: None,
             top_a: None,
             on_token: None,
-            preserve_state: false,
-            thinking: false,
             seed: None,
             record_trace: false,
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 60000,
+            ..Default::default()
         })
         .await;
 
@@ -237,7 +239,6 @@ async fn main() {
 
     // ── Approach B: Everything in prompt, no bake ────────────────────
     eprintln!("─── B: All in prompt, no bake ───");
-    let _ = backend.feed_eos(Some("story-nobake".to_string())).await;
     let full_prompt = chapter_prompt_full(OUTLINE, WIKI);
     let r_b = run_test(
         &backend,

@@ -64,15 +64,14 @@ async fn complete_non_streaming_returns_200() {
     let req_body = serde_json::to_string(&OpenAiCompletionRequest {
         model: None,
         prompt: "Hello world".into(),
-        system: Some("You are a test bot.".into()),
         temperature: Some(0.5),
         max_tokens: Some(50),
         stream: Some(false),
-        thinking: None,
         grammar: None,
         prefill: None,
+        init_state: None,
+        state_slot: None,
         session: None,
-        preserve_state: None,
         seed: None,
     })
     .unwrap();

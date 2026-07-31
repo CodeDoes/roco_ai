@@ -1271,7 +1271,7 @@ async fn do_complete(
 ) -> Result<String, String> {
     let resp = backend
         .complete(CompletionRequest {
-            prompt: prompt.to_string(),
+            prompt: format!("System: {}\n\n{}", system, prompt),
             grammar: None,
             temperature,
             max_tokens,

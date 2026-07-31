@@ -282,7 +282,8 @@ impl Critic {
                        on the chapter. Be specific and actionable.";
 
         let prompt = format!(
-            "Review this chapter and provide natural language feedback.\n\n\
+            "System: {system}\n\n\
+             Review this chapter and provide natural language feedback.\n\n\
              Original instructions: {instruction}\n\n\
              Chapter {chapter_num}:\n{chapter_text}\n\n\
              Provide feedback covering:\n\

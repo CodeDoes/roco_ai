@@ -125,7 +125,7 @@ async fn main() {
     );
     println!("{}", "─".repeat(145));
 
-    for (name, spec, session, use_bnf, is_baked, is_think) in combinations {
+    for (name, spec, session, use_bnf, _is_baked, _is_think) in combinations {
         let prompt = spec.build_prompt(OUTLINE, WIKI, TASK);
         let grammar = if use_bnf {
             Some(spec.grammar().to_string())
@@ -133,30 +133,27 @@ async fn main() {
             None
         };
 
-        if !is_baked {
-            let _ = backend.feed_eos(Some(session.to_string())).await;
-        }
-
+        // FeedEos was removed; unique session ids start blank on the server.
         let start = Instant::now();
         let resp = backend
             .complete(CompletionRequest {
-                system: String::new(),
+                // init_state/state_slot replace deprecated session/preserve_state fields
+                init_state: Some(session.to_string()),
+                state_slot: Some(session.to_string()),
                 prompt,
                 grammar,
                 temperature: 0.8,
                 max_tokens: 1000,
-                session: Some(session.to_string()),
                 prefill: None,
                 bnf_mask: None,
                 top_a: None,
                 on_token: None,
-                preserve_state: false,
-                thinking: is_think,
                 output_schema: None,
                 estimated_prompt_tokens: 0,
                 deadline_ms: 60000,
                 seed: None,
                 record_trace: false,
+                ..Default::default()
             })
             .await;
         let ms = start.elapsed().as_millis();
@@ -206,30 +203,27 @@ async fn main() {
 
     for (g_name, g_str) in grammar_tests {
         let prompt = spec_direct.build_prompt(OUTLINE, WIKI, TASK);
-        let _ = backend
-            .feed_eos(Some("matrix-grammar-test".to_string()))
-            .await;
 
         let start = Instant::now();
         let resp = backend
             .complete(CompletionRequest {
-                system: String::new(),
+                // init_state/state_slot replace deprecated session/preserve_state fields
+                init_state: Some("matrix-grammar-test".to_string()),
+                state_slot: Some("matrix-grammar-test".to_string()),
                 prompt,
                 grammar: Some(g_str.to_string()),
                 temperature: 0.8,
                 max_tokens: 300,
-                session: Some("matrix-grammar-test".to_string()),
                 prefill: None,
                 bnf_mask: None,
                 top_a: None,
                 on_token: None,
-                preserve_state: false,
-                thinking: false,
                 seed: None,
                 record_trace: false,
                 output_schema: None,
                 estimated_prompt_tokens: 0,
                 deadline_ms: 60000,
+                ..Default::default()
             })
             .await;
         let ms = start.elapsed().as_millis();
@@ -263,7 +257,7 @@ async fn main() {
 async fn bake(backend: &RemoteBackend, spec: &FormatSpec, session: &str) {
     let (u1, a1) = bake_pair(spec);
     let (u2, a2) = bake_pair_2(spec);
-    let _ = backend.feed_eos(Some(session.to_string())).await;
+    // bake_state handles state creation/reset; feed_eos was removed.
     let _ = backend
         .bake_state(
             session,

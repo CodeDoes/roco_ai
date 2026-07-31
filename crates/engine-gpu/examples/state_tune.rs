@@ -34,7 +34,8 @@ async fn main() -> anyhow::Result<()> {
         prompt: prompt1.into(),
         temperature: 0.1,
         max_tokens: 20,
-        preserve_state: true, // Keep the state updated in the active session
+        // Keep state in the active session slot
+        state_slot: Some("state-tune-session".to_string()),
         ..Default::default()
     };
     let resp1 = backend.complete(req1).await?;
@@ -55,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
         prompt: prompt2.into(),
         temperature: 0.1,
         max_tokens: 20,
-        preserve_state: true,
+        state_slot: Some("state-tune-session".to_string()),
         ..Default::default()
     };
     let resp2 = backend.complete(req2).await?;
@@ -88,9 +89,9 @@ async fn main() -> anyhow::Result<()> {
     let _ = backend
         .complete(CompletionRequest {
             prompt: "A beautiful garden filled with roses".into(),
-            session: Some("session_a".into()),
+            init_state: Some("session_a".to_string()),
+            state_slot: Some("session_a".to_string()),
             max_tokens: 1,
-            preserve_state: true,
             ..Default::default()
         })
         .await?;
@@ -99,9 +100,9 @@ async fn main() -> anyhow::Result<()> {
     let _ = backend
         .complete(CompletionRequest {
             prompt: "A futuristic cyber city with neon lights".into(),
-            session: Some("session_b".into()),
+            init_state: Some("session_b".to_string()),
+            state_slot: Some("session_b".to_string()),
             max_tokens: 1,
-            preserve_state: true,
             ..Default::default()
         })
         .await?;

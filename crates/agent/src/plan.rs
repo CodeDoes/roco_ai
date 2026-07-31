@@ -401,7 +401,7 @@ impl Planner {
             dependency-tracked plan. Respond with a single JSON object matching the plan schema.";
         let grammar = plan_grammar();
         let req = CompletionRequest {
-            prompt: format!("Goal: {task}"),
+            prompt: format!("System: {system}\n\nGoal: {task}"),
             grammar: Some(grammar),
             max_tokens: 1024,
             temperature: 0.3,
