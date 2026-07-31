@@ -191,7 +191,6 @@ fn ask(
 
     let printer = StreamPrinter::new("").shared();
     let request = roco_engine::CompletionRequest::builder()
-        
         .prompt(build_coder_prompt(history, input))
         .temperature(0.5)
         .max_tokens(2048)

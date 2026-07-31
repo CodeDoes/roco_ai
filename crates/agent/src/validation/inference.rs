@@ -206,8 +206,10 @@ impl Critic {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    
-                    .prompt(format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt))
+                    .prompt(format!(
+                        "System: {}\n\nUser: {}\n\nAssistant:",
+                        system, prompt
+                    ))
                     .grammar_opt(grammar)
                     .temperature(self.temperature)
                     .max_tokens(self.max_tokens)
@@ -254,8 +256,10 @@ impl Critic {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    
-                    .prompt(format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt))
+                    .prompt(format!(
+                        "System: {}\n\nUser: {}\n\nAssistant:",
+                        system, prompt
+                    ))
                     .grammar_opt(grammar)
                     .temperature(self.temperature.min(0.2))
                     .max_tokens(200)
@@ -295,7 +299,6 @@ impl Critic {
         let response = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    
                     .prompt(prompt)
                     .temperature(0.5)
                     .max_tokens(self.max_tokens)
