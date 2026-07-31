@@ -1,7 +1,7 @@
-use crate::validation::agent::{StoryModeAgent};
+use crate::validation::agent::StoryModeAgent;
 use crate::validation::intent::{IntentClassifier, StoryIntent};
-use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 use futures::future::BoxFuture;
+use roco_engine::{CompletionRequest, CompletionResponse, EngineError, ModelBackend};
 use std::fs;
 use std::path::PathBuf;
 
@@ -33,22 +33,50 @@ fn test_slash_command_parsing() {
     let classifier = IntentClassifier::default();
 
     // /draft
-    let res = classifier.classify(&MockModel { response: "".into() }, "/draft 3", &[], None);
+    let res = classifier.classify(
+        &MockModel {
+            response: "".into(),
+        },
+        "/draft 3",
+        &[],
+        None,
+    );
     assert!(res.is_ok());
     assert_eq!(res.unwrap().intent, StoryIntent::DraftChapter(3));
 
     // /revert
-    let res = classifier.classify(&MockModel { response: "".into() }, "/revert 1", &[], None);
+    let res = classifier.classify(
+        &MockModel {
+            response: "".into(),
+        },
+        "/revert 1",
+        &[],
+        None,
+    );
     assert!(res.is_ok());
     assert_eq!(res.unwrap().intent, StoryIntent::RevertChapter(1));
 
     // /backups
-    let res = classifier.classify(&MockModel { response: "".into() }, "/backups 2", &[], None);
+    let res = classifier.classify(
+        &MockModel {
+            response: "".into(),
+        },
+        "/backups 2",
+        &[],
+        None,
+    );
     assert!(res.is_ok());
     assert_eq!(res.unwrap().intent, StoryIntent::ListBackups(2));
 
     // /apply
-    let res = classifier.classify(&MockModel { response: "".into() }, "/apply Alice Bob", &[], None);
+    let res = classifier.classify(
+        &MockModel {
+            response: "".into(),
+        },
+        "/apply Alice Bob",
+        &[],
+        None,
+    );
     assert!(res.is_ok());
     assert_eq!(
         res.unwrap().intent,

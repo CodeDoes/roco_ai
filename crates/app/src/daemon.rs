@@ -687,11 +687,15 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
             .build()
             .expect("failed to build runtime");
         eprintln!("Waiting for inference server to load model...");
-        rt.block_on(wait_for_healthy(inferd_port, Duration::from_secs(600), "Inference server"))
-            .unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            });
+        rt.block_on(wait_for_healthy(
+            inferd_port,
+            Duration::from_secs(600),
+            "Inference server",
+        ))
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        });
         return Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)));
     }
 
@@ -716,11 +720,15 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     // Wait for inferd to be healthy before returning.
     let inferd_port = inferd_port();
     eprintln!("Waiting for inference server to load model (this may take a few minutes)...");
-    rt.block_on(wait_for_healthy(inferd_port, Duration::from_secs(600), "Inference server"))
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        });
+    rt.block_on(wait_for_healthy(
+        inferd_port,
+        Duration::from_secs(600),
+        "Inference server",
+    ))
+    .unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    });
 
     Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)))
 }
@@ -793,8 +801,8 @@ impl roco_engine::ModelBackend for TokioBackend {
         state: Vec<u8>,
     ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         self.inner.load_state(state)
-}
     }
+}
 /// Return a backend that works from synchronous code (uses a dedicated tokio
 /// runtime so reqwest calls inside `futures::executor::block_on` function).
 pub fn ensure_sync_backend() -> Arc<dyn roco_engine::ModelBackend> {

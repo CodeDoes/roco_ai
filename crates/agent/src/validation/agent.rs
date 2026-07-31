@@ -527,16 +527,14 @@ impl StoryModeAgent {
         let grammar = schema.to_gbnf("Synopsis").ok();
 
         let result: Result<SynopsisResponse, String> = {
-            let text = futures::executor::block_on(
-                backend.complete(CompletionRequest {
-                    prompt: symptoms_prompt,
-                    grammar,
-                    temperature: 0.5,
-                    max_tokens: 500,
-                    prefill: Some("{\n".into()),
-                    ..Default::default()
-                }),
-            )
+            let text = futures::executor::block_on(backend.complete(CompletionRequest {
+                prompt: symptoms_prompt,
+                grammar,
+                temperature: 0.5,
+                max_tokens: 500,
+                prefill: Some("{\n".into()),
+                ..Default::default()
+            }))
             .map_err(|e| format!("model error: {e}"))?
             .text;
 
@@ -1306,9 +1304,12 @@ impl StoryModeAgent {
         backend: &dyn ModelBackend,
         num: usize,
     ) -> Result<StoryModeResult, String> {
-        let session = self.session_manager_mut().active_session_mut().ok_or_else(|| {
-            "No active story session. Use 'let's work on [story]' first.".to_string()
-        })?;
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
 
         let outline = session.tool_set.read_outline().unwrap_or_default();
         let (title, summary) = extract_chapter_info_from_outline(&outline, num);
@@ -1375,9 +1376,12 @@ impl StoryModeAgent {
     }
 
     fn handle_revert_chapter(&mut self, num: usize) -> Result<StoryModeResult, String> {
-        let session = self.session_manager_mut().active_session_mut().ok_or_else(|| {
-            "No active story session. Use 'let's work on [story]' first.".to_string()
-        })?;
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
 
         let path = session.tool_set.chapter_path(num);
         session.tool_set.restore_latest_backup(&path)?;
@@ -1395,9 +1399,12 @@ impl StoryModeAgent {
     }
 
     fn handle_list_backups(&mut self, num: usize) -> Result<StoryModeResult, String> {
-        let session = self.session_manager_mut().active_session_mut().ok_or_else(|| {
-            "No active story session. Use 'let's work on [story]' first.".to_string()
-        })?;
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
 
         let path = session.tool_set.chapter_path(num);
         let backups = session.tool_set.list_backups(&path)?;
@@ -1428,9 +1435,12 @@ impl StoryModeAgent {
     }
 
     fn handle_apply_rename(&mut self, old: &str, new: &str) -> Result<StoryModeResult, String> {
-        let session = self.session_manager_mut().active_session_mut().ok_or_else(|| {
-            "No active story session. Use 'let's work on [story]' first.".to_string()
-        })?;
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
 
         let results = session.tool_set.find_replace_all(old, new)?;
         session.invalidate_cache();

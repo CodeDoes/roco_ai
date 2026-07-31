@@ -22,8 +22,14 @@ fn main() {
     let gbnf = roco_engine::grammar::json_schema::schema_to_gbnf("root", schema.to_json())
         .expect("schema is valid");
     println!("{gbnf}");
-    assert!(gbnf.contains("root_quality_enum ::="), "enum must be a named rule");
+    assert!(
+        gbnf.contains("root_quality_enum ::="),
+        "enum must be a named rule"
+    );
     let obj = gbnf.lines().find(|l| l.contains("root_obj ::=")).unwrap();
-    assert!(obj.contains("root_quality_enum"), "object must reference the enum rule");
+    assert!(
+        obj.contains("root_quality_enum"),
+        "object must reference the enum rule"
+    );
     println!("\n✓ enum scoping OK");
 }

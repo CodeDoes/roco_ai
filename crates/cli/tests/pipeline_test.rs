@@ -7,7 +7,6 @@ async fn test_full_pipeline_mock_backend_completion() {
     let backend = roco_engine::MockBackend::default();
 
     let req1 = CompletionRequest::builder()
-
         .prompt("Calculate 2 + 2.")
         .temperature(0.0)
         .max_tokens(20)
@@ -31,7 +30,6 @@ async fn test_full_pipeline_json_formatting() {
     let backend = roco_engine::MockBackend::default();
 
     let req = CompletionRequest::builder()
-
         .prompt("Create an outline for a sci-fi chapter.")
         .temperature(0.0)
         .max_tokens(100)

@@ -653,16 +653,29 @@ impl RocoDesktopApp {
                 if self.active_story.is_none() {
                     ui.label(RichText::new("Start a New Story").strong());
                     ui.add_space(4.0);
-                    ui.add(egui::TextEdit::multiline(&mut self.story_premise)
-                        .hint_text("Enter your story premise...")
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(3));
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.story_premise)
+                            .hint_text("Enter your story premise...")
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(3),
+                    );
 
                     ui.add_space(6.0);
-                    if ui.button("🚀 Create Story Workspace").clicked() && !self.story_premise.trim().is_empty() {
+                    if ui.button("🚀 Create Story Workspace").clicked()
+                        && !self.story_premise.trim().is_empty()
+                    {
                         let ts = chrono::Utc::now().timestamp();
-                        let slug = self.story_premise.split_whitespace().take(3).collect::<Vec<_>>().join("-").to_lowercase();
-                        let clean_slug = slug.chars().filter(|c| c.is_alphanumeric() || *c == '-').collect::<String>();
+                        let slug = self
+                            .story_premise
+                            .split_whitespace()
+                            .take(3)
+                            .collect::<Vec<_>>()
+                            .join("-")
+                            .to_lowercase();
+                        let clean_slug = slug
+                            .chars()
+                            .filter(|c| c.is_alphanumeric() || *c == '-')
+                            .collect::<String>();
                         let folder_name = format!("{}_{}", ts, clean_slug);
                         let ws_path = PathBuf::from(".roco/workspaces").join(&folder_name);
 
@@ -675,7 +688,8 @@ impl RocoDesktopApp {
                             self.story_premise
                         );
                         std::fs::write(ws_path.join("outline.md"), &outline_content).ok();
-                        std::fs::write(ws_path.join("wiki.md"), "## Characters\n\n## Setting\n").ok();
+                        std::fs::write(ws_path.join("wiki.md"), "## Characters\n\n## Setting\n")
+                            .ok();
 
                         self.active_story = Some(folder_name);
                         self.story_workspaces = list_story_workspaces();
@@ -698,12 +712,16 @@ impl RocoDesktopApp {
                                 for name in self.story_workspaces.clone() {
                                     ui.horizontal(|ui| {
                                         ui.label(&name);
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                            if ui.button("Load").clicked() {
-                                                self.active_story = Some(name.clone());
-                                                self.status_message = format!("Loaded story workspace: {name}");
-                                            }
-                                        });
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if ui.button("Load").clicked() {
+                                                    self.active_story = Some(name.clone());
+                                                    self.status_message =
+                                                        format!("Loaded story workspace: {name}");
+                                                }
+                                            },
+                                        );
                                     });
                                 }
                             });
@@ -711,7 +729,11 @@ impl RocoDesktopApp {
                 } else {
                     let name = self.active_story.clone().unwrap();
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("Workspace: {}", name)).strong().size(12.0));
+                        ui.label(
+                            RichText::new(format!("Workspace: {}", name))
+                                .strong()
+                                .size(12.0),
+                        );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("❌ Close").clicked() {
                                 self.active_story = None;
@@ -730,7 +752,9 @@ impl RocoDesktopApp {
                         if tool_set.outline_path().exists() {
                             ui.label("Yes");
                             if ui.button("✏️ Edit").clicked() {
-                                if let Ok(content) = std::fs::read_to_string(tool_set.outline_path()) {
+                                if let Ok(content) =
+                                    std::fs::read_to_string(tool_set.outline_path())
+                                {
                                     self.editor_state.document.text = content;
                                     self.right_panel_tool = Some(RightPanelTool::Editor);
                                 }
@@ -876,8 +900,10 @@ impl RocoDesktopApp {
                     ui.add_space(12.0);
                     ui.separator();
                     if ui.button("📦 Compile & Publish Final Story").clicked() {
-                        let _outline_content = std::fs::read_to_string(tool_set.outline_path()).unwrap_or_default();
-                        let wiki_content = std::fs::read_to_string(tool_set.wiki_path()).unwrap_or_default();
+                        let _outline_content =
+                            std::fs::read_to_string(tool_set.outline_path()).unwrap_or_default();
+                        let wiki_content =
+                            std::fs::read_to_string(tool_set.wiki_path()).unwrap_or_default();
 
                         let mut final_story = String::from("# Final Published Story\n\n");
                         if !wiki_content.is_empty() {
@@ -1291,7 +1317,7 @@ mod tests {
                     text,
                     usage: Default::default(),
                     parsed: None,
-                                        trace: Vec::new(),
+                    trace: Vec::new(),
                 })
             })
         }

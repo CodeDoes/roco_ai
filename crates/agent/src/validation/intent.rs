@@ -280,7 +280,10 @@ impl IntentClassifier {
                         explanation: format!("Slash command /backups {num}"),
                     });
                 }
-                Err("Please provide a valid chapter number to list backups, e.g., /backups 3".to_string())
+                Err(
+                    "Please provide a valid chapter number to list backups, e.g., /backups 3"
+                        .to_string(),
+                )
             }
             "/apply" => {
                 let parts: Vec<&str> = arg.split_whitespace().collect();

@@ -262,9 +262,7 @@ async fn tool_approval_and_execution_flow() {
     let backend = MockBackend::default();
 
     // Simulate tool: generate a completion (as the tool would)
-    let req = CompletionRequest::new(
-"Write a chapter titled 'The Beginning'",
-    );
+    let req = CompletionRequest::new("Write a chapter titled 'The Beginning'");
     let resp = backend.complete(req).await.unwrap();
     assert!(
         resp.text.contains("result") || resp.text.contains("mock"),
@@ -385,9 +383,8 @@ async fn outline_edit_changes_subsequent_generation() {
     let backend = MockBackend::new("outline-model", 0);
 
     // Step 1: Generate outline
-    let outline_req = CompletionRequest::new(
-"Create an outline for a fantasy story about a lost city.",
-    );
+    let outline_req =
+        CompletionRequest::new("Create an outline for a fantasy story about a lost city.");
     let outline_resp = backend.complete(outline_req).await.unwrap();
     assert!(
         outline_resp.text.contains("outline-model"),
@@ -395,9 +392,7 @@ async fn outline_edit_changes_subsequent_generation() {
     );
 
     // Step 2: Edit outline (simulated by changing system prompt)
-    let chapter_req = CompletionRequest::new(
-"Write chapter 1 based on the outline.",
-    );
+    let chapter_req = CompletionRequest::new("Write chapter 1 based on the outline.");
     let chapter_resp = backend.complete(chapter_req).await.unwrap();
     assert!(
         chapter_resp.text.contains("outline-model"),
@@ -405,9 +400,7 @@ async fn outline_edit_changes_subsequent_generation() {
     );
 
     // Step 3: Edit the premise and regenerate
-    let revised_req = CompletionRequest::new(
-"Rewrite chapter 1 with the revised outline.",
-    );
+    let revised_req = CompletionRequest::new("Rewrite chapter 1 with the revised outline.");
     let revised_resp = backend.complete(revised_req).await.unwrap();
     // MockBackend echoes the prompt snippet, so text contains the
     // backend name and the first 48 chars of the prompt.
@@ -531,7 +524,6 @@ async fn record_trace_token_metadata() {
 
     // With record_trace
     let req_trace = CompletionRequest::builder()
-        
         .prompt("trace test")
         .record_trace(true)
         .build();

@@ -184,10 +184,7 @@ impl Scheduler {
         for task in due {
             // Build the prompt
             let prompt = if let Some(ref payload) = task.payload {
-                format!(
-                    "{}\n\nPayload: {}",
-                    task.description, payload
-                )
+                format!("{}\n\nPayload: {}", task.description, payload)
             } else {
                 task.description.clone()
             };

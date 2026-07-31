@@ -261,11 +261,7 @@ fn main() {
             #[cfg(any(feature = "gui", feature = "desktop"))]
             cmd::desktop::cmd_gui(&extra);
             #[cfg(not(any(feature = "gui", feature = "desktop")))]
-            need_feature(
-                "gui",
-                "gui",
-                "cargo build -p roco-cli --features gui",
-            );
+            need_feature("gui", "gui", "cargo build -p roco-cli --features gui");
         }
 
         // ── Desktop pet ──────────────────────────────────────────────────

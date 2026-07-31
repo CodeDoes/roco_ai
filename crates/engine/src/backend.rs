@@ -64,7 +64,9 @@ pub trait ModelBackend: Send + Sync {
     ) -> BoxFuture<'a, Result<String, EngineError>> {
         let _ = (text, init_state, state_slot);
         Box::pin(async move {
-            Err(EngineError::Backend("bake not supported by this backend".into()))
+            Err(EngineError::Backend(
+                "bake not supported by this backend".into(),
+            ))
         })
     }
 }
@@ -345,7 +347,9 @@ impl ModelBackend for MockBackend {
                 let p = req.prompt.strip_prefix("System:");
                 match p {
                     Some(rest) => {
-                        let rest = rest.trim_start().trim_start_matches(|c| c == ' ' || c == '\n');
+                        let rest = rest
+                            .trim_start()
+                            .trim_start_matches(|c| c == ' ' || c == '\n');
                         let rest = rest.split_once("\n\n").map(|(_, u)| u).unwrap_or(rest);
                         rest.chars().take(48).collect()
                     }
@@ -368,16 +372,23 @@ impl ModelBackend for MockBackend {
             if matched_text.is_none() {
                 if prompt_lower.contains("outliner") {
                     matched_text = Some(r#"{"title": "The Time Freeze", "genre": "Sci-Fi", "tone": "Suspenseful", "chapters": [{"number": 1, "title": "The Device", "summary": "A clockmaker finds a device"}, {"number": 2, "title": "The Freeze", "summary": "He freezes time"}, {"number": 3, "title": "The Cost", "summary": "Time freezes permanently"}]}"#.to_string());
-                } else if prompt_lower.contains("worldbuilding") || prompt_lower.contains("character") {
+                } else if prompt_lower.contains("worldbuilding")
+                    || prompt_lower.contains("character")
+                {
                     matched_text = Some(r#"{"characters": [{"name": "Alistair", "description": "The clockmaker"}], "setting": "A dusty Victorian workshop"}"#.to_string());
-                } else if prompt_lower.contains("writer") || prompt_lower.contains("fiction writer") {
+                } else if prompt_lower.contains("writer") || prompt_lower.contains("fiction writer")
+                {
                     matched_text = Some(r#"{"title": "The Time Freeze", "content": "Alistair adjusted the gears. The ticking stopped. The world froze."}"#.to_string());
-                } else if prompt_lower.contains("reviewer") || prompt_lower.contains("quality reviewer") {
+                } else if prompt_lower.contains("reviewer")
+                    || prompt_lower.contains("quality reviewer")
+                {
                     matched_text = Some(
                         r#"{"quality": "pass", "issues": "none", "suggestion": "none"}"#
                             .to_string(),
                     );
-                } else if prompt_lower.contains("summarizer") || prompt_lower.contains("literary summarizer") {
+                } else if prompt_lower.contains("summarizer")
+                    || prompt_lower.contains("literary summarizer")
+                {
                     matched_text = Some(r#"{"summary": "A clockmaker builds a device that freezes time, only to discover it has a terrible cost."}"#.to_string());
                 }
             }
@@ -478,7 +489,10 @@ pub async fn bake_persona(
         if i == 0 && !system.is_empty() {
             text.push_str(&format!("System: {}\n\n", system.trim()));
         }
-        text.push_str(&format!("User: {}\n\nAssistant:{}", user_msg, assistant_msg));
+        text.push_str(&format!(
+            "User: {}\n\nAssistant:{}",
+            user_msg, assistant_msg
+        ));
     }
     let req = CompletionRequest {
         prompt: text,
@@ -535,7 +549,10 @@ pub async fn bake_into_session(
         if i == 0 && !system.is_empty() {
             text.push_str(&format!("System: {}\n\n", system.trim()));
         }
-        text.push_str(&format!("User: {}\n\nAssistant:{}", user_msg, assistant_msg));
+        text.push_str(&format!(
+            "User: {}\n\nAssistant:{}",
+            user_msg, assistant_msg
+        ));
     }
     let req = CompletionRequest {
         prompt: text,
@@ -605,7 +622,10 @@ pub async fn bake_no_think_session(
         if i == 0 && !system.is_empty() {
             text.push_str(&format!("System: {}\n\n", system.trim()));
         }
-        text.push_str(&format!("User: {}\n\nAssistant:{}", user_msg, assistant_msg));
+        text.push_str(&format!(
+            "User: {}\n\nAssistant:{}",
+            user_msg, assistant_msg
+        ));
     }
     let req = CompletionRequest {
         prompt: text,
@@ -664,9 +684,7 @@ mod tests {
                 state_slot: Option<&'a str>,
             ) -> BoxFuture<'a, Result<String, EngineError>> {
                 let _ = (text, init_state, state_slot);
-                Box::pin(
-                    async move { Err(EngineError::Backend("bake not supported".into())) },
-                )
+                Box::pin(async move { Err(EngineError::Backend("bake not supported".into())) })
             }
         }
         let b = NoStateBackend;
@@ -700,10 +718,7 @@ mod tests {
     async fn mock_backend_interrupt() {
         let b = MockBackend::default();
         b.interrupt().await.unwrap();
-        let resp = b
-            .complete(CompletionRequest::new("hello"))
-            .await
-            .unwrap();
+        let resp = b.complete(CompletionRequest::new("hello")).await.unwrap();
         assert!(resp.text.contains("result"));
     }
 
