@@ -831,3 +831,317 @@ pub fn story_pipeline_eval_cases() -> Vec<EvalCase> {
         ),
     ]
 }
+
+// ------------------------------------------------------------------------------
+// State management evals — bake, save, load, blend
+//
+// These test the recurrent state primitives that enable session persistence.
+// ------------------------------------------------------------------------------
+
+pub fn state_eval_cases() -> Vec<EvalCase> {
+    use crate::eval::{EvalCase, EvalCategory};
+
+    vec![
+        EvalCase {
+            name: "state_bake_primes_format".into(),
+            description: "Baking few-shot examples primes the state for consistent format output".into(),
+            system: "You are a helpful assistant. Follow the format of the examples exactly.".into(),
+            prompt: "Given the prompt 'Hello', respond in the format: {\"response\": \"...\"}".into(),
+            expected_hints: vec!["response".into(), "{".into(), "}".into()],
+            forbidden_strings: vec![],
+            max_tokens: 100,
+            temperature: 0.0,
+            min_output_chars: 20,
+            grammar: None,
+            prefill: Some("Assistant: ".into()),
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Coherence,
+        },
+        EvalCase {
+            name: "state_carries_context".into(),
+            description: "State from previous turn influences next turn's output".into(),
+            system: "You are a storyteller. Remember the story context from previous turns.".into(),
+            prompt: "Continue the story. The protagonist just entered a dark forest. What happens next?".into(),
+            expected_hints: vec!["forest".into(), "dark".into()],
+            forbidden_strings: vec!["I am an AI".to_string(), "As an AI".to_string()],
+            max_tokens: 200,
+            temperature: 0.6,
+            min_output_chars: 50,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Coherence,
+        },
+        EvalCase {
+            name: "state_reset_prevents_bleed".into(),
+            description: "Resetting state between phases prevents repetition bleed".into(),
+            system: "You are a validator. Review the following chapter for quality.".into(),
+            prompt: "Chapter: The king ruled for many years. He was wise and just. The people loved him.\n\nValidate this chapter.".into(),
+            expected_hints: vec!["quality".into(), "pass".into(), "king".into()],
+            forbidden_strings: vec!["Chapter 1:".to_string(), "Chapter 2:".to_string(), "thinking".to_string(), "reasoning".to_string()],
+            max_tokens: 150,
+            temperature: 0.5,
+            min_output_chars: 30,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Validation,
+        },
+    ]
+}
+
+// ------------------------------------------------------------------------------
+// Grammar constraint evals — BNF/GBNF masking
+//
+// These test that grammar masks correctly constrain token selection.
+// ------------------------------------------------------------------------------
+
+pub fn grammar_constraint_evals() -> Vec<EvalCase> {
+    use crate::eval::{EvalCase, EvalCategory};
+
+    // Simple GBNF grammar: only allow lowercase letters and spaces
+    let simple_grammar = r#"root ::= "hello" | "world" | "foo" | "bar""#;
+
+    vec![
+        EvalCase {
+            name: "grammar_enforces_allowed_tokens".into(),
+            description: "Grammar mask restricts output to allowed tokens only".into(),
+            system: "You are a constraint test. Only output words from the grammar.".into(),
+            prompt: "Output one of the allowed words.".into(),
+            expected_hints: vec!["hello".into(), "world".into(), "foo".into(), "bar".into()],
+            forbidden_strings: vec!["the".to_string(), "a".to_string(), "is".to_string(), "and".to_string(), "but".to_string()],
+            max_tokens: 20,
+            temperature: 0.0,
+            min_output_chars: 3,
+            grammar: Some(simple_grammar.to_string()),
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Grammar,
+        },
+        EvalCase {
+            name: "grammar_json_object".into(),
+            description: "Grammar enforces valid JSON object structure".into(),
+            system: "You output JSON only.".into(),
+            prompt: "Output a JSON object with keys: name and value.".into(),
+            expected_hints: vec!["name".into(), "value".into(), "{".into(), "}".into()],
+            forbidden_strings: vec!["thinking".to_string(), "reasoning".to_string(), "```".to_string()],
+            max_tokens: 100,
+            temperature: 0.0,
+            min_output_chars: 20,
+            grammar: Some(r#"root ::= "{" "name": "" <string> "", "value": "" <string> "" "}" <string> ::= [a-z]+"#.to_string()),
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Grammar,
+        },
+        EvalCase {
+            name: "grammar_rejects_invalid_structure".into(),
+            description: "Grammar rejects output that doesn't match the expected structure".into(),
+            system: "You must follow the grammar exactly.".into(),
+            prompt: "Output a greeting in the format: HELLO <name>".into(),
+            expected_hints: vec!["HELLO".into()],
+            forbidden_strings: vec!["hello world".to_string(), "goodbye".to_string(), "hi there".to_string()],
+            max_tokens: 30,
+            temperature: 0.0,
+            min_output_chars: 5,
+            grammar: Some(r#"root ::= "HELLO " [A-Z]+"#.to_string()),
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Grammar,
+        },
+    ]
+}
+
+// ------------------------------------------------------------------------------
+// Negative constraint evals — forbidden strings, no thinking tags
+//
+// These test that the model respects negative constraints.
+// ------------------------------------------------------------------------------
+
+pub fn negative_constraint_evals() -> Vec<EvalCase> {
+    vec![
+        EvalCase {
+            name: "no_thinking_tags".into(),
+            description: "Model does not emit thinking/reasoning tags".into(),
+            system: "You are a direct assistant. Never use thinking tags.".into(),
+            prompt: "Solve this: what is 2+2? Show your work.".into(),
+            expected_hints: vec!["4".into()],
+            forbidden_strings: vec!["".to_string(), "reasoning".to_string(), "Let me think".to_string()],
+            max_tokens: 50,
+            temperature: 0.0,
+            min_output_chars: 5,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Instruction,
+        },
+        EvalCase {
+            name: "no_meta_commentary".into(),
+            description: "Model avoids meta-commentary about being an AI".into(),
+            system: "You are a fiction writer. Write directly, no commentary.".into(),
+            prompt: "Write the opening line of a mystery novel.".into(),
+            expected_hints: vec!["The".into(), ".".into()],
+            forbidden_strings: vec!["I am an AI".to_string(), "As an AI".to_string(), "I cannot".to_string(), "I'm sorry".to_string(), "Here is".to_string()],
+            max_tokens: 80,
+            temperature: 0.6,
+            min_output_chars: 20,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Coherence,
+        },
+        EvalCase {
+            name: "no_repetition".into(),
+            description: "Model avoids repeating the same phrase".into(),
+            system: "You are a writer. Avoid repetition.".into(),
+            prompt: "Write three sentences about a garden, each describing something different.".into(),
+            expected_hints: vec!["garden".into(), "flower".into(), "tree".into()],
+            forbidden_strings: vec!["The garden".to_string(), "a garden".to_string()],
+            max_tokens: 150,
+            temperature: 0.6,
+            min_output_chars: 50,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Coherence,
+        },
+    ]
+}
+
+// ------------------------------------------------------------------------------
+// Pipeline quality evals — validate phases pass strict checks
+//
+// These test the quality validation logic that gates chapter generation.
+// ------------------------------------------------------------------------------
+
+pub fn pipeline_quality_evals() -> Vec<EvalCase> {
+    vec![
+        EvalCase {
+            name: "val_quality_pass".into(),
+            description: "Validation accepts well-formed chapter".into(),
+            system: "You are a strict quality reviewer. Output valid JSON.".into(),
+            prompt: "Review: The old lighthouse keeper watched the storm roll in. His weathered hands gripped the rail as waves crashed against the rocks below.\n\nOutput: {\"quality\": \"pass\", \"issues\": \"none\", \"suggestion\": \"none\"}".into(),
+            expected_hints: vec!["quality".into(), "pass".into()],
+            forbidden_strings: vec!["thinking".to_string(), "reasoning".to_string()],
+            max_tokens: 100,
+            temperature: 0.5,
+            min_output_chars: 20,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Validation,
+        },
+        EvalCase {
+            name: "val_quality_fail".into(),
+            description: "Validation rejects chapter with meta-commentary".into(),
+            system: "You are a strict quality reviewer. Output valid JSON.".into(),
+            prompt: "Review: <think>I should write a story...</think>\n\nThe old lighthouse keeper watched the storm.\n\nOutput: {\"quality\": \"fail\", \"issues\": \"contains thinking tags\", \"suggestion\": \"Remove meta-commentary\"}".into(),
+            expected_hints: vec!["quality".into(), "fail".into()],
+            forbidden_strings: vec!["pass".to_string()],
+            max_tokens: 100,
+            temperature: 0.5,
+            min_output_chars: 20,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Validation,
+        },
+        EvalCase {
+            name: "val_json_schema_valid".into(),
+            description: "Validation output matches expected JSON schema".into(),
+            system: "You are a validator. Output strict JSON.".into(),
+            prompt: "Validate this outline: Title: Test, Chapters: 3. Output JSON with keys: quality, issues, suggestion.".into(),
+            expected_hints: vec!["quality".into(), "issues".into(), "suggestion".into()],
+            forbidden_strings: vec!["thinking".to_string(), "reasoning".to_string()],
+            max_tokens: 100,
+            temperature: 0.5,
+            min_output_chars: 20,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Validation,
+        },
+    ]
+}
+
+// ------------------------------------------------------------------------------
+// Temperature & repetition evals
+//
+// These test the model's behavior at different temperatures.
+// ------------------------------------------------------------------------------
+
+pub fn temperature_evals() -> Vec<EvalCase> {
+    vec![
+        EvalCase {
+            name: "temp_greedy_deterministic".into(),
+            description: "Temperature 0.0 produces consistent output".into(),
+            system: "You are a precise assistant.".into(),
+            prompt: "Repeat exactly: hello world".into(),
+            expected_hints: vec!["hello".into(), "world".into()],
+            forbidden_strings: vec![],
+            max_tokens: 20,
+            temperature: 0.0,
+            min_output_chars: 10,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: Some("hello world".into()),
+            category: EvalCategory::Coherence,
+        },
+        EvalCase {
+            name: "temp_creative_story".into(),
+            description: "Temperature 0.6 produces creative but coherent prose".into(),
+            system: "You are a creative writer.".into(),
+            prompt: "Write one sentence about a dragon flying over a castle.".into(),
+            expected_hints: vec!["dragon".into(), "castle".into()],
+            forbidden_strings: vec!["thinking".to_string(), "reasoning".to_string()],
+            max_tokens: 80,
+            temperature: 0.6,
+            min_output_chars: 30,
+            grammar: None,
+            prefill: None,
+            bnf_mask: None,
+            session: None,
+            preserve_state: false,
+            oracle: None,
+            category: EvalCategory::Coherence,
+        },
+    ]
+}
