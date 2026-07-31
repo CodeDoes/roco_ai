@@ -161,9 +161,18 @@ fn test_session_long_conversation() {
     }
 
     let path = session_dir.join("long_test.json");
-    state.save(&path).expect("failed to save session");
+    if let Err(e) = state.save(&path) {
+        eprintln!("Failed to save session: {}", e);
+        panic!("failed to save session: {}", e);
+    }
 
-    let loaded = roco_protocol::ConversationState::load(&path).expect("failed to load");
+    let loaded = match roco_protocol::ConversationState::load(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to load session: {}", e);
+            panic!("failed to load session: {}", e);
+        }
+    };
     assert_eq!(loaded.messages.len(), 100);
 
     // Cleanup
