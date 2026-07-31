@@ -1232,6 +1232,13 @@ pub fn cmd_story(extra: &[&str]) {
                 )
                 .map_err(|e| AgentError::Internal(format!("outline generation failed: {e}")))?;
 
+                // Validate outline has minimum content
+                if outline.chapters.is_empty() || outline.title.is_empty() {
+                    return Err(AgentError::Internal(
+                        "outline missing chapters or title".to_string()
+                    ));
+                }
+
                 // Build formatted markdown with front matter
                 let title = &outline.title;
                 let genre = &outline.genre;
