@@ -31,20 +31,14 @@ All 5 functions + 20+ tests deleted from story.rs:
 Phases now fail loudly on JSON parse failure instead of silently falling
 back to natural language heuristics.
 
-## 4. Temporary deprecation stubs added (current commit)
+## 4. Temporary deprecation stubs added — NOW REMOVED
 
-Added backward-compatibility stubs to restore compilation while the
-full cleanup continues:
-- `bake_state` compatibility method on `ModelBackend` trait
+The backward-compatibility stubs were fully removed in the cleanup pass:
+- `bake_state` compatibility method removed from `ModelBackend` trait
 - Deprecated fields (`system`, `session`, `preserve_state`, `thinking`)
-  back on `CompletionRequest` (marked for future removal)
-- `session` field on `OpenAiCompletionRequest` in protocol types
-- Updated struct initializers across engine crate
-
-These stubs preserve the architecture intent (inferd = pure token engine,
-frontend = formatting/orchestration) while avoiding cascading breakage
-from bulk refactoring. They will be removed in a dedicated cleanup pass
-once all callers have been migrated.
+  removed from `CompletionRequest`
+- `session` field removed from `OpenAiCompletionRequest` in protocol types
+- All callers now use `init_state`/`state_slot` and embed system text in the prompt
 
 ## Current status
 

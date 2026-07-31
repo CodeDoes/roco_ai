@@ -45,9 +45,6 @@ pub struct OpenAiCompletionRequest {
     /// Save resulting state to this cache slot (RoCo extension).
     #[serde(default)]
     pub state_slot: Option<String>,
-    /// DEPRECATED: use `init_state` and `state_slot` instead. Legacy session ID.
-    #[serde(default)]
-    pub session: Option<String>,
     /// Deterministic seed for reproducible sampling (RoCo extension).
     /// Same seed + same prompt + same temperature = same output.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -57,18 +54,14 @@ pub struct OpenAiCompletionRequest {
 impl OpenAiCompletionRequest {
     /// Convert to the engine's `CompletionRequest`, consuming self.
     pub fn into_engine(self) -> CompletionRequest {
-        // If session is set, use it as both init and state slot for backward compat
-        let init_state = self.init_state.or_else(|| self.session.clone());
-        let state_slot = self.state_slot.or_else(|| self.session.clone());
-        
         CompletionRequest {
             prompt: self.prompt,
             prefill: self.prefill,
             grammar: self.grammar,
             temperature: self.temperature.unwrap_or(0.2),
             max_tokens: self.max_tokens.unwrap_or(512),
-            init_state,
-            state_slot,
+            init_state: self.init_state,
+            state_slot: self.state_slot,
             seed: self.seed,
             ..Default::default()
         }
@@ -86,7 +79,6 @@ impl OpenAiCompletionRequest {
             prefill: req.prefill.clone(),
             init_state: req.init_state.clone(),
             state_slot: req.state_slot.clone(),
-            session: None, // DEPRECATED: always None unless converting from legacy wire format
             seed: req.seed,
         }
     }
@@ -322,7 +314,7 @@ mod tests {
         assert!(req.init_state.is_none());
         assert!(req.temperature.is_none());
         assert!(req.stream.is_none());
-        assert!(req.session.is_none());
+        assert!(req.init_state.is_none());
     }
 
     #[test]
@@ -425,17 +417,6 @@ mod tests {
         let back = wire.into_engine();
         assert_eq!(back.init_state.as_deref(), Some("story-writer"));
         assert_eq!(back.state_slot.as_deref(), Some("story-writer"));
-        assert_eq!(back.prompt, "hello");
-    }
-
-    #[test]
-    fn engine_round_trip_legacy_session() {
-        // Legacy `session` on the wire maps to init_state+state_slot
-        let json = r#"{"prompt": "hello", "session": "legacy-session"}"#;
-        let wire: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
-        let back = wire.into_engine();
-        assert_eq!(back.init_state.as_deref(), Some("legacy-session"));
-        assert_eq!(back.state_slot.as_deref(), Some("legacy-session"));
         assert_eq!(back.prompt, "hello");
     }
 }

@@ -6,7 +6,7 @@
 //! Run with:
 //!   cargo run --release --example matrix_eval -p roco-cli --features net
 
-use roco_engine::{CompletionRequest, ModelBackend};
+use roco_engine::{CompletionRequest, ModelBackend, StateTuning};
 use roco_infer_client::RemoteBackend;
 use roco_protocol::FormatSpec;
 use std::env;
@@ -257,9 +257,9 @@ async fn main() {
 async fn bake(backend: &RemoteBackend, spec: &FormatSpec, session: &str) {
     let (u1, a1) = bake_pair(spec);
     let (u2, a2) = bake_pair_2(spec);
-    // bake_state handles state creation/reset; feed_eos was removed.
+    // tune_state (POST /v1/bake) handles state creation/reset; feed_eos was removed.
     let _ = backend
-        .bake_state(
+        .tune_state(
             session,
             "You write fiction prose.",
             &[(u1.as_str(), a1.as_str()), (u2.as_str(), a2.as_str())],

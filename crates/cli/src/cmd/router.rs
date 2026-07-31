@@ -522,8 +522,8 @@ fn generate_response(
     };
 
     let request = roco_engine::CompletionRequest {
-        system,
-        prompt,
+        // System text embedded in prompt
+        prompt: format!("System: {}\n\n{}", system, prompt),
         temperature: 0.8,
         max_tokens,
         prefill,

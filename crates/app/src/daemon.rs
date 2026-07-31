@@ -1031,22 +1031,22 @@ mod tests {
         }
     }
 
-    // ── Scenario 4: bake_state via futures::executor::block_on ───────────────
-    // bake_state had the same spawn().await bug.
-    // MockBackend returns Err for bake_state (default impl); we only care
+    // ── Scenario 4: bake via futures::executor::block_on ────────────────────
+    // bake had the same spawn().await bug.
+    // MockBackend returns Err for bake (default impl); we only care
     // that the call doesn't deadlock.
 
     #[test]
-    fn tokio_backend_bake_state_via_futures_block_on_no_surrounding_runtime() {
+    fn tokio_backend_bake_via_futures_block_on_no_surrounding_runtime() {
         assert_completes_within(
-            "bake_state via futures::executor::block_on",
+            "bake via futures::executor::block_on",
             Duration::from_secs(2),
             || {
                 let backend = make_backend();
-                let res = futures::executor::block_on(backend.bake_state(
-                    "sess-1",
-                    "system prompt",
-                    &[("hi", "hello")],
+                let res = futures::executor::block_on(backend.bake(
+                    "System: system prompt\n\nUser: hi\n\nAssistant:hello",
+                    None,
+                    Some("sess-1"),
                 ));
                 // Default impl returns Err; we just care it doesn't hang.
                 assert!(res.is_err());

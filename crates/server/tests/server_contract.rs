@@ -71,7 +71,6 @@ async fn complete_non_streaming_returns_200() {
         prefill: None,
         init_state: None,
         state_slot: None,
-        session: None,
         seed: None,
     })
     .unwrap();
@@ -358,9 +357,8 @@ async fn fixture_round_trip_deserialize_full() {
     let req: OpenAiCompletionRequest = serde_json::from_value(fixture).unwrap();
     assert_eq!(req.prompt, "Once upon a time");
     assert!((req.temperature.unwrap() - 0.8).abs() < 1e-6);
-    assert_eq!(req.session.as_deref(), Some("story-session-1"));
-    // Note: system, preserve_state, and thinking are not fields on OpenAiCompletionRequest
-    // They are handled as part of CompletionRequest stubs during conversion
+    assert_eq!(req.init_state.as_deref(), Some("story-session-1"));
+    assert_eq!(req.state_slot.as_deref(), Some("story-session-1"));
 }
 
 #[tokio::test]
@@ -420,7 +418,7 @@ async fn bake_returns_200_or_500() {
         .await
         .unwrap();
 
-    // MockBackend defaults to returning Err("bake_state not supported"), so status should be 500
+    // MockBackend defaults to returning Err("bake not supported"), so status should be 500
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 

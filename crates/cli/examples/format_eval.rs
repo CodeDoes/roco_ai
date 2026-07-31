@@ -43,6 +43,7 @@ use std::time::Instant;
 
 use roco_engine::backend::ModelBackend;
 use roco_engine::types::CompletionRequest;
+use roco_engine::StateTuning;
 use roco_infer_client::RemoteBackend;
 use roco_protocol::{format_followed, has_think_contamination, FormatSpec};
 
@@ -173,9 +174,9 @@ async fn bake_format(backend: &RemoteBackend, spec: &FormatSpec, session: &str) 
         a2.lines().next().unwrap_or("")
     );
 
-    // bake_state handles state creation/reset on the server; feed_eos was removed.
+    // tune_state (POST /v1/bake) handles state creation/reset on the server.
     match backend
-        .bake_state(
+        .tune_state(
             session,
             system,
             &[(u1.as_str(), a1.as_str()), (u2.as_str(), a2.as_str())],

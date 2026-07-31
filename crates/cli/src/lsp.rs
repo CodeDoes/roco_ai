@@ -294,12 +294,13 @@ async fn completion(
     };
 
     let req = CompletionRequest {
-        system,
-        prompt,
+        // System text embedded in prompt; session mapped to state slot
+        prompt: format!("System: {}\n\n{}", system, prompt),
         prefill: Some("<think></think>".to_string()),
         temperature: 0.35,
         max_tokens: FIM_MAX_TOKENS,
-        session,
+        init_state: session.clone(),
+        state_slot: session,
         ..Default::default()
     };
 

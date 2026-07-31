@@ -172,5 +172,6 @@ Currently `.roco/agent-journal.md` in Markdown. Should be JSONL for structured q
 - Sometimes produces ````json``` wrappers or trailing `}` characters
 - May truncate output when the state carries too much context momentum
 
-### Backward Compatibility Bridge
-Some legacy fields (`session`, `bake_state`, `OpenAiCompletionRequest::session`) remain for compatibility while the new `init_state`/`state_slot` API is being adopted. These are marked `#[deprecated]` and will be removed in a follow-on pass.
+### Migration Complete
+
+The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fields have been removed. All callers use `init_state`/`state_slot` and embed system text directly in the prompt.

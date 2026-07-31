@@ -33,13 +33,14 @@ fn main() -> eframe::Result<()> {
                     let system = "\
                         You are a cute desktop pet. Be warm, playful, and conversational.\n\
                         Keep responses short (1-3 sentences). React to what the user says.\n\
-                        Use emoticons and be expressive!"
-                        .to_string();
+                        Use emoticons and be expressive!";
 
-                    let prompt = format!("Conversation so far:\n{history_text}\nUser: {msg}\nPet:");
+                    let prompt = format!(
+                        "System: {}\n\nConversation so far:\n{history_text}\nUser: {msg}\nPet:",
+                        system
+                    );
 
                     let request = roco_engine::CompletionRequest {
-                        system,
                         prompt,
                         temperature: 0.8,
                         max_tokens: 256,

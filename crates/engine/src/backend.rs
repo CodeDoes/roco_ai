@@ -51,31 +51,6 @@ pub trait ModelBackend: Send + Sync {
         None
     }
 
-    /// DEPRECATED compatibility method: bake a few-shot session using the
-    /// legacy API (system + examples). Calls `bake` internally.
-    fn bake_state<'a>(
-        &'a self,
-        session_id: &'a str,
-        system: &'a str,
-        few_shots: &[(&'a str, &'a str)],
-    ) -> BoxFuture<'a, Result<String, EngineError>> {
-        // Build the combined text string
-        let mut text = String::new();
-        for (i, (user, assistant)) in few_shots.iter().enumerate() {
-            if i == 0 && !system.is_empty() {
-                text.push_str(&format!("System: {}\n\n", system.trim()));
-            }
-            text.push_str(&format!("User: {}\n\nAssistant:{}", user, assistant));
-        }
-        // Call bake with the owned text. We need to make sure text lives
-        // long enough for the returned future. Since bake typically sends
-        // text to an actor (which owns it), we should use an async block
-        // that moves text into the future.
-        Box::pin(async move {
-            self.bake(&text, None, Some(session_id)).await
-        })
-    }
-
     /// Feed raw text through the model (no generation) and save the resulting
     /// state. Used to prime the recurrent state with few-shot examples or
     /// context without consuming tokens.
@@ -363,7 +338,20 @@ impl ModelBackend for MockBackend {
                     .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 return Err(EngineError::Backend("simulated failure".into()));
             }
-            let snippet: String = req.prompt.chars().take(48).collect();
+            // Strip a leading "System: ...\n\n" header from the echo snippet
+            // so tests that assert on the echoed user message still see it
+            // (prompts now embed system text inline after migration).
+            let snippet: String = {
+                let p = req.prompt.strip_prefix("System:");
+                match p {
+                    Some(rest) => {
+                        let rest = rest.trim_start().trim_start_matches(|c| c == ' ' || c == '\n');
+                        let rest = rest.split_once("\n\n").map(|(_, u)| u).unwrap_or(rest);
+                        rest.chars().take(48).collect()
+                    }
+                    None => req.prompt.chars().take(48).collect(),
+                }
+            };
             // Log the seed when provided for reproducibility debugging.
             if let Some(s) = req.seed {
                 tracing::info!(seed = s, snippet = %snippet, "MockBackend completing with deterministic seed");

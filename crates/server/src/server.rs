@@ -105,8 +105,7 @@ mod tests {
 
         // 2. Direct completion
         let comp_req = roco_engine::CompletionRequest {
-            system: "sys".to_string(),
-            prompt: "Say yes".to_string(),
+            prompt: "System: sys\n\nSay yes".to_string(),
             ..Default::default()
         };
         let resp = client
