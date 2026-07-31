@@ -1,0 +1,36 @@
+--- smoke_basic_reply ---
+System: You are a helpful assistant.
+
+User: Say the word 'hello' and nothing else.
+
+Assistant:
+✗ MISMATCH
+  actual: 
+  oracle: Hello.
+--- smoke_basic_reply ---
+System: You are a helpful assistant.
+
+User: Say the word 'hello' and nothing else.
+
+Assistant: Hello
+✗ MISMATCH
+  actual: Hello
+  oracle: Hello.
+--- smoke_basic_reply ---
+System: You are a helpful assistant.
+
+User: Say the word 'hello' and nothing else.
+
+Assistant:
+✗ MISMATCH
+  actual: 
+  oracle: Hello.
+--- smoke_basic_reply ---
+System: You are a helpful assistant.
+
+User: Say the word 'hello' and nothing else.
+
+Assistant:
+✗ MISMATCH
+  actual: 
+  oracle: Hello.

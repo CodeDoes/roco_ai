@@ -152,18 +152,9 @@ async fn bake_single_shot(
         prefill: Some(" ".to_string()),
         temperature: 0.0,
         max_tokens: 2,
-        session: Some(session.to_string()),
-        preserve_state: true,
-        grammar: None,
-        bnf_mask: None,
-        top_a: None,
-        on_token: None,
-        output_schema: None,
-        estimated_prompt_tokens: 0,
-        deadline_ms: 30000,
-        thinking: false,
-        seed: None,
-        record_trace: false,
+        init_state: Some(session.to_string()),
+            state_slot: Some(session.to_string()),
+        ..Default::default()
     };
     backend
         .complete(req)
@@ -185,19 +176,9 @@ async fn run_test(
             prompt: prompt.to_string(),
             temperature: 0.8,
             max_tokens: 600,
-            session: session.map(|s| s.to_string()),
-            prefill: None,
-            grammar: None,
-            bnf_mask: None,
-            top_a: None,
-            on_token: None,
-            preserve_state: false,
-            thinking: false,
-            seed: None,
-            record_trace: false,
-            output_schema: None,
-            estimated_prompt_tokens: 0,
-            deadline_ms: 60000,
+            init_state: session.map(|s| s.to_string()),
+            state_slot: session.map(|s| s.to_string()),
+            ..Default::default()
         })
         .await;
 
@@ -244,7 +225,6 @@ async fn main() {
 
     // ── A: Root bake + story bake → targeted prompts ────────────────
     eprintln!("─── A: Root tune + story memory ───");
-    let _ = backend.feed_eos(Some("root-story".to_string())).await;
     let _ = bake_single_shot(
         &backend,
         "root-story",
@@ -264,7 +244,9 @@ async fn main() {
             prefill: Some(" ".to_string()),
             temperature: 0.0,
             max_tokens: 2,
-            session: Some("root-story".to_string()),
+            init_state: Some("root-story".to_string()),
+            state_slot: Some("root-story".to_string()),
+            session: None,
             preserve_state: true,
             grammar: None,
             bnf_mask: None,
@@ -296,7 +278,6 @@ async fn main() {
 
     // ── B: No bake, everything in prompt ────────────────────────────
     eprintln!("─── B: All in prompt ───");
-    let _ = backend.feed_eos(Some("no-bake".to_string())).await;
     let r_b1 = run_test(
         &backend,
         "B1) Ch1 full prompt",

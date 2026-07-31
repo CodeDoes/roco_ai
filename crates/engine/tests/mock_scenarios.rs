@@ -524,24 +524,19 @@ async fn backend_respects_set_fail_count() {
 async fn think_trace_extraction() {
     let backend = MockBackend::default();
 
-    // Without thinking mode
+    // Without record_trace
     let req = CompletionRequest::new("no think");
     let resp = backend.complete(req).await.unwrap();
-    assert!(resp.think_trace.is_none());
+    assert!(resp.trace.is_empty());
 
-    // With thinking mode
-    let mut req_think = CompletionRequest::new("think mode");
-    req_think.thinking = true;
-    let resp = backend.complete(req_think).await.unwrap();
-    let trace = resp
-        .think_trace
-        .expect("Should have think_trace when thinking=true");
-    assert!(!trace.is_empty(), "Trace should not be empty");
-    // MockBackend produces: " thinkingthinking about '...' response\n{...}"
-    // The text starts with " thinking" (space + thinking) from the think block
+    // With record_trace (the modern equivalent of thinking-mode trace)
+    let mut req_trace = CompletionRequest::new("trace test");
+    req_trace.record_trace = true;
+    let resp = backend.complete(req_trace).await.unwrap();
+    assert!(!resp.trace.is_empty(), "Trace should not be empty");
     assert!(
-        resp.text.contains("think mode"),
-        "Response should contain think mode reference: {}",
+        resp.text.contains("trace test"),
+        "Response should contain prompt reference: {}",
         resp.text
     );
 }

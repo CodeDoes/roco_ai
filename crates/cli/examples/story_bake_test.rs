@@ -137,21 +137,12 @@ async fn bake_context(backend: &RemoteBackend, session: &str) -> std::result::Re
     let req = CompletionRequest {
         system: "You are a story writer. Remember the story world details.".to_string(),
         prompt: transcript,
-        prefill: Some(" thinking response".to_string()),
+        prefill: Some(" ".to_string()),
         temperature: 0.0,
         max_tokens: 4,
-        session: Some(session.to_string()),
-        preserve_state: true,
-        grammar: None,
-        bnf_mask: None,
-        top_a: None,
-        on_token: None,
-        output_schema: None,
-        estimated_prompt_tokens: 0,
-        deadline_ms: 30000,
-        thinking: false,
-        seed: None,
-        record_trace: false,
+        init_state: Some(session.to_string()),
+        state_slot: Some(session.to_string()),
+        ..Default::default()
     };
     backend
         .complete(req)
@@ -175,18 +166,9 @@ async fn run_test(
             temperature: 0.8,
             max_tokens: 500,
             session: session.map(|s| s.to_string()),
-            prefill: None,
-            grammar: None,
-            bnf_mask: None,
-            top_a: None,
-            on_token: None,
-            preserve_state: false,
-            thinking: false,
-            seed: None,
-            record_trace: false,
-            output_schema: None,
-            estimated_prompt_tokens: 0,
-            deadline_ms: 60000,
+            init_state: session.map(|s| s.to_string()),
+            state_slot: session.map(|s| s.to_string()),
+            ..Default::default()
         })
         .await;
 
@@ -237,7 +219,6 @@ async fn main() {
 
     // ── Approach B: Everything in prompt, no bake ────────────────────
     eprintln!("─── B: All in prompt, no bake ───");
-    let _ = backend.feed_eos(Some("story-nobake".to_string())).await;
     let full_prompt = chapter_prompt_full(OUTLINE, WIKI);
     let r_b = run_test(
         &backend,

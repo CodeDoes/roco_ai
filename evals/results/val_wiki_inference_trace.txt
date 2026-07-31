@@ -1,0 +1,187 @@
+--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant: <think>Okay, the user wants me to evaluate the consistency, detail, and relevance of the provided world-building excerpts. Let me start by breaking down the components.
+First, the characters: Marcus is a knight, Elara is a mage. That's a classic hero and mentor dynamic, which is consistent with typical fantasy tropes. But I should check if their roles are well-defined. Marcus is a knight, so he should have a code of honor, maybe a quest or a specific goal. Elara as a mage needs to have a reason to be in Oakhaven—maybe she's a resident or a visitor. The excerpt mentions she cast a protection spell, which ties into the setting's need for defense.
+Next, the setting: Oakhaven is a peaceful village, and the Dark Forest is dangerous. That's a common setup, but the detail here is minimal. The excerpts are brief, so the world-building is sparse. The Dark Forest's danger is established, but there's no depth—no specific threats, no history, no unique features. The village's safety is mentioned, but without context, it feels generic.
+Relevance: The excerpts connect Marcus's journey to the village's protection. That's a good narrative link, but the detail is thin. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not fleshed out. The user might be looking for a more immersive world, so the current excerpts lack depth.
+Consistency: The characters' roles are consistent with their archetypes. Marcus as a knight, Elara as a mage. But the excerpts don't show their interactions or how they contribute to the village's safety. The mage's spell is a one-off, so there's no ongoing relevance. The knight's quest is introduced but not tied to the village's needs.
+Detail: The world-building is minimal. The Dark Forest is described as dangerous but without specifics. The village's safety is mentioned but not explained. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not developed. The user might need more details to make the world feel lived-in.
+Relevance: The excerpts connect Marcus's quest to the village's safety, which is a good narrative link. However, the detail is thin, so the relevance might not be strong. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not developed. The user might need more details to make the world feel lived-in.
+Now, considering the user's possible deeper needs: They might be building a story and need to ensure their world-building is consistent and detailed enough to support the plot. They might be looking for feedback on how to expand the world beyond the given excerpts. They might also be--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant: <think>Okay, the user wants me to evaluate the consistency, detail, and relevance of the provided world-building excerpts. Let me start by breaking down the components.
+First, the characters: Marcus is a knight, Elara is a mage. That's a classic hero and mentor dynamic, which is consistent with typical fantasy tropes. But I should check if their roles are well-defined. Marcus is a knight, so he should have a code of honor, maybe a quest or a specific goal. Elara as a mage needs to have a reason to be in Oakhaven—maybe she's a resident or a visitor. The excerpt mentions she cast a protection spell, which ties into the setting's need for defense.
+Next, the setting: Oakhaven is a peaceful village, and the Dark Forest is dangerous. That's a common setup, but the detail here is minimal. The excerpts are brief, so the world-building is sparse. The Dark Forest's danger is established, but there's no depth—no specific threats, no history, no unique features. The village's safety is mentioned, but without context, it feels generic.
+Relevance: The excerpts connect Marcus's journey to the village's protection. That's a good narrative link, but the detail is thin. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not fleshed out. The user might be looking for a more immersive world, so the current excerpts lack depth.
+Consistency: The characters' roles are consistent with their archetypes. Marcus as a knight, Elara as a mage. But the excerpts don't show their interactions or how they contribute to the village's safety. The mage's spell is a one-off, so there's no ongoing relevance. The knight's quest is introduced but not tied to the village's needs.
+Detail: The world-building is minimal. The Dark Forest is described as dangerous but without specifics. The village's safety is mentioned but not explained. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not developed. The user might need more details to make the world feel lived-in.
+Relevance: The excerpts connect Marcus's quest to the village's safety, which is a good narrative link. However, the detail is thin, so the relevance might not be strong. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not developed. The user might need more details to make the world feel lived-in.
+Now, considering the user's possible deeper needs: They might be building a story and need to ensure their world-building is consistent and detailed enough to support the plot. They might be looking for feedback on how to expand the world beyond the given excerpts. They might also be--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant: <think>Okay, the user wants me to evaluate the consistency, detail, and relevance of the provided world-building excerpts. Let me start by breaking down the components.
+First, the characters: Marcus is a knight, Elara is a mage. That's a classic hero and mentor dynamic, which is consistent with typical fantasy tropes. But I should check if their roles are well-defined. Marcus is a knight, so he should have a code of honor, maybe a quest or a specific goal. Elara as a mage needs to have a reason to be in Oakhaven—maybe she's a resident or a visitor. The excerpt mentions she cast a protection spell, which ties into the setting's need for defense.
+Next, the setting: Oakhaven is a peaceful village, and the Dark Forest is dangerous. That's a common setup, but the detail here is minimal. The excerpts are brief, so the world-building is sparse. The Dark Forest's danger is established, but there's no depth—no specific threats, no history, no unique features. The village's safety is mentioned, but without context, it feels generic.
+Relevance: The excerpts connect Marcus's journey to the village's protection. That's a good narrative link, but the detail is thin. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not fleshed out. The user might be looking for--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant: <think>Okay, the user wants me to evaluate the consistency, detail, and relevance of the provided world-building excerpts. Let me start by breaking down the components.
+First, the characters: Marcus is a knight, Elara is a mage. That's a classic hero and mentor dynamic, which is consistent with typical fantasy tropes. But I should check if their roles are well-defined. Marcus is a knight, so he should have a code of honor, maybe a quest or a specific goal. Elara as a mage needs to have a reason to be in Oakhaven—maybe she's a resident or a visitor. The excerpt mentions she cast a protection spell, which ties into the setting's need for defense.
+Next, the setting: Oakhaven is a peaceful village, and the Dark Forest is dangerous. That's a common setup, but the detail here is minimal. The excerpts are brief, so the world-building is sparse. The Dark Forest's danger is established, but there's no depth—no specific threats, no history, no unique features. The village's safety is mentioned, but without context, it feels generic.
+Relevance: The excerpts connect Marcus's journey to the village's protection. That's a good narrative link, but the detail is thin. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not fleshed out. The user might be looking for--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant:--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant:--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant: <think>Okay, the user wants me to evaluate the consistency, detail, and relevance of the provided world-building excerpts. Let me start by breaking down the components.
+First, the characters: Marcus is a knight, Elara is a mage. That's a classic hero and mentor dynamic, which is consistent with typical fantasy tropes. But I should check if their roles are well-defined. Marcus is a knight, so he should have a code of honor, maybe a quest or a specific goal. Elara as a mage needs to have a reason to be in Oakhaven—maybe she's a resident or a visitor. The excerpt mentions she cast a protection spell, which ties into the setting's need for defense.
+Next, the setting: Oakhaven is a peaceful village, and the Dark Forest is dangerous. That's a common setup, but the detail here is minimal. The excerpts are brief, so the world-building is sparse. The Dark Forest's danger is established, but there's no depth—no specific threats, no history, no unique features. The village's safety is mentioned, but without context, it feels generic.
+Relevance: The excerpts connect Marcus's journey to the village's protection. That's a good narrative link, but the detail is thin. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not fleshed out. The user might be looking for--- val_wiki_inference ---
+System: You are a worldbuilding expert. Evaluate the wiki/world-building         for consistency, detail, and relevance to the story.         Output valid JSON only.
+
+User: Evaluate this world-building / wiki:
+
+## Characters
+### Marcus - A brave knight
+                ### Elara - A wise mage
+
+## Setting
+### Oakhaven - A peaceful village
+                ### Dark Forest - A dangerous place
+
+Story excerpts:
+                A knight named Marcus ventured into the Dark Forest.
+---
+                Elara the mage cast a protection spell over Oakhaven.
+
+                Evaluate consistency, detail, and relevance.
+
+Assistant: <think>Okay, the user wants me to evaluate the consistency, detail, and relevance of the provided world-building excerpts. Let me start by breaking down the components.
+First, the characters: Marcus is a knight, Elara is a mage. That's a classic hero and mentor dynamic, which is consistent with typical fantasy tropes. But I should check if their roles are well-defined. Marcus is a knight, so he should have a code of honor, maybe a quest or a specific goal. Elara as a mage needs to have a reason to be in Oakhaven—maybe she's a resident or a visitor. The excerpt mentions she cast a protection spell, which ties into the setting's need for defense.
+Next, the setting: Oakhaven is a peaceful village, and the Dark Forest is dangerous. That's a common setup, but the detail here is minimal. The excerpts are brief, so the world-building is sparse. The Dark Forest's danger is established, but there's no depth—no specific threats, no history, no unique features. The village's safety is mentioned, but without context, it feels generic.
+Relevance: The excerpts connect Marcus's journey to the village's protection. That's a good narrative link, but the detail is thin. The mage's spell is a quick fix, which might not be sustainable. The knight's quest is introduced but not fleshed out. The user might be looking for

@@ -173,10 +173,6 @@ async fn bake_format(backend: &RemoteBackend, spec: &FormatSpec, session: &str) 
         a2.lines().next().unwrap_or("")
     );
 
-    if let Err(e) = backend.feed_eos(Some(session.to_string())).await {
-        eprintln!("  [WARN] feed_eos failed: {e}");
-    }
-
     match backend
         .bake_state(
             session,
@@ -288,7 +284,9 @@ async fn run_one(
             grammar,
             temperature: 0.8,
             max_tokens: 500,
-            session: Some(session.to_string()),
+            init_state: Some(session.to_string()),
+            state_slot: Some(session.to_string()),
+            session: None,
             prefill: None,
             bnf_mask: None,
             top_a: None,
@@ -446,7 +444,6 @@ async fn main() {
         // Fresh session: no baking.
         for t in 0..trials {
             let sid = format!("fmt-{}-fresh-t{t}", spec.name());
-            let _ = backend.feed_eos(Some(sid.clone())).await;
             eprint!("  fresh  trial {t}...");
             let mut r = run_one(&backend, spec, &sid, t).await;
             r.baked = false;
@@ -466,7 +463,6 @@ async fn main() {
             for t in 0..trials {
                 // Re-bake only on the first trial; reuse the baked state after.
                 if t == 0 {
-                    let _ = backend.feed_eos(Some(bake_sid.clone())).await;
                     bake_format(&backend, spec, &bake_sid).await;
                 }
                 eprint!("  baked  trial {t}...");

@@ -1,0 +1,29 @@
+--- val_critique_coherence_fail ---
+System: You are an expert literary critic and editor. Be fair but thorough.
+        Evaluate chapters on these dimensions:
+        1. Overall quality -- prose, flow, readability (0-10)
+        2. Coherence -- logical progression, no contradictions (0-10)
+        3. Engagement -- hooks, tension, reader interest (0-10)
+
+        Output valid JSON only. Do NOT include thinking or reasoning in your output.
+
+User: Critique this chapter for quality.
+
+Chapter 1:
+It was a dark and stormy                 night. The sun shone brightly through the windows.
+
+                Evaluate across all dimensions and provide:
+                - overall_score (0-10)
+                - coherence_score (0-10)
+                - engagement_score (0-10)
+                - brief_suggestion (string, what to improve)
+                - engagement_suggestion (string, how to improve engagement)
+
+                Output valid JSON matching the schema.
+
+Assistant: : 7.0,
+"coherence_score" : 8.0,
+"engagement_score" : 6.0,
+"brief_suggestion" : "Consider adding more descriptive language to enhance the atmosphere.",
+"engagement_suggestion" : "Use more vivid imagery to engage the reader's senses."
+}

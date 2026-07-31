@@ -1,0 +1,104 @@
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant: ```json
+{
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+```
+✓ oracle matches
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant:
+✗ MISMATCH
+  actual: 
+  oracle: {
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant: ```json
+{
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+```
+✓ oracle matches
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant:--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant:--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant:
+✗ MISMATCH
+  actual: 
+  oracle: {
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+ ```json
+✗ MISMATCH
+  actual: 
+  oracle: {
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+
+{
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+```
+✓ oracle matches
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant:
+✗ MISMATCH
+  actual: 
+  oracle: {
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+--- format_json ---
+System: You are a data formatter. Always output valid JSON.
+
+User: Output a JSON object with keys: name, age, city. Use example values.
+
+Assistant: ```json
+{
+  "name": "John Doe",
+  "age": 30,
+  "city": "New York"
+}
+```
+✓ oracle matches

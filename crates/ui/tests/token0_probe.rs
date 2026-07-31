@@ -52,8 +52,7 @@ fn tune_with_eos_padding(
                 })
                 .await
                 .unwrap();
-            // KEY: Feed EOS (token 0) between examples
-            backend.feed_eos(None).await.unwrap();
+            // KEY: State advances between examples via preserve_state
         }
         let resp = backend
             .complete(CompletionRequest {
@@ -158,7 +157,7 @@ fn tune_pure_state(
                 })
                 .await
                 .unwrap();
-            backend.feed_eos(None).await.unwrap();
+            // State advances via preserve_state
         }
         let resp = backend
             .complete(CompletionRequest {
@@ -244,24 +243,6 @@ mod tests {
         );
     }
 
-    /// Verify feed_eos is no-op on MockBackend (default impl).
-    #[test]
-    fn test_feed_eos_noop_on_mock() {
-        let backend = MockBackend::new("eos-test", 0);
-        run(async {
-            backend.feed_eos(None).await.unwrap();
-            backend
-                .feed_eos(Some("test-session".to_string()))
-                .await
-                .unwrap();
-            let resp = backend
-                .complete(CompletionRequest::new("prompt"))
-                .await
-                .unwrap();
-            assert!(!resp.text.is_empty());
-        });
-    }
-
     /// Multi-turn with EOS padding and pacing control interaction.
     #[test]
     fn test_multi_turn_with_eos_and_pacing() {
@@ -312,8 +293,8 @@ mod tests {
                     prompt: "Write another poem".to_string(),
                     temperature: 0.7,
                     max_tokens: 32,
+                    init_state: Some("test-session".to_string()),
                     preserve_state: true,
-                    session: Some("test-session".to_string()),
                     ..Default::default()
                 })
                 .await

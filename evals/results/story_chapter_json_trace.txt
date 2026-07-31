@@ -1,0 +1,22 @@
+--- story_chapter_json ---
+System: You are a fiction writer. Write vivid, engaging prose. Output valid JSON only. NEVER include thinking, reasoning, or meta-commentary in your output. Only the JSON object.
+
+User: Write Chapter 1: The Flour of Fate. A modern baker, Alex, is accidentally transported to a medieval village while trying to source the perfect flour. He finds himself in a bustling market, surrounded by curious onlookers and a confused townsfolk. With no way to return home, Alex decides to use his modern knowledge to help the baker, Master Thorne, improve his bread and gain the trust of the villagers.
+
+~400 words of vivid prose. Write actual story prose, NOT meta-commentary or planning. Start directly with the narrative.
+
+Output JSON with: title (string), content (string, the chapter prose)
+
+Assistant: {
+    "title": "The Flour of Fate",
+    "content": "Alex stumbled into the bustling market square, the scent of fresh-baked bread and roasting meats swirling around him like a living thing. He had been on a quest for the perfect flour, a quest that had led him through the crowded streets of a modern metropolis and into the heart of a medieval marketplace. His eyes widened as he took in the sea of faces—men with weathered hands and weathered minds, women with bright scarves and sparkling eyes, children with curious gazes and empty pockets. They were all staring at him, their expressions a mix of confusion and curiosity.
+He took a deep breath, forcing himself to calm the racing beat of his heart. He was Alex, a modern baker with a passion for perfection. He had spent years perfecting his craft, experimenting with new techniques and ingredients to create the most delicious bread in the world. But now, he was stuck in a world that was both foreign and familiar.
+As he navigated the crowded market, Alex's eyes scanned the stalls and faces, looking for any sign of Master Thorne, the baker whose bread he had come to admire. He spotted him at the end of the market, his weathered hands kneading a massive lump of dough. Alex approached him cautiously, careful not to startle the baker.
+"Excuse me," Alex said, his voice soft but firm. "I'm looking for Master Thorne. I have something I think he might be interested in."
+Master Thorne looked up, his eyes narrowing in suspicion. "I don't know you," he said, his voice gruff but not unkind.
+Alex smiled, hoping to reassure him. "I'm a baker," he said, pulling out a small loaf of bread from his pocket. "I've been traveling and I've come to admire your work. I have a new recipe that I think you might be interested in trying."
+Master Thorne took the bread, examining it carefully. His eyes narrowed as he inspected the loaf, the crust a deep brown, the crumb a soft, airy texture. He took a bite, his eyes widening in surprise.
+"This is good," he said, his voice gruff but sincere. "But I don't know you."
+Alex smiled, extending his hand. "My name is Alex. I'm a baker from a far-off place. I've come to offer my help in creating the perfect bread for your village."
+Master Thorne studied Alex for a moment, his eyes narrowing in suspicion. But there was something about Alex's confidence, his knowledge of bread that had Master Thorne intrigued. He took Alex's hand, squeezing it firmly.
+"Well, Alex," he said, his voice gruff but sincere. "I'm Master Thorne. And I think we might have a deal to make."

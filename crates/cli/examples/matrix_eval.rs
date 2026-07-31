@@ -134,7 +134,6 @@ async fn main() {
         };
 
         if !is_baked {
-            let _ = backend.feed_eos(Some(session.to_string())).await;
         }
 
         let start = Instant::now();
@@ -145,7 +144,9 @@ async fn main() {
                 grammar,
                 temperature: 0.8,
                 max_tokens: 1000,
-                session: Some(session.to_string()),
+                init_state: Some(session.to_string()),
+                state_slot: Some(session.to_string()),
+                session: None,
                 prefill: None,
                 bnf_mask: None,
                 top_a: None,
@@ -206,10 +207,6 @@ async fn main() {
 
     for (g_name, g_str) in grammar_tests {
         let prompt = spec_direct.build_prompt(OUTLINE, WIKI, TASK);
-        let _ = backend
-            .feed_eos(Some("matrix-grammar-test".to_string()))
-            .await;
-
         let start = Instant::now();
         let resp = backend
             .complete(CompletionRequest {
@@ -218,7 +215,9 @@ async fn main() {
                 grammar: Some(g_str.to_string()),
                 temperature: 0.8,
                 max_tokens: 300,
-                session: Some("matrix-grammar-test".to_string()),
+                init_state: Some("matrix-grammar-test".to_string()),
+                state_slot: Some("matrix-grammar-test".to_string()),
+                session: None,
                 prefill: None,
                 bnf_mask: None,
                 top_a: None,
@@ -263,7 +262,6 @@ async fn main() {
 async fn bake(backend: &RemoteBackend, spec: &FormatSpec, session: &str) {
     let (u1, a1) = bake_pair(spec);
     let (u2, a2) = bake_pair_2(spec);
-    let _ = backend.feed_eos(Some(session.to_string())).await;
     let _ = backend
         .bake_state(
             session,
