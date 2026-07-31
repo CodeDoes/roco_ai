@@ -41,6 +41,19 @@ Follows the validation loop in AGENTS.md §9:
 
 **Model instability noted:** Some requests return empty completions intermittently (~30-50% failure rate on simple prompts). This is a GPU/model-layer issue, not a system bug. Retry logic in the pipeline handles it gracefully.
 
+### ✅ Green: CI pipeline fixed — all checks passing
+
+**What I'm doing:** Fixing the GitHub Actions CI that was failing due to two issues:
+1. CI was trying to run `sccache-wrap` which doesn't exist on GitHub runners
+2. UI crate had type errors (f64 vs f32) that CI's `--deny warnings` caught
+
+**Fixes applied:**
+- Removed `rustc-wrapper = "sccache-wrap"` from `.cargo/config.toml` (sccache isn't available on GitHub-hosted runners)
+- Cast f64 literals to f32 in `crates/ui/src/link_graph.rs`, `change_timeline.rs`, `markdown_editor.rs` to satisfy CI's strict linting
+- Simplified CI workflow to 3 jobs: check, test, fmt
+
+**Result:** CI now passes — `cargo check --workspace --all-targets` ✅, `cargo test --workspace` ✅, `cargo fmt --check` ✅
+
 ---
 
 ## Current status (top of log = most recent)
