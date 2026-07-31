@@ -173,7 +173,6 @@ impl ModelBackend for RemoteBackend {
         let extra_headers = self.extra_headers.clone();
         Box::pin(async move { remote_complete(&client, &base_url, &extra_headers, req).await })
     }
-
 }
 
 impl StateTuning for RemoteBackend {
@@ -507,7 +506,7 @@ async fn remote_complete(
                 completion_tokens,
             },
             parsed: None,
-                        trace: Vec::new(),
+            trace: Vec::new(),
         });
     }
 
@@ -555,7 +554,7 @@ async fn remote_complete(
             completion_tokens,
         },
         parsed: None,
-                trace,
+        trace,
     })
 }
 

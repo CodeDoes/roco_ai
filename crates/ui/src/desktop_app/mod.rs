@@ -963,7 +963,7 @@ mod tests {
                     text,
                     usage: Default::default(),
                     parsed: None,
-                                        trace: Vec::new(),
+                    trace: Vec::new(),
                 })
             })
         }

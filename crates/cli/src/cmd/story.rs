@@ -498,7 +498,10 @@ fn detect_chapters(ws: &roco_workspace::Workspace) -> Vec<usize> {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with("03-CHAPTER_") && name.ends_with(".md") {
-                if let Some(num_str) = name.strip_prefix("03-CHAPTER_").and_then(|s| s.strip_suffix(".md")) {
+                if let Some(num_str) = name
+                    .strip_prefix("03-CHAPTER_")
+                    .and_then(|s| s.strip_suffix(".md"))
+                {
                     if let Ok(num) = num_str.parse::<usize>() {
                         chapters.push(num);
                     }
@@ -794,7 +797,11 @@ where
         let prompt_text = if system.is_empty() {
             prompt.to_string()
         } else {
-            format!("System: {}\n\nUser: {}\n\nAssistant:", system.trim(), prompt)
+            format!(
+                "System: {}\n\nUser: {}\n\nAssistant:",
+                system.trim(),
+                prompt
+            )
         };
         let text_res = futures::executor::block_on(backend.complete(CompletionRequest {
             prompt: prompt_text,
@@ -847,7 +854,10 @@ where
 fn extract_title(outline: &str) -> String {
     for line in outline.lines() {
         let trimmed = line.trim();
-        if let Some(val) = trimmed.strip_prefix("title:").or_else(|| trimmed.strip_prefix("Title:")) {
+        if let Some(val) = trimmed
+            .strip_prefix("title:")
+            .or_else(|| trimmed.strip_prefix("Title:"))
+        {
             return val.trim().trim_matches('"').to_string();
         }
     }
@@ -877,7 +887,10 @@ fn chapter_outline_info(outline: &str, chapter_num: usize) -> (String, String) {
 fn extract_genre(outline: &str) -> String {
     for line in outline.lines() {
         let trimmed = line.trim();
-        if let Some(val) = trimmed.strip_prefix("genre:").or_else(|| trimmed.strip_prefix("Genre:")) {
+        if let Some(val) = trimmed
+            .strip_prefix("genre:")
+            .or_else(|| trimmed.strip_prefix("Genre:"))
+        {
             return val.trim().trim_matches('"').to_string();
         }
     }
@@ -887,7 +900,10 @@ fn extract_genre(outline: &str) -> String {
 fn extract_tone(outline: &str) -> String {
     for line in outline.lines() {
         let trimmed = line.trim();
-        if let Some(val) = trimmed.strip_prefix("tone:").or_else(|| trimmed.strip_prefix("Tone:")) {
+        if let Some(val) = trimmed
+            .strip_prefix("tone:")
+            .or_else(|| trimmed.strip_prefix("Tone:"))
+        {
             return val.trim().trim_matches('"').to_string();
         }
     }
@@ -1011,7 +1027,12 @@ fn parse_positional_prompt(args: &[&str]) -> Option<String> {
     while i < args.len() {
         let arg = args[i];
         if arg.starts_with("--") {
-            if !arg.contains('=') && matches!(arg, "--strategy" | "--max-tokens" | "--seed" | "--temperature") {
+            if !arg.contains('=')
+                && matches!(
+                    arg,
+                    "--strategy" | "--max-tokens" | "--seed" | "--temperature"
+                )
+            {
                 i += 1;
             }
         } else if !arg.starts_with('-') {
@@ -1060,7 +1081,8 @@ pub fn cmd_story(extra: &[&str]) {
     let fix_chapter = if let Some(idx) = extra.iter().position(|&a| a == "--fix") {
         extra.get(idx + 1).and_then(|v| {
             if v.starts_with("chapter") {
-                v.strip_prefix("chapter").and_then(|s| s.trim().parse::<usize>().ok())
+                v.strip_prefix("chapter")
+                    .and_then(|s| s.trim().parse::<usize>().ok())
             } else {
                 v.parse::<usize>().ok()
             }

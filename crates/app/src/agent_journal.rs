@@ -256,7 +256,9 @@ impl AgentJournal {
         let base = if let Ok(dir) = std::env::var("ROCO_DIR") {
             PathBuf::from(dir)
         } else {
-            std::env::current_dir().map_err(|e| format!("cannot get cwd: {e}"))?.join(".roco")
+            std::env::current_dir()
+                .map_err(|e| format!("cannot get cwd: {e}"))?
+                .join(".roco")
         };
         Ok(base.join("agent-journal.md"))
     }

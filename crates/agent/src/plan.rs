@@ -479,7 +479,7 @@ mod tests {
                     text: format!("```json\n{json}\n```"),
                     usage: TokenUsage::default(),
                     parsed: None,
-                                        trace: Vec::new(),
+                    trace: Vec::new(),
                 })
             })
         }
@@ -519,7 +519,7 @@ mod tests {
                         text: "{\"task\":\"x\",\"steps\":[]}".to_string(),
                         usage: TokenUsage::default(),
                         parsed: None,
-                                                trace: Vec::new(),
+                        trace: Vec::new(),
                     })
                 })
             }

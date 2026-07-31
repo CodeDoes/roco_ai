@@ -9,7 +9,9 @@ fn load_vocab() -> Vec<Vec<u8>> {
         .map(|(id, tok)| {
             let bytes = match tok {
                 serde_json::Value::String(s) => s.into_bytes(),
-                serde_json::Value::Array(a) => a.into_iter().map(|n| n.as_u64().unwrap() as u8).collect(),
+                serde_json::Value::Array(a) => {
+                    a.into_iter().map(|n| n.as_u64().unwrap() as u8).collect()
+                }
                 other => panic!("unexpected vocab entry: {other:?}"),
             };
             (id.parse::<usize>().unwrap(), bytes)
@@ -33,7 +35,8 @@ fn main() {
                 "content": {"type": "string"}
             }
         }),
-    ).unwrap();
+    )
+    .unwrap();
     std::fs::write("/tmp/crate_full_grammar.gbnf", &full_gbnf).unwrap();
     let tests: Vec<(&str, &str)> = vec![
         ("crate-primitives", &crate_prims),
@@ -85,8 +88,12 @@ fn probe_mask(m: &mut dyn roco_engine::BnfMask, vocab: &[Vec<u8>]) {
     let quote = find(b"\"");
     // For simple-string: z z z " h " then check what's allowed
     let toks: Vec<(&[u8], u32)> = vec![
-        (b"z", find(b"z")), (b"z", find(b"z")), (b"z", find(b"z")),
-        (b"\"", find(b"\"")), (b"h", find(b"h")), (b"\"", find(b"\"")),
+        (b"z", find(b"z")),
+        (b"z", find(b"z")),
+        (b"z", find(b"z")),
+        (b"\"", find(b"\"")),
+        (b"h", find(b"h")),
+        (b"\"", find(b"\"")),
     ];
     let mut accepted = String::new();
     for (bytes, tid) in toks {
