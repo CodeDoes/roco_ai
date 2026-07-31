@@ -4,7 +4,7 @@
 # what it needs - no single PR pays for `--workspace --all-features`.
 #
 # Matrix:
-#   check-default   - no GPU/egui, fast default path (~15–20s)
+#   check-default   - no GPU/egui, fast default path (~15-20s)
 #   check-remote    - includes reqwest/rustls
 #   check-desktop   - includes egui/eframe
 #   check-inferd    - includes wgpu/web-rwkv (GPU daemon)
