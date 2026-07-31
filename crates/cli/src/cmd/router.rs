@@ -187,7 +187,11 @@ fn detect_intent(
                         );
                         return Ok((intent, r::clean_response(&prompt)));
                     } else {
-                        return Err(format!("Unknown intent '{}' detected. Available: {:?}", intent_id, available.iter().map(|i| i.id).collect::<Vec<_>>()));
+                        return Err(format!(
+                            "Unknown intent '{}' detected. Available: {:?}",
+                            intent_id,
+                            available.iter().map(|i| i.id).collect::<Vec<_>>()
+                        ));
                     }
                 } else {
                     return Err("Intent detection returned invalid JSON".to_string());
