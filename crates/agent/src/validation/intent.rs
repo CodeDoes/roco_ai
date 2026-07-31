@@ -107,8 +107,18 @@ pub enum StoryIntent {
     // ── Creation ────────────────────────────────────────────────────────
     /// Brainstorm a new story idea.
     BrainstormStory,
-    /// Expand a premise into a full outline.
+    /// Expand a premise into a future outline.
     ExpandPremise(String),
+
+    // ── Safe Editing & Recovery ─────────────────────────────────────────
+    /// Draft a new chapter.
+    DraftChapter(usize),
+    /// Revert a chapter to its previous backup version.
+    RevertChapter(usize),
+    /// List backups for a specific chapter.
+    ListBackups(usize),
+    /// Execute find-and-replace to rename character/entity across all chapters and wiki.
+    ApplyRename { old: String, new: String },
 }
 
 impl StoryIntent {
@@ -154,6 +164,10 @@ impl StoryIntent {
             Self::StatusUpdate => "status",
             Self::BrainstormStory => "brainstorm",
             Self::ExpandPremise(_) => "expand premise",
+            Self::DraftChapter(_) => "draft chapter",
+            Self::RevertChapter(_) => "revert chapter",
+            Self::ListBackups(_) => "list backups",
+            Self::ApplyRename { .. } => "apply rename",
         }
     }
 }
@@ -238,6 +252,50 @@ impl IntentClassifier {
         };
 
         match cmd.as_str() {
+            "/draft" => {
+                if let Ok(num) = arg.parse::<usize>() {
+                    return Ok(ClassifiedIntent {
+                        intent: StoryIntent::DraftChapter(num),
+                        confidence: 1.0,
+                        explanation: format!("Slash command /draft {num}"),
+                    });
+                }
+                Err("Please provide a valid chapter number to draft, e.g., /draft 3".to_string())
+            }
+            "/revert" => {
+                if let Ok(num) = arg.parse::<usize>() {
+                    return Ok(ClassifiedIntent {
+                        intent: StoryIntent::RevertChapter(num),
+                        confidence: 1.0,
+                        explanation: format!("Slash command /revert {num}"),
+                    });
+                }
+                Err("Please provide a valid chapter number to revert, e.g., /revert 3".to_string())
+            }
+            "/backups" => {
+                if let Ok(num) = arg.parse::<usize>() {
+                    return Ok(ClassifiedIntent {
+                        intent: StoryIntent::ListBackups(num),
+                        confidence: 1.0,
+                        explanation: format!("Slash command /backups {num}"),
+                    });
+                }
+                Err("Please provide a valid chapter number to list backups, e.g., /backups 3".to_string())
+            }
+            "/apply" => {
+                let parts: Vec<&str> = arg.split_whitespace().collect();
+                if parts.len() == 2 {
+                    return Ok(ClassifiedIntent {
+                        intent: StoryIntent::ApplyRename {
+                            old: parts[0].to_string(),
+                            new: parts[1].to_string(),
+                        },
+                        confidence: 1.0,
+                        explanation: format!("Slash command /apply {} -> {}", parts[0], parts[1]),
+                    });
+                }
+                Err("Please provide both old and new names, e.g., /apply Alice Bob".to_string())
+            }
             "/validate" | "/v" => {
                 if arg.is_empty() {
                     return Ok(ClassifiedIntent {
@@ -432,6 +490,10 @@ impl IntentClassifier {
              - change_character_name: needs \"old\" (string), \"new\" (string)\n\
              - change_style: needs \"style\" (string)\n\
              - change_pov: needs \"pov\" (string)\n\
+             - draft_chapter: needs \"num\" (integer)\n\
+             - revert_chapter: needs \"num\" (integer)\n\
+             - list_backups: needs \"num\" (integer)\n\
+             - apply_rename: needs \"old\" (string), \"new\" (string)\n\
              \n\
              OUTLINE:\n\
              - outline_diff\n\
@@ -578,6 +640,31 @@ impl IntentClassifier {
                     .to_string();
                 StoryIntent::ChangePOV(pov)
             }
+            "draft_chapter" => {
+                let num = params.get("num").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
+                StoryIntent::DraftChapter(num)
+            }
+            "revert_chapter" => {
+                let num = params.get("num").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
+                StoryIntent::RevertChapter(num)
+            }
+            "list_backups" => {
+                let num = params.get("num").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
+                StoryIntent::ListBackups(num)
+            }
+            "apply_rename" => {
+                let old = params
+                    .get("old")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let new = params
+                    .get("new")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                StoryIntent::ApplyRename { old, new }
+            }
             "outline_diff" => StoryIntent::OutlineDiff,
             "plan_modification" => StoryIntent::PlanModification,
             "sync_outline_to_chapters" => StoryIntent::SyncOutlineToChapters,
@@ -628,6 +715,10 @@ pub fn print_slash_help() {
     println!("  /switch <name>              Switch to another story");
     println!("  /lock <name>                Lock into a story workspace");
     println!("  /unlock                     Return to default mode");
+    println!("  /draft <num>                Draft a new chapter based on outline");
+    println!("  /revert <num>               Restore latest backup of a chapter");
+    println!("  /backups <num>              List backups of a chapter");
+    println!("  /apply <old> <new>          Rename a character/entity across story");
     println!("  /help                       Show this help");
     println!();
     println!("Everything else is routed through the model for classification.");
