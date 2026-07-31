@@ -256,3 +256,55 @@ The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fiel
 - [ ] Add `docs/README.md` link to `--help`
 
 **User Score: 8/10** — The magic is real. Main gaps are onboarding and feedback during long waits.
+
+## 12. Common User Feedback — v0.5
+
+### Source
+`docs/impressions/v_0_5/common_user.md` — documented after testing with a fresh user perspective.
+
+### Key Findings
+
+**What works well:**
+- `roco story "premise"` is a one-command magic experience
+- `roco -p "Hello"` now works (one-shot prompt)
+- Session management with `roco session new` is intuitive
+- Workspace management with `roco workspace new` provides explicit control
+- Resume capability works seamlessly
+
+**Pain points to address:**
+1. **No `roco quickstart`** — new users don't know how to begin
+2. **No help for `roco session --help` and `roco workspace --help`** (now fixed)
+3. **Help text is technical** — lacks "Quick Start" guidance
+4. **No first-time setup guide** — new users don't know about GPU requirements or model setup
+5. **Output location not obvious** — `.roco/stories/` path buried in output
+6. **No story preview** — story goes to disk with no terminal preview
+7. **Error messages are technical** — need actionable hints
+
+### CLI Workflow (v0.5)
+
+The recommended workflow for common users:
+
+```bash
+# Quick one-shot story
+roco -p "Write a story about a cat who loves cheese"
+
+# Structured story pipeline (detached)
+roco story "A cat who loves cheese"
+
+# Interactive session workflow
+roco session new                          # Create session
+roco workspace new                        # Create workspace
+roco session <session_id> -p "Use the workspace <workspace_id>"
+roco session <session_id> -p "Hey write a story about X"
+```
+
+### Recommendations (Not Yet Implemented)
+
+- [ ] Add `roco quickstart` first-run guide
+- [ ] Add progress indicators (spinners) during long waits
+- [ ] Improve error messages with actionable hints
+- [ ] Show full output path prominently
+- [ ] Offer story preview after publishing
+- [ ] Add `docs/README.md` link to `--help`
+
+**User Score: 7/10** — The magic is real but the entry points are confusing. A user trying `roco -p "make a story"` would now work, but quickstart guidance is still missing.

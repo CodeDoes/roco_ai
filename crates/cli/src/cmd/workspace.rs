@@ -42,17 +42,19 @@ fn cmd_workspace_new(_args: &[&str]) {
     let workspace_id = format!("{}_{}", timestamp, "default");
     let workspace_path = get_workspaces_dir().join(&workspace_id);
 
-    std::fs::create_dir_all(&workspace_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to create workspace: {e}");
-            std::process::exit(1);
-        });
+    std::fs::create_dir_all(&workspace_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to create workspace: {e}");
+        std::process::exit(1);
+    });
 
     println!("Created workspace: {}", workspace_id);
     println!("Path: {}", workspace_path.display());
     println!();
     println!("Use it with:");
-    println!("  roco session <session_id> -p \"Use the workspace {}\"", workspace_id);
+    println!(
+        "  roco session <session_id> -p \"Use the workspace {}\"",
+        workspace_id
+    );
 }
 
 /// List all workspaces.
@@ -86,9 +88,7 @@ fn cmd_workspace_list() {
     println!("Workspaces ({} total):\n", workspaces.len());
     for path in &workspaces {
         let id = path.file_name().unwrap().to_string_lossy();
-        let count = std::fs::read_dir(path)
-            .map(|d| d.count())
-            .unwrap_or(0);
+        let count = std::fs::read_dir(path).map(|d| d.count()).unwrap_or(0);
         println!("  {:<40} {} files", id, count);
     }
 }
@@ -138,11 +138,10 @@ fn cmd_workspace_delete(args: &[&str]) {
         std::process::exit(1);
     }
 
-    std::fs::remove_dir_all(&workspace_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to delete workspace: {e}");
-            std::process::exit(1);
-        });
+    std::fs::remove_dir_all(&workspace_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to delete workspace: {e}");
+        std::process::exit(1);
+    });
 
     println!("Deleted workspace: {}", workspace_id);
 }

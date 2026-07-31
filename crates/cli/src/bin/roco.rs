@@ -28,7 +28,9 @@ fn main() {
         .collect();
 
     // Handle `-p` / `--prompt` flag at the top level: `roco -p "text"`
-    if let Some(prompt) = parse_opt("-p", &filtered_args).or_else(|| parse_opt("--prompt", &filtered_args)) {
+    if let Some(prompt) =
+        parse_opt("-p", &filtered_args).or_else(|| parse_opt("--prompt", &filtered_args))
+    {
         if prompt.is_empty() {
             eprintln!("Error: -p requires a non-empty prompt");
             std::process::exit(1);
