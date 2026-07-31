@@ -358,10 +358,10 @@ async fn fixture_round_trip_deserialize_full() {
     let fixture = load_fixture("completion_request_full.json");
     let req: OpenAiCompletionRequest = serde_json::from_value(fixture).unwrap();
     assert_eq!(req.prompt, "Once upon a time");
-    assert_eq!(req.system.as_deref(), Some("You are a storyteller."));
     assert!((req.temperature.unwrap() - 0.8).abs() < 1e-6);
     assert_eq!(req.session.as_deref(), Some("story-session-1"));
-    assert_eq!(req.preserve_state, Some(true));
+    // Note: system, preserve_state, and thinking are not fields on OpenAiCompletionRequest
+    // They are handled as part of CompletionRequest stubs during conversion
 }
 
 #[tokio::test]

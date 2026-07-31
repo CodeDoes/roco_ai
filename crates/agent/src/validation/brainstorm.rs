@@ -266,7 +266,7 @@ impl StoryIdeaGenerator {
             backend.complete(
                 CompletionRequest::builder()
                     
-                    .prompt(full_prompt)
+                    .prompt(format!("System: {}\n\nUser: {}\n\nAssistant:", system, full_prompt))
                     .temperature(self.brainstorm_temperature)
                     .max_tokens(self.max_tokens)
                     .prefill("{\n  \"ideas\": [")
@@ -348,7 +348,7 @@ impl StoryIdeaGenerator {
             backend.complete(
                 CompletionRequest::builder()
                     
-                    .prompt(prompt)
+                    .prompt(format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt))
                     .temperature(self.expand_temperature)
                     .max_tokens(self.max_tokens)
                     .prefill("{\n  \"title\":")

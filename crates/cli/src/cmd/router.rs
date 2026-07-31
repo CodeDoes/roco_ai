@@ -145,12 +145,14 @@ fn detect_intent(
     let prompt = intent_detection_prompt(user_message, available, mode_hint);
 
     let request = roco_engine::CompletionRequest {
-        system: "You classify user intent into exactly one category and extract their request. Output only JSON.".into(),
-        prompt,
+        // Use init_state/state_slot pattern for session management
+        init_state: Some("roco_router_session".to_string()),
+        state_slot: Some("roco_router_session".to_string()),
+        // System text is embedded in prompt
+        prompt: format!("You classify user intent into exactly one category and extract their request. Output only JSON.\n\n{}", prompt),
         temperature: 0.1,
         max_tokens: 80,
         prefill: Some("{\"intent\":".into()),
-        thinking: false,
         ..Default::default()
     };
 

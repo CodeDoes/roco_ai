@@ -170,3 +170,35 @@ CompletionRequest::builder()
 above, or would you prefer a different strategy? The goal is to keep
 the codebase compiling at every step while systematically removing the
 temporary stubs we added to restore compilation.
+
+## Progress Log — Round 2 (Completed Work Summary)
+
+### ✅ Phase 3: Agent Validation Module Migration Complete
+
+All validation modules have been updated to use the new prompt format with
+`System: ... / User: ... / Assistant: ...` structure.
+
+#### Modules Updated:
+
+| Module | Status | Notes |
+|--------|--------|-------|
+| `wiki.rs` | ✅ Fixed | `validate_with_inference()` updated |
+| `brainstorm.rs` | ✅ Fixed | Both `brainstorm_advanced()` and `expand_premise_advanced()` updated |
+| `inference.rs` | ✅ Fixed | `query_critique()` and `evaluate_against_instructions()` updated; `generate_feedback()` left as natural language |
+| `outline.rs` | ✅ Fixed | `validate_with_inference()` updated |
+| `planner.rs` | ✅ N/A | Already used correct format |
+| `summarizer.rs` | ✅ N/A | Already used correct format |
+| `intent.rs` | ✅ N/A | Already used correct format |
+
+### ✅ Build Status
+
+All crates compile cleanly. Only benign unused variable warnings remain:
+- `roco-engine`: 1 warning (unused system param)
+- `roco-agent`: 2 warnings (unused system in natural language mode)
+- `roco-cli`: 2 warnings (unused system_prompt)
+
+### ⚠️ Next Steps
+
+1. Fix unused variable warnings (prefix with `_`)
+2. Update Phase 3 timeline status to ✅ Completed
+3. Proceed to Phase 4: Fix CLI/LSP and server endpoints

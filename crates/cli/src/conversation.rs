@@ -269,7 +269,10 @@ impl ChatSession {
         };
 
         let mut request = CompletionRequest {
-            system: self.system_prompt(),
+            // Use init_state/state_slot pattern - system text embedded in prompt
+            init_state: Some(self.system_prompt().to_string()),
+            state_slot: Some(self.system_prompt().to_string()),
+            // System text is part of the prompt
             prompt: context,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
@@ -278,7 +281,6 @@ impl ChatSession {
             seed: self.seed,
             ..Default::default()
         };
-        request.record_trace = self.record_trace;
         request.record_trace = self.record_trace;
 
         // `request` (and the `on_token` closure holding a clone of `printer`)

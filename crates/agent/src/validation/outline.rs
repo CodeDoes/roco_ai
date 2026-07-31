@@ -134,7 +134,7 @@ impl OutlineValidator {
             backend.complete(
                 CompletionRequest::builder()
                     
-                    .prompt(prompt)
+                    .prompt(format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt))
                     .grammar_opt(grammar)
                     .temperature(0.3)
                     .max_tokens(300)
