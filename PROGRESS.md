@@ -3,6 +3,30 @@
 Follows the validation loop in AGENTS.md §9:
 `test → eval → check + update PROGRESS.md with what you want to do → e2e (story) → note problems in PROGRESS.md → fix issues → targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md → consider whether a lack of info within AGENTS.md caused this problem → update AGENTS.md if so → repeat`
 
+### 2026-07-31 — Session and Workspace commands added
+
+**What I'm doing:** Implementing session and workspace management commands based on common user feedback.
+
+**Changes:**
+- Added `roco session` subcommand with `create|new`, `list`, `show`, `delete`
+- Added `roco workspace` subcommand with `new`, `list`, `show`, `delete`
+- Added `-p` flag support at top level: `roco -p "prompt"` routes to interact
+- Added `help_session()` and `help_workspace()` functions
+- Updated root help to show session and workspace commands
+- Added 6 integration tests for session management
+
+**Commands now available:**
+```bash
+roco -p "Hello"                     # One-shot prompt
+roco session new                    # Create session
+roco workspace new                  # Create workspace
+roco session <id> -p "Use workspace..."
+roco session list                   # List sessions
+roco workspace list                 # List workspaces
+```
+
+**Tests:** 235 passed, 11 ignored, 0 failed
+
 ### 2026-07-31 — Test fix: daemon port env-var leakage
 
 **What I'm doing:** Fixing a flaky test (`test_gateway_port_default`) that failed intermittently when run with the full test suite due to env-var pollution from `test_gateway_port_env_override` running in parallel.
