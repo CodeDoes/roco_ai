@@ -171,7 +171,19 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let mut errors: Vec<String> = Vec::new();
     let mut checks: Vec<CheckResult> = Vec::new();
 
-    let full_input = format!("User: {}\n\nAssistant:", case.prompt);
+    // Build the request prompt the same way the pipeline does: system text
+    // (if any) is embedded inline, then the user task, then the assistant
+    // prefix. The deprecated `system` field on EvalCase is fixture data that
+    // must be folded into the prompt here — inferd receives raw text only.
+    let full_input = if case.system.trim().is_empty() {
+        format!("User: {}\n\nAssistant:", case.prompt)
+    } else {
+        format!(
+            "System: {}\n\nUser: {}\n\nAssistant:",
+            case.system.trim(),
+            case.prompt
+        )
+    };
 
     let on_token: crate::types::OnToken = match trace_path {
         Some(path) => {
@@ -226,7 +238,7 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
     let bnf_mask = case.bnf_mask;
 
     let request = CompletionRequest {
-        prompt: case.prompt.clone(),
+        prompt: full_input.clone(),
         grammar: case.grammar.clone(),
         bnf_mask,
         prefill: case.prefill.clone(),
@@ -242,7 +254,14 @@ pub async fn run_eval<B: ModelBackend + Send + Sync>(
 
     match response {
         Ok(resp) => {
-            let output = resp.text;
+            // The model consumes `prefill` (fed before sampling) but the
+            // backend does not echo it back in `text`. Since the prefill is
+            // part of the actual completion, checks must run against
+            // prefill + generation.
+            let output = match &case.prefill {
+                Some(p) if !p.is_empty() => format!("{}{}", p, resp.text),
+                _ => resp.text,
+            };
             let usage = resp.usage;
             let tokens_per_sec = if usage.completion_tokens > 0 && latency_ms > 0 {
                 (usage.completion_tokens as f64 / latency_ms as f64) * 1000.0

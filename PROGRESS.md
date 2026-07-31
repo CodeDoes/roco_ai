@@ -1,198 +1,68 @@
-# Done this round
+# PROGRESS.md — Phase 8 Verification Log
 
-## 1. FeedEos removed from inferd
+Follows the validation loop in AGENTS.md §9:
+`test → eval → check+update PROGRESS → e2e (story) → note problems → fix → targeted-e2e → update PROGRESS → AGENTS.md self-check → repeat`
 
-`FeedEos` is no longer an inferd primitive. The actor no longer has the
-`FeedEos` message variant. `RwkvBackend::feed_eos` is now a no-op (falls
-through to the trait default).
+## Current status (top of log = most recent)
 
-Callers that need to "reset" state between operations (e.g. validator
-state between chapters) should manage their own state by saving/loading
-from cache, or baking EOS text directly.
+### ✅ Green: full E2E pipeline passes — all 6 phases
 
-## 2. State fields renamed: `init_state` / `state_slot`
+**What I'm doing:** Closing out Phase 8. The full story pipeline now runs end-to-end against the real model.
 
-Old names → New names:
+**What's green so far:**
+- ✅ `cargo check --workspace --all-targets` — 0 errors, 0 warnings
+- ✅ `cargo test --workspace` — all pass (pre-existing flaky `test_inferd_port_default` env-var race only)
+- ✅ Evals: story_outline/wiki/chapter/validation_json PASS, format_json PASS, val_wiki_inference PASS (re-run after fixes), most val_* PASS
+- ✅ Grammar fix (bnf_engine.rs): GBNF → kbnf conversion via `gbnf_to_kbnf`
+- ✅ Gateway `/v1/completions` field drop fixed (grammar/prefill/init_state/state_slot/seed forwarded)
+- ✅ **Schema enum grouping fix (json_schema.rs)**: enum alternations are now emitted as NAMED rules (`root_quality_enum ::= ...`) and referenced, instead of being inlined. GBNF `|` has lowest precedence, so inlining split the containing object rule into multiple root alternatives — the model could legally emit a bare enum value (e.g. `"needs-work","suggestion":...` missing the `{` and sibling keys). This was the final structural grammar bug.
+- ✅ **Actor generation loop refactor (engine-gpu/actor.rs + sampling.rs)**: extracted `sample_token_masked_with_rng` helper (removed ~50 duplicated, deeply-nested lines from both loops); fixed double-generation (first loop now breaks after sampling the FIRST token — previously it ran to max_tokens AND the second loop ran max_tokens−1 more = 2×max_tokens−1 tokens); fixed grammar-closing-token drop in the second loop (append THEN break on grammar_done, matching the first loop).
+- ✅ **Manual E2E (--strategy schema, temp 0.5) — FULL PASS**: outline ✓, world bible ✓, chapters 1-3 all pass validation (ch2 needed 3 revision retries then passed) ✓, synopsis ✓, published ✓. Story has real prose, atmosphere, coherent arcs.
+- ✅ `scripts/roco-stack.sh` — the lifecycle script (up/restart/status/wait/logs/down, pgrep liveness, 2-phase wait, health accepts ok|healthy)
 
-| Old | New | Meaning |
-|---|---|---|
-| `state_id` | `init_state` | State slot to load before processing (None = blank) |
-| `save_as` | `state_slot` | State slot to save result into (None = don't cache) |
-| `Bake.state_id` | `Bake.init_state` | Same |
-| `Bake.name` | `Bake.state_slot` | Same |
+**What's red (known, acceptable):**
+- ❌ `val_instruction_following_matched` eval — model judgment issue, NOT a system bug: the 2.9B model judged "crystal sword" ≠ "ancient artifact" as non-compliant. Output format is valid JSON. Fix the eval case (or accept as model limitation), don't touch the system.
+- ⚠️ In-string garbage under grammar constraint (e.g. validation `issues:":[`) — the 2.9B model produces low-quality string content when the mask constrains heavily; structural JSON is always correct now.
+- ⚠️ Chapter 2 often needs 2-3 revision retries — model repetition/temperature sensitivity; the retry loop handles it.
 
-## 3. Prose fallback parsers deleted
+## Log
 
-All 5 functions + 20+ tests deleted from story.rs:
-- `prose_to_outline`, `prose_to_wiki`, `prose_to_chapter`
-- `prose_to_synopsis`, `prose_to_validation`
-- `prose_fallback` parameter removed from `structured_complete_with_strategy`
+### 2026-07-31 — Full E2E pipeline passes end-to-end
 
-Phases now fail loudly on JSON parse failure instead of silently falling
-back to natural language heuristics.
+**What happened:** `roco story "A lighthouse keeper discovers a hidden message in the fog" --strategy schema --temperature 0.5` completed ALL phases:
+- Outline ✓, World bible ✓, Chapter 1-3 ✓ (each quality-checked with grammar), Synopsis ✓, published to 06-STORY.md (696 words).
+- Chapter 2 needed 3 revision retries (validation returned coherent, specific feedback each time — "Remove meta-commentary... show the fog's effect on his emotions"), then passed.
 
-## 4. Temporary deprecation stubs added — NOW REMOVED
+**Fixes landed in this session:**
+1. **json_schema.rs enum scoping** — root cause of the mid-object validation output (`"needs-work","suggestion":...` without `{`/`"issues"`). Enum alternations inlined into object rules split the rule on `|` (lowest precedence). Now: `root_quality_enum ::= "\"pass\"" | "\"fail\"" | "\"needs-work\""` + `root_obj ::= "{" ... ":" root_quality_enum ... "}"`. Regression tests added.
+2. **actor.rs double-generation + modular sampling** — first loop breaks after 1 token; both loops share `sampling::sample_token_masked_with_rng`. Grammar-completion token emitted before break in both loops.
+3. **prefill NOT fed to mask** (deliberate) — the mask re-emits `{` as its first token so `resp.text` is complete JSON on its own; the pipeline parses `resp.text` directly without prepending prefill.
 
-The backward-compatibility stubs were fully removed in the cleanup pass:
-- `bake_state` compatibility method removed from `ModelBackend` trait
-- Deprecated fields (`system`, `session`, `preserve_state`, `thinking`)
-  removed from `CompletionRequest`
-- `session` field removed from `OpenAiCompletionRequest` in protocol types
-- All callers now use `init_state`/`state_slot` and embed system text in the prompt
+**AGENTS.md self-check:** AGENTS.md's grammar notes did not cover (a) GBNF `|` precedence / enum-inlining trap, (b) the two-loop token budget interaction. Both now documented in AGENTS.md §10 notes.
 
-## Current status
+### 2026-07-31 — val_wiki_inference now PASSES
 
-✅ All crates compile cleanly (`cargo check --workspace`)
-✅ `roco-inferd` builds successfully
-✅ `roco-server` compiles
-✅ `roco-engine-gpu` and `roco-engine` compile
-⚠️ Only benign unused variable warnings remain in agent/cli crates
+Re-ran against live model after grammar/actor fixes: PASS (consistent/character/setting hints found, no think-blocks, 0 repeated sentences).
 
-## Next phase: systematic migration plan
+### 2026-07-31 — Grammar was never applied through the gateway
 
-### Approach: Conservative one-file-at-a-time with verification
+**Problem:** Manual E2E chapters passed validation but synopsis emitted `<think>` blocks / empty output. inferd logs showed `grammar="none"` for all requests arriving through :18000 while direct :18080 calls applied grammar.
 
-Instead of bulk replacements that introduced errors earlier, we'll:
-1. Verify compilation baseline (✅ done)
-2. Fix one validation module at a time
-3. Run `cargo check --workspace` after each change
-4. Only proceed when build passes
-5. Document each migration in PROGRESS.md
+**Root cause (two bugs stacked):**
+1. `bnf_engine.rs` passed raw GBNF to `kbnf::Engine` — kbnf requires `;` after every rule. Fixed with `gbnf_to_kbnf(grammar)`.
+2. Gateway `/v1/completions` handler dropped grammar/prefill/init_state/state_slot/seed in both embedded + proxy modes (its `OpenAICompletionRequest` struct only had 5 fields). CLI's RemoteBackend talks to gateway → grammar silently lost. Fixed by adding fields + forwarding.
 
-### Migration pattern for each validation module
+**AGENTS.md self-check:** AGENTS.md documented the two kbnf paths but NOT the gateway field-drop. Documented in AGENTS.md §9 known state.
 
-**Before:**
-```rust
-CompletionRequest::builder()
-    .prompt(user_input)
-    .system(system_prompt)
-    .session("session-id")
-    .preserve_state(true)
-    .build()
-```
+### 2026-07-31 — Eval harness fixes (eval.rs)
 
-**After:**
-```rust
-CompletionRequest::builder()
-    .prompt(format!("System: {}\n\nUser: \n\nAssistant:", system_prompt))
-    .init_state(Some("session-id".to_string()))
-    .state_slot(Some("session-id".to_string()))
-    .preserve_state(false) // Will be removed later
-    .build()
-```
+1. `run_eval` sent only `case.prompt` — deprecated `system` silently dropped. Now System/User/Assistant embedded in request prompt.
+2. Prefill consumed but not echoed in `resp.text` — hint checks missed prefill keys. Now `output = prefill + resp.text`.
 
-### Files to migrate (in order):
+## Migration summary (Phases 1–7, done)
 
-| File | Priority | Status |
-|------|----------|--------|
-| intent.rs | High | ⏳ Pending |
-| planner.rs | High | ⏳ Pending |
-| summarizer.rs | Medium | ⏳ Pending |
-| wiki.rs | Medium | ⏳ Pending |
-| brainstorm.rs | Medium | ⏳ Pending |
-| inference.rs | Medium | ⏳ Pending |
-| agent.rs | Low | ⏳ Pending |
-
-### After validating: Continue with LSP, CLI, server, and protocol cleanup.
-`preserve_state`, `thinking` fields from all types.
-
-### Phase 1: Audit all callers (1-2 hours)
-
-- Identify every file that still references old fields
-- Categorize by crate and complexity
-- Prioritize: core (engine) → protocol → agent → CLI → server → app
-
-### Phase 2: Fix engine internals (core types)
-
-- `crates/engine/src/types.rs`: Update `CompletionRequestBuilder::build()`
-  to use `init_state`/`state_slot` (currently uses stub defaults)
-- Remove stub fields from builder initializers
-- Ensure the builder construction is complete and correct
-
-### Phase 3: Fix agent validation modules
-
-- `crates/agent/src/validation/*.rs`: Update `CompletionRequest` literals
-  to use `init_state`/`state_slot` instead of `session`/`preserve_state`
-- Remove `.system()` builder calls — the system text should be part of
-  the raw prompt, not a separate field
-- Fix intent.rs, planner.rs, summarizer.rs, wiki.rs, brainstorm.rs, inference.rs
-
-### Phase 4: Fix CLI and LSP
-
-- `crates/cli/src/lsp.rs`: Update FIM bake calls to use new API
-- `crates/cli/src/cmd/story.rs`: Use `init_state`/`state_slot` where needed
-- Remove stub field references from LSP completion code
-
-### Phase 5: Fix server (HTTP API)
-
-- `crates/server/src/routes.rs`: Update `Bake` route handler to use
-  the new `bake` method signature instead of `bake_state`
-- If backward compatibility is still needed, keep a thin wrapper
-  but mark it `#[deprecated]`
-
-### Phase 6: Cleanup protocol
-
-- Remove `session` from `OpenAiCompletionRequest` in protocol
-- Ensure `from_engine` and `into_engine` handle the migration cleanly
-
-### Phase 7: Remove stub fields from `CompletionRequest`
-
-- After all callers migrated, remove the deprecated stub fields
-- Also remove `bake_state` from `ModelBackend` — backends can implement
-  their own compatibility if needed via the new `bake` method
-
-### Phase 8: Final verification
-
-- Run full workspace check
-- Run all tests (`cargo test --workspace`)
-- Run manual E2E story pipeline to confirm end-to-end flow works
-
-## Timeline
-
-| Phase | Est. Time | Status |
-|-------|-----------|--------|
-| 1: Audit | 1-2 hrs | ⏳ Pending |
-| 2: Engine internals | 30-60 min | ⏳ Pending |
-| 3: Agent validation | 1-2 hrs | ⏳ Pending |
-| 4: CLI/LSP | 30-60 min | ⏳ Pending |
-| 5: Server | 30-60 min | ⏳ Pending |
-| 6: Protocol cleanup | 30 min | ⏳ Pending |
-| 7: Stub removal | 30 min | ⏳ Pending |
-| 8: Verification | 1 hr | ⏳ Pending |
-
-**Key decision**: Should I proceed with the phased migration approach
-above, or would you prefer a different strategy? The goal is to keep
-the codebase compiling at every step while systematically removing the
-temporary stubs we added to restore compilation.
-
-## Progress Log — Round 2 (Completed Work Summary)
-
-### ✅ Phase 3: Agent Validation Module Migration Complete
-
-All validation modules have been updated to use the new prompt format with
-`System: ... / User: ... / Assistant: ...` structure.
-
-#### Modules Updated:
-
-| Module | Status | Notes |
-|--------|--------|-------|
-| `wiki.rs` | ✅ Fixed | `validate_with_inference()` updated |
-| `brainstorm.rs` | ✅ Fixed | Both `brainstorm_advanced()` and `expand_premise_advanced()` updated |
-| `inference.rs` | ✅ Fixed | `query_critique()` and `evaluate_against_instructions()` updated; `generate_feedback()` left as natural language |
-| `outline.rs` | ✅ Fixed | `validate_with_inference()` updated |
-| `planner.rs` | ✅ N/A | Already used correct format |
-| `summarizer.rs` | ✅ N/A | Already used correct format |
-| `intent.rs` | ✅ N/A | Already used correct format |
-
-### ✅ Build Status
-
-All crates compile cleanly. Only benign unused variable warnings remain:
-- `roco-engine`: 1 warning (unused system param)
-- `roco-agent`: 2 warnings (unused system in natural language mode)
-- `roco-cli`: 2 warnings (unused system_prompt)
-
-### ⚠️ Next Steps
-
-1. Fix unused variable warnings (prefix with `_`)
-2. Update Phase 3 timeline status to ✅ Completed
-3. Proceed to Phase 4: Fix CLI/LSP and server endpoints
+- Phase 1–2: Audit + engine internals ✅
+- Phase 3: Agent validation modules ✅ (edf13bf)
+- Phase 4: CLI/LSP ✅ (f1bed8e)
+- Phase 5–7: Server, protocol cleanup, stub removal ✅ (3e75904: removed system/session/preserve_state/thinking from CompletionRequest, bake_state from ModelBackend, session from OpenAiCompletionRequest)
+- Out of scope: `EvalCase` fixture fields in eval.rs/cases.rs (data-only, DEPRECATED), `crates/core` (dead, not a workspace member)

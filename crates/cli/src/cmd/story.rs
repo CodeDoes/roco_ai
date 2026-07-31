@@ -558,9 +558,11 @@ fn prompt_chapter(
          - Start with action or dialogue, not planning.\n\
          - Use paragraph breaks between scenes.\n\n\
          Output ONLY a JSON object. No other text.\n\
-         The JSON must have exactly two keys: title and content.\n\n\
-         Example:\n\
-         {{\"title\": \"Chapter Title\", \"content\": \"The full story text here...\"}}"
+         The JSON must have exactly two keys: title and content.\n\
+         title: the chapter title (string).\n\
+         content: the full chapter prose, 300-500 words (string).\n\
+         The content value must be the actual story prose — write the chapter\n\
+         itself, never a placeholder or an explanation of what to write."
     )
 }
 
@@ -584,9 +586,11 @@ fn prompt_revision(
          - Do NOT include thinking, reasoning, or commentary.\n\n\
          Full story outline:\n{outline}\n\n\
          Output ONLY a JSON object. No other text.\n\
-         The JSON must have exactly two keys: title and content.\n\n\
-         Example:\n\
-         {{\"title\": \"Chapter Title\", \"content\": \"The full story text here...\"}}"
+         The JSON must have exactly two keys: title and content.\n\
+         title: the chapter title (string).\n\
+         content: the full chapter prose, 300-500 words (string).\n\
+         The content value must be the actual story prose — write the chapter\n\
+         itself, never a placeholder or an explanation of what to write."
     )
 }
 

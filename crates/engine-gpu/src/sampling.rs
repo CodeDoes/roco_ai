@@ -12,7 +12,64 @@
 
 use rand::rngs::StdRng;
 use rand::RngCore;
-use roco_engine::CompletionRequest;
+use roco_engine::{BnfMask, CompletionRequest};
+
+/// Outcome of a single grammar-aware sampling step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SampledToken {
+    pub token: u32,
+    /// True when the sampled token completed the grammar — the caller must
+    /// emit it, then stop generation.
+    pub grammar_finished: bool,
+}
+
+/// Sample one token, applying the grammar mask when present.
+///
+/// - No mask: plain temperature/top-p/top-a sampling.
+/// - Mask: disallowed tokens are zeroed out and the distribution
+///   renormalized over the allowed set before sampling.
+///
+/// Returns `None` when the mask disallowed every token — the caller should
+/// stop generating.
+pub fn sample_token_masked_with_rng(
+    probs: &[f32],
+    mask: Option<&mut Box<dyn BnfMask>>,
+    temperature: f32,
+    top_p: f32,
+    top_a: f32,
+    rng: Option<&mut StdRng>,
+) -> Option<SampledToken> {
+    let Some(mask) = mask else {
+        let token = sample_token_with_rng(probs, temperature, top_p, top_a, rng);
+        return Some(SampledToken {
+            token,
+            grammar_finished: false,
+        });
+    };
+
+    let mut p = probs.to_vec();
+    mask.mask(&mut p);
+    // Renormalize so grammar-constrained tokens have full probability mass.
+    let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
+    if sum > 0.0 {
+        for v in p.iter_mut() {
+            if v.is_finite() {
+                *v /= sum;
+            }
+        }
+    }
+    // Grammar sampling uses full top-p (1.0) — the mask is the constraint.
+    let token = sample_token_with_rng(&p, temperature, 1.0, top_a, rng);
+    if token > 0 {
+        let grammar_finished = !mask.accept(token);
+        Some(SampledToken {
+            token,
+            grammar_finished,
+        })
+    } else {
+        None
+    }
+}
 
 /// Sample the next token from a probability distribution.
 ///
