@@ -1,7 +1,7 @@
 //! Tests for the session management subcommand.
 
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 /// Get a unique temp dir for each test to avoid race conditions.
 fn temp_dir() -> PathBuf {
@@ -50,10 +50,7 @@ fn test_session_list_shows_files() {
 
     // Create a few sessions
     for i in 1..=3 {
-        let state = roco_protocol::ConversationState::new(
-            format!("session_{}", i),
-            "careful",
-        );
+        let state = roco_protocol::ConversationState::new(format!("session_{}", i), "careful");
         let path = session_dir.join(format!("session_{}.json", i));
         state.save(&path).expect("failed to save session");
     }
