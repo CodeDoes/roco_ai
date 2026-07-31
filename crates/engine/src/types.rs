@@ -689,11 +689,10 @@ mod tests {
         assert!(backend_err.help().is_some());
 
         let empty = EngineError::EmptyResponse;
-        // EmptyResponse has help text suggesting retry
         assert!(empty.help().is_some());
 
         let budget = EngineError::BudgetExceeded { used: 100, max: 200 };
-        assert!(budget.help().is_none());
+        assert!(budget.help().is_some());
 
         let timeout = EngineError::TimedOut { ms: 5000 };
         assert!(timeout.help().is_none());
