@@ -198,9 +198,6 @@ fn detect_intent(
         }
         Err(e) => return Err(format!("Intent detection failed: {}", e)),
     };
-    print!("\r\x1b[K");
-    io::stdout().flush().ok();
-    res
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
