@@ -170,7 +170,8 @@ if so update AGENTS.md → repeat
 Steps in detail:
 
 1. **Tests** (unit + integration) — prove the code works correctly in isolation (mock backend, deterministic, fast). `cargo check --workspace --all-targets` + `cargo test --workspace` must be green before touching the real model.
-2. **Evals** — prove the model CAN produce correct output (valid JSON, coherent chapters) given correct inputs from the fixed pipeline. Each phase tested separately against the real model. Use `cargo run --release --example eval_suite -p roco-cli --features net -- http://127.0.0.1:18080 <case>`.
+2. **Pending tests** — add `#[ignore]` tests for features not yet implemented. These build against the current API and can be run with `cargo test -- --ignored` when ready. Pattern: mark with `#[ignore = "pending <feature>"]` and add a comment explaining what's needed.
+3. **Evals** — prove the model CAN produce correct output (valid JSON, coherent chapters) given correct inputs from the fixed pipeline. Each phase tested separately against the real model. Use `cargo run --release --example eval_suite -p roco-cli --features net -- http://127.0.0.1:18080 <case>`.
 3. **Check + update PROGRESS.md with what you want to do** — BEFORE running the pipeline, update PROGRESS.md with your intent for this iteration: the specific change/experiment you're about to run, what you expect to happen, and what you're looking for. This makes the iteration auditable — if the run fails, the log shows what was expected vs what happened.
 4. **E2E (full story)** — run `roco story` end-to-end with the real model. Manually review output quality.
 5. **Note problems in PROGRESS.md** — every failure (model behavior, pipeline bug, harness bug) goes in the log, with evidence from logs/artifacts.
