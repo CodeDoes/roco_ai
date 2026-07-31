@@ -214,3 +214,45 @@ Prefill tokens (`{\n`) are fed to the model but deliberately NOT passed through 
 ### Migration Complete
 
 The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fields have been removed. All callers use `init_state`/`state_slot` and embed system text directly in the prompt.
+
+## 11. Common User Feedback
+
+### Source
+`docs/impressions/v_0_4/common_user.md` — documented after testing with a fresh user perspective.
+
+### Key Findings
+
+**What works well:**
+- `roco story "premise"` is a one-command magic experience
+- Emoji progress indicators (`✓`, `⚠️`, `📝`) are intuitive
+- Automatic retry on validation failure is reassuring
+- Resume capability works seamlessly
+
+**Pain points to address:**
+1. **No progress bar during generation** — users wonder if app is stuck during 15-45s waits
+2. **Silent baking phase** — 3-second pause with no feedback looks frozen
+3. **Help text is technical** — lacks "Quick Start" guidance
+4. **No first-time setup** — new users don't know about GPU requirements or model setup
+5. **Output location not obvious** — `.roco/stories/` path buried in output
+6. **No story preview** — story goes to disk with no terminal preview
+7. **Error messages are technical** — need actionable hints
+
+### User Questions (Unanswered)
+
+| Question | Answer Location |
+|----------|----------------|
+| How do I install? | Not documented |
+| What model do I need? | Not in help |
+| Can I run without GPU? | Not obvious |
+| Where do stories go? | Only in output |
+
+### Recommendations (Not Yet Implemented)
+
+- [ ] Add `roco quickstart` first-run guide
+- [ ] Add progress indicators (spinners) during long waits
+- [ ] Improve error messages with actionable hints
+- [ ] Show full output path prominently
+- [ ] Offer story preview after publishing
+- [ ] Add `docs/README.md` link to `--help`
+
+**User Score: 8/10** — The magic is real. Main gaps are onboarding and feedback during long waits.
