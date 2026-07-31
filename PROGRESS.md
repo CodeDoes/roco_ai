@@ -1,7 +1,7 @@
 # PROGRESS.md — Phase 8 Verification Log
 
 Follows the validation loop in AGENTS.md §9:
-`test → eval → check+update PROGRESS → e2e (story) → note problems → fix → targeted-e2e → update PROGRESS → AGENTS.md self-check → repeat`
+`test → eval → check + update PROGRESS.md with what you want to do → e2e (story) → note problems in PROGRESS.md → fix issues → targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md → consider whether a lack of info within AGENTS.md caused this problem → update AGENTS.md if so → repeat`
 
 ## Current status (top of log = most recent)
 
@@ -26,6 +26,12 @@ Follows the validation loop in AGENTS.md §9:
 - ⚠️ Chapter 2 often needs 2-3 revision retries — model repetition/temperature sensitivity; the retry loop handles it.
 
 ## Log
+
+### 2026-07-31 — AGENTS.md §9 validation loop updated
+
+Loop now reads: `test → eval → check + update PROGRESS.md with what you want to do → e2e (story) → note problems in PROGRESS.md → fix issues → targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md → consider whether a lack of info within AGENTS.md caused this problem → update AGENTS.md if so → repeat`.
+
+Key change: step 3 now says **update PROGRESS.md with what you want to do** (intent-first) rather than just "check + update PROGRESS.md". The iteration log should record the plan before running, so a failed run can be audited as expectation-vs-actual.
 
 ### 2026-07-31 — Full E2E pipeline passes end-to-end
 
