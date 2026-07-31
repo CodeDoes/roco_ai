@@ -18,7 +18,12 @@ const SESSIONS_DIR: &str = ".roco/sessions";
 /// Entry point for `roco session` subcommand.
 pub fn cmd_session(extra: &[&str]) {
     let sub = extra.first().copied().unwrap_or("list");
-    let args: Vec<&str> = extra[if extra.first().map(|s| *s == sub).unwrap_or(false) { 1.. } else { 0.. }].to_vec();
+    let args: Vec<&str> = extra[if extra.first().map(|s| *s == sub).unwrap_or(false) {
+        1..
+    } else {
+        0..
+    }]
+    .to_vec();
 
     match sub {
         "create" => cmd_session_create(&args),
@@ -99,7 +104,12 @@ fn cmd_session_list() {
             .unwrap_or_else(|_| ConversationState::new("error".to_string(), "careful"));
         let msg_count = state.messages.len();
         let updated = state.updated_at.clone();
-        println!("  {:<35} {} messages  (updated: {})", path.file_stem().unwrap().to_string_lossy(), msg_count, updated);
+        println!(
+            "  {:<35} {} messages  (updated: {})",
+            path.file_stem().unwrap().to_string_lossy(),
+            msg_count,
+            updated
+        );
     }
 }
 
@@ -119,17 +129,15 @@ fn cmd_session_show(args: &[&str]) {
         std::process::exit(1);
     }
 
-    let content = std::fs::read_to_string(&session_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to read session: {e}");
-            std::process::exit(1);
-        });
+    let content = std::fs::read_to_string(&session_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to read session: {e}");
+        std::process::exit(1);
+    });
 
-    let state: ConversationState = serde_json::from_str(&content)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to parse session: {e}");
-            std::process::exit(1);
-        });
+    let state: ConversationState = serde_json::from_str(&content).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to parse session: {e}");
+        std::process::exit(1);
+    });
 
     println!("Session: {}\n", session_id);
     println!("Messages ({} total):\n", state.messages.len());
@@ -169,11 +177,10 @@ fn cmd_session_delete(args: &[&str]) {
         std::process::exit(1);
     }
 
-    std::fs::remove_file(&session_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to delete session: {e}");
-            std::process::exit(1);
-        });
+    std::fs::remove_file(&session_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to delete session: {e}");
+        std::process::exit(1);
+    });
 
     println!("Deleted session: {}", session_id);
 }
@@ -194,26 +201,27 @@ fn cmd_session_chat(session_id: &str, args: &[&str]) {
 
     let session_path = get_sessions_dir().join(format!("{}.json", session_id));
     if !session_path.exists() {
-        eprintln!("Error: Session '{}' not found. Create one with: roco session create", session_id);
+        eprintln!(
+            "Error: Session '{}' not found. Create one with: roco session create",
+            session_id
+        );
         std::process::exit(1);
     }
 
     // Load existing state
-    let mut state = ConversationState::load(&session_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to read session: {e}");
-            std::process::exit(1);
-        });
+    let mut state = ConversationState::load(&session_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to read session: {e}");
+        std::process::exit(1);
+    });
 
     // Add user message
     state.add_message("user", &prompt);
 
     // Save updated state
-    state.save(&session_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error: Failed to save session: {e}");
-            std::process::exit(1);
-        });
+    state.save(&session_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to save session: {e}");
+        std::process::exit(1);
+    });
 
     println!("Session: {}", session_id);
     println!("Prompt: {}", prompt);
