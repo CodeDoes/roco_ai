@@ -793,4 +793,49 @@ mod tests {
             collected.len()
         );
     }
+
+    // ── Pending tests for features not yet implemented ──────────────────
+
+    /// Stream mode completion returns chunks.
+    #[tokio::test]
+    #[ignore = "pending stream mode implementation"]
+    async fn stream_mode_returns_chunks() {
+        // Placeholder: requires stream: true support in MockBackend
+    }
+
+    /// Grammar-constrained decoding on MockBackend.
+    #[tokio::test]
+    #[ignore = "pending grammar constraint testing"]
+    async fn mock_backend_grammar_constraint() {
+        // Placeholder: requires grammar mask support in MockBackend
+    }
+
+    /// State blending returns error for unsupported backend.
+    #[tokio::test]
+    #[ignore = "pending blend_states error path testing"]
+    async fn blend_states_error_for_no_state_backend() {
+        // Placeholder: requires NoStateBackend to implement blend_states
+        // and return a descriptive error
+    }
+
+    /// Interrupt during generation is respected.
+    #[tokio::test]
+    #[ignore = "pending interrupt during generation"]
+    async fn interrupt_during_generation() {
+        // Placeholder: requires interrupt to cancel in-flight completion
+    }
+
+    /// Deadline exceeded returns TimedOut error.
+    #[tokio::test]
+    #[ignore = "pending deadline enforcement"]
+    async fn deadline_exceeded_returns_timeout() {
+        // Placeholder: requires deadline_ms enforcement in backend
+    }
+
+    /// Top-a sampling parameter is respected.
+    #[tokio::test]
+    #[ignore = "pending top-a sampling testing"]
+    async fn top_a_sampling_parameter() {
+        // Placeholder: requires top_a to affect sampling distribution
+    }
 }
