@@ -1140,16 +1140,26 @@ mod tests {
 
     #[test]
     fn test_gateway_port_env_override() {
+        // Save original value if it exists
+        let original = std::env::var("ROCO_GATEWAY_PORT").ok();
         unsafe { std::env::set_var("ROCO_GATEWAY_PORT", "19999") };
         assert_eq!(gateway_port(), 19999);
-        unsafe { std::env::remove_var("ROCO_GATEWAY_PORT") };
+        // Restore original value
+        match original {
+            Some(val) => unsafe { std::env::set_var("ROCO_GATEWAY_PORT", &val) },
+            None => unsafe { std::env::remove_var("ROCO_GATEWAY_PORT") },
+        }
     }
 
     #[test]
     fn test_inferd_port_env_override() {
+        let original = std::env::var("ROCO_INFERD_PORT").ok();
         unsafe { std::env::set_var("ROCO_INFERD_PORT", "29999") };
         assert_eq!(inferd_port(), 29999);
-        unsafe { std::env::remove_var("ROCO_INFERD_PORT") };
+        match original {
+            Some(val) => unsafe { std::env::set_var("ROCO_INFERD_PORT", &val) },
+            None => unsafe { std::env::remove_var("ROCO_INFERD_PORT") },
+        }
     }
 
     // ── Scenario 5: ensure_sync_backend() round-trip ─────────────────────────
