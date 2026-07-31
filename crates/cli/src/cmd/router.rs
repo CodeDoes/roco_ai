@@ -156,7 +156,7 @@ fn detect_intent(
         ..Default::default()
     };
 
-    let chat_intent = available
+    let _chat_intent = available
         .iter()
         .find(|i| i.id == "chat")
         .cloned()
@@ -167,7 +167,7 @@ fn detect_intent(
             is_passive: true,
         });
 
-    let res = match futures::executor::block_on(backend.complete(request)) {
+    match futures::executor::block_on(backend.complete(request)) {
         Ok(resp) => {
             let text = resp.text.trim().to_string();
             if let Some(json_str) = extract_json(&text) {
