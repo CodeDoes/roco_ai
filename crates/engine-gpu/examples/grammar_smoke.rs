@@ -26,8 +26,10 @@ async fn main() -> anyhow::Result<()> {
     println!("grammar ({} bytes):\n{}", grammar.len(), grammar);
 
     let req = CompletionRequest {
-        system: "You are a helpful assistant.".into(),
-        prompt: env::var("RWKV_GRAMMAR_PROMPT").unwrap_or_else(|_| DEFAULT_PROMPT.to_string()),
+        prompt: format!(
+            "System: You are a helpful assistant.\n\n{}",
+            env::var("RWKV_GRAMMAR_PROMPT").unwrap_or_else(|_| DEFAULT_PROMPT.to_string())
+        ),
         grammar: Some(grammar.clone()),
         temperature: 1.0,
         max_tokens: 8,

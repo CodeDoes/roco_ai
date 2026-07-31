@@ -26,11 +26,22 @@ impl std::error::Error for GbnfError {}
 /// kbnf uses `{...}` for repetition (0+), `[...]` for optional (0 or 1),
 /// and `[...]+` for one-or-more. Standard GBNF `(...)` grouping is not
 /// supported — alternatives are written flat.
-pub(crate) fn primitives_bnf() -> String {
+pub fn primitives_bnf() -> String {
     let mut p = String::new();
     // kbnf: string ::= "\"" {char | escape} "\"";
     p.push_str("string ::= \"\\\"\" {char | escape} \"\\\"\"\n");
-    p.push_str("char ::= #'[ -~]'\n");
+    // char ::= any printable ASCII EXCEPT '"' and '\\' — the closing quote
+    // and escape backslash must be excluded or the string never terminates
+    // (kbnf would happily consume the closing quote as a char). The previous
+    // '#\'[ -~]\'' regex range included 0x22 ('"') which broke termination.
+    let mut alts: Vec<String> = Vec::new();
+    for c in 0x20u8..0x7F {
+        if c == b'"' || c == b'\\' {
+            continue;
+        }
+        alts.push(format!("\"{}\"", (c as char)));
+    }
+    p.push_str(&format!("char ::= {}\n", alts.join(" | ")));
     // kbnf: escape ::= "\\" ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t");
     p.push_str("escape ::= \"\\\\\" (\"\\\"\" | \"\\\\\" | \"/\" | \"b\" | \"f\" | \"n\" | \"r\" | \"t\")\n");
     // kbnf: integer ::= ["-"] ("0" | nonzero {digit});
@@ -79,7 +90,16 @@ fn gen_rule(name: &str, schema: &Value, rules: &mut Vec<String>) -> Result<Strin
                 detail: "enum array is empty".into(),
             });
         }
-        return Ok(alts.join(" | "));
+        // Emit the alternation as a NAMED rule and reference it. Inlining
+        // `"pass" | "fail"` into a larger rule does NOT work: `|` has the
+        // lowest precedence in GBNF/kbnf, so the surrounding rule would be
+        // silently split into multiple alternatives (e.g. an object rule
+        // would gain a root alternative that starts at the enum value,
+        // letting the model emit mid-object garbage). A named rule keeps
+        // the alternation scoped to exactly one rule.
+        let enum_name = format!("{name}_enum");
+        rules.push(format!("{enum_name} ::= {}", alts.join(" | ")));
+        return Ok(enum_name);
     }
 
     let ty = schema
@@ -473,8 +493,47 @@ mod tests {
         #[test]
         fn gbnf_uses_alternation() {
             let gbnf = schema_to_gbnf("root", &json!({"enum": ["a", "b"]})).unwrap();
-            // Enum values are now encoded as JSON literals with quotes
-            assert!(gbnf.contains("root ::= \"\\\"a\\\"\" | \"\\\"b\\\"\""));
+            // Enum values are now encoded as JSON literals with quotes and
+            // emitted as a NAMED rule so the alternation stays scoped
+            // (inlining would let `|` split the containing rule).
+            assert!(gbnf.contains("root_enum ::= \"\\\"a\\\"\" | \"\\\"b\\\"\""));
+            assert!(gbnf.contains("root ::= root_enum"));
+        }
+
+        #[test]
+        fn enum_inside_object_is_scoped() {
+            // Regression: an enum property used to be inlined into the
+            // object rule. GBNF `|` has lowest precedence, so the object
+            // rule silently split into alternatives and the model could
+            // legally emit a bare enum value (mid-object garbage) instead
+            // of the full object. Enums must become named rules.
+            let schema = json!({
+                "type": "object",
+                "properties": {
+                    "quality": {"enum": ["pass", "fail", "needs-work"]},
+                    "issues": {"type": "string"}
+                }
+            });
+            let gbnf = schema_to_gbnf("root", &schema).unwrap();
+            // The object rule references the enum rule by name — it must NOT
+            // contain an inline `|` alternation between quotes.
+            let obj_line = gbnf
+                .lines()
+                .find(|l| l.contains("root_obj ::="))
+                .expect("root_obj rule");
+            assert!(
+                obj_line.contains("root_quality_enum"),
+                "object rule must reference the named enum rule: {obj_line}"
+            );
+            assert!(
+                !obj_line.contains("\"pass\" |"),
+                "object rule must not inline the enum alternation: {obj_line}"
+            );
+            // The enum rule itself must exist separately.
+            assert!(
+                gbnf.contains("root_quality_enum ::= \"\\\"pass\\\"\" | \"\\\"fail\\\"\" | \"\\\"needs-work\\\"\""),
+                "named enum rule missing"
+            );
         }
     }
 

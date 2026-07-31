@@ -18,6 +18,9 @@ where
 }
 
 /// Simulate a state-tuning session with token-0 EOS padding between examples.
+///
+/// FeedEos is no longer an inferd primitive; the equivalent is baking an EOS
+/// separator through the model with `max_tokens: 0` into the session slot.
 fn tune_with_eos_padding(
     backend: &MockBackend,
     system: &str,
@@ -25,42 +28,56 @@ fn tune_with_eos_padding(
     final_prompt: &str,
 ) -> String {
     run(async {
+        let session = "token0-padded";
         for (i, (user, assistant)) in examples.iter().enumerate() {
             backend
                 .complete(CompletionRequest {
-                    system: if i == 0 {
-                        system.to_string()
+                    // System text embedded in prompt; state accumulates in slot
+                    prompt: if i == 0 {
+                        format!("System: {}\n\n{}", system, user)
                     } else {
-                        String::new()
+                        user.to_string()
                     },
-                    prompt: user.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
-                    preserve_state: i > 0,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
                     ..Default::default()
                 })
                 .await
                 .unwrap();
             backend
                 .complete(CompletionRequest {
-                    system: String::new(),
                     prompt: assistant.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
-                    preserve_state: true,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
                     ..Default::default()
                 })
                 .await
                 .unwrap();
-            // KEY: State advances between examples via preserve_state
+            // KEY: feed EOS (token 0) between examples by baking an EOS
+            // separator through the model (max_tokens=0 = process, don't generate)
+            backend
+                .complete(CompletionRequest {
+                    prompt: "\u{1e}".to_string(),
+                    temperature: 0.0,
+                    max_tokens: 0,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
         }
         let resp = backend
             .complete(CompletionRequest {
-                system: String::new(),
                 prompt: final_prompt.to_string(),
                 temperature: 0.7,
                 max_tokens: 64,
-                preserve_state: true,
+                init_state: Some(session.to_string()),
+                state_slot: Some(session.to_string()),
                 ..Default::default()
             })
             .await
@@ -77,43 +94,44 @@ fn tune_without_eos_but_with_prefill(
     final_prompt: &str,
 ) -> String {
     run(async {
+        let session = "token0-prefill";
         for (i, (user, assistant)) in examples.iter().enumerate() {
             backend
                 .complete(CompletionRequest {
-                    system: if i == 0 {
-                        system.to_string()
+                    prompt: if i == 0 {
+                        format!("System: {}\n\n{}", system, user)
                     } else {
-                        String::new()
+                        user.to_string()
                     },
-                    prompt: user.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
-                    preserve_state: i > 0,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
                     ..Default::default()
                 })
                 .await
                 .unwrap();
             backend
                 .complete(CompletionRequest {
-                    system: String::new(),
                     prompt: assistant.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
-                    preserve_state: true,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
                     ..Default::default()
                 })
                 .await
                 .unwrap();
-            // NO feed_eos — old behavior
+            // NO EOS padding — old behavior
         }
         let resp = backend
             .complete(CompletionRequest {
-                system: String::new(),
                 prompt: final_prompt.to_string(),
                 prefill: Some("<think></think>".to_string()),
                 temperature: 0.7,
                 max_tokens: 64,
-                preserve_state: true,
+                init_state: Some(session.to_string()),
+                state_slot: Some(session.to_string()),
                 ..Default::default()
             })
             .await
@@ -130,42 +148,54 @@ fn tune_pure_state(
     final_prompt: &str,
 ) -> String {
     run(async {
+        let session = "token0-pure";
         for (i, (user, assistant)) in examples.iter().enumerate() {
             backend
                 .complete(CompletionRequest {
-                    system: if i == 0 {
-                        system.to_string()
+                    prompt: if i == 0 {
+                        format!("System: {}\n\n{}", system, user)
                     } else {
-                        String::new()
+                        user.to_string()
                     },
-                    prompt: user.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
-                    preserve_state: i > 0,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
                     ..Default::default()
                 })
                 .await
                 .unwrap();
             backend
                 .complete(CompletionRequest {
-                    system: String::new(),
                     prompt: assistant.to_string(),
                     temperature: 0.0,
                     max_tokens: 1,
-                    preserve_state: true,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
                     ..Default::default()
                 })
                 .await
                 .unwrap();
-            // State advances via preserve_state
+            // EOS separator baked through the model between examples
+            backend
+                .complete(CompletionRequest {
+                    prompt: "\u{1e}".to_string(),
+                    temperature: 0.0,
+                    max_tokens: 0,
+                    init_state: Some(session.to_string()),
+                    state_slot: Some(session.to_string()),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
         }
         let resp = backend
             .complete(CompletionRequest {
-                system: String::new(),
                 prompt: final_prompt.to_string(),
                 temperature: 0.7,
                 max_tokens: 64,
-                preserve_state: true,
+                init_state: Some(session.to_string()),
+                state_slot: Some(session.to_string()),
                 ..Default::default()
             })
             .await
@@ -289,12 +319,11 @@ mod tests {
             .unwrap();
             let resp = backend
                 .complete(CompletionRequest {
-                    system: String::new(),
                     prompt: "Write another poem".to_string(),
                     temperature: 0.7,
                     max_tokens: 32,
                     init_state: Some("test-session".to_string()),
-                    preserve_state: true,
+                    state_slot: Some("test-session".to_string()),
                     ..Default::default()
                 })
                 .await

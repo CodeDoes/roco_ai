@@ -149,21 +149,56 @@ System prompts are task-specific:
 
 ## 9. Eval-First Methodology — The Correct Order
 
-Prose fallback parsers were deleted in commit f3bab52. They existed because I violated the correct workflow: **evals first, workarounds never.**
+Testing and validation have the highest priority. Prose fallback parsers were deleted in commit f3bab52. They existed because I violated the correct workflow: **evals first, workarounds never.**
 
-The correct order:
-1. **Tests** (unit + integration) — prove the code works correctly in isolation (mock backend, deterministic, fast).
-2. **Evals** — prove the model CAN produce correct output (valid JSON, coherent chapters) given correct inputs from the fixed pipeline. Each phase tested separately against the real model.
-3. **Manual E2E** — run the full pipeline, manually review output quality.
+A JSON parse failure is a system bug — handle it by fixing the system (prompts, baking, grammar, temperature), never by parsing prose.
 
-Prose fallback parsers were added before step 2, masking bugs that should have been fixed by tuning prompts/baking/grammar. A JSON parse failure is a system bug — handle it by fixing the system, not by parsing prose.
+### The validation loop (repeat until green)
 
-As of this writing (post-fix), evals have NOT been run on the corrected system. They should be run next to confirm each phase produces valid JSON.
+```
+test → eval → check + update PROGRESS.md with what you want to do →
+e2e (story) → note problems in PROGRESS.md → fix issues →
+targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md →
+consider whether a lack of info within AGENTS.md caused this problem,
+if so update AGENTS.md → repeat
+```
+
+Steps in detail:
+
+1. **Tests** (unit + integration) — prove the code works correctly in isolation (mock backend, deterministic, fast). `cargo check --workspace --all-targets` + `cargo test --workspace` must be green before touching the real model.
+2. **Evals** — prove the model CAN produce correct output (valid JSON, coherent chapters) given correct inputs from the fixed pipeline. Each phase tested separately against the real model. Use `cargo run --release --example eval_suite -p roco-cli --features net -- http://127.0.0.1:18080 <case>`.
+3. **Check + update PROGRESS.md with what you want to do** — BEFORE running the pipeline, update PROGRESS.md with your intent for this iteration: the specific change/experiment you're about to run, what you expect to happen, and what you're looking for. This makes the iteration auditable — if the run fails, the log shows what was expected vs what happened.
+4. **E2E (full story)** — run `roco story` end-to-end with the real model. Manually review output quality.
+5. **Note problems in PROGRESS.md** — every failure (model behavior, pipeline bug, harness bug) goes in the log, with evidence from logs/artifacts.
+6. **Fix issues** — one at a time. Verify with cargo check after each change.
+7. **Targeted E2E** — re-run only the affected phase(s) (chapter/wiki/outline/validate) against the real model to confirm the fix without a full pipeline run.
+8. **Update PROGRESS.md** — mark what's verified green, what's still red.
+9. **AGENTS.md self-check** — consider whether a lack of info within AGENTS.md caused this problem (e.g. a documented invariant that wasn't documented, or a note that would have prevented the mistake). If so, update AGENTS.md so the next iteration doesn't repeat it.
+10. **Repeat** until the loop exits clean.
+
+### Known Phase 8 verification state
+
+As of the latest full E2E run (2026-07-31), the complete story pipeline passes against the real model:
+
+- Grammar-constrained decoding fixed: `bnf_engine.rs` converts GBNF → kbnf (appends `;` per rule)
+- Gateway `/v1/completions` forwards `grammar`/`prefill`/`init_state`/`state_slot`/`seed`
+- **Schema enum scoping fixed** (`json_schema.rs`): enums are emitted as named rules, never inlined into object rules (GBNF `|` precedence trap — see §10)
+- **Generation loop budget fixed** (`engine-gpu/src/actor.rs`): the first loop samples ONE token then hands off to the main loop (previously ran to `max_tokens` AND the main loop ran `max_tokens−1` more = 2×max_tokens−1 tokens). Grammar-closing token emitted before stopping in both loops.
+- Full E2E: outline → wiki → chapters 1-3 (validated) → synopsis → publish ✅
 
 ## 10. Known Legacy Issues
 
 ### Agent Journal Format
 Currently `.roco/agent-journal.md` in Markdown. Should be JSONL for structured querying (one JSON object per line: timestamp, level, phase, message).
+
+### GBNF `|` precedence — never inline enum alternations into larger rules
+`|` has the LOWEST precedence in GBNF/kbnf. Inlining an enum (`"pass" | "fail" | "needs-work"`) into an object rule splits the whole rule into multiple alternatives — the model can then legally emit a bare enum value (`"needs-work","suggestion":...`) that skips the `{`, the key, and sibling fields. `schema_to_gbnf` now emits enums as named rules (`root_quality_enum ::= ...`) and references them. If you hand-write GBNF with an enum inside an object, wrap it in a named rule.
+
+### Generation loop structure (engine-gpu/src/actor.rs)
+The complete() path has two loops: the first flushes the prompt and samples the FIRST token, then the main loop generates the rest. Both must share the same sampling path (`sampling::sample_token_masked_with_rng`) so grammar handling stays consistent. The grammar-closing token is emitted BEFORE the break (append-then-check), never dropped.
+
+### Prefill vs grammar mask
+Prefill tokens (`{\n`) are fed to the model but deliberately NOT passed through the grammar mask. The mask re-emits `{` as its first generated token, so `resp.text` is complete JSON on its own — callers parse `resp.text` directly without prepending the prefill. Do NOT "fix" this by accepting prefill tokens into the mask; it breaks the pipeline's parse path.
 
 ### Model-Specific Behavior
 2.9B parameter RWKV-7 model:
@@ -171,6 +206,10 @@ Currently `.roco/agent-journal.md` in Markdown. Should be JSONL for structured q
 - Can produce NUL/control characters in output (stripped by `clean_json_output`)
 - Sometimes produces ````json``` wrappers or trailing `}` characters
 - May truncate output when the state carries too much context momentum
+- **Judges instruction-following too literally** (e.g. "crystal sword" ≠ "ancient artifact" → `follows_instructions: false`). The `val_instruction_following_matched` eval fails for this reason — it's a model limitation, not a system bug.
+- **In-string content degrades under tight constraints** — with a grammar mask active, string values can contain degenerate tokens (`":[`, `s,s,s`). Structure is always valid JSON; content quality varies. Revision retries handle the worst cases.
+- **Chapter 2-3 often need 2-3 revision retries** at temp 0.5 — the retry loop converges, this is expected.
 
-### Backward Compatibility Bridge
-Some legacy fields (`session`, `bake_state`, `OpenAiCompletionRequest::session`) remain for compatibility while the new `init_state`/`state_slot` API is being adopted. These are marked `#[deprecated]` and will be removed in a follow-on pass.
+### Migration Complete
+
+The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fields have been removed. All callers use `init_state`/`state_slot` and embed system text directly in the prompt.

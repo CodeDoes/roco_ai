@@ -339,6 +339,14 @@ pub struct OpenAICompletionRequest {
     #[serde(default = "default_temperature")]
     temperature: f32,
     stream: Option<bool>,
+    grammar: Option<String>,
+    prefill: Option<String>,
+    #[serde(default)]
+    init_state: Option<String>,
+    #[serde(default)]
+    state_slot: Option<String>,
+    #[serde(default)]
+    seed: Option<u64>,
 }
 
 pub async fn handle_openai_completions_test(
@@ -350,6 +358,11 @@ pub async fn handle_openai_completions_test(
             prompt: req.prompt,
             temperature: req.temperature,
             max_tokens: req.max_tokens,
+            grammar: req.grammar,
+            prefill: req.prefill,
+            init_state: req.init_state,
+            state_slot: req.state_slot,
+            seed: req.seed,
             ..Default::default()
         };
 

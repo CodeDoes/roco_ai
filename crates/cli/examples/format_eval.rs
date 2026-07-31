@@ -43,6 +43,7 @@ use std::time::Instant;
 
 use roco_engine::backend::ModelBackend;
 use roco_engine::types::CompletionRequest;
+use roco_engine::StateTuning;
 use roco_infer_client::RemoteBackend;
 use roco_protocol::{format_followed, has_think_contamination, FormatSpec};
 
@@ -173,8 +174,9 @@ async fn bake_format(backend: &RemoteBackend, spec: &FormatSpec, session: &str) 
         a2.lines().next().unwrap_or("")
     );
 
+    // tune_state (POST /v1/bake) handles state creation/reset on the server.
     match backend
-        .bake_state(
+        .tune_state(
             session,
             system,
             &[(u1.as_str(), a1.as_str()), (u2.as_str(), a2.as_str())],
@@ -279,25 +281,22 @@ async fn run_one(
     let start = Instant::now();
     let resp = backend
         .complete(CompletionRequest {
-            system: String::new(),
+            // Load session state; preserve_state:false means we don't save back
+            init_state: Some(session.to_string()),
             prompt,
             grammar,
             temperature: 0.8,
             max_tokens: 500,
-            init_state: Some(session.to_string()),
-            state_slot: Some(session.to_string()),
-            session: None,
             prefill: None,
             bnf_mask: None,
             top_a: None,
             on_token: None,
-            preserve_state: false,
-            thinking: false,
             seed: None,
             record_trace: false,
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 60000,
+            ..Default::default()
         })
         .await;
     let latency_ms = start.elapsed().as_millis() as u64;
@@ -441,8 +440,8 @@ async fn main() {
     for spec in &formats {
         eprintln!("─── {} — {} ───", spec.name(), spec.desc());
 
-        // Fresh session: no baking.
         for t in 0..trials {
+            // Fresh session: unique sid starts blank; no feed_eos needed.
             let sid = format!("fmt-{}-fresh-t{t}", spec.name());
             eprint!("  fresh  trial {t}...");
             let mut r = run_one(&backend, spec, &sid, t).await;

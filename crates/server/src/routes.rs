@@ -110,15 +110,19 @@ async fn handle_bake(
         req.session_id
     );
 
-    let shots_ref: Vec<(&str, &str)> = req
-        .few_shots
-        .iter()
-        .map(|(u, a)| (u.as_str(), a.as_str()))
-        .collect();
+    // Build the combined few-shot transcript (system folded into the first
+    // example), then feed it through the model with bake (max_tokens=0).
+    let mut text = String::new();
+    for (i, (user, assistant)) in req.few_shots.iter().enumerate() {
+        if i == 0 && !req.system.is_empty() {
+            text.push_str(&format!("System: {}\n\n", req.system.trim()));
+        }
+        text.push_str(&format!("User: {}\n\nAssistant:{}", user, assistant));
+    }
 
     let session_id = state
         .backend
-        .bake_state(&req.session_id, &req.system, &shots_ref)
+        .bake(&text, None, Some(&req.session_id))
         .await
         .map_err(|e| {
             tracing::warn!(
@@ -232,7 +236,12 @@ async fn handle_openai_completion(
 ) -> impl IntoResponse {
     let _guard = JobGuard::new(state.active_jobs.clone());
     let start = std::time::Instant::now();
-    let session_str = req.session.as_deref().unwrap_or("<none>").to_string();
+    let session_str = req
+        .init_state
+        .as_deref()
+        .or(req.state_slot.as_deref())
+        .unwrap_or("<none>")
+        .to_string();
     let prompt_tail = req
         .prompt
         .lines()
@@ -371,11 +380,13 @@ mod tests {
         let json = r#"{"prompt": "Hello world"}"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.prompt, "Hello world");
+        assert!(req.init_state.is_none());
         assert!(req.temperature.is_none());
         assert!(req.max_tokens.is_none());
         assert!(req.stream.is_none());
         assert!(req.model.is_none());
-        assert!(req.session.is_none());
+        assert!(req.init_state.is_none());
+        assert!(req.state_slot.is_none());
     }
 
     #[test]
@@ -388,9 +399,8 @@ mod tests {
             "stream": true,
             "grammar": "story",
             "prefill": "In a land far away",
-            "init_state": "story-state-1",
-            "state_slot": "story-state-2",
-            "session": "story-session-1",
+            "init_state": "story-session-1",
+            "state_slot": "story-session-1",
             "seed": 42
         }"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
@@ -401,9 +411,8 @@ mod tests {
         assert_eq!(req.stream, Some(true));
         assert_eq!(req.grammar.as_deref(), Some("story"));
         assert_eq!(req.prefill.as_deref(), Some("In a land far away"));
-        assert_eq!(req.init_state.as_deref(), Some("story-state-1"));
-        assert_eq!(req.state_slot.as_deref(), Some("story-state-2"));
-        assert_eq!(req.session.as_deref(), Some("story-session-1"));
+        assert_eq!(req.init_state.as_deref(), Some("story-session-1"));
+        assert_eq!(req.state_slot.as_deref(), Some("story-session-1"));
         assert_eq!(req.seed, Some(42));
 
         // Verify seed propagates to engine request

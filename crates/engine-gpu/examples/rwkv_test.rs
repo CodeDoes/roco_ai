@@ -14,17 +14,14 @@ async fn main() -> anyhow::Result<()> {
     println!("backend: {}", backend.name());
 
     let req = CompletionRequest {
-        system: "You are a helpful assistant.".into(),
-        prompt: "The capital of France is".into(),
+        // System text embedded in prompt
+        prompt: format!("System: You are a helpful assistant.\n\nThe capital of France is"),
         output_schema: None,
         grammar: None,
         temperature: 0.5,
         max_tokens: 32,
         estimated_prompt_tokens: 8,
-        thinking: false,
-        preserve_state: false,
         on_token: None,
-        session: None,
         ..Default::default()
     };
 

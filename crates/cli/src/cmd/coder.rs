@@ -191,8 +191,7 @@ fn ask(
 
     let printer = StreamPrinter::new("").shared();
     let request = roco_engine::CompletionRequest::builder()
-
-        .prompt(build_coder_prompt(history, input))
+        .prompt(build_coder_prompt(system_prompt, history, input))
         .temperature(0.5)
         .max_tokens(2048)
         .prefill(roco_engine::NO_THINK_PREFILL)
@@ -327,7 +326,7 @@ fn identity_command(
 /// messages too, but only the last 6 — combined with the unbounded 2048-token
 /// answers this mode produces, that could blow the context window. The cap is
 /// now on characters as well as turns.
-fn build_coder_prompt(history: &[Message], new_input: &str) -> String {
+fn build_coder_prompt(system: &str, history: &[Message], new_input: &str) -> String {
     /// Character budget for replayed history (~1.5k tokens).
     const MAX_HISTORY_CHARS: usize = 6_000;
 
@@ -344,6 +343,11 @@ fn build_coder_prompt(history: &[Message], new_input: &str) -> String {
     selected.reverse();
 
     let mut prompt = String::with_capacity(used + new_input.len() + 64);
+    if !system.is_empty() {
+        prompt.push_str("System: ");
+        prompt.push_str(system);
+        prompt.push_str("\n\n");
+    }
     if !selected.is_empty() {
         prompt.push_str("Previous conversation:\n\n");
         for msg in selected {
@@ -380,7 +384,7 @@ mod tests {
     #[test]
     fn test_build_coder_prompt_empty() {
         let history: Vec<super::Message> = vec![];
-        let prompt = build_coder_prompt(&history, "Hello");
+        let prompt = build_coder_prompt("", &history, "Hello");
         assert!(prompt.contains("Hello"));
         assert!(prompt.contains("ASSISTANT:"));
     }
@@ -397,7 +401,8 @@ mod tests {
                 content: "Rust is a systems language.".into(),
             },
         ];
-        let prompt = build_coder_prompt(&history, "What is ownership?");
+        let prompt = build_coder_prompt("You are a Rust expert.", &history, "What is ownership?");
+        assert!(prompt.contains("System: You are a Rust expert."));
         assert!(prompt.contains("What is Rust?"));
         assert!(prompt.contains("Rust is a systems language."));
         assert!(prompt.contains("What is ownership?"));
@@ -409,7 +414,7 @@ mod tests {
         let history: Vec<Message> = (0..6)
             .map(|i| msg("assistant", &format!("{i} {}", "x".repeat(4000))))
             .collect();
-        let prompt = build_coder_prompt(&history, "next");
+        let prompt = build_coder_prompt("", &history, "next");
         assert!(prompt.len() < 8_000, "prompt too big: {}", prompt.len());
         // The most recent turn must survive.
         assert!(prompt.contains('5'), "newest turn dropped");

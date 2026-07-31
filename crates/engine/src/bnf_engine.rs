@@ -56,6 +56,10 @@ impl BnfEngine {
 
     /// Create a new BNF engine with a custom kbnf config.
     pub fn with_config(grammar: &str, vocab: &[Vec<u8>], config: Config) -> Result<Self, BnfError> {
+        // kbnf's grammar dialect requires `;` after every rule; our
+        // schema_to_gbnf emits GBNF-style rules without them. Convert
+        // first, or kbnf rejects every rule with a parsing error.
+        let kbnf_str = crate::grammar::gbnf_to_kbnf(grammar);
         let id_to_token: AHashMap<u32, Token> = vocab
             .iter()
             .enumerate()
@@ -74,7 +78,7 @@ impl BnfEngine {
             .map_err(|e| BnfError::Vocab(format!("{e:?}")))?;
 
         let engine_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            Engine::with_config(grammar, vocab_obj, config)
+            Engine::with_config(&kbnf_str, vocab_obj, config)
         }));
         let mut engine = match engine_res {
             Ok(Ok(eng)) => eng,

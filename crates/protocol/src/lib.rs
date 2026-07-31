@@ -45,9 +45,6 @@ pub struct OpenAiCompletionRequest {
     /// Save resulting state to this cache slot (RoCo extension).
     #[serde(default)]
     pub state_slot: Option<String>,
-    /// DEPRECATED: use `init_state` and `state_slot` instead. Legacy session ID.
-    #[serde(default)]
-    pub session: Option<String>,
     /// Deterministic seed for reproducible sampling (RoCo extension).
     /// Same seed + same prompt + same temperature = same output.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -57,18 +54,14 @@ pub struct OpenAiCompletionRequest {
 impl OpenAiCompletionRequest {
     /// Convert to the engine's `CompletionRequest`, consuming self.
     pub fn into_engine(self) -> CompletionRequest {
-        // If session is set, use it as both init and state slot for backward compat
-        let init_state = self.init_state.or_else(|| self.session.clone());
-        let state_slot = self.state_slot.or_else(|| self.session.clone());
-
         CompletionRequest {
             prompt: self.prompt,
             prefill: self.prefill,
             grammar: self.grammar,
             temperature: self.temperature.unwrap_or(0.2),
             max_tokens: self.max_tokens.unwrap_or(512),
-            init_state,
-            state_slot,
+            init_state: self.init_state,
+            state_slot: self.state_slot,
             seed: self.seed,
             ..Default::default()
         }
@@ -86,7 +79,6 @@ impl OpenAiCompletionRequest {
             prefill: req.prefill.clone(),
             init_state: req.init_state.clone(),
             state_slot: req.state_slot.clone(),
-            session: None, // DEPRECATED: always None unless converting from legacy wire format
             seed: req.seed,
         }
     }
@@ -319,9 +311,10 @@ mod tests {
         let json = r#"{"prompt": "Hello world"}"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.prompt, "Hello world");
+        assert!(req.init_state.is_none());
         assert!(req.temperature.is_none());
         assert!(req.stream.is_none());
-        assert!(req.session.is_none());
+        assert!(req.init_state.is_none());
     }
 
     #[test]
@@ -334,9 +327,8 @@ mod tests {
             "stream": true,
             "grammar": "story",
             "prefill": "In a land far away",
-            "init_state": "story-state-1",
-            "state_slot": "story-state-2",
-            "session": "story-session-1",
+            "init_state": "story-session-1",
+            "state_slot": "story-session-1",
             "seed": 42
         }"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
@@ -347,9 +339,8 @@ mod tests {
         assert_eq!(req.stream, Some(true));
         assert_eq!(req.grammar.as_deref(), Some("story"));
         assert_eq!(req.prefill.as_deref(), Some("In a land far away"));
-        assert_eq!(req.init_state.as_deref(), Some("story-state-1"));
-        assert_eq!(req.state_slot.as_deref(), Some("story-state-2"));
-        assert_eq!(req.session.as_deref(), Some("story-session-1"));
+        assert_eq!(req.init_state.as_deref(), Some("story-session-1"));
+        assert_eq!(req.state_slot.as_deref(), Some("story-session-1"));
         assert_eq!(req.seed, Some(42));
     }
 
@@ -407,16 +398,25 @@ mod tests {
         let engine_req = CompletionRequest::new("hello");
         let wire = OpenAiCompletionRequest::from_engine(&engine_req);
         assert_eq!(wire.prompt, "hello");
+        assert!(wire.init_state.is_none());
+        assert!(wire.state_slot.is_none());
         let back = wire.into_engine();
         assert_eq!(back.prompt, "hello");
+        assert!(back.init_state.is_none());
     }
 
     #[test]
-    fn engine_round_trip_empty_system() {
-        let engine_req = CompletionRequest::new("hello");
+    fn engine_round_trip_init_state() {
+        let mut engine_req = CompletionRequest::new("hello");
+        engine_req.init_state = Some("story-writer".to_string());
+        engine_req.state_slot = Some("story-writer".to_string());
         let wire = OpenAiCompletionRequest::from_engine(&engine_req);
         assert_eq!(wire.prompt, "hello");
+        assert_eq!(wire.init_state.as_deref(), Some("story-writer"));
+        assert_eq!(wire.state_slot.as_deref(), Some("story-writer"));
         let back = wire.into_engine();
+        assert_eq!(back.init_state.as_deref(), Some("story-writer"));
+        assert_eq!(back.state_slot.as_deref(), Some("story-writer"));
         assert_eq!(back.prompt, "hello");
     }
 }

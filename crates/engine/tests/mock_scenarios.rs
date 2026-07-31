@@ -310,7 +310,7 @@ async fn tool_state_preservation() {
     // First call — set state
     let req1 = CompletionRequest {
         prompt: "First operation".into(),
-        preserve_state: true,
+        state_slot: Some("tool-state".to_string()),
         ..Default::default()
     };
     backend.complete(req1).await.unwrap();
@@ -322,7 +322,7 @@ async fn tool_state_preservation() {
     backend.load_state(state).await.unwrap();
     let req2 = CompletionRequest {
         prompt: "Second operation".into(),
-        preserve_state: true,
+        state_slot: Some("tool-state".to_string()),
         ..Default::default()
     };
     let resp = backend.complete(req2).await.unwrap();
@@ -361,9 +361,9 @@ async fn interrupted_generation_restores_saved_state() {
 
     // Generate with state preservation
     let req1 = CompletionRequest {
-        system: "system".into(),
-        prompt: "Chapter 1".into(),
-        preserve_state: true,
+        // System text embedded in prompt; state saved to slot
+        prompt: "System: system\n\nChapter 1".into(),
+        state_slot: Some("stateful-story".to_string()),
         ..Default::default()
     };
     backend.complete(req1).await.unwrap();
@@ -521,27 +521,6 @@ async fn backend_respects_set_fail_count() {
 }
 
 #[tokio::test]
-async fn think_trace_extraction() {
-    let backend = MockBackend::default();
-
-    // Without record_trace
-    let req = CompletionRequest::new("no think");
-    let resp = backend.complete(req).await.unwrap();
-    assert!(resp.trace.is_empty());
-
-    // With record_trace (the modern equivalent of thinking-mode trace)
-    let mut req_trace = CompletionRequest::new("trace test");
-    req_trace.record_trace = true;
-    let resp = backend.complete(req_trace).await.unwrap();
-    assert!(!resp.trace.is_empty(), "Trace should not be empty");
-    assert!(
-        resp.text.contains("trace test"),
-        "Response should contain prompt reference: {}",
-        resp.text
-    );
-}
-
-#[tokio::test]
 async fn record_trace_token_metadata() {
     let backend = MockBackend::default();
 
@@ -552,7 +531,7 @@ async fn record_trace_token_metadata() {
 
     // With record_trace
     let req_trace = CompletionRequest::builder()
-
+        
         .prompt("trace test")
         .record_trace(true)
         .build();

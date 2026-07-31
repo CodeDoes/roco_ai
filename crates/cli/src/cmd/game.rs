@@ -40,9 +40,9 @@ pub fn cmd_game(extra: &[&str]) {
 
     // Generate intro
     let request = roco_engine::CompletionRequest {
-        system: system_prompt.clone(),
         prompt: format!(
-            "Start the adventure in {scenario}. Describe where the player is and what they see."
+            "System: {}\n\nStart the adventure in {scenario}. Describe where the player is and what they see.",
+            system_prompt
         ),
         temperature: 0.9,
         max_tokens: 600,
@@ -112,8 +112,10 @@ pub fn cmd_game(extra: &[&str]) {
                 "look" | "l" => {
                     // Re-describe area
                     let request = roco_engine::CompletionRequest {
-                        system: system_prompt.clone(),
-                        prompt: "Describe the current location in detail. What does the player see, hear, and smell?".into(),
+                        prompt: format!(
+                            "System: {}\n\nDescribe the current location in detail. What does the player see, hear, and smell?",
+                            system_prompt
+                        ),
                         temperature: 0.8,
                         max_tokens: 400,
                         prefill: Some(" thinking response".into()),
@@ -127,10 +129,10 @@ pub fn cmd_game(extra: &[&str]) {
                 }
                 "inventory" | "i" => {
                     let request = roco_engine::CompletionRequest {
-                        system: system_prompt.clone(),
-                        prompt:
-                            "What is the player currently carrying? List their inventory items."
-                                .into(),
+                        prompt: format!(
+                            "System: {}\n\nWhat is the player currently carrying? List their inventory items.",
+                            system_prompt
+                        ),
                         temperature: 0.7,
                         max_tokens: 200,
                         prefill: Some(" thinking response".into()),
@@ -145,8 +147,10 @@ pub fn cmd_game(extra: &[&str]) {
                 "restart" => {
                     r::info("Starting a new adventure...\n");
                     let request = roco_engine::CompletionRequest {
-                        system: system_prompt.clone(),
-                        prompt: format!("Restart the adventure. Describe the starting location for a new player in {scenario}."),
+                        prompt: format!(
+                            "System: {}\n\nRestart the adventure. Describe the starting location for a new player in {scenario}.",
+                            system_prompt
+                        ),
                         temperature: 0.9,
                         max_tokens: 600,
                         prefill: Some(" thinking response".into()),
@@ -184,10 +188,10 @@ pub fn cmd_game(extra: &[&str]) {
         let printed_first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let pf = std::sync::Arc::clone(&printed_first);
         let request = roco_engine::CompletionRequest {
-            system: system_prompt.clone(),
             prompt: format!(
-                "The player takes this action:\n\n{input}\n\n\
+                "System: {}\n\nThe player takes this action:\n\n{input}\n\n\
                  Describe what happens next. End with a clear description of the current situation.",
+                system_prompt
             ),
             temperature: 0.85,
             max_tokens: 500,

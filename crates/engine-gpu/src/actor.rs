@@ -1020,7 +1020,14 @@ impl RwkvActor {
                 };
                 let top_a_val = top_a.unwrap_or(0.0);
 
-                // Combine prompt tokens with prefill tokens if any
+                // Combine prompt tokens with prefill tokens if any.
+                //
+                // NOTE: prefill tokens are fed to the model but deliberately
+                // NOT passed through the grammar mask. The prefill is a model
+                // jump-start (`{\n`) that the mask is expected to re-emit as
+                // its first generated token, so `resp.text` is complete JSON
+                // on its own. Callers parse `resp.text` directly without
+                // prepending the prefill.
                 let mut all_prompt_tokens = prompt_tokens;
                 if let Some(pf) = prefill_tokens {
                     all_prompt_tokens.extend(pf);
@@ -1102,52 +1109,19 @@ impl RwkvActor {
                     .await
                     .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
 
-                    let mut p = probs.data().to_vec();
-
-                    #[cfg(feature = "grammar")]
-                    let token = {
-                        if let Some(mask) = bnf_mask.as_mut() {
-                            mask.mask(&mut p);
-                            // Renormalize so grammar-constrained tokens have full probability mass
-                            let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
-                            if sum > 0.0 {
-                                for v in p.iter_mut() {
-                                    if v.is_finite() {
-                                        *v /= sum;
-                                    }
-                                }
-                            }
-                            let t = sampling::sample_token_with_rng(
-                                &p,
-                                temperature,
-                                1.0,
-                                top_a_val,
-                                seeded_rng.as_mut(),
-                            );
-                            if t > 0 {
-                                mask.accept(t);
-                                t
-                            } else {
-                                break;
-                            }
-                        } else {
-                            sampling::sample_token_with_rng(
-                                &p,
-                                temperature,
-                                top_p,
-                                top_a_val,
-                                seeded_rng.as_mut(),
-                            )
-                        }
-                    };
-                    #[cfg(not(feature = "grammar"))]
-                    let token = sampling::sample_token_with_rng(
+                    let sampled = sampling::sample_token_masked_with_rng(
                         probs.data(),
+                        bnf_mask.as_mut(),
                         temperature,
                         top_p,
                         top_a_val,
                         seeded_rng.as_mut(),
                     );
+                    let Some(sampled) = sampled else {
+                        break;
+                    };
+                    let token = sampled.token;
+                    let grammar_done = sampled.grammar_finished;
 
                     if token == 0 || token >= 65530 {
                         break;
@@ -1201,6 +1175,20 @@ impl RwkvActor {
 
                     // If the generated span picked up template markers, stop now.
                     if self.matches_stop_sequence(&generated, token) {
+                        break;
+                    }
+
+                    // Grammar fully satisfied (closing token already emitted).
+                    if grammar_done {
+                        break;
+                    }
+
+                    // This loop exists ONLY to flush the prompt and sample the
+                    // first token; the main generation loop below samples the
+                    // rest. Without this break, generation would run up to
+                    // `max_tokens` here AND `max_tokens - 1` more below —
+                    // double the requested token budget (2*max_tokens - 1).
+                    if first_token_sampled {
                         break;
                     }
                 }
@@ -1262,56 +1250,19 @@ impl RwkvActor {
                     .await
                     .map_err(|e| EngineError::Backend(format!("softmax: {e}")))?;
 
-                    #[cfg(feature = "grammar")]
-                    let token_opt: Option<u32> = {
-                        let mut p = probs.data().to_vec();
-                        if let Some(mask) = bnf_mask.as_mut() {
-                            mask.mask(&mut p);
-                            // Renormalize so grammar-constrained tokens have full probability mass
-                            let sum: f32 = p.iter().filter(|&&v| v.is_finite()).sum();
-                            if sum > 0.0 {
-                                for v in p.iter_mut() {
-                                    if v.is_finite() {
-                                        *v /= sum;
-                                    }
-                                }
-                            }
-                            let t = sampling::sample_token_with_rng(
-                                &p,
-                                temperature,
-                                1.0,
-                                top_a_val,
-                                seeded_rng.as_mut(),
-                            );
-                            if t > 0 {
-                                mask.accept(t);
-                                Some(t)
-                            } else {
-                                None
-                            }
-                        } else {
-                            Some(sampling::sample_token_with_rng(
-                                &p,
-                                temperature,
-                                top_p,
-                                top_a_val,
-                                seeded_rng.as_mut(),
-                            ))
-                        }
-                    };
-                    #[cfg(not(feature = "grammar"))]
-                    let token_opt: Option<u32> = Some(sampling::sample_token_with_rng(
+                    let sampled = sampling::sample_token_masked_with_rng(
                         probs.data(),
+                        bnf_mask.as_mut(),
                         temperature,
                         top_p,
                         top_a_val,
                         seeded_rng.as_mut(),
-                    ));
-
-                    let token = match token_opt {
-                        Some(t) => t,
-                        None => break,
+                    );
+                    let Some(sampled) = sampled else {
+                        break;
                     };
+                    let token = sampled.token;
+                    let grammar_done = sampled.grammar_finished;
 
                     if token == 0 || token >= 65530 {
                         break;
@@ -1330,9 +1281,9 @@ impl RwkvActor {
                     // General stop conditions — must run on EVERY token (not just the
                     // first) or the model echoes the FIM template and loops. This is
                     // the guard that keeps a resumed/baked FIM session from repeating
-                    // the BEFORE/AFTER/INSERT scaffolding.
+                    // the BEFORE/AFTER/INSERT scaffolding. Stop markers are never
+                    // appended to the output.
                     if token == 10 || self.matches_stop_sequence(&generated, token) {
-                        // Don't append the stop marker to the output.
                         break;
                     }
 
@@ -1350,9 +1301,17 @@ impl RwkvActor {
                         });
                     }
 
+                    // Emit the token BEFORE checking grammar completion — the
+                    // closing token (e.g. the final `}`) is part of the output.
                     text.push_str(&word);
                     generated.push(token);
                     inference.batches[0] = RnnInputBatch::new(vec![token], RnnOption::Last);
+
+                    // Grammar fully satisfied — the closing token just emitted is
+                    // the last one; stop before sampling again.
+                    if grammar_done {
+                        break;
+                    }
 
                     // FIM session handling: after generating a reasonable INSERT,
                     // force-feed token 0 (end-of-sequence) to properly terminate

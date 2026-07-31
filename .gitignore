@@ -13,3 +13,4 @@ story/
 test-results/
 test.md
 apps/webapp/dist/
+evals/results/*_trace.txt

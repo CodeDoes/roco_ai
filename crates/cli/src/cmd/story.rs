@@ -558,9 +558,11 @@ fn prompt_chapter(
          - Start with action or dialogue, not planning.\n\
          - Use paragraph breaks between scenes.\n\n\
          Output ONLY a JSON object. No other text.\n\
-         The JSON must have exactly two keys: title and content.\n\n\
-         Example:\n\
-         {{\"title\": \"Chapter Title\", \"content\": \"The full story text here...\"}}"
+         The JSON must have exactly two keys: title and content.\n\
+         title: the chapter title (string).\n\
+         content: the full chapter prose, 300-500 words (string).\n\
+         The content value must be the actual story prose — write the chapter\n\
+         itself, never a placeholder or an explanation of what to write."
     )
 }
 
@@ -584,9 +586,11 @@ fn prompt_revision(
          - Do NOT include thinking, reasoning, or commentary.\n\n\
          Full story outline:\n{outline}\n\n\
          Output ONLY a JSON object. No other text.\n\
-         The JSON must have exactly two keys: title and content.\n\n\
-         Example:\n\
-         {{\"title\": \"Chapter Title\", \"content\": \"The full story text here...\"}}"
+         The JSON must have exactly two keys: title and content.\n\
+         title: the chapter title (string).\n\
+         content: the full chapter prose, 300-500 words (string).\n\
+         The content value must be the actual story prose — write the chapter\n\
+         itself, never a placeholder or an explanation of what to write."
     )
 }
 
@@ -806,7 +810,7 @@ where
             } else {
                 None
             },
-            session: session_id.map(|s| s.to_string()),
+            init_state: session_id.map(|s| s.to_string()),
             seed,
             bnf_mask: None,
             ..Default::default()
@@ -1671,7 +1675,8 @@ pub fn cmd_story(extra: &[&str]) {
         println!("  🔥 Baking writer session (format: JSON chapter prose)...");
         AgentJournal::info("story", "Baking writer session with format examples");
         let bake_result = futures::executor::block_on(
-            backend.bake_state(
+            roco_engine::bake_into_session(
+                backend.as_ref(),
                 SESSION_WRITER,
                 "You write fiction chapters. You always output JSON with title and content fields. \
                  Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
@@ -1679,7 +1684,7 @@ pub fn cmd_story(extra: &[&str]) {
             )
         );
         match bake_result {
-            Ok(sid) => AgentJournal::action("story", &format!("Writer session baked: {sid}")),
+            Ok(()) => AgentJournal::action("story", "Writer session baked"),
             Err(e) => AgentJournal::warn("story", &format!("Writer session baking skipped: {e}")),
         }
 
@@ -1687,7 +1692,8 @@ pub fn cmd_story(extra: &[&str]) {
         println!("  🔥 Baking validator session (format: JSON quality report)...");
         AgentJournal::info("story", "Baking validator session with format examples");
         let val_bake_result = futures::executor::block_on(
-            backend.bake_state(
+            roco_engine::bake_into_session(
+                backend.as_ref(),
                 SESSION_VALIDATOR,
                 "You review fiction chapters. You always output JSON with quality, issues, and suggestion fields. \
                  Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
@@ -1695,7 +1701,7 @@ pub fn cmd_story(extra: &[&str]) {
             )
         );
         match val_bake_result {
-            Ok(sid) => AgentJournal::action("story", &format!("Validator session baked: {sid}")),
+            Ok(()) => AgentJournal::action("story", "Validator session baked"),
             Err(e) => AgentJournal::warn("story", &format!("Validator session baking skipped: {e}")),
         }
 

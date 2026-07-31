@@ -82,8 +82,8 @@ fn user_story_complete_writing_session() {
     // AND the AI generates a response
     // ====================================================================
     let request = CompletionRequest {
-        system: "You are a creative writing assistant.".into(),
-        prompt: msg,
+        // System text embedded in prompt
+        prompt: format!("System: You are a creative writing assistant.\n\n{}", msg),
         temperature: 0.8,
         max_tokens: 256,
         ..Default::default()
@@ -163,8 +163,7 @@ fn user_story_complete_writing_session() {
     chat.input_text.clear();
 
     let request2 = CompletionRequest {
-        system: "You are a creative writing assistant.".into(),
-        prompt: msg2,
+        prompt: format!("System: You are a creative writing assistant.\n\n{}", msg2),
         temperature: 0.8,
         max_tokens: 256,
         ..Default::default()
@@ -307,7 +306,6 @@ fn user_story_pacing_controls_throughout_session() {
         chat.add_message(ChatMessage::user(msg.clone()));
 
         let request = CompletionRequest {
-            system: "".into(),
             prompt: msg,
             temperature: 0.8,
             max_tokens: 64,

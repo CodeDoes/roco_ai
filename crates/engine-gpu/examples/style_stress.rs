@@ -150,17 +150,14 @@ async fn main() -> anyhow::Result<()> {
             let prompt = build_prompt(style, &turns, input, system);
             let resp = backend
                 .complete(CompletionRequest {
-                    system: String::new(),
+                    // System text embedded in prompt by build_prompt
                     prompt,
                     output_schema: None,
                     grammar: None,
                     temperature: 0.5,
                     max_tokens: 48,
                     estimated_prompt_tokens: 0,
-                    thinking: false,
-                    preserve_state: false,
                     on_token: Some(Box::new(move |t: &str| cloned.lock().unwrap().push_str(t))),
-                    session: None,
                     ..Default::default()
                 })
                 .await?;

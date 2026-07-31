@@ -978,7 +978,7 @@ mod tests {
             Duration::from_secs(2),
             || {
                 let backend = make_backend();
-                let req = roco_engine::CompletionRequest::new("sys");
+                let req = roco_engine::CompletionRequest::new("hello");
                 let res = futures::executor::block_on(backend.complete(req));
                 assert!(res.is_ok(), "expected Ok, got {res:?}");
                 res.unwrap().text
@@ -997,7 +997,7 @@ mod tests {
     async fn tokio_backend_complete_from_inside_tokio_runtime() {
         let res = tokio::task::spawn_blocking(|| {
             let backend = make_backend();
-            let req = roco_engine::CompletionRequest::new("sys");
+            let req = roco_engine::CompletionRequest::new("hello from tokio");
             futures::executor::block_on(backend.complete(req))
         })
         .await
@@ -1031,22 +1031,22 @@ mod tests {
         }
     }
 
-    // ── Scenario 4: bake_state via futures::executor::block_on ───────────────
-    // bake_state had the same spawn().await bug.
-    // MockBackend returns Err for bake_state (default impl); we only care
+    // ── Scenario 4: bake via futures::executor::block_on ────────────────────
+    // bake had the same spawn().await bug.
+    // MockBackend returns Err for bake (default impl); we only care
     // that the call doesn't deadlock.
 
     #[test]
-    fn tokio_backend_bake_state_via_futures_block_on_no_surrounding_runtime() {
+    fn tokio_backend_bake_via_futures_block_on_no_surrounding_runtime() {
         assert_completes_within(
-            "bake_state via futures::executor::block_on",
+            "bake via futures::executor::block_on",
             Duration::from_secs(2),
             || {
                 let backend = make_backend();
-                let res = futures::executor::block_on(backend.bake_state(
-                    "sess-1",
-                    "system prompt",
-                    &[("hi", "hello")],
+                let res = futures::executor::block_on(backend.bake(
+                    "System: system prompt\n\nUser: hi\n\nAssistant:hello",
+                    None,
+                    Some("sess-1"),
                 ));
                 // Default impl returns Err; we just care it doesn't hang.
                 assert!(res.is_err());
@@ -1154,7 +1154,7 @@ mod tests {
         // Force mock mode so this test never tries to spawn a real daemon.
         std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
         let backend = ensure_sync_backend();
-        let req = roco_engine::CompletionRequest::new("sys");
+        let req = roco_engine::CompletionRequest::new("smoke test");
         assert_completes_within(
             "ensure_sync_backend via block_on",
             Duration::from_secs(2),
@@ -1181,7 +1181,7 @@ mod tests {
     fn tokio_backend_result_is_immediately_ready_no_reactor_needed() {
         use std::future::Future;
         let backend = make_backend();
-        let req = roco_engine::CompletionRequest::new("sys");
+        let req = roco_engine::CompletionRequest::new("ready check");
         // complete() must return a future that is Poll::Ready on the very
         // first poll — no waker, no reactor involvement required.
         let mut future = backend.complete(req);

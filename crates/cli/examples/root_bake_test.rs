@@ -147,13 +147,22 @@ async fn bake_single_shot(
     }
     transcript.push_str("\n\n");
     let req = CompletionRequest {
-        system: system.to_string(),
-        prompt: transcript,
+        // System text embedded in prompt; init_state+state_slot to load & save baked state
+        prompt: format!("System: {}\n\n{}", system, transcript),
         prefill: Some(" ".to_string()),
         temperature: 0.0,
         max_tokens: 2,
         init_state: Some(session.to_string()),
-            state_slot: Some(session.to_string()),
+        state_slot: Some(session.to_string()),
+        grammar: None,
+        bnf_mask: None,
+        top_a: None,
+        on_token: None,
+        output_schema: None,
+        estimated_prompt_tokens: 0,
+        deadline_ms: 30000,
+        seed: None,
+        record_trace: false,
         ..Default::default()
     };
     backend
@@ -172,12 +181,21 @@ async fn run_test(
     let start = Instant::now();
     let resp = backend
         .complete(CompletionRequest {
-            system: String::new(),
+            // System text embedded in prompt; load session state without saving back
             prompt: prompt.to_string(),
+            init_state: session.map(|s| s.to_string()),
             temperature: 0.8,
             max_tokens: 600,
-            init_state: session.map(|s| s.to_string()),
-            state_slot: session.map(|s| s.to_string()),
+            prefill: None,
+            grammar: None,
+            bnf_mask: None,
+            top_a: None,
+            on_token: None,
+            seed: None,
+            record_trace: false,
+            output_schema: None,
+            estimated_prompt_tokens: 0,
+            deadline_ms: 60000,
             ..Default::default()
         })
         .await;
@@ -239,15 +257,13 @@ async fn main() {
     );
     let _ = backend
         .complete(CompletionRequest {
-            system: String::new(),
+            // System text embedded in prompt; init_state+state_slot to load & save baked context
             prompt: story_transcript,
             prefill: Some(" ".to_string()),
             temperature: 0.0,
             max_tokens: 2,
             init_state: Some("root-story".to_string()),
             state_slot: Some("root-story".to_string()),
-            session: None,
-            preserve_state: true,
             grammar: None,
             bnf_mask: None,
             top_a: None,
@@ -255,9 +271,9 @@ async fn main() {
             output_schema: None,
             estimated_prompt_tokens: 0,
             deadline_ms: 30000,
-            thinking: false,
             seed: None,
             record_trace: false,
+            ..Default::default()
         })
         .await;
 

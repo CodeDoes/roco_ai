@@ -209,7 +209,7 @@ impl StateTuning for RemoteBackend {
             }
 
             let resp = builder.send().await.map_err(|e| {
-                EngineError::Backend(format!("bake_state HTTP request failed: {e}"))
+                EngineError::Backend(format!("tune_state HTTP request failed: {e}"))
             })?;
 
             if !resp.status().is_success() {
@@ -219,14 +219,14 @@ impl StateTuning for RemoteBackend {
                     .await
                     .unwrap_or_else(|_| "<unreadable>".to_string());
                 return Err(EngineError::Backend(format!(
-                    "bake_state HTTP error {status}: {body}"
+                    "tune_state HTTP error {status}: {body}"
                 )));
             }
 
             let bake_resp: roco_protocol::BakeResponse = resp
                 .json()
                 .await
-                .map_err(|e| EngineError::Backend(format!("bake_state decode failed: {e}")))?;
+                .map_err(|e| EngineError::Backend(format!("tune_state decode failed: {e}")))?;
 
             Ok(bake_resp.session_id)
         })

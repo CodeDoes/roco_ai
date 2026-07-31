@@ -135,13 +135,25 @@ async fn bake_context(backend: &RemoteBackend, session: &str) -> std::result::Re
          User: Here is the world bible:\n{WIKI}\n\nAssistant: I understand the world and characters."
     );
     let req = CompletionRequest {
-        system: "You are a story writer. Remember the story world details.".to_string(),
-        prompt: transcript,
-        prefill: Some(" ".to_string()),
-        temperature: 0.0,
-        max_tokens: 4,
+        // System text embedded in prompt; init_state+state_slot to load & save baked context
+        prompt: format!(
+            "System: You are a story writer. Remember the story world details.\n\n{}",
+            transcript
+        ),
         init_state: Some(session.to_string()),
         state_slot: Some(session.to_string()),
+        prefill: Some(" thinking response".to_string()),
+        temperature: 0.0,
+        max_tokens: 4,
+        grammar: None,
+        bnf_mask: None,
+        top_a: None,
+        on_token: None,
+        output_schema: None,
+        estimated_prompt_tokens: 0,
+        deadline_ms: 30000,
+        seed: None,
+        record_trace: false,
         ..Default::default()
     };
     backend
@@ -161,13 +173,21 @@ async fn run_test(
     let start = Instant::now();
     let resp = backend
         .complete(CompletionRequest {
-            system: system.to_string(),
-            prompt: prompt.to_string(),
+            // System text embedded in prompt; load session state without saving back
+            prompt: format!("System: {}\n\n{}", system, prompt),
+            init_state: session.map(|s| s.to_string()),
             temperature: 0.8,
             max_tokens: 500,
-            session: session.map(|s| s.to_string()),
-            init_state: session.map(|s| s.to_string()),
-            state_slot: session.map(|s| s.to_string()),
+            prefill: None,
+            grammar: None,
+            bnf_mask: None,
+            top_a: None,
+            on_token: None,
+            seed: None,
+            record_trace: false,
+            output_schema: None,
+            estimated_prompt_tokens: 0,
+            deadline_ms: 60000,
             ..Default::default()
         })
         .await;

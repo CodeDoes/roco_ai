@@ -253,8 +253,10 @@ impl RocoDesktopApp {
                     ));
 
                     let request = CompletionRequest {
-                        system: "You are a creative writing assistant. Respond with vivid, engaging prose.".into(),
-                        prompt: text,
+                        prompt: format!(
+                            "System: You are a creative writing assistant. Respond with vivid, engaging prose.\n\n{}",
+                            text
+                        ),
                         temperature: 0.8,
                         max_tokens: 1024,
                         ..Default::default()
