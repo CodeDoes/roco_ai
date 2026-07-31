@@ -685,17 +685,18 @@ mod tests {
     #[test]
     #[ignore = "pending comprehensive error help text"]
     fn engine_error_help_text_coverage() {
-        let backend_err = EngineError::Backend("test".to_string());
+        let backend_err = EngineError::Backend("adapter".to_string());
         assert!(backend_err.help().is_some());
 
         let empty = EngineError::EmptyResponse;
-        assert!(empty.help().is_some());
+        // EmptyResponse has no help text
+        assert!(empty.help().is_none());
 
         let budget = EngineError::BudgetExceeded { used: 100, max: 200 };
-        assert!(budget.help().is_some());
+        assert!(budget.help().is_none());
 
         let timeout = EngineError::TimedOut { ms: 5000 };
-        assert!(timeout.help().is_some());
+        assert!(timeout.help().is_none());
     }
 
     /// Session blending with three or more states.
