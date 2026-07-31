@@ -1,0 +1,31 @@
+[package]
+name = "roco-napi"
+version.workspace = true
+edition.workspace = true
+description = "Node.js native addon wrapping roco-engine + roco-engine-gpu (RWKV inference in-process from Node)"
+
+[lib]
+name = "roco_napi"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Real GPU inference backend (RwkvBackend). Compiles web-rwkv + wgpu — only
+# build this crate when you actually need native inference from Node.
+roco-engine = { path = "../engine" }
+roco-engine-gpu = { path = "../engine-gpu", default-features = false, features = ["grammar"] }
+
+napi = { version = "2.16", default-features = false, features = ["napi4", "napi6", "async", "serde-json"] }
+napi-derive = "2.16"
+
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+base64 = "0.22"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[build-dependencies]
+napi-build = "2.1"

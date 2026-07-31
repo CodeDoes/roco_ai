@@ -1,0 +1,27 @@
+{
+  "name": "roco-napi",
+  "version": "0.1.0",
+  "description": "Native Node.js addon for RoCo inference (RWKV-7 via Vulkan).",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "roco-napi",
+    "triples": {
+      "defaults": true,
+      "additional": []
+    }
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "napi build --platform --release --strip --js index.js --dts index.d.ts",
+    "build:debug": "napi build --platform --js index.js --dts index.d.ts",
+    "test": "node --test __test__/index.spec.ts"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "typescript": "^5.3.3"
+  }
+}
