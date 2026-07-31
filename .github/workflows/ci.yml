@@ -1,16 +1,16 @@
-# RoCo AI — CI checks
+# RoCo AI - CI checks
 #
 # Build matrix mirrors the local compilation graph. Each job compiles only
-# what it needs — no single PR pays for `--workspace --all-features`.
+# what it needs - no single PR pays for `--workspace --all-features`.
 #
 # Matrix:
-#   check-default   — no GPU/egui, fast default path (~15–20s)
-#   check-remote    — includes reqwest/rustls
-#   check-desktop   — includes egui/eframe
-#   check-inferd    — includes wgpu/web-rwkv (GPU daemon)
-#   test-core       — per-crate tests (agent-core, agent-story, engine)
-#   clippy          — workspace-wide lint
-#   fmt             — formatting check
+#   check-default   - no GPU/egui, fast default path (~15–20s)
+#   check-remote    - includes reqwest/rustls
+#   check-desktop   - includes egui/eframe
+#   check-inferd    - includes wgpu/web-rwkv (GPU daemon)
+#   test-core       - per-crate tests (agent-core, agent-story, engine)
+#   clippy          - workspace-wide lint
+#   fmt             - formatting check
 
 name: CI
 
@@ -33,7 +33,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install system deps (mold + clang for .cargo/config.toml)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: "cargo check — default CLI"
+      - name: "cargo check - default CLI"
         run: cargo check -p roco-cli
 
   check-remote:
@@ -44,7 +44,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install system deps
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: "cargo check — net features"
+      - name: "cargo check - net features"
         run: cargo check -p roco-cli --features net
 
   check-desktop:
@@ -53,9 +53,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install system deps (egui: libgl, libxcb, …)
+      - name: Install system deps (egui: libgl, libxcb, ...)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1-mesa-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev mold clang
-      - name: "cargo check — desktop feature"
+      - name: "cargo check - desktop feature"
         run: cargo check -p roco-cli --features desktop
 
   check-inferd:
@@ -66,7 +66,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install system deps (wgpu + mold + clang)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1-mesa-dev mold clang
-      - name: "cargo check — inference daemon"
+      - name: "cargo check - inference daemon"
         run: cargo check -p roco-inferd
 
   test-core:
@@ -77,7 +77,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install system deps
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: "cargo test — workspace"
+      - name: "cargo test - workspace"
         run: cargo test --workspace --no-fail-fast
 
   clippy:
@@ -88,7 +88,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install system deps
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: "cargo clippy — deny warnings"
+      - name: "cargo clippy - deny warnings"
         run: cargo clippy --workspace --all-targets -- --deny warnings
 
   fmt:
@@ -97,5 +97,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: "cargo fmt — check"
+      - name: "cargo fmt - check"
         run: cargo fmt --all -- --check
