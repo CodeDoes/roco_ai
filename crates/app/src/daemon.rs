@@ -1120,11 +1120,13 @@ mod tests {
 
     #[test]
     fn test_gateway_port_default() {
+        unsafe { std::env::remove_var("ROCO_GATEWAY_PORT") };
         assert_eq!(gateway_port(), DEFAULT_GATEWAY_PORT);
     }
 
     #[test]
     fn test_inferd_port_default() {
+        unsafe { std::env::remove_var("ROCO_INFERD_PORT") };
         assert_eq!(inferd_port(), DEFAULT_INFERD_PORT);
     }
 
