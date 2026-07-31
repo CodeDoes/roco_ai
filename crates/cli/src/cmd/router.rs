@@ -141,7 +141,7 @@ fn detect_intent(
     user_message: &str,
     available: &[Intent],
     mode_hint: &str,
-) -> (Intent, String) {
+) -> Result<(Intent, String), String> {
     let prompt = intent_detection_prompt(user_message, available, mode_hint);
 
     let request = roco_engine::CompletionRequest {
@@ -166,7 +166,6 @@ fn detect_intent(
             target_mode: Mode::Chat,
             is_passive: true,
         });
-    let fallback = || (chat_intent.clone(), user_message.to_string());
 
     let res = match futures::executor::block_on(backend.complete(request)) {
         Ok(resp) => {
@@ -186,18 +185,18 @@ fn detect_intent(
                             "router",
                             &format!("Intent detected: {} -> prompt: \"{}\"", intent.id, prompt),
                         );
-                        (intent, r::clean_response(&prompt))
+                        return Ok((intent, r::clean_response(&prompt)));
                     } else {
-                        fallback()
+                        return Err(format!("Unknown intent '{}' detected. Available: {:?}", intent_id, available.iter().map(|i| i.id).collect::<Vec<_>>()));
                     }
                 } else {
-                    fallback()
+                    return Err("Intent detection returned invalid JSON".to_string());
                 }
             } else {
-                fallback()
+                return Err("Intent detection did not return JSON".to_string());
             }
         }
-        Err(_) => fallback(),
+        Err(e) => return Err(format!("Intent detection failed: {}", e)),
     };
     print!("\r\x1b[K");
     io::stdout().flush().ok();
@@ -235,7 +234,11 @@ pub fn cmd_router(extra: &[&str]) {
             println!("\n{reply}");
             add_history(&mut history, "assistant", &reply);
         } else {
-            let (intent, extracted) = detect_intent(&*backend, prompt, &intents, "chat");
+            let (intent, extracted) = detect_intent(&*backend, prompt, &intents, "chat")
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                });
             current_mode = intent.target_mode;
 
             match current_mode {
@@ -328,7 +331,11 @@ pub fn cmd_router(extra: &[&str]) {
 
         // ── Intent detection on EVERY message, from EVERY mode ────────
         let (intent, extracted) =
-            detect_intent(&*backend, &input, &intents, current_mode.router_prompt());
+            detect_intent(&*backend, &input, &intents, current_mode.router_prompt())
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                });
 
         // If intent changed to a different mode, switch
         if intent.target_mode != current_mode {
