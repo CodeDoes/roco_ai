@@ -664,7 +664,10 @@ mod tests {
     fn response_with_trace_serializes() {
         let resp = CompletionResponse {
             text: "hello world".to_string(),
-            usage: TokenUsage { prompt_tokens: 5, completion_tokens: 3 },
+            usage: TokenUsage {
+                prompt_tokens: 5,
+                completion_tokens: 3,
+            },
             parsed: None,
             trace: vec![TokenTrace {
                 token_id: 1,
@@ -691,7 +694,10 @@ mod tests {
         let empty = EngineError::EmptyResponse;
         assert!(empty.help().is_some());
 
-        let budget = EngineError::BudgetExceeded { used: 100, max: 200 };
+        let budget = EngineError::BudgetExceeded {
+            used: 100,
+            max: 200,
+        };
         assert!(budget.help().is_some());
 
         let timeout = EngineError::TimedOut { ms: 5000 };
