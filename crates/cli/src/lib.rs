@@ -106,6 +106,8 @@ fn help_root() {
     eprintln!("  story        Structured short story from premise");
     eprintln!("  story-mode   Interactive story writing assistant");
     eprintln!("  sm           Alias for story-mode");
+    eprintln!("  session      Session management (new, list, show, delete)");
+    eprintln!("  workspace    Workspace management (new, list, show, delete)");
     eprintln!("  game         Adventure game mode (interactive fiction)");
     eprintln!("  html         Live HTML canvas");
     eprintln!("  code         AI coding assistant");
@@ -189,6 +191,34 @@ fn help_story() {
     eprintln!("  roco story --resume");
     eprintln!("  roco story --phase synopsis                           # re-run only synopsis");
     eprintln!("  roco story \"A detective in a cyberpunk city\" --fix chapter 3\n");
+    std::process::exit(0);
+}
+
+fn help_session() {
+    eprintln!("roco session — Session management\n");
+    eprintln!("Usage:");
+    eprintln!("  roco session new                         Create a new session");
+    eprintln!("  roco session <id> -p \"prompt\"            Send a prompt to a session");
+    eprintln!("  roco session list                        List all sessions");
+    eprintln!("  roco session show <id>                   Show session transcript");
+    eprintln!("  roco session delete <id>                 Delete a session\n");
+    eprintln!("Recommended workflow:");
+    eprintln!("  roco session new");
+    eprintln!("  roco workspace new");
+    eprintln!("  roco session <id> -p \"Use the workspace <workspace_id>\"");
+    eprintln!("  roco session <id> -p \"Write a story about X\"\n");
+    std::process::exit(0);
+}
+
+fn help_workspace() {
+    eprintln!("roco workspace — Workspace management\n");
+    eprintln!("Usage:");
+    eprintln!("  roco workspace new                       Create a new workspace");
+    eprintln!("  roco workspace list                      List all workspaces");
+    eprintln!("  roco workspace show <id>                 Show workspace contents");
+    eprintln!("  roco workspace delete <id>               Delete a workspace\n");
+    eprintln!("Workspaces store story artifacts (outline, wiki, chapters, etc.).");
+    eprintln!("Use with sessions for persistent collaborative writing.\n");
     std::process::exit(0);
 }
 
