@@ -7,7 +7,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use roco_app::AgentJournal;
+//! use roco_app::agent_journal::AgentJournal;
 //!
 //! AgentJournal::init(); // once at startup
 //! AgentJournal::info("story", "Generating outline...");

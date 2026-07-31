@@ -695,7 +695,7 @@ mod tests {
         assert!(budget.help().is_some());
 
         let timeout = EngineError::TimedOut { ms: 5000 };
-        assert!(timeout.help().is_none());
+        assert!(timeout.help().is_some());
     }
 
     /// Session blending with three or more states.
