@@ -277,7 +277,7 @@ pub async fn handle_direct_bake_test(
 ) -> impl IntoResponse {
     if let Some(backend) = &state.backend {
         let few_shots: Vec<(&str, &str)> = req.few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect();
-        
+
         match roco_engine::bake_into_session(backend.as_ref(), &req.session_id, &req.system, &few_shots).await {
             Ok(()) => axum::http::StatusCode::OK.into_response(),
             Err(e) => (
@@ -471,7 +471,7 @@ pub async fn handle_bake_session_test(
         let session = id.clone();
         let system = req.system.clone();
         let few_shots: Vec<(&str, &str)> = req.few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect();
-        
+
         match roco_engine::bake_into_session(backend.as_ref(), &session, &system, &few_shots).await {
             Ok(()) => {
                 state.sessions.update(&id, |s| {

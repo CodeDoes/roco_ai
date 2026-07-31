@@ -1,0 +1,29 @@
+--- val_outline_inference_ok ---
+System: You are an expert story editor. Evaluate this outline for         plot coherence, character motivation, and narrative logic.         Output valid JSON only.
+
+User: Evaluate this story outline:
+
+Title: The Crystal Sword
+Genre: Fantasy
+                Tone: Heroic
+
+Chapter 1: The Discovery - Marcus finds a hidden cave.
+                Chapter 2: The Awakening - The sword's power awakens.
+                Chapter 3: The Battle - Marcus faces the dark lord.
+
+                Provide:
+                - plot_coherent (boolean): Does the plot make logical sense?
+                - character_motivation_clear (boolean): Are character goals clear?
+                - has_narrative_arc (boolean): Is there a clear beginning/middle/end?
+                - detail (string): Brief evaluation
+                - suggestion (string or null): How to improve
+
+                Output valid JSON only.
+
+Assistant: : true,
+"character_motivation_clear" : true,
+"has_narrative_arc" : true,
+"detail" : "The outline follows a classic hero's journey structure with a clear beginning (discovery), middle (awakening and battle), and end (confrontation with the dark lord). The motivations are clear: Marcus seeks the sword's power to defeat the dark lord. The plot is logically coherent, with each chapter building on the previous one.",
+"suggestion" : null
+}
+

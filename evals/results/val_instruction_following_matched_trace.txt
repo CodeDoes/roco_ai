@@ -1,0 +1,43 @@
+--- val_instruction_following_matched ---
+System: You are a quality assurance evaluator. Determine if a chapter         follows its outline instructions. Output valid JSON only.
+
+User: Determine if this chapter follows the original instructions.
+
+                Outline/Instructions:
+The hero discovers a hidden cave and finds an ancient artifact.
+
+                Chapter 1:
+Marcus stumbled upon a cave behind the waterfall. Inside,                 glowing runes lined the walls. On a pedestal lay a crystal sword.
+
+                Does this chapter follow the instructions? Output:
+                - follows_instructions (boolean)
+                - detail (string, brief explanation)
+                - suggestion (string or null, how to fix)
+
+                Output valid JSON only.
+
+Assistant: : false,
+"detail" : "The chapter does not follow the instructions because the hero does not discover a hidden cave and find an ancient artifact. Instead, the hero stumbles upon a cave behind the waterfall and finds a crystal sword on a pedestal.",
+"suggestion" : "The hero should discover a hidden cave and find an ancient artifact in the chapter. The crystal sword should be found on a pedestal inside the cave."
+}--- val_instruction_following_matched ---
+System: You are a quality assurance evaluator. Determine if a chapter         follows its outline instructions. Output valid JSON only.
+
+User: Determine if this chapter follows the original instructions.
+
+                Outline/Instructions:
+The hero discovers a hidden cave and finds an ancient artifact.
+
+                Chapter 1:
+Marcus stumbled upon a cave behind the waterfall. Inside,                 glowing runes lined the walls. On a pedestal lay a crystal sword.
+
+                Does this chapter follow the instructions? Output:
+                - follows_instructions (boolean)
+                - detail (string, brief explanation)
+                - suggestion (string or null, how to fix)
+
+                Output valid JSON only.
+
+Assistant: : false,
+"detail" : "The chapter does not follow the instructions because the hero does not discover a hidden cave and find an ancient artifact. Instead, the hero stumbles upon a cave behind the waterfall and finds a crystal sword on a pedestal.",
+"suggestion" : "The hero should discover a hidden cave and find an ancient artifact in the chapter. The crystal sword should be found on a pedestal inside the cave."
+}

@@ -1902,4 +1902,3 @@ pub fn cmd_story(extra: &[&str]) {
         AgentJournal::warn("story", &format!("Pipeline failed: {e}"));
     }
 }
-

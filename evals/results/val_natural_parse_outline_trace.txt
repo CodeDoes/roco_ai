@@ -1,0 +1,23 @@
+--- val_natural_parse_outline ---
+System: You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.
+
+User: REQUEST: Validate the story outline -- check that all chapters have                 summaries and the plot has a complete arc.
+
+Assistant:--- val_natural_parse_outline ---
+System: You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.
+
+User: REQUEST: Validate the story outline -- check that all chapters have                 summaries and the plot has a complete arc.
+
+Assistant: {
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "summary": "A young woman named Lily is introduced as she prepares for her first day at a new job. She is excited and nervous about the opportunity to start fresh and make a good impression."
+    },
+    {
+      "chapter_number": 2,
+      "summary": "Lily arrives at her new workplace, a bustling office building, and meets her colleagues. She is impressed by the modern and efficient environment, but also feels a sense of isolation as she is the only woman in the office."
+    },
+    {
+      "chapter_number": 3,
+      "summary": "Lily's boss, Mr. Thompson, assigns her to

@@ -1,0 +1,108 @@
+--- story_wiki_json ---
+System: You are a worldbuilding assistant. Output valid JSON only. No thinking, no reasoning, no commentary. Only JSON.
+
+User: Based on this premise and outline, create character bios and setting lore:
+
+Premise: A time traveler gets stuck in a medieval bakery.
+Outline: Title: Bread and Time. Genre: Fantasy. Tone: Whimsical.
+Chapter 1: The Flour of Fate - Alex is transported to a medieval village.
+Chapter 2: The Art of the Artisan - Alex learns baking from Master Thorne.
+Chapter 3: The Final Flour - Alex returns home changed.
+
+Output JSON matching the schema: characters (array of objects with name, description), setting (string).
+
+Assistant: ```json
+{
+  "characters": [
+    {
+      "name": "Alex",
+      "description": "A modern-day baker who gets transported to a medieval village."
+    },
+    {
+      "name": "Master Thorne",
+      "description": "An experienced baker in the medieval village who teaches Alex the art of baking."
+    }
+  ],
+  "setting": "A medieval village where time travel has an unusual consequence."
+}
+```--- story_wiki_json ---
+System: You are a worldbuilding assistant. Output valid JSON only. No thinking, no reasoning, no commentary. Only JSON.
+
+User: Based on this premise and outline, create character bios and setting lore:
+
+Premise: A time traveler gets stuck in a medieval bakery.
+Outline: Title: Bread and Time. Genre: Fantasy. Tone: Whimsical.
+Chapter 1: The Flour of Fate - Alex is transported to a medieval village.
+Chapter 2: The Art of the Artisan - Alex learns baking from Master Thorne.
+Chapter 3: The Final Flour - Alex returns home changed.
+
+Output JSON matching the schema: characters (array of objects with name, description), setting (string).
+
+Assistant:--- story_wiki_json ---
+System: You are a worldbuilding assistant. Output valid JSON only. No thinking, no reasoning, no commentary. Only JSON.
+
+User: Based on this premise and outline, create character bios and setting lore:
+
+Premise: A time traveler gets stuck in a medieval bakery.
+Outline: Title: Bread and Time. Genre: Fantasy. Tone: Whimsical.
+Chapter 1: The Flour of Fate - Alex is transported to a medieval village.
+Chapter 2: The Art of the Artisan - Alex learns baking from Master Thorne.
+Chapter 3: The Final Flour - Alex returns home changed.
+
+Output JSON matching the schema: characters (array of objects with name, description), setting (string).
+
+Assistant: {
+  "characters": [
+    {
+      "name": "Alex",
+      "description--- story_wiki_json ---
+System: You are a worldbuilding assistant. Output valid JSON only. No thinking, no reasoning, no commentary. Only JSON.
+
+User: Based on this premise and outline, create character bios and setting lore:
+
+Premise: A time traveler gets stuck in a medieval bakery.
+Outline: Title: Bread and Time. Genre: Fantasy. Tone: Whimsical.
+Chapter 1: The Flour of Fate - Alex is transported to a medieval village.
+Chapter 2: The Art of the Artisan - Alex learns baking from Master Thorne.
+Chapter 3: The Final Flour - Alex returns home changed.
+
+Output JSON matching the schema: characters (array of objects with name, description), setting (string).
+
+Assistant:": "A modern-day baker who gets stuck in a medieval bakery"
+    },
+    {
+      "name": "Master Thorne",
+      "description": "A wise and skilled medieval baker who mentors Alex"
+    },
+    {
+      "name": "Elara",
+      "description": "A kind and curious apprentice who learns from Alex"
+    },
+    {
+      "name": "Sir Cedric",
+      "description": "A noble knight who brings drama and conflict to the story"
+    },
+    {
+      "name": "Lord Aldric",
+      "description": "The mysterious and powerful lord who owns the bakery"
+    },
+    {
+      "name": "The Flour Goddess",
+      "description": "A mystical entity who guards the secret of the time-traveling bread"
+    }
+  ],
+  "setting": "A medieval village surrounded by rolling hills, with a bustling market square and a warm, inviting bakery owned by Master Thorne."
+}--- story_wiki_json ---
+System: You are a worldbuilding assistant. Output valid JSON only. No thinking, no reasoning, no commentary. Only JSON.
+
+User: Based on this premise and outline, create character bios and setting lore:
+
+Premise: A time traveler gets stuck in a medieval bakery.
+Outline: Title: Bread and Time. Genre: Fantasy. Tone: Whimsical.
+Chapter 1: The Flour of Fate - Alex is transported to a medieval village.
+Chapter 2: The Art of the Artisan - Alex learns baking from Master Thorne.
+Chapter 3: The Final Flour - Alex returns home changed.
+
+Output JSON matching the schema: characters (array of objects with name, description), setting (string).
+
+Assistant:

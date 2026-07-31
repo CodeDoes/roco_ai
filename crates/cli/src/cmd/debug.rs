@@ -12,7 +12,7 @@ pub fn run_debug_with_backend(backend: &dyn ModelBackend, prompt: &str) {
     println!("================================================================");
 
     let req = CompletionRequest::builder()
-        
+
         .prompt(prompt)
         .temperature(0.7)
         .max_tokens(10)

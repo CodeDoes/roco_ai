@@ -223,7 +223,7 @@ impl WikiValidator {
         let text = futures::executor::block_on(
             backend.complete(
                 CompletionRequest::builder()
-                    
+
                     .prompt(format!("System: {}\n\nUser: {}\n\nAssistant:", system, prompt))
                     .grammar_opt(grammar)
                     .temperature(0.3)

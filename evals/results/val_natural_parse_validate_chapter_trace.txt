@@ -1,0 +1,42 @@
+--- val_natural_parse_validate_chapter ---
+System: You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.
+
+User: REQUEST: Check that chapter 3 has at least 500 words and no typos.
+
+Assistant:--- val_natural_parse_validate_chapter ---
+System: You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.
+
+User: REQUEST: Check that chapter 3 has at least 500 words and no typos.
+
+Assistant:--- val_natural_parse_validate_chapter ---
+System: You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.
+
+User: REQUEST: Check that chapter 3 has at least 500 words and no typos.
+
+Assistant:--- val_natural_parse_validate_chapter ---
+System: You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.
+
+User: REQUEST: Check that chapter 3 has at least 500 words and no typos.
+
+Assistant: {
+  "validation_router": {
+    "input": "Check that chapter 3 has at least 500 words and no typos.",
+    "output": {
+      "chapter_3_word_count": "500",
+      "chapter_3_typos": "0"
+    }
+  }
+}--- val_natural_parse_validate_chapter ---
+System: You are a validation router. Given a natural language request,                 identify what needs to be validated and any constraints.                 Respond with a structured list.
+
+User: REQUEST: Check that chapter 3 has at least 500 words and no typos.
+
+Assistant: {
+  "validation_router": {
+    "input": "Check that chapter 3 has at least 500 words and no typos.",
+    "output": {
+      "chapter_3_word_count": "500",
+      "chapter_3_typos": "0"
+    }
+  }
+}

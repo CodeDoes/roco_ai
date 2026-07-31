@@ -89,7 +89,7 @@ async fn health_local_backend() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    
+
     let body: serde_json::Value = serde_json::from_slice(
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
@@ -106,7 +106,7 @@ async fn health_workspace_only() {
         .unwrap();
     // Should be 503 since inferd is unreachable
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
-    
+
     let body: serde_json::Value = serde_json::from_slice(
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
@@ -123,7 +123,7 @@ async fn complete_local_basic() {
         "prompt": "Hello, world!",
         "max_tokens": 100,
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -135,7 +135,7 @@ async fn complete_local_basic() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
     let body: roco_engine::CompletionResponse = serde_json::from_slice(
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
@@ -152,7 +152,7 @@ async fn complete_local_with_system() {
         "temperature": 0.5,
         "max_tokens": 200,
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -164,7 +164,7 @@ async fn complete_local_with_system() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -176,7 +176,7 @@ async fn complete_local_with_grammar() {
         "grammar": "root ::= \"{ \"result\": \"hello\" }\"",
         "max_tokens": 50,
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -188,7 +188,7 @@ async fn complete_local_with_grammar() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -200,7 +200,7 @@ async fn complete_no_backend_proxies_to_inferd() {
     let req_body = serde_json::json!({
         "prompt": "Hello",
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -212,7 +212,7 @@ async fn complete_no_backend_proxies_to_inferd() {
         )
         .await
         .unwrap();
-    
+
     // Should fail since inferd is not running
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
@@ -230,7 +230,7 @@ async fn bake_local_basic() {
             ["Where is the treasure?", "X marks the spot, matey!"]
         ],
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -242,7 +242,7 @@ async fn bake_local_basic() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -254,7 +254,7 @@ async fn bake_local_empty_few_shots() {
         "system": "You are helpful",
         "few_shots": [],
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -266,7 +266,7 @@ async fn bake_local_empty_few_shots() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -280,7 +280,7 @@ async fn bake_no_backend_proxies_to_inferd() {
         "system": "You are helpful",
         "few_shots": [],
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -292,7 +292,7 @@ async fn bake_no_backend_proxies_to_inferd() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
 
@@ -301,12 +301,12 @@ async fn bake_no_backend_proxies_to_inferd() {
 #[tokio::test]
 async fn vocab_local_backend() {
     let (app, _) = gateway_with_local_backend();
-    
+
     let resp = app
         .oneshot(Request::builder().uri("/vocab").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
     let body: Vec<Vec<u8>> = serde_json::from_slice(
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
@@ -317,12 +317,12 @@ async fn vocab_local_backend() {
 #[tokio::test]
 async fn vocab_no_backend_proxies_to_inferd() {
     let app = gateway_workspace_only();
-    
+
     let resp = app
         .oneshot(Request::builder().uri("/vocab").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
 
@@ -336,7 +336,7 @@ async fn openai_completions_local() {
         "max_tokens": 100,
         "temperature": 0.7,
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -348,7 +348,7 @@ async fn openai_completions_local() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
@@ -364,7 +364,7 @@ async fn openai_completions_local() {
 #[tokio::test]
 async fn session_lifecycle_local() {
     let (app, _) = gateway_with_local_backend();
-    
+
     // Create session
     let resp = app
         .clone()
@@ -383,7 +383,7 @@ async fn session_lifecycle_local() {
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
     let session_id = body["session_id"].as_str().unwrap().to_string();
-    
+
     // Get session
     let resp = app
         .clone()
@@ -396,7 +396,7 @@ async fn session_lifecycle_local() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    
+
     // Get session status
     let resp = app
         .clone()
@@ -413,7 +413,7 @@ async fn session_lifecycle_local() {
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
     assert_eq!(body["status"], "idle");
-    
+
     // Delete session
     let resp = app
         .oneshot(
@@ -431,7 +431,7 @@ async fn session_lifecycle_local() {
 #[tokio::test]
 async fn session_complete_local() {
     let (app, _) = gateway_with_local_backend();
-    
+
     // Create session
     let resp = app
         .clone()
@@ -449,7 +449,7 @@ async fn session_complete_local() {
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
     let session_id = body["session_id"].as_str().unwrap().to_string();
-    
+
     // Complete session
     let resp = app
         .clone()
@@ -472,7 +472,7 @@ async fn session_complete_local() {
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
     assert!(body["text"].as_str().unwrap().len() > 0);
-    
+
     // Check tokens accumulated
     let resp = app
         .oneshot(
@@ -493,7 +493,7 @@ async fn session_complete_local() {
 #[tokio::test]
 async fn session_not_found() {
     let (app, _) = gateway_with_local_backend();
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -511,7 +511,7 @@ async fn session_not_found() {
 #[tokio::test]
 async fn workspace_crud() {
     let (app, _) = gateway_with_local_backend();
-    
+
     // Create workspace
     let resp = app
         .clone()
@@ -530,7 +530,7 @@ async fn workspace_crud() {
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
     assert_eq!(body["id"], "test-ws");
-    
+
     // List workspaces
     let resp = app
         .clone()
@@ -542,7 +542,7 @@ async fn workspace_crud() {
         &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
     ).unwrap();
     assert!(body["workspaces"].as_array().unwrap().len() > 0);
-    
+
     // Get workspace
     let resp = app
         .clone()
@@ -560,7 +560,7 @@ async fn workspace_crud() {
 #[tokio::test]
 async fn workspace_file_operations() {
     let (app, _) = gateway_with_local_backend();
-    
+
     // Create workspace
     let resp = app
         .clone()
@@ -575,7 +575,7 @@ async fn workspace_file_operations() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    
+
     // Write file
     let resp = app
         .clone()
@@ -590,7 +590,7 @@ async fn workspace_file_operations() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    
+
     // Read file
     let resp = app
         .clone()
@@ -605,7 +605,7 @@ async fn workspace_file_operations() {
     assert_eq!(resp.status(), StatusCode::OK);
     let content = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     assert_eq!(content.as_ref(), b"Hello, world!");
-    
+
     // List files
     let resp = app
         .oneshot(
@@ -625,16 +625,16 @@ async fn workspace_file_operations() {
 async fn session_switch_workspace() {
     let mgr = SessionManager::new();
     let id = mgr.create("ws-1");
-    
+
     // Verify initial workspace
     let session = mgr.get(&id).unwrap();
     assert_eq!(session.workspace_id, "ws-1");
-    
+
     // Switch workspace
     mgr.update(&id, |s| s.set_workspace("ws-2"));
     let session = mgr.get(&id).unwrap();
     assert_eq!(session.workspace_id, "ws-2");
-    
+
     // Switch again
     mgr.update(&id, |s| s.set_workspace("ws-3"));
     let session = mgr.get(&id).unwrap();
@@ -645,14 +645,14 @@ async fn session_switch_workspace() {
 async fn session_switch_workspace_preserves_state() {
     let mgr = SessionManager::new();
     let id = mgr.create("ws-1");
-    
+
     // Set some state
     mgr.set_status(&id, SessionStatus::Generating);
     mgr.append_tokens(&id, vec!["token1".into(), "token2".into()]);
-    
+
     // Switch workspace
     mgr.update(&id, |s| s.set_workspace("ws-2"));
-    
+
     // Verify state preserved
     let session = mgr.get(&id).unwrap();
     assert_eq!(session.workspace_id, "ws-2");
@@ -664,12 +664,12 @@ async fn session_switch_workspace_preserves_state() {
 async fn session_switch_workspace_updates_timestamp() {
     let mgr = SessionManager::new();
     let id = mgr.create("ws-1");
-    
+
     let before = mgr.get(&id).unwrap().last_accessed_at;
     std::thread::sleep(std::time::Duration::from_millis(10));
-    
+
     mgr.update(&id, |s| s.set_workspace("ws-2"));
-    
+
     let after = mgr.get(&id).unwrap().last_accessed_at;
     assert!(after >= before);
 }
@@ -693,7 +693,7 @@ async fn parametric_complete_backend_modes() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "Local backend should succeed");
-    
+
     // Without backend (proxy mode, inferd not running)
     let app_no_backend = gateway_workspace_only();
     let resp = app_no_backend
@@ -731,7 +731,7 @@ async fn parametric_bake_backend_modes() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "Local backend should succeed");
-    
+
     // Without backend
     let app_no_backend = gateway_workspace_only();
     let resp = app_no_backend
@@ -762,7 +762,7 @@ async fn parametric_vocab_backend_modes() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "Local backend should succeed");
-    
+
     // Without backend
     let app_no_backend = gateway_workspace_only();
     let resp = app_no_backend
@@ -797,15 +797,15 @@ async fn parametric_openai_completions_backend_modes() {
 async fn parametric_session_status_transitions() {
     let mgr = SessionManager::new();
     let id = mgr.create("ws-1");
-    
+
     // Idle -> Generating
     mgr.set_status(&id, SessionStatus::Generating);
     assert_eq!(mgr.get(&id).unwrap().status, SessionStatus::Generating);
-    
+
     // Generating -> Completed
     mgr.set_status(&id, SessionStatus::Completed);
     assert_eq!(mgr.get(&id).unwrap().status, SessionStatus::Completed);
-    
+
     // Test all transitions
     let transitions = vec![
         (SessionStatus::Idle, SessionStatus::Generating),
@@ -814,7 +814,7 @@ async fn parametric_session_status_transitions() {
         (SessionStatus::Completed, SessionStatus::Archived),
         (SessionStatus::Error, SessionStatus::Archived),
     ];
-    
+
     for (from, to) in transitions {
         let id = mgr.create("ws-1");
         mgr.set_status(&id, from);
@@ -828,7 +828,7 @@ async fn parametric_session_status_transitions() {
 #[tokio::test]
 async fn parametric_completion_request_variations() {
     let (app, _) = gateway_with_local_backend();
-    
+
     let variations = vec![
         // Basic prompt only
         serde_json::json!({"prompt": "Hello"}),
@@ -855,7 +855,7 @@ async fn parametric_completion_request_variations() {
             "thinking": true,
         }),
     ];
-    
+
     for (i, req_body) in variations.into_iter().enumerate() {
         let resp = app
             .clone()
@@ -881,7 +881,7 @@ async fn complete_missing_prompt() {
     let req_body = serde_json::json!({
         "system": "You are helpful",
     });
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -893,7 +893,7 @@ async fn complete_missing_prompt() {
         )
         .await
         .unwrap();
-    
+
     // Should fail since prompt is required
     assert_ne!(resp.status(), StatusCode::OK);
 }
@@ -901,7 +901,7 @@ async fn complete_missing_prompt() {
 #[tokio::test]
 async fn session_delete_nonexistent() {
     let (app, _) = gateway_with_local_backend();
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -912,7 +912,7 @@ async fn session_delete_nonexistent() {
         )
         .await
         .unwrap();
-    
+
     // Should succeed (idempotent delete)
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 }
@@ -920,7 +920,7 @@ async fn session_delete_nonexistent() {
 #[tokio::test]
 async fn workspace_not_found() {
     let (app, _) = gateway_with_local_backend();
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -930,7 +930,7 @@ async fn workspace_not_found() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -939,7 +939,7 @@ async fn workspace_not_found() {
 #[tokio::test]
 async fn concurrent_session_operations() {
     let mgr = SessionManager::new();
-    
+
     // Create 100 sessions sequentially (SessionManager is not Clone)
     let mut session_ids = Vec::new();
     for i in 0..100 {
@@ -948,14 +948,14 @@ async fn concurrent_session_operations() {
         mgr.append_tokens(&id, vec!["token".into()]);
         session_ids.push(id);
     }
-    
+
     assert_eq!(session_ids.len(), 100);
-    
+
     // Verify all sessions exist
     for id in &session_ids {
         assert!(mgr.get(id).is_some());
     }
-    
+
     // Verify workspace filtering works
     for ws_num in 0..10 {
         let ws_sessions = mgr.list_for_workspace(&format!("ws-{}", ws_num));
@@ -968,7 +968,7 @@ async fn concurrent_session_operations() {
 #[tokio::test]
 async fn rate_limiter_allows_under_limit() {
     let (app, _) = gateway_with_local_backend();
-    
+
     // Should allow many requests under limit
     for _ in 0..10 {
         let resp = app
@@ -996,7 +996,7 @@ async fn mock_backend_with_failures() {
         rate_limit_per_minute: 100,
     };
     let app = build_router(state);
-    
+
     // First 3 requests should fail
     for i in 0..3 {
         let resp = app
@@ -1013,7 +1013,7 @@ async fn mock_backend_with_failures() {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR, "Request {} should fail", i);
     }
-    
+
     // 4th request should succeed
     let resp = app
         .oneshot(

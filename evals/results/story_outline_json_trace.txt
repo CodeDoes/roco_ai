@@ -1,0 +1,165 @@
+--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant: ```json
+{
+  "title": "Baker's Dilemma",
+  "genre": "Fantasy Adventure",
+  "tone": "Humorous",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "The Flour of Time",
+      "summary": "A modern-day baker, Alex, accidentally travels back to medieval times while trying to perfect a new flour blend. He finds himself in a bustling medieval market, where the most valuable commodity is flour."
+    },
+    {
+      "number": 2,
+      "title": "The Baker's Dilemma",
+      "summary": "Alex realizes he can't return home without the modern flour. He must navigate the challenges of baking in the Middle Ages, from kneading dough with a stick to avoiding the danger of a medieval kitchen fire."
+    },
+    {
+      "number": 3,
+      "title": "The Flour of Time",
+      "summary": "With the help of a local baker, Alex discovers the secret to the perfect medieval flour and returns home, transformed by the experience."
+    }
+  ]
+}
+```--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant: {
+  "title": "Bread of Time",
+  "genre": "fantasy comedy",
+  "tone": "humorous",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "The Baker's Mistake",
+      "summary": "A time traveler arrives in a medieval bakery, accidentally swaps his modern bread for medieval flatbread, and learns the hard way how things work in a pre-industrial kitchen."
+    },
+    {
+      "number": 2,
+      "title": "Master of Dough",
+      "summary": "The traveler tries to help the baker but accidentally ruins the first batch. He must learn to work with traditional tools and methods to save the bakery and earn the master's respect."
+    },
+    {
+      "number": 3,
+      "title": "The Last Loaf",
+      "summary": "The traveler uses his modern knowledge to improve the bakery's output while preserving the old ways. He bakes a special loaf that satisfies both the baker and the future traveler's memories of home."
+    }
+  ]
+}--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant:--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant: ```json
+{
+  "title": "The Baker's Legacy",
+  "genre": "fantasy comedy",
+  "tone": "whimsical",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "The Last Ingredient",
+      "summary": "A time traveler from the future arrives in a medieval bakery, unaware of its magical properties. He accidentally adds a futuristic ingredient, causing the bread to levitate."
+    },
+    {
+      "number": 2,
+      "title": "The Royal Audience",
+      "summary": "The baker and the time traveler are invited to the king's feast, where the levitating bread creates a stir. The time traveler must explain his origin to avoid being executed as a sorcerer."
+    },
+    {
+      "number": 3,
+      "title": "The Timeless Recipe",
+      "summary": "The time traveler and the baker collaborate to create a recipe that combines the past and future, resulting in a legendary loaf that transcends time."
+    }
+  ]
+}
+```--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant: ```json
+{
+  "title": "Bread of Ages",
+  "genre": "Time Travel Comedy",
+  "tone": "Whimsical",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "A Glitch in the Pastry",
+      "summary": "A modern-day baker accidentally travels back to medieval times while trying to perfect his baking technique."
+    },
+    {
+      "number": 2,
+      "title": "Bread of the Ages",
+      "summary": "The baker struggles to navigate the medieval world, encountering both delight and danger as he tries to prove his worth."
+    },
+    {
+      "number": 3,
+      "title": "The Last Loaf",
+      "summary": "In a surprising twist, the baker discovers that his modern baking skills are the key to saving the medieval kingdom."
+    }
+  ]
+}
+```
+
+--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant:--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant:--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant:--- story_outline_json ---
+System: You are a story outliner. Output valid JSON only. Do NOT include any thinking or reasoning. Output ONLY the JSON object.
+
+User: Outline a short story with 3 chapters based on this premise:
+A time traveler gets stuck in a medieval bakery.
+
+Output JSON matching the schema: title (string), genre (string), tone (string), chapters (array of 3 objects with number, title, summary).
+
+Assistant:

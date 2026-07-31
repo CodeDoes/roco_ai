@@ -1,0 +1,18 @@
+--- story_validation_json ---
+System: You are a quality reviewer. Be strict. Output valid JSON only. Check for meta-commentary and thinking contamination.
+
+User: Review this chapter and check for:
+1. Does it read like a coherent story (not meta-commentary)?
+2. Is the prose engaging with proper paragraph breaks?
+3. Does it avoid thinking/reasoning tags?
+
+Chapter:
+The city breathed. Its skyline, a jagged silhouette against a bruised purple twilight, shuddered with the rhythm of unseen engines. Below, the streets were silent, their glassy surfaces reflecting a sky that was almost empty.
+
+Output JSON matching the schema: quality (pass/fail/needs-work), issues (string), suggestion (string).
+
+Assistant: {
+    "quality": "pass",
+    "issues": "",
+    "suggestion": ""
+}

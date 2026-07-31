@@ -1,0 +1,22 @@
+--- val_instruction_following_deviated ---
+System: You are a quality assurance evaluator. Determine if a chapter         follows its outline instructions. Output valid JSON only.
+
+User: Determine if this chapter follows the original instructions.
+
+                Outline/Instructions:
+Write a chapter where the hero fights a dragon.
+
+                Chapter 1:
+Marcus sat in the tavern drinking ale. He talked with the                 bartender about the weather. Then he went home and slept.
+
+                Does this chapter follow the instructions? Output:
+                - follows_instructions (boolean)
+                - detail (string, brief explanation)
+                - suggestion (string or null, how to fix)
+
+                Output valid JSON only.
+
+Assistant: : false,
+"detail" : "The chapter does not follow the instructions because it does not include the hero fighting a dragon.",
+"suggestion" : "Add a scene where the hero fights a dragon."
+}
