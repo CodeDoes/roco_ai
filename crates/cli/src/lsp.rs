@@ -52,15 +52,13 @@ async fn bake_fim_session(
                  never use <fim> tags, never add commentary.";
 
     // Step 1: bake the few-shot bridge examples (with metadata).
-    let bake_prompt = format!("{instruction}\n{}", FIM_FEW_SHOT);
     let step1 = CompletionRequest {
-        system: instruction.to_string(),
-        prompt: bake_prompt,
-        prefill: Some("<think></think>".to_string()),
+        init_state: Some(FIM_SESSION.to_string()),
+        state_slot: Some(FIM_SESSION.to_string()),
+        prompt: format!("System: {}\n\n{}", instruction, FIM_FEW_SHOT),
+        prefill: Some("<tool_call>".to_string()),
         temperature: 0.0,
         max_tokens: 1,
-        session: Some(FIM_SESSION.to_string()),
-        preserve_state: true,
         ..Default::default()
     };
     backend
@@ -87,13 +85,12 @@ async fn bake_fim_session(
             content = truncated,
         );
         let step = CompletionRequest {
-            system: instruction.to_string(),
+            init_state: Some(FIM_SESSION.to_string()),
+            state_slot: Some(FIM_SESSION.to_string()),
             prompt: ctx_prompt,
-            prefill: Some("<think></think>".to_string()),
+            prefill: Some("<tool_call>".to_string()),
             temperature: 0.0,
             max_tokens: 1,
-            session: Some(FIM_SESSION.to_string()),
-            preserve_state: true,
             ..Default::default()
         };
         if let Err(e) = backend.complete(step).await {
