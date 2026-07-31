@@ -282,7 +282,7 @@ impl ModelBackend for RwkvBackend {
                 text,
                 usage,
                 parsed,
-                trace,
+                                trace,
             })
         })
     }
@@ -313,12 +313,14 @@ impl ModelBackend for RwkvBackend {
         let state_slot_string = state_slot_str.to_string();
         Box::pin(async move {
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-            tx.send(ActorMessage::Bake {
-                init_state,
-                text,
-                state_slot: state_slot_string.clone(),
-                reply: reply_tx,
-            })
+            tx.send(
+                ActorMessage::Bake {
+                    init_state,
+                    text,
+                    state_slot: state_slot_string.clone(),
+                    reply: reply_tx,
+                }
+            )
             .await
             .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
             reply_rx
@@ -358,6 +360,7 @@ impl ModelBackend for RwkvBackend {
                 .map_err(|e| EngineError::Backend(format!("rwkv load_state recv: {e}")))?
         })
     }
+
 }
 
 impl StateTuning for RwkvBackend {
@@ -381,21 +384,18 @@ impl StateTuning for RwkvBackend {
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 // Format the example the same way the gateway will format
                 // real prompts: System: ...\n\nUser: ...\n\nAssistant:{response}
-                let sys_text = if _system.is_empty() {
-                    String::new()
-                } else {
+                let sys_text = if _system.is_empty() { String::new() } else {
                     format!("System: {}\n\n", _system.trim())
                 };
-                let text = format!(
-                    "{}User: {}\n\nAssistant:{}",
-                    sys_text, user_msg, assistant_msg
-                );
-                tx.send(ActorMessage::Bake {
-                    init_state: Some(session_id.clone()),
-                    text,
-                    state_slot: session_id.clone(),
-                    reply: reply_tx,
-                })
+                let text = format!("{}User: {}\n\nAssistant:{}", sys_text, user_msg, assistant_msg);
+                tx.send(
+                    ActorMessage::Bake {
+                        init_state: Some(session_id.clone()),
+                        text,
+                        state_slot: session_id.clone(),
+                        reply: reply_tx,
+                    }
+                )
                 .await
                 .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
 

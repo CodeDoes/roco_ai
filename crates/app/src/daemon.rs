@@ -687,15 +687,11 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
             .build()
             .expect("failed to build runtime");
         eprintln!("Waiting for inference server to load model...");
-        rt.block_on(wait_for_healthy(
-            inferd_port,
-            Duration::from_secs(600),
-            "Inference server",
-        ))
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        });
+        rt.block_on(wait_for_healthy(inferd_port, Duration::from_secs(600), "Inference server"))
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
         return Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)));
     }
 
@@ -720,15 +716,11 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     // Wait for inferd to be healthy before returning.
     let inferd_port = inferd_port();
     eprintln!("Waiting for inference server to load model (this may take a few minutes)...");
-    rt.block_on(wait_for_healthy(
-        inferd_port,
-        Duration::from_secs(600),
-        "Inference server",
-    ))
-    .unwrap_or_else(|e| {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
-    });
+    rt.block_on(wait_for_healthy(inferd_port, Duration::from_secs(600), "Inference server"))
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        });
 
     Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)))
 }
@@ -801,8 +793,8 @@ impl roco_engine::ModelBackend for TokioBackend {
         state: Vec<u8>,
     ) -> futures::future::BoxFuture<'_, Result<(), roco_engine::EngineError>> {
         self.inner.load_state(state)
-    }
 }
+    }
 /// Return a backend that works from synchronous code (uses a dedicated tokio
 /// runtime so reqwest calls inside `futures::executor::block_on` function).
 pub fn ensure_sync_backend() -> Arc<dyn roco_engine::ModelBackend> {
@@ -986,7 +978,7 @@ mod tests {
             Duration::from_secs(2),
             || {
                 let backend = make_backend();
-                let req = roco_engine::CompletionRequest::new("hello");
+                let req = roco_engine::CompletionRequest::new("sys", "hello");
                 let res = futures::executor::block_on(backend.complete(req));
                 assert!(res.is_ok(), "expected Ok, got {res:?}");
                 res.unwrap().text
@@ -1005,7 +997,7 @@ mod tests {
     async fn tokio_backend_complete_from_inside_tokio_runtime() {
         let res = tokio::task::spawn_blocking(|| {
             let backend = make_backend();
-            let req = roco_engine::CompletionRequest::new("hello from tokio");
+            let req = roco_engine::CompletionRequest::new("sys", "hello from tokio");
             futures::executor::block_on(backend.complete(req))
         })
         .await
@@ -1025,7 +1017,7 @@ mod tests {
             .map(|i| {
                 let b = backend.clone();
                 std::thread::spawn(move || {
-                    let req = roco_engine::CompletionRequest::new(format!("msg {i}"));
+                    let req = roco_engine::CompletionRequest::new("sys", format!("msg {i}"));
                     futures::executor::block_on(b.complete(req))
                 })
             })
@@ -1160,7 +1152,7 @@ mod tests {
         // Force mock mode so this test never tries to spawn a real daemon.
         std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
         let backend = ensure_sync_backend();
-        let req = roco_engine::CompletionRequest::new("smoke test");
+        let req = roco_engine::CompletionRequest::new("sys", "smoke test");
         assert_completes_within(
             "ensure_sync_backend via block_on",
             Duration::from_secs(2),
@@ -1187,7 +1179,7 @@ mod tests {
     fn tokio_backend_result_is_immediately_ready_no_reactor_needed() {
         use std::future::Future;
         let backend = make_backend();
-        let req = roco_engine::CompletionRequest::new("ready check");
+        let req = roco_engine::CompletionRequest::new("sys", "ready check");
         // complete() must return a future that is Poll::Ready on the very
         // first poll — no waker, no reactor involvement required.
         let mut future = backend.complete(req);

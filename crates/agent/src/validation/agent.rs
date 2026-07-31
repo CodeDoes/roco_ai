@@ -521,14 +521,16 @@ impl StoryModeAgent {
         let grammar = schema.to_gbnf("Synopsis").ok();
 
         let result: Result<SynopsisResponse, String> = {
-            let text = futures::executor::block_on(backend.complete(CompletionRequest {
-                prompt: symptoms_prompt,
-                grammar,
-                temperature: 0.5,
-                max_tokens: 500,
-                prefill: Some("{\n".into()),
-                ..Default::default()
-            }))
+            let text = futures::executor::block_on(
+                backend.complete(CompletionRequest {
+                    prompt: symptoms_prompt,
+                    grammar,
+                    temperature: 0.5,
+                    max_tokens: 500,
+                    prefill: Some("{\n".into()),
+                    ..Default::default()
+                }),
+            )
             .map_err(|e| format!("model error: {e}"))?
             .text;
 

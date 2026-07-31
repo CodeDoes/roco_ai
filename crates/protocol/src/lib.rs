@@ -319,6 +319,7 @@ mod tests {
         let json = r#"{"prompt": "Hello world"}"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.prompt, "Hello world");
+        assert!(req.system.is_none());
         assert!(req.temperature.is_none());
         assert!(req.stream.is_none());
         assert!(req.session.is_none());
@@ -329,22 +330,28 @@ mod tests {
         let json = r#"{
             "model": "rwkv-7",
             "prompt": "Once upon a time",
+            "system": "You are a storyteller.",
             "temperature": 0.8,
             "max_tokens": 200,
             "stream": true,
+            "thinking": true,
             "grammar": "story",
             "prefill": "In a land far away",
-            "session": "story-session-1"
+            "session": "story-session-1",
+            "preserve_state": true
         }"#;
         let req: OpenAiCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.model.as_deref(), Some("rwkv-7"));
         assert_eq!(req.prompt, "Once upon a time");
+        assert_eq!(req.system.as_deref(), Some("You are a storyteller."));
         assert!((req.temperature.unwrap() - 0.8).abs() < 1e-6);
         assert_eq!(req.max_tokens, Some(200));
         assert_eq!(req.stream, Some(true));
+        assert_eq!(req.thinking, Some(true));
         assert_eq!(req.grammar.as_deref(), Some("story"));
         assert_eq!(req.prefill.as_deref(), Some("In a land far away"));
         assert_eq!(req.session.as_deref(), Some("story-session-1"));
+        assert_eq!(req.preserve_state, Some(true));
     }
 
     #[test]
@@ -401,7 +408,9 @@ mod tests {
         let engine_req = CompletionRequest::new("hello");
         let wire = OpenAiCompletionRequest::from_engine(&engine_req);
         assert_eq!(wire.prompt, "hello");
+        assert_eq!(wire.system.as_deref(), Some("system"));
         let back = wire.into_engine();
+        assert_eq!(back.system, "system");
         assert_eq!(back.prompt, "hello");
     }
 
@@ -410,7 +419,10 @@ mod tests {
         let engine_req = CompletionRequest::new("hello");
         let wire = OpenAiCompletionRequest::from_engine(&engine_req);
         assert_eq!(wire.prompt, "hello");
+        // Empty system should become None on the wire
+        assert!(wire.system.is_none());
         let back = wire.into_engine();
+        assert_eq!(back.system, "");
         assert_eq!(back.prompt, "hello");
     }
 }

@@ -140,6 +140,7 @@ pub fn cmd_html(extra: &[&str]) {
     r::header("You");
 
     let request = roco_engine::CompletionRequest::builder()
+
         .prompt(greeting_prompt)
         .temperature(0.8)
         .max_tokens(2048)
@@ -256,6 +257,7 @@ pub fn cmd_html(extra: &[&str]) {
         r::header("You");
 
         let request = roco_engine::CompletionRequest::builder()
+
             .prompt(input)
             .temperature(0.8)
             .max_tokens(2048)

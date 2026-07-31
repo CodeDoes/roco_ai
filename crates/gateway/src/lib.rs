@@ -12,9 +12,9 @@
 
 pub mod job;
 pub mod session;
+pub mod workspace;
 #[cfg(test)]
 pub mod tests;
-pub mod workspace;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -276,20 +276,9 @@ pub async fn handle_direct_bake_test(
     Json(req): Json<DirectBakeRequest>,
 ) -> impl IntoResponse {
     if let Some(backend) = &state.backend {
-        let few_shots: Vec<(&str, &str)> = req
-            .few_shots
-            .iter()
-            .map(|(u, a)| (u.as_str(), a.as_str()))
-            .collect();
+        let few_shots: Vec<(&str, &str)> = req.few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect();
 
-        match roco_engine::bake_into_session(
-            backend.as_ref(),
-            &req.session_id,
-            &req.system,
-            &few_shots,
-        )
-        .await
-        {
+        match roco_engine::bake_into_session(backend.as_ref(), &req.session_id, &req.system, &few_shots).await {
             Ok(()) => axum::http::StatusCode::OK.into_response(),
             Err(e) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -468,14 +457,9 @@ pub async fn handle_bake_session_test(
     if let Some(backend) = &state.backend {
         let session = id.clone();
         let system = req.system.clone();
-        let few_shots: Vec<(&str, &str)> = req
-            .few_shots
-            .iter()
-            .map(|(u, a)| (u.as_str(), a.as_str()))
-            .collect();
+        let few_shots: Vec<(&str, &str)> = req.few_shots.iter().map(|(u, a)| (u.as_str(), a.as_str())).collect();
 
-        match roco_engine::bake_into_session(backend.as_ref(), &session, &system, &few_shots).await
-        {
+        match roco_engine::bake_into_session(backend.as_ref(), &session, &system, &few_shots).await {
             Ok(()) => {
                 state.sessions.update(&id, |s| {
                     s.system_prompt = req.system;
@@ -998,45 +982,39 @@ async fn run_job_local(state: GatewayState, job_id: String) {
     };
 
     let backend = match &state.backend {
-        Some(b) => b.clone(),
-        None => {
-            state.jobs.fail(&job_id, "no backend available".to_string());
-            return;
-        }
-    };
-
-    state.jobs.start(&job_id);
-    let comp_req = roco_engine::CompletionRequest {
-        prompt: job.prompt.clone(),
-        temperature: job.temperature,
-        max_tokens: job.max_tokens,
-        grammar: job.grammar.clone(),
-        state_slot: Some(job.session_id.clone()),
-        ..Default::default()
-    };
-
-    match backend.complete(comp_req).await {
-        Ok(resp) => {
-            // Send tokens one by one for streaming simulation
-            for token in resp.text.split_whitespace() {
-                let token = format!("{} ", token);
-                state.jobs.append_token(&job_id, &token);
-                state.sessions.append_tokens(&job.session_id, vec![token]);
-            }
-            state.jobs.complete(&job_id);
-            state
-                .sessions
-                .set_status(&job.session_id, SessionStatus::Completed);
-        }
-        Err(e) => {
-            state
-                .jobs
-                .fail(&job_id, format!("local inference error: {e}"));
-            state
-                .sessions
-                .set_status(&job.session_id, SessionStatus::Error);
-        }
+    Some(b) => b.clone(),
+    None => {
+        state.jobs.fail(&job_id, "no backend available".to_string());
+        return;
     }
+};
+
+state.jobs.start(&job_id);
+let comp_req = roco_engine::CompletionRequest {
+    prompt: job.prompt.clone(),
+    temperature: job.temperature,
+    max_tokens: job.max_tokens,
+    grammar: job.grammar.clone(),
+    state_slot: Some(job.session_id.clone()),
+    ..Default::default()
+};
+
+match backend.complete(comp_req).await {
+    Ok(resp) => {
+        // Send tokens one by one for streaming simulation
+        for token in resp.text.split_whitespace() {
+            let token = format!("{} ", token);
+            state.jobs.append_token(&job_id, &token);
+            state.sessions.append_tokens(&job.session_id, vec![token]);
+        }
+        state.jobs.complete(&job_id);
+        state.sessions.set_status(&job.session_id, SessionStatus::Completed);
+    }
+    Err(e) => {
+        state.jobs.fail(&job_id, format!("local inference error: {e}"));
+        state.sessions.set_status(&job.session_id, SessionStatus::Error);
+    }
+}
 }
 
 async fn run_job_on_inferd(state: GatewayState, job_id: String) {

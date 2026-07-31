@@ -1469,12 +1469,7 @@ impl RwkvActor {
                     let result = self.load_state_bytes(&bytes).await;
                     let _ = reply.send(result);
                 }
-                Bake {
-                    init_state,
-                    text,
-                    state_slot,
-                    reply,
-                } => {
+                Bake { init_state, text, state_slot, reply } => {
                     // Load cached state if specified (None = blank state)
                     if let Some(ref sid) = init_state {
                         if let Some(Some(saved)) = self.state_pool.get(sid) {
@@ -1486,8 +1481,7 @@ impl RwkvActor {
                         let _ = self.state.load(self.initial_state.clone(), 0);
                     }
                     // Tokenize and feed text through model
-                    let tokens = self
-                        .tokenizer
+                    let tokens = self.tokenizer
                         .encode(text.as_bytes())
                         .map_err(|e| EngineError::Backend(format!("bake tokenize: {e}")));
                     match tokens {

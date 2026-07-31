@@ -218,7 +218,7 @@ pub fn session_complete(
     temperature: f32,
     max_tokens: usize,
     prefill: Option<&str>,
-) -> Result<String, String> {
+    ) -> Result<String, String> {
     futures::executor::block_on(backend.complete(CompletionRequest {
         prompt: prompt.to_string(),
         grammar: grammar.map(String::from),
@@ -279,6 +279,7 @@ pub fn model_complete(
         ..Default::default()
     }))
     .map_err(|e| format!("model error: {e}"))
+
     .map(|r| r.text)
 }
 /// One-off model call with JSON deserialization. No session.

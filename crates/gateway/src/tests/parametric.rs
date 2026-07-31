@@ -13,11 +13,11 @@ use axum::http::{Request, StatusCode};
 use axum::Router;
 use tower::ServiceExt;
 
-use crate::job::JobQueue;
+use roco_engine::{MockBackend, ModelBackend};
 use crate::session::{SessionManager, SessionStatus};
 use crate::workspace::WorkspaceManager;
+use crate::job::JobQueue;
 use crate::GatewayState;
-use roco_engine::{MockBackend, ModelBackend};
 
 // ── Test Helpers ────────────────────────────────────────────────────────
 
@@ -62,35 +62,20 @@ fn build_router(state: GatewayState) -> Router {
         .route("/complete", post(crate::handle_direct_complete_test))
         .route("/bake", post(crate::handle_direct_bake_test))
         .route("/vocab", get(crate::handle_vocab_test))
-        .route(
-            "/v1/completions",
-            post(crate::handle_openai_completions_test),
-        )
+        .route("/v1/completions", post(crate::handle_openai_completions_test))
         .route("/sessions", post(crate::handle_create_session_test))
         .route("/sessions/:id", get(crate::handle_get_session_test))
         .route("/sessions/:id", delete(crate::handle_delete_session_test))
-        .route(
-            "/sessions/:id/complete",
-            post(crate::handle_complete_session_test),
-        )
+        .route("/sessions/:id/complete", post(crate::handle_complete_session_test))
         .route("/sessions/:id/bake", post(crate::handle_bake_session_test))
         .route("/sessions/:id/tokens", get(crate::handle_get_tokens_test))
-        .route(
-            "/sessions/:id/status",
-            get(crate::handle_get_session_status_test),
-        )
+        .route("/sessions/:id/status", get(crate::handle_get_session_status_test))
         .route("/workspaces", get(crate::handle_list_workspaces_test))
         .route("/workspaces", post(crate::handle_create_workspace_test))
         .route("/workspaces/:id", get(crate::handle_get_workspace_test))
         .route("/workspaces/:id/files", get(crate::handle_list_files_test))
-        .route(
-            "/workspaces/:id/files/*path",
-            get(crate::handle_read_file_test),
-        )
-        .route(
-            "/workspaces/:id/files/*path",
-            post(crate::handle_write_file_test),
-        )
+        .route("/workspaces/:id/files/*path", get(crate::handle_read_file_test))
+        .route("/workspaces/:id/files/*path", post(crate::handle_write_file_test))
         .with_state(state)
 }
 
@@ -100,22 +85,14 @@ fn build_router(state: GatewayState) -> Router {
 async fn health_local_backend() {
     let (app, _) = gateway_with_local_backend();
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert_eq!(body["backend_mode"], "local");
     assert!(body["inferd_status"].is_null());
 }
@@ -124,23 +101,15 @@ async fn health_local_backend() {
 async fn health_workspace_only() {
     let app = gateway_workspace_only();
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
         .await
         .unwrap();
     // Should be 503 since inferd is unreachable
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert_eq!(body["backend_mode"], "proxy");
     assert_eq!(body["inferd_status"], "unreachable");
 }
@@ -169,11 +138,8 @@ async fn complete_local_basic() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body: roco_engine::CompletionResponse = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert!(!body.text.is_empty());
 }
 
@@ -337,22 +303,14 @@ async fn vocab_local_backend() {
     let (app, _) = gateway_with_local_backend();
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/vocab")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/vocab").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body: Vec<Vec<u8>> = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert!(!body.is_empty());
 }
 
@@ -361,12 +319,7 @@ async fn vocab_no_backend_proxies_to_inferd() {
     let app = gateway_workspace_only();
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/vocab")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/vocab").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -398,11 +351,8 @@ async fn openai_completions_local() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert_eq!(body["object"], "text_completion");
     assert!(body["choices"][0]["text"].as_str().unwrap().len() > 0);
     // MockBackend may return 0 for token counts, just verify structure exists
@@ -423,20 +373,15 @@ async fn session_lifecycle_local() {
                 .method("POST")
                 .uri("/sessions")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"workspace_id": "ws-1"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"workspace_id": "ws-1"}).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     let session_id = body["session_id"].as_str().unwrap().to_string();
 
     // Get session
@@ -465,11 +410,8 @@ async fn session_lifecycle_local() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert_eq!(body["status"], "idle");
 
     // Delete session
@@ -498,19 +440,14 @@ async fn session_complete_local() {
                 .method("POST")
                 .uri("/sessions")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"workspace_id": "ws-1"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"workspace_id": "ws-1"}).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     let session_id = body["session_id"].as_str().unwrap().to_string();
 
     // Complete session
@@ -521,25 +458,19 @@ async fn session_complete_local() {
                 .method("POST")
                 .uri(format!("/sessions/{}/complete", session_id))
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({
-                        "prompt": "Hello",
-                        "temperature": 0.7,
-                        "max_tokens": 100,
-                    })
-                    .to_string(),
-                ))
+                .body(Body::from(serde_json::json!({
+                    "prompt": "Hello",
+                    "temperature": 0.7,
+                    "max_tokens": 100,
+                }).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert!(body["text"].as_str().unwrap().len() > 0);
 
     // Check tokens accumulated
@@ -554,11 +485,8 @@ async fn session_complete_local() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let tokens: Vec<String> = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert!(!tokens.is_empty());
 }
 
@@ -599,31 +527,20 @@ async fn workspace_crud() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert_eq!(body["id"], "test-ws");
 
     // List workspaces
     let resp = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/workspaces")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/workspaces").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
     assert!(body["workspaces"].as_array().unwrap().len() > 0);
 
     // Get workspace
@@ -652,9 +569,7 @@ async fn workspace_file_operations() {
                 .method("POST")
                 .uri("/workspaces")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"id": "file-test"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"id": "file-test"}).to_string()))
                 .unwrap(),
         )
         .await
@@ -669,9 +584,7 @@ async fn workspace_file_operations() {
                 .method("POST")
                 .uri("/workspaces/file-test/files/test.txt")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"content": "Hello, world!"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"content": "Hello, world!"}).to_string()))
                 .unwrap(),
         )
         .await
@@ -690,9 +603,7 @@ async fn workspace_file_operations() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let content = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let content = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     assert_eq!(content.as_ref(), b"Hello, world!");
 
     // List files
@@ -776,18 +687,12 @@ async fn parametric_complete_backend_modes() {
                 .method("POST")
                 .uri("/complete")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"prompt": "test"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"prompt": "test"}).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::OK,
-        "Local backend should succeed"
-    );
+    assert_eq!(resp.status(), StatusCode::OK, "Local backend should succeed");
 
     // Without backend (proxy mode, inferd not running)
     let app_no_backend = gateway_workspace_only();
@@ -797,18 +702,12 @@ async fn parametric_complete_backend_modes() {
                 .method("POST")
                 .uri("/complete")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"prompt": "test"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"prompt": "test"}).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::BAD_GATEWAY,
-        "No backend should fail"
-    );
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY, "No backend should fail");
 }
 
 /// Test that /bake works with local backend but not without
@@ -822,23 +721,16 @@ async fn parametric_bake_backend_modes() {
                 .method("POST")
                 .uri("/bake")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({
-                        "session_id": "test",
-                        "system": "You are helpful",
-                        "few_shots": []
-                    })
-                    .to_string(),
-                ))
+                .body(Body::from(serde_json::json!({
+                    "session_id": "test",
+                    "system": "You are helpful",
+                    "few_shots": []
+                }).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::OK,
-        "Local backend should succeed"
-    );
+    assert_eq!(resp.status(), StatusCode::OK, "Local backend should succeed");
 
     // Without backend
     let app_no_backend = gateway_workspace_only();
@@ -848,23 +740,16 @@ async fn parametric_bake_backend_modes() {
                 .method("POST")
                 .uri("/bake")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({
-                        "session_id": "test",
-                        "system": "You are helpful",
-                        "few_shots": []
-                    })
-                    .to_string(),
-                ))
+                .body(Body::from(serde_json::json!({
+                    "session_id": "test",
+                    "system": "You are helpful",
+                    "few_shots": []
+                }).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::BAD_GATEWAY,
-        "No backend should fail"
-    );
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY, "No backend should fail");
 }
 
 /// Test that /vocab works with local backend but not without
@@ -873,36 +758,18 @@ async fn parametric_vocab_backend_modes() {
     // With local backend
     let (app_local, _) = gateway_with_local_backend();
     let resp = app_local
-        .oneshot(
-            Request::builder()
-                .uri("/vocab")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/vocab").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::OK,
-        "Local backend should succeed"
-    );
+    assert_eq!(resp.status(), StatusCode::OK, "Local backend should succeed");
 
     // Without backend
     let app_no_backend = gateway_workspace_only();
     let resp = app_no_backend
-        .oneshot(
-            Request::builder()
-                .uri("/vocab")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/vocab").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::BAD_GATEWAY,
-        "No backend should fail"
-    );
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY, "No backend should fail");
 }
 
 /// Test that /v1/completions works with local backend
@@ -916,18 +783,12 @@ async fn parametric_openai_completions_backend_modes() {
                 .method("POST")
                 .uri("/v1/completions")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"prompt": "test"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"prompt": "test"}).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::OK,
-        "Local backend should succeed"
-    );
+    assert_eq!(resp.status(), StatusCode::OK, "Local backend should succeed");
 }
 
 // ── Session Status Parametric Tests ────────────────────────────────────
@@ -1008,12 +869,7 @@ async fn parametric_completion_request_variations() {
             )
             .await
             .unwrap();
-        assert_eq!(
-            resp.status(),
-            StatusCode::OK,
-            "Variation {} should succeed",
-            i
-        );
+        assert_eq!(resp.status(), StatusCode::OK, "Variation {} should succeed", i);
     }
 }
 
@@ -1103,12 +959,7 @@ async fn concurrent_session_operations() {
     // Verify workspace filtering works
     for ws_num in 0..10 {
         let ws_sessions = mgr.list_for_workspace(&format!("ws-{}", ws_num));
-        assert_eq!(
-            ws_sessions.len(),
-            10,
-            "Workspace {} should have 10 sessions",
-            ws_num
-        );
+        assert_eq!(ws_sessions.len(), 10, "Workspace {} should have 10 sessions", ws_num);
     }
 }
 
@@ -1122,12 +973,7 @@ async fn rate_limiter_allows_under_limit() {
     for _ in 0..10 {
         let resp = app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -1160,19 +1006,12 @@ async fn mock_backend_with_failures() {
                     .method("POST")
                     .uri("/complete")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({"prompt": "test"}).to_string(),
-                    ))
+                    .body(Body::from(serde_json::json!({"prompt": "test"}).to_string()))
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(
-            resp.status(),
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Request {} should fail",
-            i
-        );
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR, "Request {} should fail", i);
     }
 
     // 4th request should succeed
@@ -1182,9 +1021,7 @@ async fn mock_backend_with_failures() {
                 .method("POST")
                 .uri("/complete")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({"prompt": "test"}).to_string(),
-                ))
+                .body(Body::from(serde_json::json!({"prompt": "test"}).to_string()))
                 .unwrap(),
         )
         .await
