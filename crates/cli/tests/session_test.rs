@@ -3,12 +3,19 @@
 use std::path::PathBuf;
 use std::fs;
 
-/// Get a temp dir for session tests.
+/// Get a unique temp dir for each test to avoid race conditions.
 fn temp_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join("roco_session_test");
-    let _ = fs::create_dir_all(&dir);
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("roco_session_test_{}", ns));
+    fs::create_dir_all(&dir).unwrap();
     dir
 }
+
+/// Cleanup function to remove test dir.
 
 /// Test session create writes a valid JSON file.
 #[test]
