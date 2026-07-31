@@ -3,6 +3,22 @@
 Follows the validation loop in AGENTS.md §9:
 `test → eval → check + update PROGRESS.md with what you want to do → e2e (story) → note problems in PROGRESS.md → fix issues → targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md → consider whether a lack of info within AGENTS.md caused this problem → update AGENTS.md if so → repeat`
 
+### 2026-08-01 — Phase 9: Persistent Chat, Session Subcommands, and Usability Upgrades
+
+**What we are doing:**
+- Documenting project state in `docs/project-current-state.md` and `docs/goals.md`.
+- Writing RWKV-7 mathematical & engineering research in `docs/rwkv-v7-g1.md`.
+- Simulating common user friction points in `docs/impressions/v_0_4/common_user.md`.
+- Implementing `roco session create` and `roco session <session_id> -p "..."` commands to support stateless orchestration and multi-turn chat persistence.
+- Improving prompt stability and error fallback routines in `crates/agent/src/util.rs`.
+- Writing new ignored integration tests for future narrative multi-turn editing.
+
+**Results/Observations:**
+- Interactive session CLI commands (`roco session <id> -p`) streamline scripting and make RoCo highly composable.
+- Natural-language friendlier prompts reduce failures from rigid schema constraints.
+
+---
+
 ### 2026-07-31 — Test fix: daemon port env-var leakage
 
 **What I'm doing:** Fixing a flaky test (`test_gateway_port_default`) that failed intermittently when run with the full test suite due to env-var pollution from `test_gateway_port_env_override` running in parallel.

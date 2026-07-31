@@ -467,7 +467,10 @@ fn prompt_outline(premise: &str) -> String {
     format!(
         "Outline a short story with 3 chapters based on this premise:\n{premise}\n\n\
          Output JSON matching the schema: title, genre, tone, chapters \
-         (array of 3 objects with number, title, summary)."
+         (array of 3 objects with number, title, summary).\n\n\
+         Be extremely natural language friendly: if the user's premise suggests or explicitly requests \
+         a specific genre, tone, setting, character names, or style, faithfully capture and map those details \
+         into the title, genre, tone, and chapter summaries of the generated outline JSON."
     )
 }
 

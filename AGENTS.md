@@ -9,6 +9,8 @@ roco story --fix chapter 3       # regenerate chapter 3 in latest workspace
 roco story --phase synopsis      # run a single phase, resume from there
 roco story --mock                # mock backend, no real model (tests)
 roco gui                         # desktop app
+roco session create              # create a persistent chat session
+roco session <session_id> -p "p" # execute a prompt in a saved chat session
 ```
 
 ## 1. What This Thing Actually Is
@@ -48,6 +50,8 @@ Override `.roco/` location with `$ROCO_DIR`. If `ROCO_DIR=/data/roco`, then conf
 │       ├── 04-VALIDATION.md
 │       ├── 05-SYNOPSIS.md
 │       └── 06-STORY.md
+├── sessions/
+│   └── {session_id}.json           # persistent conversation/chat session transcript
 └── stories/
     └── {slug}.md                   # compiled final story
 ```
@@ -209,6 +213,11 @@ Prefill tokens (`{\n`) are fed to the model but deliberately NOT passed through 
 - **Judges instruction-following too literally** (e.g. "crystal sword" ≠ "ancient artifact" → `follows_instructions: false`). The `val_instruction_following_matched` eval fails for this reason — it's a model limitation, not a system bug.
 - **In-string content degrades under tight constraints** — with a grammar mask active, string values can contain degenerate tokens (`":[`, `s,s,s`). Structure is always valid JSON; content quality varies. Revision retries handle the worst cases.
 - **Chapter 2-3 often need 2-3 revision retries** at temp 0.5 — the retry loop converges, this is expected.
+
+### Persistent Chat Session Subcommand (`roco session`)
+The CLI includes a dedicated `roco session` subcommand designed to support stateless orchestration and lightweight multi-turn integrations.
+- `roco session create` dynamically generates a unique session ID and registers a blank state under `.roco/sessions/`.
+- `roco session <id> -p "p"` loads the specified session, executes the user's prompt (streaming output to terminal), and updates the transcript file.
 
 ### Migration Complete
 

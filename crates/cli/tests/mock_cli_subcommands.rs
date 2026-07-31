@@ -220,3 +220,27 @@ fn test_cli_eval_command() {
     let res = runner.run_binary(["eval"]);
     assert!(res.exit_code >= 0, "eval command should execute");
 }
+
+#[test]
+fn test_cli_session_subcommand() {
+    let runner = MockCliRunner::new();
+
+    // 1. Create a session
+    let res_create = runner.run_binary(["session", "create"]);
+    res_create.assert_success();
+    let session_id = res_create.stdout.trim().to_string();
+    assert!(session_id.starts_with("session_"));
+
+    // 2. Execute a prompt on that session
+    let res_prompt = runner.run_binary(["session", &session_id, "-p", "My name is Ada"]);
+    res_prompt.assert_success();
+
+    // 3. Verify it was recorded in ConversationState
+    let state = res_prompt.assert_latest_session();
+    assert_eq!(state.id, session_id);
+    assert_eq!(state.messages.len(), 2);
+    assert_eq!(state.messages[0].role, "user");
+    assert_eq!(state.messages[0].content, "My name is Ada");
+    assert_eq!(state.messages[1].role, "assistant");
+    assert!(!state.messages[1].content.is_empty());
+}
