@@ -1844,6 +1844,16 @@ pub fn cmd_story(extra: &[&str]) {
                         .dispatch_single(backend.as_ref(), &retry_task, &ws)?;
                     current_text = retry_result.output;
 
+                    // Validate retry output isn't empty or degenerate
+                    if current_text.trim().is_empty() || current_text.len() < 50 {
+                        AgentJournal::warn("story", &format!(
+                            "{chapter_label} revision produced too little output ({} chars) — keeping previous version",
+                            current_text.len()
+                        ));
+                        // Keep previous version
+                        current_text = chapter_texts.last().cloned().unwrap_or_default();
+                    }
+
                     // Write revision to file (will be overwritten if another revision follows)
                     let filename = format!("03-CHAPTER_{i}.md");
                     let path = ws.resolve(&filename).unwrap();
