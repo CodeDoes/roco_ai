@@ -149,31 +149,31 @@ System prompts are task-specific:
 
 ## 9. Eval-First Methodology — The Correct Order
 
-Prose fallback parsers were deleted in commit f3bab52. They existed because I violated the correct workflow: **evals first, workarounds never.**
+Testing and validation have the highest priority. Prose fallback parsers were deleted in commit f3bab52. They existed because I violated the correct workflow: **evals first, workarounds never.**
 
 A JSON parse failure is a system bug — handle it by fixing the system (prompts, baking, grammar, temperature), never by parsing prose.
 
 ### The validation loop (repeat until green)
 
 ```
-test → eval → check+update PROGRESS.md → e2e (full story) →
-note problems in PROGRESS.md → fix issues →
+test → eval → check + update PROGRESS.md with what you want to do →
+e2e (story) → note problems in PROGRESS.md → fix issues →
 targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md →
-consider whether a lack of info in AGENTS.md caused this problem →
-update AGENTS.md if so → repeat
+consider whether a lack of info within AGENTS.md caused this problem,
+if so update AGENTS.md → repeat
 ```
 
 Steps in detail:
 
 1. **Tests** (unit + integration) — prove the code works correctly in isolation (mock backend, deterministic, fast). `cargo check --workspace --all-targets` + `cargo test --workspace` must be green before touching the real model.
 2. **Evals** — prove the model CAN produce correct output (valid JSON, coherent chapters) given correct inputs from the fixed pipeline. Each phase tested separately against the real model. Use `cargo run --release --example eval_suite -p roco-cli --features net -- http://127.0.0.1:18080 <case>`.
-3. **Check + update PROGRESS.md** — before running the full pipeline, write down what you expect to happen and what you're looking for.
+3. **Check + update PROGRESS.md with what you want to do** — BEFORE running the pipeline, update PROGRESS.md with your intent for this iteration: the specific change/experiment you're about to run, what you expect to happen, and what you're looking for. This makes the iteration auditable — if the run fails, the log shows what was expected vs what happened.
 4. **E2E (full story)** — run `roco story` end-to-end with the real model. Manually review output quality.
 5. **Note problems in PROGRESS.md** — every failure (model behavior, pipeline bug, harness bug) goes in the log, with evidence from logs/artifacts.
 6. **Fix issues** — one at a time. Verify with cargo check after each change.
 7. **Targeted E2E** — re-run only the affected phase(s) (chapter/wiki/outline/validate) against the real model to confirm the fix without a full pipeline run.
 8. **Update PROGRESS.md** — mark what's verified green, what's still red.
-9. **AGENTS.md self-check** — if the problem was caused by missing/incorrect project knowledge (e.g. a documented invariant that wasn't documented), update AGENTS.md so the next iteration doesn't repeat it.
+9. **AGENTS.md self-check** — consider whether a lack of info within AGENTS.md caused this problem (e.g. a documented invariant that wasn't documented, or a note that would have prevented the mistake). If so, update AGENTS.md so the next iteration doesn't repeat it.
 10. **Repeat** until the loop exits clean.
 
 ### Known Phase 8 verification state
