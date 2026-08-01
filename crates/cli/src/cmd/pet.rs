@@ -329,9 +329,8 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
                 React to what the user says. Use emoticons. Be expressive and friendly."
                 .to_string();
 
-            let prompt = format!(
-                "System: {system}\n\nConversation:\n{history_text}\nUser: {msg}\nYou:"
-            );
+            let prompt =
+                format!("System: {system}\n\nConversation:\n{history_text}\nUser: {msg}\nYou:");
 
             let request = roco_engine::CompletionRequest {
                 prompt,
