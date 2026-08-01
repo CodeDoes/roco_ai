@@ -1,5 +1,7 @@
 # `roco` CLI — Streaming, Conversation, Identity, and Resource Audit
 
+> **STATUS: REWORK RECORD** — Documents a completed CLI rework (streaming, conversation, identity, resource audit). Canonical API/behavior lives in the code and **AGENTS.md**; this file is the change record, not living state. The "CI is broken" analysis in §5 is historical — CI is green since the 3-job workflow fix (see PROGRESS.md).
+
 Covers the rework of the `roco` CLI (the `scripts.roco` / `scripts.chat`
 entry points in `devenv.nix`) plus a resource-leak audit of the code paths
 those commands touch.
@@ -238,71 +240,9 @@ Balanced-delimiter checks were run across all 13 touched files. **`cargo test
 --workspace --all-targets -- --deny warnings` still need to be run** on a
 machine with the toolchain.
 
-### CI is broken — root-caused, but the fix needs a maintainer to apply
+### CI is green (historical note)
 
-CI was expected to provide the first real compile. It does not run at all:
-every workflow run in this repository — on `main`, going back well before this
-branch — completes in seconds with `total_count: 0` jobs.
-
-**Root cause: `.github/workflows/ci.yml` is not valid YAML.** Actions reports
-
-```
-Invalid workflow file — You have an error in your yaml syntax on line 56
-```
-
-Line 56 is an unquoted scalar containing `": "`:
-
-```yaml
-      - name: Install system deps (egui: libgl, libxcb, …)
-```
-
-The `egui: ` is parsed as the start of a nested mapping in a scalar context —
-a hard parse error (`mapping values are not allowed here`, line 56 column 40).
-Every other multi-word `name:` in the file is quoted; this one is not. Because
-the file never parses, **no jobs are ever created**, which is why the run
-"fails" instantly with an empty job list and no logs to inspect.
-
-#### The fix (two lines)
-
-1. Quote line 56:
-
-   ```yaml
-   - name: "Install system deps (egui: libgl, libxcb, …)"
-   ```
-
-2. Then `test-core` will start running — and immediately fail, because it
-   names packages that do not exist:
-
-   ```yaml
-   run: cargo test -p roco-agent-core -p roco-agent-story -p roco-engine
-   ```
-
-   Neither `roco-agent-core` nor `roco-agent-story` is a workspace member; the
-   agent crate is a single `roco-agent`. Suggested replacement, which also
-   covers the crates this branch touches:
-
-   ```yaml
-   - name: "cargo test — agent + engine + app + infer-client + cli"
-     env:
-       ROCO_USE_MOCK_BACKEND: "1"
-     run: |
-       cargo test --no-fail-fast \
-         -p roco-agent -p roco-engine -p roco-app \
-         -p roco-infer-client -p roco-cli
-   ```
-
-Both changes are prepared and verified locally (the corrected file parses, and
-all 7 jobs materialise), but **could not be pushed**: the GitHub App backing
-this session lacks the `workflows` permission —
-
-```
-refusing to allow a GitHub App to create or update workflow
-`.github/workflows/ci.yml` without `workflows` permission
-```
-
-So a maintainer needs to apply them. Until then the local
-reference-implementation results above are the strongest available evidence,
-and cargo should be run directly.
+The analysis below — CI never running due to a YAML parse error and wrong `-p` package names — is **historical**. Both were fixed: line 56 quoted, `roco-agent-core`/`roco-agent-story` replaced with real workspace packages, and the workflow simplified to 3 jobs (check / test / fmt). CI has been green since; see PROGRESS.md.
 
 Roughly 90 tests were added across the touched crates. Notable regression
 guards:

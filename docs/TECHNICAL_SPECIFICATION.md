@@ -1,5 +1,7 @@
 # RoCo AI — Technical Specification (Complete Reconstruction Blueprint)
 
+> **STATUS: HISTORICAL SNAPSHOT** — Spec written on branch `arena/019fb78c-roco-ai` (base `edf13bf`), before the Phase 1-7 migration. Canonical architecture lives in **AGENTS.md** (§1-8); sections 5-16 here are superseded by it. Keep this file only as the reasoning record — do not use as living state.
+
 > **Status:** Code-free architectural specification
 > **Branch:** `arena/019fb78c-roco-ai` (base `edf13bf`)
 > **Scope:** Every subsystem, design constraint, failure mode, and reasoning path required to recreate RoCo AI from first principles. No implementation code is shown; the reasoning behind every decision is stated explicitly.
@@ -525,7 +527,7 @@ The workspace module provides:
 | **Context overflow** | Conversation exceeds budget | Rolling summary compresses old turns; whole-turn policy prevents mutilation |
 | **Grammar escape** | Model finds token path outside BNF | BNF mask prevents this at decoder; if bug in mask, verification catches output |
 
-**The thinking:** The pipeline is designed for the worst case because the model is unpredictable at 2.9B. Every phase has a fallback; every retry loop has a limit; every failure degrades gracefully rather than catastrophically.
+**The thinking:** The pipeline is designed for the worst case because the model is unpredictable at 2.9B. Every phase has explicit verification and retry loops; failures surface as **loud errors, never silent fallbacks** (per AGENTS.md §9 — the no-fallback rule). Mock mode is an explicit user choice, not an automatic degradation.
 
 ---
 

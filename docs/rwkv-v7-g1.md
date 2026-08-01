@@ -1,5 +1,7 @@
 # RWKV-7 G1H 2.9B — Capabilities & Limitations
 
+> **STATUS: MODEL REFERENCE** — Model-specific capabilities/limitations. Behavioral facts (repetition ≥0.7, in-string garbage under grammar, judge literalism, state pool, two named pipeline states) are canonical in **AGENTS.md §10**; this file adds internal detail (architecture, quantization, research connections) not duplicated there.
+
 ## Model Overview
 
 | Property | Value |

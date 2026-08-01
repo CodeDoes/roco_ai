@@ -1,5 +1,7 @@
 # RoCo AI: Simplicity and Safety Deep-Dive Architectural Review
 
+> **STATUS: HISTORICAL AUDIT (pre-migration)** — Crate names here (`crates/inference`, `crates/grammar`, `crates/bnf-engine`, `crates/message`, `crates/chat-common`, 19 crates) predate the Phase 1-7 consolidation. Canonical architecture: **AGENTS.md**. Keep as the audit record; do not use as living state. The §4 consolidation recommendations have been executed (migration summary in PROGRESS.md).
+
 This document contains a comprehensive, production-grade conceptual audit of the **RoCo AI** codebase. It explores developer experience (DX), safety guarantees, system complexity, and structural clarity, directly addressing how developers interact with, comprehend, and modify this local AI collaborative writing environment.
 
 ---
@@ -44,7 +46,7 @@ The core application runs in a **standalone-first local loop** connecting user-f
 +------------------------------------------+
 |  Inference Backend                       |
 |  - web-rwkv GPU thread (crates/inference)|
-|  - MockBackend Fallback (crates/app/la)  |
+|  - MockBackend (crates/app/la)            |
 +---------------------+--------------------+
                       |
                       v Persists
@@ -64,15 +66,15 @@ A major conceptual friction point in this workspace is the existence of **two en
 
 ---
 
-## 2. State-Tuned Fallbacks & Recurrent State Handling (Examples)
+## 2. State Tuning & Recurrent State Handling (Examples)
 
-To avoid heavy fine-tuning of 2.9B parameters for complex DSL/JSON layouts, RoCo AI relies extensively on **recurrent state tuning and state-tuned fallbacks**, demonstrated in the `crates/inference/examples/` targets:
+To avoid heavy fine-tuning of 2.9B parameters for complex DSL/JSON layouts, RoCo AI relies on **recurrent state tuning** (the `state-tuned` strategy — see AGENTS.md §5), demonstrated in the `crates/inference/examples/` targets:
 
 * **State-Tuning (Recurrent States):** Since RWKV-7 is an RNN-based architecture, states can be snapshotted, modified, and hot-swapped mid-session. The capability methods `model_state` and `model_state_generate` allow the application to preserve recurrent contexts (e.g., world wikis, persistent outline parameters) without re-evaluating long prefixes.
 * **EOS Baking & Padding:** In standard generation, LLMs often emit trailing tokens or leak formatting characters after an End-of-Stream (EOS). Our state-tuning examples demonstrate:
   - **EOS-Padded State Tuning:** Baking the EOS token directly into target recurrent states, which forces the model to halt immediately on the desired boundary without leaking thinking blocks.
   - **Prefix Prefilling:** Injecting state prefixes to bias grammar decoding toward specific templates without manual prefix prompts.
-* **The Simplicity/Safety Trade-off:** By using recurrent states, we bypass the need for a remote fine-tuning server or local LoRA training. The state-tuned fallbacks are entirely local, extremely fast (requiring zero prefix pre-filling times), and 100% deterministic when wrapped with grammar boundaries.
+* **The Simplicity/Safety Trade-off:** By using recurrent states, we bypass the need for a remote fine-tuning server or local LoRA training. The state-tuned strategy is entirely local, extremely fast (requiring zero prefix pre-filling times), and 100% deterministic when wrapped with grammar boundaries.
 
 ---
 
