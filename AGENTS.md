@@ -328,6 +328,8 @@ roco workspace new                        # Create workspace (power user)
 roco session <session_id> -p "Use the workspace <workspace_id>"
 ```
 
+**Gotcha — top-level `-p`:** the top-level `-p`/`--prompt` handler in `bin/roco.rs` routes to prompt mode, so `roco session <id> -p "…"` must be exempted (it is — `first_sub != "session"` guard). If you add another subcommand that consumes `-p` itself, exempt it there too; otherwise the subcommand becomes unreachable and `session create` prints the bare ID (script-friendly) — don't "fix" it back to a label without updating `test_cli_session_subcommand`.
+
 ### Future State — Router NLU Is the Golden Opportunity
 
 Router NLU is the golden opportunity: every message already flows through `detect_intent`; extend it with management intents and auto-managed state and "user says what they want → roco does it" becomes the whole UX. Full current + future state: **§13**.

@@ -2,7 +2,17 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
-## 2026-08-01 — All 11 pending tests + story API stubs landed (intent in prior edit of this entry)
+## 2026-08-01 — Merged all open PRs (12-15) into main with reconciliation (intent logged in the PR review itself)
+
+- **Intent**: `git update` + review the auto-created PRs, incorporate their content, then close/merge them — the full PR backlog, done properly.
+- **PR 14 (TTRPG)** — merged clean (`ec96179`), TTRPG module live; closed.
+- **PR 13 (sessions/parser-healing)** — merged + reconciled (`5dec930` + `1a898c9`); GitHub auto-marked MERGED (my merge commit has the head as parent). Fixes: top-level `-p` in bin/roco.rs no longer swallows `roco session <id> -p` (PR's own test would have failed); `session create` mkdirs + prints just the ID; session chat is single-shot `ChatSession::turn()` (was REPL). Dropped its stale pending-test placeholders (already implemented) + superseded docs.
+- **PR 12 (story drafts/backups/revert + Dashboard GUI)** — merged + reconciled (`873c078`); auto-marked MERGED. Kept main's engine impls (pending tests already landed), `PORT_TEST_LOCK`, race-safe temp dirs, single-shot chat; adopted its `docs/README.md link to --help` recommendation checkbox.
+- **PR 15 (offline vector embedding search)** — arrived during the session; merged + reconciled (`b54ffb8`); closed. VectorStore + VectorSearchTool + `roco vector-search` (init/status/add/query) live; conflicts purely additive.
+- **Result**: no open PRs. `cargo test --workspace`: **1017 passed / 0 failed / 9 ignored** (doc-test + future-capability specs by design). `cargo check --workspace --all-targets` + `cargo fmt --check` clean. origin/main pushed (`b54ffb8`).
+- Still red: real-model router verification (§13, needs live inferd), model limitations (§9), UX items (§12), management intents + CLI keyword router (§13 future).
+
+## 2026-08-01 — All 11 pending tests + story API stubs landed
 
 - **0 ignored tests left in the workspace** — all 11 are now real and green.
 - MockBackend mirrors the real actor: `on_token` emits whitespace-delimited chunks; `deadline_ms` → `TimedOut`; `interrupt()` cancels in-flight latency; `top_a` truncates the BNF-walk candidate set (uniform-mass analog); `bnf_mask` drives deterministic masked generation; intent-classification prompts return score-based keyword intent JSON.
