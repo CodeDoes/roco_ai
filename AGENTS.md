@@ -203,7 +203,7 @@ The complete() path has two loops: the first flushes the prompt and samples the 
 Prefill tokens (`{\n`) are fed to the model but deliberately NOT passed through the grammar mask. The mask re-emits `{` as its first generated token, so `resp.text` is complete JSON on its own — callers parse `resp.text` directly without prepending the prefill. Do NOT "fix" this by accepting prefill tokens into the mask; it breaks the pipeline's parse path.
 
 ### Model-Specific Behavior
-2.9B parameter RWKV-7 model:
+2.9B parameter RWKV-7 model (full model reference incl. architecture, quantization, baking patterns, research links: `docs/rwkv-v7-g1.md`):
 - Starts repeating at temperature ≥ 0.7 (empirical)
 - Can produce NUL/control characters in output (stripped by `clean_json_output`)
 - Sometimes produces ````json``` wrappers or trailing `}` characters
@@ -344,3 +344,20 @@ Router/NLU items (intent detection, keyword routing, rename/hide `session`/`work
 ### Why this is the golden opportunity
 
 Every message already passes through `detect_intent`. Extending it with management intents and auto-managed state turns the CLI into: "user says what they want → roco figures out mode, project, and state → does it". No commands to remember, no `session`/`workspace` jargon, no `roco story -p` detour. The pipeline, grammar, and state management already work (§9) — the only missing piece is the routing layer.
+
+## 14. Documentation Map — Where to Find What
+
+AGENTS.md is the origin: current architecture (§1-8), verification state (§9), known issues (§10), user feedback (§11-12), and the router plan (§13). Deeper material lives in `docs/` — read these when you need the detail, not before:
+
+| Doc | Status | What's useful there (not duplicated here) |
+|---|---|---|
+| `docs/rwkv-v7-g1.md` | Model reference | RWKV-7 internals: architecture (32L / 2560 emb / 40 heads), quantization, per-phase temperature guide, baking patterns, state-pool notes, research connections (DREAMSTATE, DeltaProduct, GoldFinch) |
+| `docs/CLI_STREAMING_AND_LEAKS.md` | Rework record | Chat/streaming layer NOT covered in §1-8: `StreamPrinter` monotonic rendering, SSE line-buffer reassembly, `ChatSession` whole-turn budgeting (8k chars / 16 turns), identity fast-path (`roco whoami`, `:name`, `:remember`), resource audit (SmartCache LRU + byte budget, journal rotation @ 8 MiB, reqwest timeouts) |
+| `docs/TMUX_ROCO_GUIDE.md` | Operational | Testing the CLI + mock harness under tmux; `scripts/tmux_roco` emulator for offline environments; maps Rust harness to Python equivalents |
+| `docs/impressions/` | User feedback | Common-user journeys v0.4/v0.5 — the evidence behind §11/§12 (session/workspace confusion, router-first UX) |
+| `docs/TECHNICAL_SPECIFICATION.md` | Historical snapshot | Pre-migration reasoning behind design decisions; failure-mode table; reproduction checklist. Superseded by §1-8 — read for the *why*, not the *what* |
+| `docs/SIMPLICITY_AND_SAFETY_DEEP_DIVE.md` | Historical audit | Sandbox path-containment rationale (`is_safe_relative_path`), crate-consolidation history (19 → current) |
+| `docs/rfc/0001-0015` | Decision records | Per-feature design rationale: harness, offline protocol, privacy RAG, security boundary, vision, etc. |
+| `docs/future.md` | Completed | All roadmap items landed |
+
+Rule of thumb: **AGENTS.md tells you how the system works today; the docs tell you why it was built this way.** If you're about to add a behavior, check the corresponding RFC/impression first so you don't re-decide a closed question.
