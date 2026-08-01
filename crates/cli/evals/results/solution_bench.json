@@ -1,15 +1,15 @@
 {
   "suite_name": "RoCo Architectural Solution Bench",
-  "timestamp": 1785604427,
+  "timestamp": 1785605085,
   "aspects_evaluated": 16,
   "physical_benchmarks": {
-    "bnf_constraints": {
-      "name": "BNFS Constrained Decoding",
-      "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
+    "code_overcontrol": {
+      "name": "Code Overcontrol of Inference",
+      "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
       "score": 10.0,
       "metrics": {
-        "grammar_compliance": "100% Correct Syntax",
-        "constrained_latency_ms": "1.50ms"
+        "execution_ms": "0.04ms",
+        "overcontrol_status": "Active Interrupt Hook Green"
       }
     },
     "small_router_gating": {
@@ -26,20 +26,20 @@
     "state_baking_vs_context": {
       "name": "State Baking vs Context Management",
       "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
-      "score": 0.7,
+      "score": 1.1935483870967742,
       "metrics": {
-        "fresh_prompt_prefill_ms": "0.03ms",
-        "ssm_constant_state_multiplier": "0.7x speedup",
-        "baked_completion_ms": "0.04ms"
+        "baked_completion_ms": "0.03ms",
+        "ssm_constant_state_multiplier": "1.2x speedup",
+        "fresh_prompt_prefill_ms": "0.04ms"
       }
     },
-    "code_overcontrol": {
-      "name": "Code Overcontrol of Inference",
-      "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
+    "bnf_constraints": {
+      "name": "BNFS Constrained Decoding",
+      "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
       "score": 10.0,
       "metrics": {
-        "overcontrol_status": "Active Interrupt Hook Green",
-        "execution_ms": "0.03ms"
+        "constrained_latency_ms": "2.07ms",
+        "grammar_compliance": "100% Correct Syntax"
       }
     }
   },
