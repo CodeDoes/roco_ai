@@ -179,6 +179,18 @@ Steps in detail:
 9. **AGENTS.md self-check** — consider whether a lack of info within AGENTS.md caused this problem (e.g. a documented invariant that wasn't documented, or a note that would have prevented the mistake). If so, update AGENTS.md so the next iteration doesn't repeat it.
 10. **Repeat** until the loop exits clean.
 
+### Using PROGRESS.md — the working log
+
+PROGRESS.md is the **live, lean working log** — the audit trail for the loop above. It is NOT a narrative and NOT the source of truth (AGENTS.md is). Rules:
+
+1. **One entry per change, newest first.** Entry format: `### <date> — <title> (<commit>)` followed by 3-6 bullets: what you're doing, what changed, result, test count.
+2. **Write intent BEFORE running** (loop step 3). Every entry opens with what you're about to do and what you expect — so a failed run is auditable as expectation vs. actual.
+3. **Record outcomes after** (loop steps 5/8): green/red, evidence, `cargo test --workspace` count, commit hash.
+4. **Point, don't duplicate.** Canonical state, plans, and gotchas live in AGENTS.md. A PROGRESS.md entry logs the delta and cites AGENTS.md sections (e.g. "documented red in §13"). If an entry needs more than a few lines, the knowledge belongs in AGENTS.md instead — write it there first.
+5. **Keep it lean.** History lives in git (`git log`). When the file grows past ~40 lines, prune old entries; it should stay scannable top-to-bottom.
+6. **Known red items stay visible.** Leave red items in their entry until fixed; when fixed, mark it in the entry where the fix landed — don't rewrite old entries.
+7. **Every entry carries the test count.** `cargo test --workspace` result with each change, so regressions are traceable to a commit.
+
 ### Known Phase 8 verification state
 
 As of the latest full E2E run (2026-07-31), the complete story pipeline passes against the real model:

@@ -1,6 +1,6 @@
 # PROGRESS.md — Phase 8 Verification Log
 
-Lean delta log — one entry per change, newest first. Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
+Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
 ## 2026-07-31 — Docs aligned (e903768)
 
