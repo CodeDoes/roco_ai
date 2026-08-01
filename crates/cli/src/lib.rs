@@ -70,7 +70,6 @@ pub fn help(sub: Option<&str>) {
         Some("session") => help_session(),
         Some("stop") => help_stop(),
         Some("story") | Some("story-mode") | Some("sm") => help_story(),
-        Some("session") => help_session(),
         Some("workspace") => help_workspace(),
         Some("interact") => help_interact(),
         Some("eval") | Some("bless") => help_eval(),
@@ -149,20 +148,6 @@ fn help_inferd() {
     eprintln!("and serves the completion API. It is auto-started by gateway");
     eprintln!("and other commands that need it.\n");
     eprintln!("Requires: --features net");
-    std::process::exit(0);
-}
-
-fn help_session() {
-    eprintln!("roco session — Persistent multi-turn chat control\n");
-    eprintln!("Usage:");
-    eprintln!(
-        "  roco session create                      Create a new chat session and print its ID"
-    );
-    eprintln!(
-        "  roco session <session_id> -p \"<prompt>\"   Resume a session and run a single turn\n"
-    );
-    eprintln!("Options:");
-    eprintln!("  -p, --prompt <string>                    The chat prompt text to append\n");
     std::process::exit(0);
 }
 

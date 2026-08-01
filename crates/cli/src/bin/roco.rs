@@ -27,17 +27,22 @@ fn main() {
         .filter(|&s| s != "--mock" && !s.is_empty())
         .collect();
 
-    // Handle `-p` / `--prompt` flag at the top level: `roco -p "text"`
-    if let Some(prompt) =
-        parse_opt("-p", &filtered_args).or_else(|| parse_opt("--prompt", &filtered_args))
-    {
-        if prompt.is_empty() {
-            eprintln!("Error: -p requires a non-empty prompt");
-            std::process::exit(1);
+    // Handle `-p` / `--prompt` flag at the top level: `roco -p "text"`.
+    // Skip when the subcommand consumes `-p` itself — `roco session <id> -p`
+    // must reach cmd_session, not prompt mode.
+    let first_sub = filtered_args.first().copied().unwrap_or("");
+    if first_sub != "session" {
+        if let Some(prompt) =
+            parse_opt("-p", &filtered_args).or_else(|| parse_opt("--prompt", &filtered_args))
+        {
+            if prompt.is_empty() {
+                eprintln!("Error: -p requires a non-empty prompt");
+                std::process::exit(1);
+            }
+            // Route to interact with prompt mode
+            cmd::interact::cmd_interact(&["--prompt", prompt]);
+            return;
         }
-        // Route to interact with prompt mode
-        cmd::interact::cmd_interact(&["--prompt", prompt]);
-        return;
     }
 
     let sub = filtered_args.first().copied().unwrap_or("router");
@@ -350,12 +355,6 @@ fn main() {
                 help(Some("interact"));
             }
             cmd::interact::cmd_interact(&extra);
-        }
-        "session" => {
-            if has_help_flag(&extra) {
-                help(Some("session"));
-            }
-            cmd::session::cmd_session(&extra);
         }
         "workspace" => {
             if has_help_flag(&extra) {

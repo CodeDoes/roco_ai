@@ -9,7 +9,8 @@
 
 use std::path::PathBuf;
 
-use crate::interact_cli::{self, InteractMode};
+use crate::conversation::ChatSession;
+use crate::interact_cli::CHAT_PERSONA;
 use crate::{daemon, parse_opt};
 use roco_protocol::ConversationState;
 
@@ -46,7 +47,12 @@ pub fn cmd_session(extra: &[&str]) {
 /// Create a new session and print its ID.
 fn cmd_session_create(_args: &[&str]) {
     let session_id = format!("session_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
-    let session_path = get_sessions_dir().join(format!("{}.json", session_id));
+    let sessions_dir = get_sessions_dir();
+    if let Err(e) = std::fs::create_dir_all(&sessions_dir) {
+        eprintln!("Error: Failed to create sessions directory: {e}");
+        std::process::exit(1);
+    }
+    let session_path = sessions_dir.join(format!("{}.json", session_id));
 
     // Create initial empty state
     let state = ConversationState::new(session_id.clone(), "careful");
@@ -57,11 +63,8 @@ fn cmd_session_create(_args: &[&str]) {
                 eprintln!("Error: Failed to create session: {e}");
                 std::process::exit(1);
             }
-            println!("Created session: {}", session_id);
-            println!("Path: {}", session_path.display());
-            println!();
-            println!("Use it with:");
-            println!("  roco session {} -p \"your prompt here\"", session_id);
+            // Script-friendly: print just the ID ("roco session <id> -p ...").
+            println!("{session_id}");
         }
         Err(e) => {
             eprintln!("Error: Failed to serialize session state: {e}");
@@ -185,7 +188,7 @@ fn cmd_session_delete(args: &[&str]) {
     println!("Deleted session: {}", session_id);
 }
 
-/// Send a prompt to an existing session.
+/// Send a prompt to an existing session (single turn, then save).
 fn cmd_session_chat(session_id: &str, args: &[&str]) {
     let prompt = match parse_opt("-p", args).or_else(|| parse_opt("--prompt", args)) {
         Some(p) if !p.is_empty() => p.to_string(),
@@ -209,40 +212,22 @@ fn cmd_session_chat(session_id: &str, args: &[&str]) {
     }
 
     // Load existing state
-    let mut state = ConversationState::load(&session_path).unwrap_or_else(|e| {
+    let state = ConversationState::load(&session_path).unwrap_or_else(|e| {
         eprintln!("Error: Failed to read session: {e}");
         std::process::exit(1);
     });
 
-    // Add user message
-    state.add_message("user", &prompt);
-
-    // Save updated state
-    state.save(&session_path).unwrap_or_else(|e| {
-        eprintln!("Error: Failed to save session: {e}");
-        std::process::exit(1);
-    });
-
-    println!("Session: {}", session_id);
-    println!("Prompt: {}", prompt);
-    println!();
-
-    // Run the interaction
+    // Run a single turn through the chat session and persist the transcript.
+    // (Single-shot, not the interactive REPL — matches the §12 workflow
+    // `roco session <id> -p "..."` and is script-friendly.)
     let backend = daemon::ensure_sync_backend();
-    let mode = InteractMode::Resume {
-        session_id: session_id.to_string(),
-        instant: false,
-    };
-
-    match interact_cli::run(mode, &*backend) {
-        Ok(_) => {
-            println!();
-            println!("Session saved.");
-        }
-        Err(e) => {
-            eprintln!("Error: {}", e);
+    let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, &*backend);
+    match chat.turn(&*backend, &prompt) {
+        crate::conversation::TurnOutcome::Failed(e) => {
+            eprintln!("Error: {e}");
             std::process::exit(1);
         }
+        _ => {}
     }
 }
 
