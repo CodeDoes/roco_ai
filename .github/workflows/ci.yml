@@ -11,30 +11,103 @@ env:
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
-  check:
-    name: "cargo check"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install system deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - run: cargo check --workspace --all-targets
-
-  test:
-    name: "cargo test"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install system deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - run: cargo test --workspace
-
+  # ----------------- Rust Jobs -----------------
   fmt:
-    name: "cargo fmt"
+    name: "Rustfmt"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: cargo fmt --all -- --check
+        with:
+          components: rustfmt
+      - name: Format Check
+        run: cargo fmt --all -- --check
+
+  check:
+    name: "Cargo Check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Run check
+        run: cargo check --workspace --all-targets
+
+  clippy:
+    name: "Cargo Clippy"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+      - name: Install system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features
+
+  test-rust:
+    name: "Cargo Test (Rust)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Run tests
+        run: cargo test --workspace
+
+  # ----------------- Node.js Jobs -----------------
+  test-node-agent:
+    name: "Node.js Local Agent"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: apps/node-local-agent/package-lock.json
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: apps/node-local-agent
+      - name: Build / Compile
+        run: npm run build
+        working-directory: apps/node-local-agent
+      - name: Run Tests
+        run: npm test
+        working-directory: apps/node-local-agent
+
+  test-vscode-plugin:
+    name: "VS Code Extension"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Cache Node Modules
+        uses: actions/cache@v4
+        with:
+          path: apps/plugins/vscode/node_modules
+          key: ${{ runner.os }}-node-vscode-${{ hashFiles('apps/plugins/vscode/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-vscode-
+      - name: Install Dependencies
+        run: npm install
+        working-directory: apps/plugins/vscode
+      - name: Build / Compile
+        run: npm run compile
+        working-directory: apps/plugins/vscode
+      - name: Run Tests
+        run: npm test
+        working-directory: apps/plugins/vscode
