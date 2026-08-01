@@ -77,6 +77,7 @@ pub fn help(sub: Option<&str>) {
         Some("pet") => help_pet(),
         Some("export") => help_export(),
         Some("game") => help_game(),
+        Some("ttrpg") => help_ttrpg(),
         Some("html") => help_html(),
         Some("code") | Some("coder") => help_code(),
         Some("rwkv") => help_rwkv(),
@@ -109,6 +110,7 @@ fn help_root() {
     eprintln!("  session      Session management (new, list, show, delete)");
     eprintln!("  workspace    Workspace management (new, list, show, delete)");
     eprintln!("  game         Adventure game mode (interactive fiction)");
+    eprintln!("  ttrpg        TTRPG campaign and world building system");
     eprintln!("  html         Live HTML canvas");
     eprintln!("  code         AI coding assistant");
     eprintln!("  eval         Run evaluations");
@@ -274,6 +276,19 @@ fn help_game() {
     eprintln!("Usage:");
     eprintln!("  roco game                   Start interactive fiction game master");
     eprintln!("  roco game <scenario>        Start with a specific scenario\n");
+    std::process::exit(0);
+}
+
+fn help_ttrpg() {
+    eprintln!("roco ttrpg — TTRPG campaign and world building system\n");
+    eprintln!("Usage:");
+    eprintln!("  roco ttrpg                  Start interactive TTRPG campaign REPL");
+    eprintln!("In-game Commands:");
+    eprintln!("  :sheet                     View character sheet & attributes");
+    eprintln!("  :world                     Inspect locations, factions, lore");
+    eprintln!("  :triggers                  List natural language triggers & checks");
+    eprintln!("  :chat <npc_name>           Immersive character conversation chat");
+    eprintln!("  :add_trigger <text>        Register a natural language trigger checked every turn\n");
     std::process::exit(0);
 }
 
@@ -448,6 +463,7 @@ pub const KNOWN_SUBCOMMANDS: &[&str] = &[
     "code",
     "coder",
     "game",
+    "ttrpg",
     "html",
     "inspect",
     "eval",
