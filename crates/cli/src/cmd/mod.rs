@@ -19,6 +19,7 @@ pub mod story;
 pub mod story_mode;
 pub mod ttrpg;
 pub mod workspace;
+pub mod world_sim;
 
 #[cfg(any(feature = "gui", feature = "desktop"))]
 pub mod desktop;

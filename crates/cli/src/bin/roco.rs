@@ -338,6 +338,12 @@ fn main() {
             }
             cmd::ttrpg::cmd_ttrpg(&extra);
         }
+        "world-sim" => {
+            if has_help_flag(&extra) {
+                help(Some("world-sim"));
+            }
+            cmd::world_sim::cmd_world_sim(&extra);
+        }
         "html" => {
             if has_help_flag(&extra) {
                 help(Some("html"));
