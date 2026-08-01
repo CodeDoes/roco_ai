@@ -1,5 +1,7 @@
 # RoCo AI — System Onboarding
 
+> **This document is the onboarding contract.** It is the first thing a coder reads and the last thing they should need. If something needs to be known to work on this project — an invariant, a constraint, a decision, a gotcha, a link — it belongs here, at least as a pointer. When you learn something the hard way, add it here so the next person doesn't. Docs in `docs/` hold the detail; AGENTS.md is the entry point and the index (see §14).
+
 AI-assisted collaborative writing tool. Backend: RWKV-7 SSM (2.9B params, 10k trained context). Think of it as an agentic scaffold around a recurrent state-space language model — the model generates tokens, everything else is orchestration, formatting, and state management.
 
 ```bash
@@ -360,4 +362,4 @@ AGENTS.md is the origin: current architecture (§1-8), verification state (§9),
 | `docs/rfc/0001-0015` | Decision records | Per-feature design rationale: harness, offline protocol, privacy RAG, security boundary, vision, etc. |
 | `docs/future.md` | Completed | All roadmap items landed |
 
-Rule of thumb: **AGENTS.md tells you how the system works today; the docs tell you why it was built this way.** If you're about to add a behavior, check the corresponding RFC/impression first so you don't re-decide a closed question.
+Rule of thumb: **AGENTS.md tells you how the system works today; the docs tell you why it was built this way.** If you're about to add a behavior, check the corresponding RFC/impression first so you don't re-decide a closed question. And if you're about to leave the project without writing down something you now know, write it down here first — see the onboarding contract at the top.
