@@ -491,8 +491,12 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
 
     if search_dirs.is_empty() {
         anyhow::bail!(
-            "no models/ or ~/.cache/roco/ directory found (tried {dir:?}models, {dir:?}../models, and ~/.cache/roco/).\n\
-             Hint: set RWKV_MODEL and check docs/rwkv-v7-g1.md"
+            "No model directories found (tried {dir:?}models, {dir:?}../models, and ~/.cache/roco/).\n\
+             \n\
+             Hints:\n\
+             1) Set the RWKV_MODEL environment variable to the exact path of your model.\n\
+             2) Ensure you are using the .st (Safetensors) format.\n\
+             3) Check docs/rwkv-v7-g1.md for detailed setup instructions."
         );
     }
 
@@ -550,8 +554,12 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
                 }
             }
             anyhow::bail!(
-                "no .st model file found in any of {:?}.\nFiles on disk:\n{listing}\n\
-                 Hint: set RWKV_MODEL and check docs/rwkv-v7-g1.md",
+                "No .st model file found in any of {:?}.\n\n\
+                 Files on disk:\n{listing}\n\
+                 Hints:\n\
+                 1) Set the RWKV_MODEL environment variable to the exact path of your model.\n\
+                 2) Ensure your model file ends with .st (Safetensors format).\n\
+                 3) Check docs/rwkv-v7-g1.md for detailed setup instructions.",
                 search_dirs
             )
         }

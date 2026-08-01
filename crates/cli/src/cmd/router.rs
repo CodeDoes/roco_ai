@@ -1018,6 +1018,22 @@ mod tests {
     /// returns intent-classification JSON (AGENTS.md §13 — previously red:
     /// MockBackend echoed a text snippet instead of intent JSON).
     #[test]
+    fn test_keyword_based_router() {
+        use roco_engine::MockBackend;
+        let backend = MockBackend::default();
+        let intents = all_intents();
+
+        let (intent, _) = detect_intent(&backend, "show work", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "show_work");
+
+        let (intent, _) = detect_intent(&backend, "continue", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "continue");
+
+        let (intent, _) = detect_intent(&backend, "new project", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "new_project");
+    }
+
+    #[test]
     fn test_detect_intent_with_mock_backend() {
         use roco_engine::MockBackend;
         let backend = MockBackend::default();

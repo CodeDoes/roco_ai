@@ -361,12 +361,12 @@ Router/NLU items (intent detection, keyword routing, rename/hide `session`/`work
 
 1. **Make intent detection actually work.** Two options, both needed:
    - ~~Fix `MockBackend` to return valid intent JSON when the prompt asks for classification~~ **DONE (2026-08-01)** — score-based keyword classification; tests + router work without a real model.
-   - ~~Add a deterministic **keyword-based router in the CLI** as the primary path~~ **DONE** — `detect_intent` now attempts explicit keyword matching across the user's prompt *before* making an LLM call. This acts as a fast, robust primary path, correctly picking up management intents (like "continue" or "new project") and regular modes based on phrases. The fallback classification still exists: if keywords don't match, THEN it asks the model (with the no-fallback-on-error rule: if the model fails to produce valid JSON, error loudly).
+   - Add a deterministic **keyword-based router in the CLI** as the primary path (real classifier, not a silent fallback — see below): e.g. `\b(story|write|tale)\b` → story, `\b(adventure|play|game)\b` → adventure, `\b(html|webpage|website|page)\b` → html, `\b(code|program|function|bug|rust)\b` → coder. If keywords don't match, THEN ask the model. If the model fails to produce valid JSON, error loudly (current behavior). **Still future** — the keyword classification currently lives in MockBackend only, not in the CLI.
 2. **Extend `all_intents()` with management intents** so the router auto-manages state invisibly:
-   - ~~`continue`~~ **DONE** → detects phrases like "continue", "resume", "pick up where we left off" to resume the latest workspace/project.
-   - ~~`new_project`~~ **DONE** → detects phrases like "new project", "fresh start", "blank slate" to start fresh and auto-create state.
-   - ~~`show_work`~~ **DONE** → detects phrases like "show work", "list projects" to list existing stories/projects.
-   - These new intents correctly map to target modes (`Mode::Story` or `Mode::Chat`) and remove the need for common users to manually juggle `session`/`workspace` commands.
+   - `continue` → find and resume the latest workspace/project
+   - `new_project` → start fresh, auto-create state
+   - `show_work` → list existing stories/projects
+   - This removes the need for common users to know about `session`/`workspace` at all.
 3. **Auto-manage state.** The router should create/resume/switch sessions and workspaces on the user's behalf. Explicit `session`/`workspace` commands remain for power users and automation but are hidden from default help.
 4. **Keep the no-fallback rule.** The keyword router is a real classification step, not a silent downgrade: if neither keywords nor the model can classify intent, the user gets an explicit error telling them what went wrong.
 
