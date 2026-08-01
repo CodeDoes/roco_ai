@@ -477,7 +477,7 @@ fn run_benchmarks_and_simulation(extra: &[&str], json_mode: bool) -> SolutionBen
         }
 
         // Sort solutions from best to worst for this workload
-        scored_solutions.sort_by(|a, b| b.weighted_score.cmp(&a.weighted_score));
+        scored_solutions.sort_by_key(|s| std::cmp::Reverse(s.weighted_score));
 
         matrix.push(WorkloadSolutionMatrix {
             workload_id: wl.id.clone(),
@@ -523,9 +523,8 @@ fn run_physical_benchmarks(
     let mut results = HashMap::new();
 
     // Force mock in test environments or with explicit flag
-    let force_mock = cfg!(test)
-        || std::env::var("ROCO_USE_MOCK_BACKEND").is_ok()
-        || extra.iter().any(|&a| a == "--mock");
+    let force_mock =
+        cfg!(test) || std::env::var("ROCO_USE_MOCK_BACKEND").is_ok() || extra.contains(&"--mock");
 
     let backend = if force_mock {
         Arc::new(roco_engine::MockBackend::default()) as Arc<dyn ModelBackend>
@@ -789,7 +788,7 @@ fn evaluate_code_overcontrol(backend: &dyn ModelBackend) -> PhysicalBenchmarkRes
 fn print_report_summary(report: &SolutionBenchReport) {
     println!("  1. Physical Execution Benchmark Results:");
     println!("  ---------------------------------------");
-    for (_, p) in &report.physical_benchmarks {
+    for p in report.physical_benchmarks.values() {
         println!("  ★ \x1b[1;32m{}\x1b[0m", p.name);
         println!("      \x1b[1;30mDescription:\x1b[0m {}", p.description);
         for (k, v) in &p.metrics {

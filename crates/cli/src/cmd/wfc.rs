@@ -1110,7 +1110,7 @@ fn export_map_to_ttrpg_state(grid: &WfcGrid) -> Result<(), String> {
     }
 
     // Sort clusters by size (largest first)
-    clusters.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    clusters.sort_by_key(|c| std::cmp::Reverse(c.1.len()));
 
     // Map cluster coordinate sets to unique region IDs
     let mut coord_to_region_id: HashMap<(usize, usize), String> = HashMap::new();
