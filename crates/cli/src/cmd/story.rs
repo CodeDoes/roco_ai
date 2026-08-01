@@ -1087,6 +1087,7 @@ pub fn cmd_story(extra: &[&str]) {
 
     // ── Resume / phase flags ──────────────────────────────────────
     let resume = extra.iter().any(|&a| a == "--resume" || a == "-r");
+    let force_new = extra.iter().any(|&a| a == "--new");
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
     let phase_filter = parse_opt("--phase", extra);
     let fix_chapter = if let Some(idx) = extra.iter().position(|&a| a == "--fix") {
@@ -1161,7 +1162,10 @@ pub fn cmd_story(extra: &[&str]) {
 
         // Determine workspace: resume existing or create new
         let (ws, existing_outline, existing_wiki, existing_chapters) =
-            if let Some(ref wp) = workspace_path {
+            if force_new {
+                let ws = create_story_workspace(&prompt).unwrap();
+                (ws, None, None, Vec::new())
+            } else if let Some(ref wp) = workspace_path {
                 let abs_wp = std::path::PathBuf::from(wp).canonicalize().unwrap_or_else(|_| std::path::PathBuf::from(wp));
                 let ws = roco_workspace::Workspace::from_existing(
                     abs_wp,

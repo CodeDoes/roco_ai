@@ -257,7 +257,7 @@ pub async fn handle_direct_complete_test(
             }
             Err(e) => (
                 axum::http::StatusCode::BAD_GATEWAY,
-                format!("Inferd error: {e}"),
+                format!("Inferd error: {e}\nHint: Is inferd running? Try 'roco inferd' or check the --port."),
             )
                 .into_response(),
         }
@@ -307,7 +307,7 @@ pub async fn handle_direct_bake_test(
             }
             Err(e) => (
                 axum::http::StatusCode::BAD_GATEWAY,
-                format!("Inferd error: {e}"),
+                format!("Inferd error: {e}\nHint: Is inferd running? Try 'roco inferd' or check the --port."),
             )
                 .into_response(),
         }
@@ -334,7 +334,7 @@ pub async fn handle_vocab_test(State(state): State<GatewayState>) -> impl IntoRe
             }
             Err(e) => (
                 axum::http::StatusCode::BAD_GATEWAY,
-                format!("Inferd error: {e}"),
+                format!("Inferd error: {e}\nHint: Is inferd running? Try 'roco inferd' or check the --port."),
             )
                 .into_response(),
         }
@@ -412,7 +412,7 @@ pub async fn handle_openai_completions_test(
             }
             Err(e) => (
                 axum::http::StatusCode::BAD_GATEWAY,
-                format!("Inferd error: {e}"),
+                format!("Inferd error: {e}\nHint: Is inferd running? Try 'roco inferd' or check the --port."),
             )
                 .into_response(),
         }
@@ -525,7 +525,7 @@ pub async fn handle_bake_session_test(
             }
             Err(e) => (
                 axum::http::StatusCode::BAD_GATEWAY,
-                format!("Inferd unreachable: {e}"),
+                format!("Inferd unreachable: {e}\nHint: Is inferd running? Try 'roco inferd' or check the --port."),
             )
                 .into_response(),
         }
@@ -629,7 +629,7 @@ pub async fn handle_complete_session_test(
             }
             Err(e) => (
                 axum::http::StatusCode::BAD_GATEWAY,
-                format!("Inferd error: {e}"),
+                format!("Inferd error: {e}\nHint: Is inferd running? Try 'roco inferd' or check the --port."),
             )
                 .into_response(),
         }

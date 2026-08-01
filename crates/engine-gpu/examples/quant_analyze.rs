@@ -21,7 +21,7 @@ fn find_model() -> anyhow::Result<String> {
             }
         }
     }
-    anyhow::bail!("no model found — set $RWKV_MODEL or put rwkv7-*.st in models/")
+    anyhow::bail!("no model found\nHint: set RWKV_MODEL and check docs/rwkv-v7-g1.md")
 }
 
 fn main() -> anyhow::Result<()> {

@@ -491,8 +491,8 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
 
     if search_dirs.is_empty() {
         anyhow::bail!(
-            "no models/ or ~/.cache/roco/ directory found (tried {dir:?}models, {dir:?}../models, and ~/.cache/roco/). \
-             Set $RWKV_MODEL explicitly or place a rwkv7 .st file in models/."
+            "no models/ or ~/.cache/roco/ directory found (tried {dir:?}models, {dir:?}../models, and ~/.cache/roco/).\n\
+             Hint: set RWKV_MODEL and check docs/rwkv-v7-g1.md"
         );
     }
 
@@ -551,8 +551,7 @@ pub fn default_model_path() -> anyhow::Result<PathBuf> {
             }
             anyhow::bail!(
                 "no .st model file found in any of {:?}.\nFiles on disk:\n{listing}\n\
-                 Hint: place a RWKV-7 .st file in the models/ directory, \
-                 or set $RWKV_MODEL explicitly.",
+                 Hint: set RWKV_MODEL and check docs/rwkv-v7-g1.md",
                 search_dirs
             )
         }

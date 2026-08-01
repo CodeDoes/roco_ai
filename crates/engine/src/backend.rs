@@ -495,6 +495,10 @@ impl ModelBackend for MockBackend {
                             "coder",
                             count(&msg, &["code", "program", "function", "bug", "rust"]),
                         ),
+                        (
+                            "new_project",
+                            count(&msg, &["new", "fresh start", "from scratch", "blank slate"]),
+                        ),
                     ];
                     let intent = if scores.iter().all(|(_, n)| *n == 0) {
                         "chat"

@@ -100,6 +100,12 @@ fn all_intents() -> Vec<Intent> {
             target_mode: Mode::Coder,
             is_passive: false,
         },
+        Intent {
+            id: "new_project",
+            label: "New Project (fresh start)",
+            target_mode: Mode::Story,
+            is_passive: false,
+        },
     ]
 }
 
@@ -142,6 +148,17 @@ fn detect_intent(
     available: &[Intent],
     mode_hint: &str,
 ) -> Result<(Intent, String), String> {
+    let lower = user_message.to_lowercase();
+    if lower.contains("new")
+        || lower.contains("fresh start")
+        || lower.contains("from scratch")
+        || lower.contains("blank slate")
+    {
+        if let Some(intent) = available.iter().find(|i| i.id == "new_project").cloned() {
+            return Ok((intent, user_message.to_string()));
+        }
+    }
+
     let prompt = intent_detection_prompt(user_message, available, mode_hint);
 
     let request = roco_engine::CompletionRequest {
@@ -244,7 +261,11 @@ pub fn cmd_router(extra: &[&str]) {
 
             match current_mode {
                 Mode::Story => {
-                    launch_story(&extracted);
+                    if intent.id == "new_project" {
+                        launch_story(&extracted, true);
+                    } else {
+                        launch_story(&extracted, false);
+                    }
                     current_mode = Mode::Chat;
                     add_history(&mut history, "system", "Story completed. Back in chat.");
                 }
@@ -360,7 +381,11 @@ pub fn cmd_router(extra: &[&str]) {
             // For modes with different UX, launch and return
             match current_mode {
                 Mode::Story => {
-                    launch_story(&extracted);
+                    if intent.id == "new_project" {
+                        launch_story(&extracted, true);
+                    } else {
+                        launch_story(&extracted, false);
+                    }
                     current_mode = Mode::Chat;
                     add_history(&mut history, "system", "Story completed. Back in chat.");
                     continue;
@@ -382,7 +407,7 @@ pub fn cmd_router(extra: &[&str]) {
         // ── Self-contained modes: Adventure, Coder, Chat ──────────────────
         // Same loop, different system prompts
         if current_mode == Mode::Story {
-            launch_story(&extracted);
+            launch_story(&extracted, false);
             current_mode = Mode::Chat;
             add_history(&mut history, "system", "Story completed. Back in chat.");
             continue;
@@ -666,10 +691,14 @@ fn sanitize_html(text: &str) -> String {
 // Mode Launchers (modes with different UX)
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn launch_story(prompt: &str) {
+fn launch_story(prompt: &str, is_new: bool) {
     r::header("📖 Story Mode");
     r::dim("Launching story pipeline...\n");
-    cmd::story::cmd_story(&[prompt]);
+    if is_new {
+        cmd::story::cmd_story(&[prompt, "--new"]);
+    } else {
+        cmd::story::cmd_story(&[prompt]);
+    }
 }
 
 fn launch_html(prompt: &str) {
@@ -919,6 +948,28 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_intent_new_project_creates_workspace() {
+        use roco_engine::MockBackend;
+        let backend = MockBackend::default();
+        let intents = all_intents();
+
+        let (intent, _prompt) =
+            detect_intent(&backend, "i need a fresh start", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "new_project");
+        assert_eq!(intent.target_mode, Mode::Story);
+
+        let (intent, _) = detect_intent(&backend, "new", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "new_project");
+
+        let (intent, _) = detect_intent(&backend, "blank slate please", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "new_project");
+
+        let (intent, _) =
+            detect_intent(&backend, "let's build from scratch", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "new_project");
+    }
+
+    #[test]
     fn test_intent_detection_prompt_contains_available() {
         let intents = all_intents();
         let prompt = intent_detection_prompt("hello", &intents, "chat");
@@ -999,6 +1050,7 @@ mod tests {
                 "story" => assert_eq!(intent.target_mode, Mode::Story),
                 "html" => assert_eq!(intent.target_mode, Mode::Html),
                 "coder" => assert_eq!(intent.target_mode, Mode::Coder),
+                "new_project" => assert_eq!(intent.target_mode, Mode::Story),
                 _ => panic!("unknown intent: {}", intent.id),
             }
         }
