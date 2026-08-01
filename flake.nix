@@ -14,7 +14,7 @@
           inherit system;
           overlays = [ (import rust-overlay) ];
         };
-        rust = pkgs.rust-bin.stable.latest.default;
+        rust = pkgs.rust-bin.stable."1.97.1".default;
       in
       {
         devShells.default = pkgs.mkShell {

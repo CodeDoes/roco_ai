@@ -744,7 +744,7 @@ pub fn list_sessions() {
         let first = state
             .messages
             .first()
-            .map(|m| format!(" — {}", &m.content.chars().take(60).collect::<String>()))
+            .map(|m| format!(" — {}", m.content.chars().take(60).collect::<String>()))
             .unwrap_or_default();
         println!(
             "  {}  ({}){}",

@@ -235,7 +235,11 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
     // ── Pet app ──────────────────────────────────────────────────────
     struct PetApp {
         pet: DesktopPet,
+        // Keep-alive: holding the TrayIcon alive keeps the system tray entry
+        // visible; the field is never read but must not be dropped.
+        #[allow(dead_code)]
         backend: Option<Arc<dyn ModelBackend>>,
+        #[allow(dead_code)]
         tray: Option<tray_icon::TrayIcon>,
         _menu_event_receiver: Option<tray_icon::menu::MenuEventReceiver>,
         visible: bool,
@@ -325,12 +329,13 @@ fn run_pet_inner(extra: &[&str], start_hidden: bool) {
                 React to what the user says. Use emoticons. Be expressive and friendly."
                 .to_string();
 
-            let prompt = format!("Conversation:\n{history_text}\nUser: {msg}\nYou:");
+            let prompt = format!(
+                "System: {system}\n\nConversation:\n{history_text}\nUser: {msg}\nYou:"
+            );
 
             let request = roco_engine::CompletionRequest {
-                system,
                 prompt,
-                temperature: 0.8,
+                temperature: 0.6,
                 max_tokens: 256,
                 prefill: Some(" ".into()),
                 ..Default::default()
@@ -455,7 +460,7 @@ fn create_pet_icon_rgba() -> Vec<u8> {
 
             // Yellow circle
             if dist < 1.0 {
-                pixels[i + 0] = 255; // R
+                pixels[i] = 255; // R
                 pixels[i + 1] = 200; // G
                 pixels[i + 2] = 50; // B
                 pixels[i + 3] = 255; // A
@@ -469,7 +474,7 @@ fn create_pet_icon_rgba() -> Vec<u8> {
                 let eye_dy = (y as f64 - eye_y).abs();
 
                 if (eye_dx_l < 2.0 && eye_dy < 2.0) || (eye_dx_r < 2.0 && eye_dy < 2.0) {
-                    pixels[i + 0] = 0;
+                    pixels[i] = 0;
                     pixels[i + 1] = 0;
                     pixels[i + 2] = 0;
                 }
@@ -480,7 +485,7 @@ fn create_pet_icon_rgba() -> Vec<u8> {
                     && (x as f64 - cx).abs() > 3.0
                     && (x as f64 - cx).abs() < 8.0
                 {
-                    pixels[i + 0] = 0;
+                    pixels[i] = 0;
                     pixels[i + 1] = 0;
                     pixels[i + 2] = 0;
                 }

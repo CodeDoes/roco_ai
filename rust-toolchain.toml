@@ -11,7 +11,7 @@
 # Pinning forces rustup to select a single toolchain for every cargo,
 # rustc, cargo-clippy, clippy-driver and rustfmt invocation in this repo,
 # regardless of PATH order or shell environment.
-channel = "stable"
+channel = "1.97.1"
 components = ["rustfmt", "clippy"]
 profile = "minimal"
 
@@ -19,3 +19,6 @@ profile = "minimal"
 # want to roll forward — every line of Cargo.lock changes on every
 # toolchain bump, so lazy auto-upgrades destabilise the build cache.
 # The current pinning is to whatever stable was at the time of last bump.
+# This value MUST stay in lockstep with devenv.nix (languages.rust.channel)
+# and flake.nix (rust-bin.stable.<version>). CI builds the devenv shell, so
+# all three environments resolve the identical compiler.

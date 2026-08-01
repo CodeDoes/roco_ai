@@ -1,5 +1,13 @@
 name: CI
 
+# CI builds and runs inside the SAME devenv shell as local development
+# (see devenv.sh/integrations/github-actions). The flake pins rust 1.97.1
+# (rust-toolchain.toml, devenv.nix and flake.nix must stay in lockstep), so
+# CI, local devenv and rustup resolve the identical toolchain — no more
+# version drift (devenv 1.95 vs rustup 1.96 vs CI 1.97) or E0514.
+# RUSTFLAGS=-D warnings is set globally (as setup-rust-toolchain used to do)
+# so every Rust job is strict; the workspace is warning-free.
+
 on:
   push:
     branches: [main]
@@ -9,68 +17,67 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  RUSTFLAGS: -D warnings
 
 jobs:
-  # ----------------- Rust Jobs -----------------
+  # ----------------- Rust jobs (devenv shell) -----------------
   fmt:
     name: "Rustfmt"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
         with:
-          components: rustfmt
+          name: devenv
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
       - name: Format Check
-        run: cargo fmt --all -- --check
+        run: devenv shell cargo fmt --all -- --check
 
   check:
     name: "Cargo Check"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install system deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
       - name: Run check
-        run: cargo check --workspace --all-targets
+        run: devenv shell cargo check --workspace --all-targets
 
   clippy:
     name: "Cargo Clippy"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
         with:
-          components: clippy
-      - name: Install system deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+          name: devenv
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
       - name: Run clippy
-        # NOTE: no --all-features. --all-features pulls the GTK chain
-        # (glib-sys/gobject-sys via the desktop/gui features) which cannot
-        # build on ubuntu-latest without extra system deps (E0514/exit 101).
-        # Default features keep clippy on the same surface as check/test.
-        run: cargo clippy --workspace --all-targets
-        env:
-          CARGO_TERM_COLOR: always
-      # Lint warnings exist (see e.g. crates/engine eval.rs:657). They do not
-      # fail the job; tighten with `-- -D warnings` once they are cleared.
+        # --all-features works here: the devenv shell provides the GTK3
+        # stack that the desktop/gui features (glib-sys/gobject-sys) need.
+        run: devenv shell cargo clippy --workspace --all-targets --all-features
 
   test-rust:
     name: "Cargo Test (Rust)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install system deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold clang
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
       - name: Run tests
-        run: cargo test --workspace
+        run: devenv shell cargo test --workspace
 
   # ----------------- Node.js Jobs -----------------
   test-node-agent:

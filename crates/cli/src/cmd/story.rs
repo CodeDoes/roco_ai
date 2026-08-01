@@ -1777,7 +1777,7 @@ pub fn cmd_story(extra: &[&str]) {
                 let previous = chapter_texts.last().cloned().unwrap_or_default();
                 let (chapter_title, chapter_summary) = chapter_outline_info(&outline_text, i);
 
-                println!("  ✍️  {}...", &chapter_label);
+                println!("  ✍️  {}...", chapter_label);
 
                 let ch_task = Task {
                     r#type: "write".into(),
@@ -1799,7 +1799,7 @@ pub fn cmd_story(extra: &[&str]) {
                 let mut current_text = ch_result.output;
                 for attempt in 0..=max_retries {
                     // Validation (always runs at least once for the initial version)
-                    println!("  🔍 Validating {}...", &chapter_label);
+                    println!("  🔍 Validating {}...", chapter_label);
                     let val_task = Task {
                         r#type: "validate".into(),
                         domain: "chapter".into(),
@@ -1880,7 +1880,7 @@ pub fn cmd_story(extra: &[&str]) {
                     };
 
                     println!("  ⚠️  {} needs revision (attempt {}/{}) — retrying...",
-                        &chapter_label, attempt + 1, max_retries);
+                        chapter_label, attempt + 1, max_retries);
                     AgentJournal::warn("story", &format!(
                         "{chapter_label} needs revision (attempt {}/{}), retrying...",
                         attempt + 1, max_retries
