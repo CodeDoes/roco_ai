@@ -815,6 +815,11 @@ mod tests {
     use roco_engine::ModelBackend;
     use std::time::Duration;
 
+    /// Serializes all env-var-mutating tests: process-global env vars race
+    /// under parallel test execution, so every test that touches
+    /// ROCO_*_PORT must hold this lock (see PROGRESS.md — port pollution).
+    static PORT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_pid_paths() {
         let p = pid_path("gateway");
@@ -1106,6 +1111,7 @@ mod tests {
 
     #[test]
     fn test_port_from_env_unset() {
+        let _g = PORT_TEST_LOCK.lock().unwrap();
         // No env var set → returns default
         unsafe { std::env::remove_var("ROCO_TEST_PORT") };
         assert_eq!(port_from_env("ROCO_TEST_PORT", 18000), 18000);
@@ -1113,6 +1119,7 @@ mod tests {
 
     #[test]
     fn test_port_from_env_valid() {
+        let _g = PORT_TEST_LOCK.lock().unwrap();
         unsafe { std::env::set_var("ROCO_TEST_PORT", "19999") };
         assert_eq!(port_from_env("ROCO_TEST_PORT", 18000), 19999);
         unsafe { std::env::remove_var("ROCO_TEST_PORT") };
@@ -1120,6 +1127,7 @@ mod tests {
 
     #[test]
     fn test_port_from_env_invalid() {
+        let _g = PORT_TEST_LOCK.lock().unwrap();
         // Invalid value → falls back to default
         unsafe { std::env::set_var("ROCO_TEST_PORT", "not-a-port") };
         assert_eq!(port_from_env("ROCO_TEST_PORT", 18000), 18000);
@@ -1128,38 +1136,32 @@ mod tests {
 
     #[test]
     fn test_gateway_port_default() {
+        let _g = PORT_TEST_LOCK.lock().unwrap();
         unsafe { std::env::remove_var("ROCO_GATEWAY_PORT") };
         assert_eq!(gateway_port(), DEFAULT_GATEWAY_PORT);
     }
 
     #[test]
     fn test_inferd_port_default() {
+        let _g = PORT_TEST_LOCK.lock().unwrap();
         unsafe { std::env::remove_var("ROCO_INFERD_PORT") };
         assert_eq!(inferd_port(), DEFAULT_INFERD_PORT);
     }
 
     #[test]
     fn test_gateway_port_env_override() {
-        // Save original value if it exists
-        let original = std::env::var("ROCO_GATEWAY_PORT").ok();
+        let _g = PORT_TEST_LOCK.lock().unwrap();
         unsafe { std::env::set_var("ROCO_GATEWAY_PORT", "19999") };
         assert_eq!(gateway_port(), 19999);
-        // Restore original value
-        match original {
-            Some(val) => unsafe { std::env::set_var("ROCO_GATEWAY_PORT", &val) },
-            None => unsafe { std::env::remove_var("ROCO_GATEWAY_PORT") },
-        }
+        unsafe { std::env::remove_var("ROCO_GATEWAY_PORT") };
     }
 
     #[test]
     fn test_inferd_port_env_override() {
-        let original = std::env::var("ROCO_INFERD_PORT").ok();
+        let _g = PORT_TEST_LOCK.lock().unwrap();
         unsafe { std::env::set_var("ROCO_INFERD_PORT", "29999") };
         assert_eq!(inferd_port(), 29999);
-        match original {
-            Some(val) => unsafe { std::env::set_var("ROCO_INFERD_PORT", &val) },
-            None => unsafe { std::env::remove_var("ROCO_INFERD_PORT") },
-        }
+        unsafe { std::env::remove_var("ROCO_INFERD_PORT") };
     }
 
     // ── Scenario 5: ensure_sync_backend() round-trip ─────────────────────────

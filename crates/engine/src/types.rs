@@ -554,6 +554,35 @@ impl TokenCounter {
     }
 }
 
+/// Element-wise weighted blend of N same-length vectors:
+/// `out[i] = Σ_k (weight_k * vec_k[i]) / Σ_k weight_k`.
+///
+/// Returns `None` if `states` is empty, the vectors differ in length, or
+/// the total weight is zero. Weights may be arbitrary (they are normalized).
+/// This is the pure-math core of [`super::StateTuning::blend_states`], kept
+/// here so it is unit-testable without a GPU backend.
+pub fn blend_weighted(states: &[(&[f32], f32)]) -> Option<Vec<f32>> {
+    let (first, _) = states.first()?;
+    let len = first.len();
+    let total: f32 = states.iter().map(|(_, w)| w).sum();
+    if total == 0.0 {
+        return None;
+    }
+    let mut acc = vec![0.0f32; len];
+    for (vec, weight) in states {
+        if vec.len() != len {
+            return None;
+        }
+        for (i, &v) in vec.iter().enumerate() {
+            acc[i] += weight * v;
+        }
+    }
+    for v in acc.iter_mut() {
+        *v /= total;
+    }
+    Some(acc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -639,9 +668,8 @@ mod tests {
 
     // ── Pending tests for features not yet implemented ──────────────────
 
-    /// TokenTrace serialization round-trip (pending trace feature).
+    /// TokenTrace serialization round-trip.
     #[test]
-    #[ignore = "pending TokenTrace serialization feature"]
     fn trace_serialization_roundtrip() {
         let trace = TokenTrace {
             token_id: 42,
@@ -660,7 +688,6 @@ mod tests {
 
     /// CompletionResponse with trace field serializes correctly.
     #[test]
-    #[ignore = "pending trace serialization feature"]
     fn response_with_trace_serializes() {
         let resp = CompletionResponse {
             text: "hello world".to_string(),
@@ -686,7 +713,6 @@ mod tests {
 
     /// EngineError help text for all variants.
     #[test]
-    #[ignore = "pending comprehensive error help text"]
     fn engine_error_help_text_coverage() {
         let backend_err = EngineError::Backend("adapter".to_string());
         assert!(backend_err.help().is_some());
@@ -706,16 +732,67 @@ mod tests {
 
     /// Session blending with three or more states.
     #[test]
-    #[ignore = "pending multi-state blend feature"]
     fn blend_three_states() {
-        // Placeholder: requires blend_states to support 3+ states
-        // Currently only 2-state blend is implemented
+        let a = [1.0f32, 0.0, 0.0];
+        let b = [0.0f32, 1.0, 0.0];
+        let c = [0.0f32, 0.0, 1.0];
+
+        // Equal weights → plain average of the three states.
+        let blended = blend_weighted(&[(&a, 0.5), (&b, 0.25), (&c, 0.25)]).unwrap();
+        assert_eq!(blended.len(), 3);
+        assert!((blended[0] - 0.5).abs() < 1e-6);
+        assert!((blended[1] - 0.25).abs() < 1e-6);
+        assert!((blended[2] - 0.25).abs() < 1e-6);
+
+        // Weights are normalized: [2, 1, 1] ≡ [0.5, 0.25, 0.25].
+        let normalized = blend_weighted(&[(&a, 2.0), (&b, 1.0), (&c, 1.0)]).unwrap();
+        assert!((normalized[0] - 0.5).abs() < 1e-6);
+
+        // Edge cases: zero total weight → None.
+        assert!(blend_weighted(&[(&a, 0.0), (&b, 0.0)]).is_none());
+        assert!(blend_weighted(&[]).is_none());
+        // Mismatched lengths → None.
+        let short = [1.0f32];
+        assert!(blend_weighted(&[(&a, 0.5), (&short, 0.5)]).is_none());
     }
 
     /// Grammar-constrained response with invalid token rejection.
-    #[test]
-    #[ignore = "pending grammar mask testing"]
-    fn grammar_mask_rejects_invalid_tokens() {
-        // Placeholder: requires a concrete grammar and token validation
+    #[tokio::test]
+    async fn grammar_mask_rejects_invalid_tokens() {
+        use crate::backend::{MockBackend, ModelBackend};
+
+        // Mock byte vocabulary (see MockBackend::vocab_bytes): id 0 = "",
+        // 1-3 = tab/LF/CR, 4..=98 = 0x20..=0x7E. 'a' = 0x61 → id 69.
+        struct AllowOnlyA;
+        impl BnfMask for AllowOnlyA {
+            fn mask(&mut self, logits: &mut [f32]) {
+                for (i, l) in logits.iter_mut().enumerate() {
+                    *l = if i == 69 { 1.0 } else { f32::NEG_INFINITY };
+                }
+            }
+            fn accept(&mut self, _token_id: u32) -> bool {
+                false // grammar finished after a single token
+            }
+        }
+
+        // Contract check: invalid tokens are rejected to NEG_INFINITY.
+        let mut logits = vec![0.5f32; 99];
+        let mut mask = AllowOnlyA;
+        mask.mask(&mut logits);
+        assert_eq!(logits[68], f32::NEG_INFINITY);
+        assert_eq!(logits[70], f32::NEG_INFINITY);
+        assert!((logits[69] - 1.0).abs() < 1e-6);
+
+        // End-to-end: the mock generates only the allowed token.
+        let b = MockBackend::default();
+        let resp = b
+            .complete(CompletionRequest {
+                prompt: "masked".into(),
+                bnf_mask: Some(Box::new(AllowOnlyA)),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(resp.text, "a");
     }
 }

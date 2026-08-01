@@ -326,6 +326,53 @@ impl StoryEngine {
         &self.chapters
     }
 
+    /// Replace the outline (manual edit from the editor). Validates that
+    /// chapter numbers are sequential starting at 1, then persists to
+    /// `01-OUTLINE.md`.
+    pub fn set_outline(&mut self, chapters: Vec<ChapterInfo>) -> Result<(), String> {
+        for (i, ch) in chapters.iter().enumerate() {
+            if ch.number != (i + 1) as u64 {
+                return Err(format!(
+                    "Outline chapter numbers must be sequential starting at 1 \
+                     (got {} at position {})",
+                    ch.number,
+                    i + 1
+                ));
+            }
+        }
+        self.outline = chapters;
+        let md = self.render_outline();
+        let path = self.workspace.resolve("01-OUTLINE.md").unwrap();
+        let _ = write_file(&path, &md);
+        Ok(())
+    }
+
+    /// Save an edited chapter body. Replaces the chapter if it exists,
+    /// appends it if it's the next chapter number, otherwise errors.
+    /// Persists to `03-CHAPTER_{num}.md`.
+    pub fn save_chapter(&mut self, num: usize, content: String) -> Result<(), String> {
+        if num == 0 {
+            return Err("Chapter numbers start at 1".to_string());
+        }
+        if num > self.chapters.len() + 1 {
+            return Err(format!(
+                "Cannot save chapter {}: chapters are written in order (next is {})",
+                num,
+                self.chapters.len() + 1
+            ));
+        }
+        if num == self.chapters.len() + 1 {
+            self.chapters.push(content);
+        } else {
+            self.chapters[num - 1] = content;
+        }
+        self.current_chapter = num;
+        let filename = format!("03-CHAPTER_{}.md", num);
+        let path = self.workspace.resolve(&filename).unwrap();
+        let _ = write_file(&path, &self.chapters[num - 1]);
+        Ok(())
+    }
+
     /// Get interaction state
     pub fn interaction_state(&self) -> &InteractionState {
         &self.interaction_state

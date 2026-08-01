@@ -5,7 +5,9 @@ use axum::{
     Json, Router,
 };
 use roco_agent::natural_feedback::FeedbackParser;
+use roco_agent::story_engine::ChapterInfo as EngineChapterInfo;
 use roco_agent::story_engine::StoryEngine;
+use roco_agent::writing_assistant::WritingAssistant;
 use roco_engine::ModelBackend;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -66,6 +68,16 @@ pub struct Suggestion {
     pub text: String,
     pub reasoning: Option<String>,
     pub confidence: f32,
+    /// Where to insert (for fill-middle suggestions).
+    #[serde(default)]
+    pub insert_point: Option<usize>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApplySuggestionRequest {
+    /// The text currently in the editor buffer.
+    pub current_text: String,
+    pub suggestion: Suggestion,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -151,11 +163,22 @@ async fn get_outline(State(state): State<StoryApiState>) -> impl IntoResponse {
 
 async fn update_outline(
     State(state): State<StoryApiState>,
-    Json(_outline): Json<Outline>,
+    Json(outline): Json<Outline>,
 ) -> impl IntoResponse {
-    let _engine = state.engine.lock().await;
-    // TODO: Update outline in engine
-    Json(serde_json::json!({ "status": "ok" }))
+    let mut engine = state.engine.lock().await;
+    let chapters: Vec<EngineChapterInfo> = outline
+        .chapters
+        .into_iter()
+        .map(|c| EngineChapterInfo {
+            number: c.number,
+            title: c.title,
+            summary: c.summary,
+        })
+        .collect();
+    match engine.set_outline(chapters) {
+        Ok(()) => Json(serde_json::json!({ "status": "ok" })),
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
 }
 
 async fn get_chapter(
@@ -178,12 +201,15 @@ async fn get_chapter(
 }
 
 async fn save_chapter(
-    State(_state): State<StoryApiState>,
-    Path(_num): Path<usize>,
-    Json(_chapter): Json<Chapter>,
+    State(state): State<StoryApiState>,
+    Path(num): Path<usize>,
+    Json(chapter): Json<Chapter>,
 ) -> impl IntoResponse {
-    // TODO: Save chapter to engine
-    Json(serde_json::json!({ "status": "ok" }))
+    let mut engine = state.engine.lock().await;
+    match engine.save_chapter(num, chapter.content) {
+        Ok(()) => Json(serde_json::json!({ "status": "ok", "number": num })),
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
 }
 
 async fn generate_chapter(
@@ -209,14 +235,20 @@ async fn generate_chapter(
 
 async fn revise_chapter(
     State(state): State<StoryApiState>,
-    Path(_num): Path<usize>,
+    Path(num): Path<usize>,
     Json(_req): Json<ReviseRequest>,
 ) -> impl IntoResponse {
-    let _backend = state.backend.clone();
-    let _engine = state.engine.lock().await;
+    let backend = state.backend.clone();
+    let mut engine = state.engine.lock().await;
 
-    // TODO: Implement revision with feedback
-    Json(serde_json::json!({ "status": "ok", "message": "Revision not yet implemented" }))
+    // Real revision loop: evaluate quality, then revise against the critique.
+    match engine.evaluate_chapter_quality(&*backend, num) {
+        Ok(critique) => match engine.revise_chapter(&*backend, num, &critique) {
+            Ok(content) => Json(serde_json::json!({ "status": "ok", "content": content })),
+            Err(e) => Json(serde_json::json!({ "error": e })),
+        },
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
 }
 
 async fn evaluate_quality(
@@ -240,44 +272,73 @@ async fn evaluate_quality(
 }
 
 async fn get_suggestions(
-    State(_state): State<StoryApiState>,
-    Json(_req): Json<SuggestRequest>,
+    State(state): State<StoryApiState>,
+    Json(req): Json<SuggestRequest>,
 ) -> impl IntoResponse {
-    // TODO: Get suggestions from writing assistant
-    Json(serde_json::json!({
-        "suggestions": [
-            {
-                "type": "continuation",
-                "text": "The knight hesitated, his hand trembling on the hilt of his sword...",
-                "reasoning": "Natural continuation from the current scene",
-                "confidence": 0.8
-            },
-            {
-                "type": "alternative",
-                "text": "Instead of drawing his sword, the knight dropped to one knee...",
-                "reasoning": "Alternative approach showing humility",
-                "confidence": 0.7
-            }
-        ]
-    }))
+    let backend = state.backend.clone();
+    let assistant = WritingAssistant::new();
+    match assistant.suggest_continuation(&*backend, &req.text, 3) {
+        Ok(suggestions) => {
+            let mapped: Vec<Suggestion> = suggestions
+                .into_iter()
+                .map(|s| Suggestion {
+                    suggestion_type: s.suggestion_type,
+                    text: s.text,
+                    reasoning: Some(s.reasoning),
+                    confidence: s.confidence,
+                    insert_point: s.insert_point,
+                })
+                .collect();
+            Json(serde_json::json!({ "suggestions": mapped }))
+        }
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
 }
 
 async fn apply_suggestion(
     State(_state): State<StoryApiState>,
-    Json(suggestion): Json<Suggestion>,
+    Json(req): Json<ApplySuggestionRequest>,
 ) -> impl IntoResponse {
-    // TODO: Apply suggestion to editor
-    Json(serde_json::json!({ "status": "ok", "text": suggestion.text }))
+    // The engine has no editor buffer; "apply" deterministically merges the
+    // suggestion into the current editor text. The desktop editor owns the
+    // buffer and calls this with the text the user is editing.
+    let merged = match req.suggestion.suggestion_type.as_str() {
+        "fill_middle" => match req.suggestion.insert_point {
+            Some(i) if i <= req.current_text.len() => {
+                let mut t = req.current_text.clone();
+                t.insert_str(i, &req.suggestion.text);
+                t
+            }
+            _ => format!("{}\n\n{}", req.current_text, req.suggestion.text),
+        },
+        // An alternative replaces the trailing block after the last paragraph
+        // break; expansion/continuation append.
+        "alternative" => match req.current_text.rfind("\n\n") {
+            Some(i) => format!("{}\n\n{}", &req.current_text[..i], req.suggestion.text),
+            None => req.suggestion.text,
+        },
+        _ => format!("{}\n\n{}", req.current_text, req.suggestion.text),
+    };
+    Json(serde_json::json!({ "status": "ok", "text": merged }))
 }
 
 async fn continue_writing(
-    State(_state): State<StoryApiState>,
-    Json(_req): Json<ContinueRequest>,
+    State(state): State<StoryApiState>,
+    Json(req): Json<ContinueRequest>,
 ) -> impl IntoResponse {
-    // TODO: Continue writing from current text
-    Json(serde_json::json!({
-        "text": "The knight drew his sword, the blade gleaming in the moonlight..."
-    }))
+    let backend = state.backend.clone();
+    let assistant = WritingAssistant::new();
+    match assistant.suggest_continuation(&*backend, &req.text, 1) {
+        Ok(mut suggestions) => {
+            let text = suggestions
+                .drain(..)
+                .next()
+                .map(|s| s.text)
+                .unwrap_or_default();
+            Json(serde_json::json!({ "text": text }))
+        }
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
 }
 
 async fn send_feedback(

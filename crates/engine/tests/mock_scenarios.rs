@@ -69,9 +69,7 @@ impl StateTuning for RecordingBackend {
 
     fn blend_states<'a>(
         &'a self,
-        _session_a: &'a str,
-        _session_b: &'a str,
-        _alpha: f32,
+        _states: &'a [(&'a str, f32)],
         _output_session: &'a str,
     ) -> BoxFuture<'a, Result<(), EngineError>> {
         Box::pin(async move {

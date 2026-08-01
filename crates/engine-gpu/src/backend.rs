@@ -150,13 +150,11 @@ impl RwkvBackend {
         })
     }
 
-    /// Blend two session states element-wise and store as a new session.
-    /// output = alpha * session_a + (1-alpha) * session_b
+    /// Blend N session states element-wise and store as a new session.
+    /// output = Σ(weight_i * session_i) / Σ(weight_i)
     pub fn blend_states(
         &self,
-        session_a: &str,
-        session_b: &str,
-        alpha: f32,
+        states: &[(String, f32)],
         output_session: &str,
     ) -> Result<(), EngineError> {
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -166,9 +164,7 @@ impl RwkvBackend {
             .ok_or_else(|| EngineError::Backend("backend shut down".into()))?;
         futures::executor::block_on(async {
             tx.send(ActorMessage::BlendStates(BlendReq {
-                session_a: session_a.to_string(),
-                session_b: session_b.to_string(),
-                alpha,
+                states: states.to_vec(),
                 output_session: output_session.to_string(),
                 reply: reply_tx,
             }))
@@ -411,12 +407,15 @@ impl StateTuning for RwkvBackend {
 
     fn blend_states<'a>(
         &'a self,
-        session_a: &'a str,
-        session_b: &'a str,
-        alpha: f32,
+        states: &'a [(&'a str, f32)],
         output_session: &'a str,
     ) -> BoxFuture<'a, Result<(), EngineError>> {
-        let res = self.blend_states(session_a, session_b, alpha, output_session);
+        let states = states
+            .iter()
+            .map(|(s, w)| (s.to_string(), *w))
+            .collect::<Vec<_>>();
+        let output_session = output_session.to_string();
+        let res = self.blend_states(&states, &output_session);
         Box::pin(
             async move { res.map_err(|e| EngineError::Backend(format!("rwkv blend_states: {e}"))) },
         )

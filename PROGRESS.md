@@ -2,6 +2,17 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-01 — All 11 pending tests + story API stubs landed (intent in prior edit of this entry)
+
+- **0 ignored tests left in the workspace** — all 11 are now real and green.
+- MockBackend mirrors the real actor: `on_token` emits whitespace-delimited chunks; `deadline_ms` → `TimedOut`; `interrupt()` cancels in-flight latency; `top_a` truncates the BNF-walk candidate set (uniform-mass analog); `bnf_mask` drives deterministic masked generation; intent-classification prompts return score-based keyword intent JSON.
+- **`blend_states` generalized to N states**: trait takes `&[(&str, f32)]` (weights normalized), default errors descriptively; RwkvBackend + actor use pure `roco_engine::blend_weighted` (unit-tested: 3-state math, normalization, zero-weight/length-mismatch edges); infer-client + example updated.
+- **Story API stubs → real**: `update_outline`/`save_chapter` via new `StoryEngine::set_outline`/`save_chapter` (validating + persisting to `01-OUTLINE.md`/`03-CHAPTER_N.md`); `revise` = evaluate → critique → revise; `suggestions`/`continue` via WritingAssistant (real model calls); `apply_suggestion` = deterministic merge (fill_middle/alternative/continuation) into editor text.
+- **Router NLU testable under mock** (§13 item 1a): `test_detect_intent_with_mock_backend` proves story/adventure/html/coder/chat routing.
+- `web_rwkv_version` now emitted by `engine-gpu/build.rs` from Cargo.lock (was hardcoded). Fixed pre-existing flake: all env-var-mutating port tests are now serialized behind `PORT_TEST_LOCK` (a static mutex) — save/restore alone still raced.
+- `cargo test --workspace`: **1005 passed / 0 failed / 0 ignored**. `cargo check --workspace --all-targets` + `cargo fmt --check` clean, zero warnings.
+- Still red: real-model router verification (§13, needs live inferd), model limitations (§9 list), UX items (§12), management intents + CLI keyword router (§13 future).
+
 ## 2026-07-31 — Docs aligned (e903768)
 
 - AGENTS.md is the single origin for current + future state; this log records deltas only.

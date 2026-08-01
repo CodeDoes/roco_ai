@@ -200,6 +200,9 @@ As of the latest full E2E run (2026-07-31), the complete story pipeline passes a
 - **Schema enum scoping fixed** (`json_schema.rs`): enums are emitted as named rules, never inlined into object rules (GBNF `|` precedence trap — see §10)
 - **Generation loop budget fixed** (`engine-gpu/src/actor.rs`): the first loop samples ONE token then hands off to the main loop (previously ran to `max_tokens` AND the main loop ran `max_tokens−1` more = 2×max_tokens−1 tokens). Grammar-closing token emitted before stopping in both loops.
 - **No silent fallbacks anywhere** (commit `3181178`): router `detect_intent` returns `Result` and fails loudly. A failed intent parse, an unknown intent id, or a backend error is surfaced as an error — it is NEVER silently downgraded to chat. Same rule as prose fallback: if something isn't ready, it fails loudly, it doesn't quietly pretend to work.
+- **All 11 pending-feature tests cleared** (2026-08-01): `cargo test --workspace` = 1005 passed / 0 failed / 0 ignored. MockBackend now mirrors the real actor: `on_token` emits whitespace-delimited stream chunks; `deadline_ms` → `EngineError::TimedOut`; `interrupt()` cancels in-flight latency; `top_a` truncates the BNF-walk candidate set (uniform-mass analog); `bnf_mask` drives deterministic masked generation; intent-classification prompts return score-based keyword intent JSON.
+- **State blending is N-state** (was 2-state): `StateTuning::blend_states(&[(&str, f32)], output_session)` with normalized weighted blend, default = descriptive error. Pure math lives in `roco_engine::blend_weighted` (unit-tested incl. 3-state, normalization, zero-weight and length-mismatch edges); `RwkvBackend` + actor use it.
+- **Story editor API routes are real** (were canned stubs): `update_outline`/`save_chapter` via new `StoryEngine::set_outline`/`save_chapter` (validating + persisting); `revise` runs evaluate→critique→revise; `suggestions`/`continue` call `WritingAssistant`; `apply_suggestion` merges into editor text deterministically. `web_rwkv_version` is emitted by `engine-gpu/build.rs` from Cargo.lock (was hardcoded).
 - Full E2E: outline → wiki → chapters 1-3 (validated) → synopsis → publish ✅
 
 ## 10. Known Legacy Issues
@@ -334,19 +337,20 @@ Router/NLU items (intent detection, keyword routing, rename/hide `session`/`work
 
 ## 13. Router & NLU — Current State and Future State
 
-### Current State (as of 2026-07-31)
+### Current State (as of 2026-08-01)
 
 - Modes ARE implemented as system prompts (`mode_system_prompt` in `crates/cli/src/cmd/router.rs`, ~line 576 Adventure, ~line 588 Coder). They are reachable ONLY via direct subcommands: `roco game`, `roco code`, `roco html`, `roco story`.
 - `all_intents()` defines 5 intents: `chat`, `adventure`, `story`, `html`, `coder`.
 - `detect_intent()` sends an intent-classification prompt to the backend, expects `{"intent": ..., "prompt": ...}` JSON back, and maps it to a mode.
-- **Broken in practice:** `MockBackend` returns a truncated echo of the prompt (48 chars), not intent JSON. So `detect_intent` fails → after the FALLBACK removal (commit `3181178`) it now returns an `Err` that terminates with exit code 1. Natural-language mode switching (`roco "let's play an adventure"`) is currently an ERROR, not a silent misroute. This is the correct behavior (fail loudly) but the feature itself is unfinished.
-- With the real model the intent prompt MAY work (it's a valid completion request), but it has never been verified end-to-end through the router loop. This is unverified state — treat as red until proven.
+- **Mock path works now** (item 1a of the plan below landed): `MockBackend` recognizes intent-classification prompts and returns intent JSON via score-based keyword classification (ties prefer the later intent, e.g. "write code" → coder; all-zero → chat). Proven by `test_detect_intent_with_mock_backend` in `crates/cli/src/cmd/router.rs`. `roco "let's play an adventure"` now routes correctly under the mock backend.
+- **Real-model path still unverified**: with a live model the intent prompt MAY work (it's a valid completion request), but it has never been verified end-to-end through the router loop. This is unverified state — treat as red until proven.
+- **No-fallback rule holds** (commit `3181178`): if neither the mock nor the model produces valid intent JSON, `detect_intent` errors loudly (exit 1) — never a silent chat downgrade.
 
 ### Future State — the plan
 
 1. **Make intent detection actually work.** Two options, both needed:
-   - Fix `MockBackend` to return valid intent JSON when the prompt asks for classification (so tests and the router work without a real model).
-   - Add a deterministic **keyword-based router** as the primary path (real classifier, not a silent fallback — see below): e.g. `\b(story|write|tale)\b` → story, `\b(adventure|play|game)\b` → adventure, `\b(html|webpage|website|page)\b` → html, `\b(code|program|function|bug|rust)\b` → coder. If keywords don't match, THEN ask the model. If the model fails to produce valid JSON, error loudly (current behavior).
+   - ~~Fix `MockBackend` to return valid intent JSON when the prompt asks for classification~~ **DONE (2026-08-01)** — score-based keyword classification; tests + router work without a real model.
+   - Add a deterministic **keyword-based router in the CLI** as the primary path (real classifier, not a silent fallback — see below): e.g. `\b(story|write|tale)\b` → story, `\b(adventure|play|game)\b` → adventure, `\b(html|webpage|website|page)\b` → html, `\b(code|program|function|bug|rust)\b` → coder. If keywords don't match, THEN ask the model. If the model fails to produce valid JSON, error loudly (current behavior). **Still future** — the keyword classification currently lives in MockBackend only, not in the CLI.
 2. **Extend `all_intents()` with management intents** so the router auto-manages state invisibly:
    - `continue` → find and resume the latest workspace/project
    - `new_project` → start fresh, auto-create state

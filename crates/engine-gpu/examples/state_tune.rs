@@ -109,7 +109,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Blend session_a and session_b with 50% blend factor into 'session_blended'
     println!("Blending session_a and session_b (alpha = 0.5) -> 'session_blended'...");
-    if let Err(e) = backend.blend_states("session_a", "session_b", 0.5, "session_blended") {
+    let blend = vec![
+        ("session_a".to_string(), 0.5),
+        ("session_b".to_string(), 0.5),
+    ];
+    if let Err(e) = backend.blend_states(&blend, "session_blended") {
         println!("Blending returned a backend result: {:?}", e);
     } else {
         println!("State blending complete! The session 'session_blended' can now be used for hybrid generation.");

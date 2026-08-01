@@ -86,17 +86,34 @@ pub trait StateTuning: Send + Sync {
         few_shots: &'a [(&'a str, &'a str)],
     ) -> BoxFuture<'a, Result<String, EngineError>>;
 
-    /// Blend two session states element-wise: output = alpha * a + (1-alpha) * b.
+    /// Blend N session states element-wise with explicit weights:
+    /// `output = Σ(weight_i * state_i) / Σ(weight_i)`.
+    ///
+    /// `states` is a slice of `(session_id, weight)` pairs; weights may be
+    /// arbitrary and are normalized. At least two states are required.
+    ///
+    /// Default implementation returns a descriptive error for backends that
+    /// don't support state blending.
     fn blend_states<'a>(
         &'a self,
-        session_a: &'a str,
-        session_b: &'a str,
-        alpha: f32,
+        states: &'a [(&'a str, f32)],
         output_session: &'a str,
-    ) -> BoxFuture<'a, Result<(), EngineError>>;
+    ) -> BoxFuture<'a, Result<(), EngineError>> {
+        let _ = (states, output_session);
+        Box::pin(async move {
+            Err(EngineError::Backend(
+                "state blending not supported by this backend".into(),
+            ))
+        })
+    }
 }
 
-fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize, seed: Option<u64>) -> Option<String> {
+fn mock_random_walk_bnf(
+    gbnf: &str,
+    max_tokens: usize,
+    seed: Option<u64>,
+    top_a: Option<f32>,
+) -> Option<String> {
     use ahash::AHashMap;
     use kbnf::engine_like::EngineLike;
     use kbnf::{Config, Engine, Token, Vocabulary};
@@ -235,7 +252,18 @@ fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize, seed: Option<u64>) -> Opt
         if allowed.is_empty() {
             break;
         }
-        let chosen = *allowed.choose(&mut rng)?;
+        // top-a truncation: keep the top `ceil(a * n)` candidates. With
+        // uniform mock probabilities this is the exact analog of real top-a
+        // (keep tokens whose cumulative mass reaches `a`). a >= 1.0 / None →
+        // no truncation.
+        let cutoff = match top_a {
+            Some(a) if a.is_finite() && a >= 0.0 && a < 1.0 => {
+                ((a * allowed.len() as f32).ceil() as usize).clamp(1, allowed.len())
+            }
+            _ => allowed.len(),
+        };
+        let window = &allowed[..cutoff];
+        let chosen = *window.choose(&mut rng)?;
         let tok_str = id_to_string.get(&chosen)?;
         out.push_str(tok_str);
         if engine.try_accept_new_token(chosen).is_err() {
@@ -250,6 +278,39 @@ fn mock_random_walk_bnf(gbnf: &str, max_tokens: usize, seed: Option<u64>) -> Opt
     }
 }
 
+/// Deterministic grammar-masked generation over the mock byte vocabulary
+/// (same token ids as [`MockBackend::vocab_bytes`]: id 0 = "", 1-3 =
+/// tab/LF/CR, 4..=98 = 0x20..=0x7E). Picks the highest-scoring allowed
+/// token each step until the mask finishes (`accept` → false) or no tokens
+/// remain allowed.
+fn mock_masked_walk(mask: &mut dyn BnfMask, max_tokens: usize) -> String {
+    let mut vocab: Vec<String> = vec![String::new(), "\t".into(), "\n".into(), "\r".into()];
+    for b in 0x20u8..=0x7Eu8 {
+        vocab.push((b as char).to_string());
+    }
+    let mut logits = vec![0.0f32; vocab.len()];
+    let mut out = String::new();
+    let steps = if max_tokens == 0 { 256 } else { max_tokens };
+    for _ in 0..steps {
+        for l in logits.iter_mut() {
+            *l = 0.0;
+        }
+        mask.mask(&mut logits);
+        let best = logits
+            .iter()
+            .enumerate()
+            .filter(|(_, &v)| v.is_finite())
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i);
+        let Some(id) = best else { break };
+        out.push_str(&vocab[id]);
+        if !mask.accept(id as u32) {
+            break;
+        }
+    }
+    out
+}
+
 /// Deterministic backend for tests / pre-model development.
 ///
 /// Supports simulated failures via `fail_count` — the first N calls will
@@ -261,6 +322,8 @@ pub struct MockBackend {
     /// Number of times `complete()` will fail before succeeding.
     pub fail_count: u32,
     fail_count_remaining: std::sync::atomic::AtomicU32,
+    /// Set by `interrupt()` to cancel the in-flight generation.
+    interrupt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Clone for MockBackend {
@@ -273,6 +336,7 @@ impl Clone for MockBackend {
                 self.fail_count_remaining
                     .load(std::sync::atomic::Ordering::Relaxed),
             ),
+            interrupt_flag: self.interrupt_flag.clone(),
         }
     }
 }
@@ -284,6 +348,7 @@ impl Default for MockBackend {
             latency_ms: 0,
             fail_count: 0,
             fail_count_remaining: std::sync::atomic::AtomicU32::new(0),
+            interrupt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -297,6 +362,7 @@ impl MockBackend {
             latency_ms: 0,
             fail_count,
             fail_count_remaining: std::sync::atomic::AtomicU32::new(fail_count),
+            interrupt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -324,11 +390,37 @@ impl ModelBackend for MockBackend {
     }
     fn complete(
         &self,
-        req: CompletionRequest,
+        mut req: CompletionRequest,
     ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
         Box::pin(async move {
+            // Reset any stale interrupt so a previous interrupt() call doesn't
+            // break subsequent generations (mirrors the actor: interrupt
+            // targets only the in-flight generation).
+            self.interrupt_flag
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+
+            // Deadline enforcement: if the simulated latency would exceed the
+            // request's wall-clock deadline, fail with TimedOut (mirrors the
+            // actor's deadline handling).
+            if req.deadline_ms > 0 && self.latency_ms > req.deadline_ms {
+                return Err(EngineError::TimedOut {
+                    ms: req.deadline_ms,
+                });
+            }
+
+            // Simulated latency, interruptible via interrupt().
             if self.latency_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
+                let deadline =
+                    std::time::Instant::now() + std::time::Duration::from_millis(self.latency_ms);
+                while std::time::Instant::now() < deadline {
+                    if self
+                        .interrupt_flag
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        return Err(EngineError::Backend("generation interrupted".into()));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                }
             }
             // Simulate failures — check counter before decrementing to avoid wraparound.
             if self
@@ -361,16 +453,64 @@ impl ModelBackend for MockBackend {
                 tracing::info!(seed = s, snippet = %snippet, "MockBackend completing with deterministic seed");
             }
 
-            let bnf_walk_text = req
-                .grammar
-                .as_ref()
-                .and_then(|g| mock_random_walk_bnf(g, req.max_tokens, req.seed));
+            // Grammar paths: an opaque mask (compiled upstream) takes priority
+            // over a raw BNF string — same precedence as the real actor.
+            let masked_text = req
+                .bnf_mask
+                .as_mut()
+                .map(|m| mock_masked_walk(m.as_mut(), req.max_tokens));
+            let bnf_walk_text = if masked_text.is_some() {
+                masked_text
+            } else {
+                req.grammar
+                    .as_ref()
+                    .and_then(|g| mock_random_walk_bnf(g, req.max_tokens, req.seed, req.top_a))
+            };
 
             let prompt_lower = req.prompt.to_lowercase();
             let mut matched_text = bnf_walk_text;
 
             if matched_text.is_none() {
-                if prompt_lower.contains("outliner") {
+                if prompt_lower.contains("classify user intent") {
+                    // Keyword-based intent classification (AGENTS.md §13): a
+                    // deterministic path for the router's NLU so tests and
+                    // mock runs don't need a real model. Real classifier
+                    // remains the primary path when a model is available.
+                    let user_prompt = req
+                        .prompt
+                        .split_once("User message:")
+                        .and_then(|(_, rest)| rest.split('"').nth(1))
+                        .unwrap_or_default()
+                        .to_string();
+                    let msg = user_prompt.to_lowercase();
+                    // Score-based keyword classification: count keyword hits
+                    // per intent; on ties prefer the later intent (coder over
+                    // story for e.g. "write code"). All-zero → chat.
+                    let count = |msg: &str, words: &[&str]| -> usize {
+                        words.iter().filter(|w| msg.contains(**w)).count()
+                    };
+                    let scores: Vec<(&str, usize)> = vec![
+                        ("adventure", count(&msg, &["adventure", "play", "game"])),
+                        ("story", count(&msg, &["story", "write", "tale"])),
+                        ("html", count(&msg, &["html", "webpage", "website", "page"])),
+                        (
+                            "coder",
+                            count(&msg, &["code", "program", "function", "bug", "rust"]),
+                        ),
+                    ];
+                    let intent = if scores.iter().all(|(_, n)| *n == 0) {
+                        "chat"
+                    } else {
+                        scores
+                            .iter()
+                            .max_by_key(|(_, n)| *n)
+                            .map(|(id, _)| *id)
+                            .unwrap_or("chat")
+                    };
+                    matched_text = Some(
+                        serde_json::json!({ "intent": intent, "prompt": user_prompt }).to_string(),
+                    );
+                } else if prompt_lower.contains("outliner") {
                     matched_text = Some(r#"{"title": "The Time Freeze", "genre": "Sci-Fi", "tone": "Suspenseful", "chapters": [{"number": 1, "title": "The Device", "summary": "A clockmaker finds a device"}, {"number": 2, "title": "The Freeze", "summary": "He freezes time"}, {"number": 3, "title": "The Cost", "summary": "Time freezes permanently"}]}"#.to_string());
                 } else if prompt_lower.contains("worldbuilding")
                     || prompt_lower.contains("character")
@@ -398,9 +538,21 @@ impl ModelBackend for MockBackend {
             });
             let parsed = serde_json::from_str(&result_text).ok();
 
-            // Invoke on_token for streaming simulation.
+            // Invoke on_token for streaming simulation: emit the response in
+            // whitespace-delimited chunks so streaming consumers see multiple
+            // tokens, not one giant blob.
             if let Some(ref cb) = req.on_token {
-                cb(&result_text);
+                let mut chunk = String::new();
+                for ch in result_text.chars() {
+                    chunk.push(ch);
+                    if ch.is_whitespace() && !chunk.trim().is_empty() {
+                        cb(&chunk);
+                        chunk.clear();
+                    }
+                }
+                if !chunk.is_empty() {
+                    cb(&chunk);
+                }
             }
 
             let trace = if req.record_trace {
@@ -471,7 +623,11 @@ impl ModelBackend for MockBackend {
     }
 
     fn interrupt(&self) -> BoxFuture<'_, Result<(), EngineError>> {
-        Box::pin(async move { Ok(()) })
+        let flag = self.interrupt_flag.clone();
+        Box::pin(async move {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        })
     }
 }
 
@@ -794,48 +950,149 @@ mod tests {
         );
     }
 
-    // ── Pending tests for features not yet implemented ──────────────────
+    // ── Previously-pending features, now implemented ─────────────────────
 
     /// Stream mode completion returns chunks.
     #[tokio::test]
-    #[ignore = "pending stream mode implementation"]
     async fn stream_mode_returns_chunks() {
-        // Placeholder: requires stream: true support in MockBackend
+        let b = MockBackend::default();
+        let chunks = std::sync::Arc::new(parking_lot::Mutex::new(Vec::<String>::new()));
+        let chunks_clone = chunks.clone();
+        let mut req = CompletionRequest::new("hello world stream");
+        req.on_token = Some(Box::new(move |tok: &str| {
+            chunks_clone.lock().push(tok.to_string());
+        }));
+        let resp = b.complete(req).await.unwrap();
+        let collected = chunks.lock();
+        assert!(
+            collected.len() >= 2,
+            "streaming should emit multiple chunks, got {}",
+            collected.len()
+        );
+        assert_eq!(collected.concat(), resp.text);
     }
 
     /// Grammar-constrained decoding on MockBackend.
     #[tokio::test]
-    #[ignore = "pending grammar constraint testing"]
     async fn mock_backend_grammar_constraint() {
-        // Placeholder: requires grammar mask support in MockBackend
+        let b = MockBackend::default();
+        let req = CompletionRequest::builder()
+            .prompt("output json")
+            .grammar("root ::= \"a\" \"b\" \"c\"")
+            .max_tokens(16)
+            .build();
+        let resp = b.complete(req).await.unwrap();
+        assert_eq!(resp.text, "abc");
     }
 
     /// State blending returns error for unsupported backend.
     #[tokio::test]
-    #[ignore = "pending blend_states error path testing"]
     async fn blend_states_error_for_no_state_backend() {
-        // Placeholder: requires NoStateBackend to implement blend_states
-        // and return a descriptive error
+        struct NoBlendBackend;
+        impl ModelBackend for NoBlendBackend {
+            fn name(&self) -> &str {
+                "no-blend"
+            }
+            fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> BoxFuture<'_, Result<CompletionResponse, EngineError>> {
+                Box::pin(async move { Err(EngineError::Backend("unimplemented".into())) })
+            }
+        }
+        impl StateTuning for NoBlendBackend {
+            fn tune_state<'a>(
+                &'a self,
+                _session_id: &'a str,
+                _system: &'a str,
+                _few_shots: &'a [(&'a str, &'a str)],
+            ) -> BoxFuture<'a, Result<String, EngineError>> {
+                Box::pin(async move { Err(EngineError::Backend("tune not supported".into())) })
+            }
+        }
+        // blend_states falls back to the trait default → descriptive error.
+        let b = NoBlendBackend;
+        let err = b
+            .blend_states(&[("a", 0.5), ("b", 0.5)], "blended")
+            .await
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("state blending not supported"),
+            "expected descriptive error, got {err:?}"
+        );
     }
 
     /// Interrupt during generation is respected.
     #[tokio::test]
-    #[ignore = "pending interrupt during generation"]
     async fn interrupt_during_generation() {
-        // Placeholder: requires interrupt to cancel in-flight completion
+        let mut b = MockBackend::new("slow", 0);
+        b.latency_ms = 1000;
+        let backend = std::sync::Arc::new(b);
+        let task = backend.clone();
+        let handle =
+            tokio::spawn(async move { task.complete(CompletionRequest::new("long task")).await });
+        // Let the generation start, then interrupt it mid-flight.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        backend.interrupt().await.unwrap();
+        let err = handle.await.unwrap().unwrap_err();
+        assert!(format!("{err:?}").contains("interrupted"));
     }
 
     /// Deadline exceeded returns TimedOut error.
     #[tokio::test]
-    #[ignore = "pending deadline enforcement"]
     async fn deadline_exceeded_returns_timeout() {
-        // Placeholder: requires deadline_ms enforcement in backend
+        let mut b = MockBackend::new("slow", 0);
+        b.latency_ms = 100;
+        let req = CompletionRequest::builder()
+            .prompt("slow work")
+            .deadline_ms(10)
+            .build();
+        let err = b.complete(req).await.unwrap_err();
+        assert!(matches!(err, EngineError::TimedOut { .. }));
+
+        // A deadline longer than the work completes normally.
+        let req = CompletionRequest::builder()
+            .prompt("slow work")
+            .deadline_ms(1000)
+            .build();
+        assert!(b.complete(req).await.is_ok());
     }
 
     /// Top-a sampling parameter is respected.
     #[tokio::test]
-    #[ignore = "pending top-a sampling testing"]
     async fn top_a_sampling_parameter() {
-        // Placeholder: requires top_a to affect sampling distribution
+        let b = MockBackend::default();
+        // Two token positions, each choosing among 5 letters.
+        let grammar = r#"root ::= ("a" | "b" | "c" | "d" | "e") ("a" | "b" | "c" | "d" | "e")"#;
+        let full = b
+            .complete(
+                CompletionRequest::builder()
+                    .prompt("pick letters")
+                    .grammar(grammar)
+                    .max_tokens(8)
+                    .seed(7)
+                    .top_a(1.0)
+                    .build(),
+            )
+            .await
+            .unwrap();
+        let narrow = b
+            .complete(
+                CompletionRequest::builder()
+                    .prompt("pick letters")
+                    .grammar(grammar)
+                    .max_tokens(8)
+                    .seed(7)
+                    .top_a(0.01)
+                    .build(),
+            )
+            .await
+            .unwrap();
+        // top_a ≈ 0 collapses the candidate set to the first allowed token.
+        assert_eq!(narrow.text, "aa");
+        assert_ne!(
+            full.text, narrow.text,
+            "top_a must affect the sampling distribution"
+        );
     }
 }

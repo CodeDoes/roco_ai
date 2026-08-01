@@ -360,9 +360,7 @@ pub struct CompleteReq {
 }
 
 pub struct BlendReq {
-    pub session_a: String,
-    pub session_b: String,
-    pub alpha: f32,
+    pub states: Vec<(String, f32)>,
     pub output_session: String,
     pub reply: oneshot::Sender<Result<(), EngineError>>,
 }
@@ -828,36 +826,44 @@ impl RwkvActor {
     /// Blend two session states element-wise: output = alpha * a + (1-alpha) * b
     pub fn blend_states(
         &mut self,
-        session_a: String,
-        session_b: String,
-        alpha: f32,
+        states: Vec<(String, f32)>,
         output_session: String,
     ) -> Result<(), EngineError> {
-        let state_a = self
-            .state_pool
-            .get(&session_a)
-            .and_then(|s| s.as_ref())
-            .ok_or_else(|| EngineError::Backend(format!("session '{}' not found", session_a)))?;
-        let state_b = self
-            .state_pool
-            .get(&session_b)
-            .and_then(|s| s.as_ref())
-            .ok_or_else(|| EngineError::Backend(format!("session '{}' not found", session_b)))?;
-
-        if state_a.data().len() != state_b.data().len() {
+        if states.len() < 2 {
             return Err(EngineError::Backend(
-                "state tensors have different sizes".into(),
+                "blend_states requires at least 2 states".into(),
             ));
         }
 
-        let blended: Vec<f32> = state_a
-            .data()
-            .iter()
-            .zip(state_b.data().iter())
-            .map(|(&a, &b)| alpha * a + (1.0 - alpha) * b)
-            .collect();
+        // Collect all source tensors, validating existence and shape.
+        let (blended, shape) = {
+            let mut refs: Vec<(&TensorCpu<f32>, f32)> = Vec::with_capacity(states.len());
+            for (name, weight) in &states {
+                let s = self
+                    .state_pool
+                    .get(name)
+                    .and_then(|s| s.as_ref())
+                    .ok_or_else(|| EngineError::Backend(format!("session '{}' not found", name)))?;
+                refs.push((s, *weight));
+            }
+            let size = refs[0].0.data().len();
+            if let Some((t, _)) = refs.iter().find(|(t, _)| t.data().len() != size) {
+                return Err(EngineError::Backend(format!(
+                    "state tensors have different sizes ({} vs {})",
+                    size,
+                    t.data().len()
+                )));
+            }
+            let pairs: Vec<(&[f32], f32)> =
+                refs.iter().map(|(t, w)| (t.data().as_ref(), *w)).collect();
+            let shape = refs[0].0.shape().clone();
+            let blended = roco_engine::blend_weighted(&pairs).ok_or_else(|| {
+                EngineError::Backend("blend_states: empty inputs or zero total weight".into())
+            })?;
+            (blended, shape)
+        };
 
-        let blended_tensor = TensorCpu::from_data(state_a.shape(), blended)
+        let blended_tensor = TensorCpu::from_data(shape, blended)
             .map_err(|e| EngineError::Backend(format!("tensor creation failed: {e}")))?;
 
         // Store in state pool
@@ -880,10 +886,13 @@ impl RwkvActor {
             }
         }
 
+        let pairs = states
+            .iter()
+            .map(|(s, w)| format!("{}={}", s, w))
+            .collect::<Vec<_>>()
+            .join(", ");
         info!(
-            session_a = %session_a,
-            session_b = %session_b,
-            alpha = alpha,
+            states = %pairs,
             output_session = %output_session,
             "blended states"
         );
@@ -1404,13 +1413,11 @@ impl RwkvActor {
                 }
                 BlendStates(req) => {
                     let BlendReq {
-                        session_a,
-                        session_b,
-                        alpha,
+                        states,
                         output_session,
                         reply,
                     } = req;
-                    let result = self.blend_states(session_a, session_b, alpha, output_session);
+                    let result = self.blend_states(states, output_session);
                     let _ = reply.send(result);
                 }
                 Cancel => {
@@ -1505,7 +1512,7 @@ fn serialize_state(t: &TensorCpu<f32>) -> Vec<u8> {
 
     // Model metadata for cross-version compatibility checks
     let model_version = env!("CARGO_PKG_VERSION", "0.1.0");
-    let web_rwkv_version = "0.10.0"; // TODO: read from Cargo.toml at build time
+    let web_rwkv_version = env!("WEB_RWKV_VERSION", "0.10.0"); // set by build.rs from Cargo.lock
 
     // Append model version string
     out.extend_from_slice(&(model_version.len() as u32).to_le_bytes());

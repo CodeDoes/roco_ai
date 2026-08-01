@@ -882,6 +882,42 @@ mod tests {
         assert!(ids.contains(&"coder"));
     }
 
+    /// detect_intent works end-to-end with MockBackend now that the mock
+    /// returns intent-classification JSON (AGENTS.md §13 — previously red:
+    /// MockBackend echoed a text snippet instead of intent JSON).
+    #[test]
+    fn test_detect_intent_with_mock_backend() {
+        use roco_engine::MockBackend;
+        let backend = MockBackend::default();
+        let intents = all_intents();
+
+        let (intent, prompt) =
+            detect_intent(&backend, "write a story about a cat", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "story");
+        assert!(prompt.contains("cat"));
+
+        let (intent, _) =
+            detect_intent(&backend, "let's play an adventure", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "adventure");
+
+        let (intent, _) = detect_intent(
+            &backend,
+            "generate a webpage about sailing",
+            &intents,
+            "chat",
+        )
+        .unwrap();
+        assert_eq!(intent.id, "html");
+
+        let (intent, _) =
+            detect_intent(&backend, "write a rust function", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "coder");
+
+        let (intent, _) =
+            detect_intent(&backend, "how's the weather today?", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "chat");
+    }
+
     #[test]
     fn test_intent_detection_prompt_contains_available() {
         let intents = all_intents();
