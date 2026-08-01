@@ -230,7 +230,9 @@ fn help_vector_search() {
     eprintln!("  roco vector-search init [--index PATH] [--dimensions NUM]    Initialize index");
     eprintln!("  roco vector-search add <text> [--id ID] [--index PATH] [--meta JSON] Add text");
     eprintln!("  roco vector-search query <query> [--limit LIMIT] [--index PATH] Query index");
-    eprintln!("  roco vector-search status [--index PATH]                     Show index details\n");
+    eprintln!(
+        "  roco vector-search status [--index PATH]                     Show index details\n"
+    );
     eprintln!("Features deterministic dense vector embeddings computed locally with zero third-party/API dependencies.\n");
     std::process::exit(0);
 }

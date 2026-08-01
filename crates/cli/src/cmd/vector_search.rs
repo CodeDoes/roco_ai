@@ -22,10 +22,18 @@ pub fn cmd_vector_search(extra: &[&str]) {
         "status" => cmd_vector_search_status(&args),
         _ => {
             eprintln!("Usage:");
-            eprintln!("  roco vector-search init [--index PATH] [--dimensions NUM]    Initialize index");
-            eprintln!("  roco vector-search add <text> [--id ID] [--index PATH] [--meta JSON] Add text");
-            eprintln!("  roco vector-search query <query> [--limit LIMIT] [--index PATH] Query index");
-            eprintln!("  roco vector-search status [--index PATH]                     Show index details");
+            eprintln!(
+                "  roco vector-search init [--index PATH] [--dimensions NUM]    Initialize index"
+            );
+            eprintln!(
+                "  roco vector-search add <text> [--id ID] [--index PATH] [--meta JSON] Add text"
+            );
+            eprintln!(
+                "  roco vector-search query <query> [--limit LIMIT] [--index PATH] Query index"
+            );
+            eprintln!(
+                "  roco vector-search status [--index PATH]                     Show index details"
+            );
             std::process::exit(1);
         }
     }
@@ -138,7 +146,10 @@ fn cmd_vector_search_query(args: &[&str]) {
     });
 
     let results = store.search(&query, limit);
-    println!("Search Results for: \"{query}\" ({} matches found):\n", results.len());
+    println!(
+        "Search Results for: \"{query}\" ({} matches found):\n",
+        results.len()
+    );
 
     for (idx, r) in results.iter().enumerate() {
         println!("{}. [{:.4}] (ID: {})", idx + 1, r.score, r.entry.id);

@@ -240,12 +240,7 @@ fn test_cli_vector_search() {
     assert!(index_file.exists());
 
     // 2. Status empty
-    let res_status = runner.run_binary([
-        "vector-search",
-        "status",
-        "--index",
-        &index_str,
-    ]);
+    let res_status = runner.run_binary(["vector-search", "status", "--index", &index_str]);
     res_status.assert_success();
     res_status.assert_stdout_contains("Entries:     0");
 
@@ -277,12 +272,7 @@ fn test_cli_vector_search() {
     res_add2.assert_success();
 
     // 5. Status with entries
-    let res_status2 = runner.run_binary([
-        "vector-search",
-        "status",
-        "--index",
-        &index_str,
-    ]);
+    let res_status2 = runner.run_binary(["vector-search", "status", "--index", &index_str]);
     res_status2.assert_success();
     res_status2.assert_stdout_contains("Entries:     2");
     res_status2.assert_stdout_contains("Dimensions:  128");

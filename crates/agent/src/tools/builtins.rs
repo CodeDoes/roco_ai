@@ -374,14 +374,18 @@ impl Tool for VectorSearchTool {
                     .get("text")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| ToolError("missing 'text' argument for 'add' action".into()))?;
-                let id = args.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let id = args
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let metadata = args
                     .get("metadata")
                     .cloned()
                     .unwrap_or(serde_json::json!({}));
 
                 let added_id = store.add(id, text, metadata);
-                store.save_to_file(index_path)
+                store
+                    .save_to_file(index_path)
                     .map_err(|e| ToolError(format!("failed to save vector index: {e}")))?;
 
                 Ok(serde_json::json!({
@@ -391,10 +395,9 @@ impl Tool for VectorSearchTool {
                 }))
             }
             "query" => {
-                let query = args
-                    .get("query")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| ToolError("missing 'query' argument for 'query' action".into()))?;
+                let query = args.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
+                    ToolError("missing 'query' argument for 'query' action".into())
+                })?;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
                 let results = store.search(query, limit);
@@ -415,13 +418,11 @@ impl Tool for VectorSearchTool {
                     "count": items.len()
                 }))
             }
-            "status" => {
-                Ok(serde_json::json!({
-                    "entries_count": store.entries.len(),
-                    "dimensions": store.dimensions,
-                    "index_path": index_path_str
-                }))
-            }
+            "status" => Ok(serde_json::json!({
+                "entries_count": store.entries.len(),
+                "dimensions": store.dimensions,
+                "index_path": index_path_str
+            })),
             _ => Err(ToolError(format!("unknown action: {action}"))),
         }
     }
@@ -440,47 +441,57 @@ mod vector_tool_tests {
         let tool = VectorSearchTool;
 
         // Check status on empty
-        let r_status = tool.call(serde_json::json!({
-            "action": "status",
-            "index_path": path_str
-        })).unwrap();
+        let r_status = tool
+            .call(serde_json::json!({
+                "action": "status",
+                "index_path": path_str
+            }))
+            .unwrap();
         assert_eq!(r_status["entries_count"], 0);
 
         // Add an entry
-        let r_add = tool.call(serde_json::json!({
-            "action": "add",
-            "text": "The quick brown fox jumps over the lazy dog",
-            "id": "fox-1",
-            "metadata": {"type": "animal"},
-            "index_path": path_str
-        })).unwrap();
+        let r_add = tool
+            .call(serde_json::json!({
+                "action": "add",
+                "text": "The quick brown fox jumps over the lazy dog",
+                "id": "fox-1",
+                "metadata": {"type": "animal"},
+                "index_path": path_str
+            }))
+            .unwrap();
         assert_eq!(r_add["ok"], true);
         assert_eq!(r_add["id"], "fox-1");
 
         // Add another entry
-        let r_add2 = tool.call(serde_json::json!({
-            "action": "add",
-            "text": "Rust is an extremely safe systems programming language",
-            "id": "rust-1",
-            "metadata": {"type": "tech"},
-            "index_path": path_str
-        })).unwrap();
+        let r_add2 = tool
+            .call(serde_json::json!({
+                "action": "add",
+                "text": "Rust is an extremely safe systems programming language",
+                "id": "rust-1",
+                "metadata": {"type": "tech"},
+                "index_path": path_str
+            }))
+            .unwrap();
         assert_eq!(r_add2["ok"], true);
 
         // Check status updated
-        let r_status2 = tool.call(serde_json::json!({
-            "action": "status",
-            "index_path": path_str
-        })).unwrap();
+        let r_status2 = tool
+            .call(serde_json::json!({
+                "action": "status",
+                "index_path": path_str
+            }))
+            .unwrap();
         assert_eq!(r_status2["entries_count"], 2);
 
         // Query the index
-        let r_query = tool.call(serde_json::json!({
-            "action": "query",
-            "query": "safe programming language",
-            "limit": 1,
-            "index_path": path_str
-        })).unwrap();
+        let r_query = tool
+            .call(serde_json::json!({
+                "action": "query",
+                "query": "safe programming language",
+                "limit": 1,
+                "index_path": path_str
+            }))
+            .unwrap();
 
         assert_eq!(r_query["count"], 1);
         let first_match = &r_query["results"][0];

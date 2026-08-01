@@ -156,12 +156,7 @@ impl VectorStore {
     }
 
     /// Adds a text block into the store. Returns the ID of the new entry.
-    pub fn add(
-        &mut self,
-        id: Option<String>,
-        text: &str,
-        metadata: serde_json::Value,
-    ) -> String {
+    pub fn add(&mut self, id: Option<String>, text: &str, metadata: serde_json::Value) -> String {
         let id = id.unwrap_or_else(|| {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -202,7 +197,11 @@ impl VectorStore {
             .collect();
 
         // Sort descending by score. NaN-safe sorting.
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         if limit > 0 {
             scored.into_iter().take(limit).collect()
@@ -291,14 +290,26 @@ mod tests {
         assert_eq!(store.entries.len(), 0);
 
         // Add entries
-        let _id1 = store.add(None, "First entry about cats", serde_json::json!({"tag": "animals"}));
-        let id2 = store.add(Some("custom-id-2".to_string()), "Second entry about rust programming", serde_json::json!({"tag": "tech"}));
+        let _id1 = store.add(
+            None,
+            "First entry about cats",
+            serde_json::json!({"tag": "animals"}),
+        );
+        let id2 = store.add(
+            Some("custom-id-2".to_string()),
+            "Second entry about rust programming",
+            serde_json::json!({"tag": "tech"}),
+        );
 
         assert_eq!(store.entries.len(), 2);
         assert_eq!(id2, "custom-id-2");
 
         // Overwrite entry with same ID
-        store.add(Some("custom-id-2".to_string()), "Updated second entry about rust programming language", serde_json::json!({"tag": "technology"}));
+        store.add(
+            Some("custom-id-2".to_string()),
+            "Updated second entry about rust programming language",
+            serde_json::json!({"tag": "technology"}),
+        );
         assert_eq!(store.entries.len(), 2);
 
         // Save to disk
@@ -310,8 +321,15 @@ mod tests {
         assert_eq!(loaded_store.dimensions, 128);
 
         // Verify loaded content
-        let second_entry = loaded_store.entries.iter().find(|e| e.id == "custom-id-2").unwrap();
-        assert_eq!(second_entry.text, "Updated second entry about rust programming language");
+        let second_entry = loaded_store
+            .entries
+            .iter()
+            .find(|e| e.id == "custom-id-2")
+            .unwrap();
+        assert_eq!(
+            second_entry.text,
+            "Updated second entry about rust programming language"
+        );
         assert_eq!(second_entry.metadata["tag"], "technology");
 
         // Clean up

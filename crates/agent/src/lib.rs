@@ -12,7 +12,7 @@ pub mod embeddings;
 pub mod tools;
 pub mod validation;
 
-pub use embeddings::{embed, cosine_similarity, VectorEntry, VectorSearchResult, VectorStore};
+pub use embeddings::{cosine_similarity, embed, VectorEntry, VectorSearchResult, VectorStore};
 pub use tools::*;
 pub use validation::*;
 
