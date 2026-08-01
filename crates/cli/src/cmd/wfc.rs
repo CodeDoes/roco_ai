@@ -268,11 +268,9 @@ impl WfcGrid {
                     return false; // Contradiction
                 }
 
-                if neighbor_cell.superposition.len() < old_len {
-                    if !in_queue.contains(&(nx, ny)) {
-                        queue.push_back((nx, ny));
-                        in_queue.insert((nx, ny));
-                    }
+                if neighbor_cell.superposition.len() < old_len && !in_queue.contains(&(nx, ny)) {
+                    queue.push_back((nx, ny));
+                    in_queue.insert((nx, ny));
                 }
             }
         }
@@ -306,7 +304,7 @@ impl WfcGrid {
                     let (symbol, fg, _bg) = biome.representation();
                     row_str.push_str(&format!("{fg}{symbol}\x1b[0m"));
                 } else {
-                    row_str.push_str("?");
+                    row_str.push('?');
                 }
             }
             println!("{}", row_str);
@@ -330,6 +328,7 @@ impl SimpleRng {
     }
 
     /// Standard LCG iteration.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> u64 {
         self.state = self
             .state
@@ -1041,7 +1040,7 @@ pub fn cmd_map(extra: &[&str]) {
     }
 
     // ── Export to TTRPG if requested ───────────────────────────────────────
-    if extra.iter().any(|&a| a == "--ttrpg") {
+    if extra.contains(&"--ttrpg") {
         match export_map_to_ttrpg_state(&grid) {
             Ok(_) => r::success(
                 "Successfully exported travelable biome regions to .roco/ttrpg_state.json!",

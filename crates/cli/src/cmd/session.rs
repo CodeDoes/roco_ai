@@ -222,12 +222,9 @@ fn cmd_session_chat(session_id: &str, args: &[&str]) {
     // `roco session <id> -p "..."` and is script-friendly.)
     let backend = daemon::ensure_sync_backend();
     let mut chat = ChatSession::new(state, session_path, CHAT_PERSONA, &*backend);
-    match chat.turn(&*backend, &prompt) {
-        crate::conversation::TurnOutcome::Failed(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
-        _ => {}
+    if let crate::conversation::TurnOutcome::Failed(e) = chat.turn(&*backend, &prompt) {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
 }
 

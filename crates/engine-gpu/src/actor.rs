@@ -330,6 +330,7 @@ impl AnyState {
 // Request / message types
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::type_complexity)]
 pub struct CompleteReq {
     /// Raw text — inferd does NOT add System/User/Assistant formatting.
     pub prompt: String,
@@ -856,7 +857,7 @@ impl RwkvActor {
             }
             let pairs: Vec<(&[f32], f32)> =
                 refs.iter().map(|(t, w)| (t.data().as_ref(), *w)).collect();
-            let shape = refs[0].0.shape().clone();
+            let shape = refs[0].0.shape();
             let blended = roco_engine::blend_weighted(&pairs).ok_or_else(|| {
                 EngineError::Backend("blend_states: empty inputs or zero total weight".into())
             })?;

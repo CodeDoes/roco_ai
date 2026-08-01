@@ -144,15 +144,7 @@ async fn main() {
                 grammar,
                 temperature: 0.8,
                 max_tokens: 1000,
-                prefill: None,
-                bnf_mask: None,
-                top_a: None,
-                on_token: None,
-                output_schema: None,
-                estimated_prompt_tokens: 0,
                 deadline_ms: 60000,
-                seed: None,
-                record_trace: false,
                 ..Default::default()
             })
             .await;
@@ -214,14 +206,6 @@ async fn main() {
                 grammar: Some(g_str.to_string()),
                 temperature: 0.8,
                 max_tokens: 300,
-                prefill: None,
-                bnf_mask: None,
-                top_a: None,
-                on_token: None,
-                seed: None,
-                record_trace: false,
-                output_schema: None,
-                estimated_prompt_tokens: 0,
                 deadline_ms: 60000,
                 ..Default::default()
             })

@@ -15,8 +15,6 @@ fn temp_dir() -> PathBuf {
     dir
 }
 
-/// Cleanup function to remove test dir.
-
 /// Test session create writes a valid JSON file.
 #[test]
 fn test_session_create_writes_file() {

@@ -1,3 +1,4 @@
+#![allow(clippy::needless_update)]
 //! Test: baking story context (outline + wiki) vs. putting everything in prompt.
 //!
 //! Two approaches:

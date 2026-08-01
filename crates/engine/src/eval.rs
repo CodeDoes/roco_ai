@@ -654,7 +654,7 @@ pub async fn bake_fim_session<B: ModelBackend + Send + Sync>(backend: &B) -> Res
         AFTER text, never add commentary.";
     let mut text = String::new();
     for (i, (context, answer)) in FIM_FEW_SHOT.iter().enumerate() {
-        if i == 0 && !system.is_empty() {
+        if i == 0 {
             text.push_str(&format!("System: {}\n\n", system.trim()));
         }
         text.push_str(&format!("User: {}\n\nAssistant:{}", context, answer));

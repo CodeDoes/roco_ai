@@ -257,7 +257,7 @@ fn mock_random_walk_bnf(
         // (keep tokens whose cumulative mass reaches `a`). a >= 1.0 / None →
         // no truncation.
         let cutoff = match top_a {
-            Some(a) if a.is_finite() && a >= 0.0 && a < 1.0 => {
+            Some(a) if a.is_finite() && (0.0..1.0).contains(&a) => {
                 ((a * allowed.len() as f32).ceil() as usize).clamp(1, allowed.len())
             }
             _ => allowed.len(),
@@ -439,9 +439,7 @@ impl ModelBackend for MockBackend {
                 let p = req.prompt.strip_prefix("System:");
                 match p {
                     Some(rest) => {
-                        let rest = rest
-                            .trim_start()
-                            .trim_start_matches(|c| c == ' ' || c == '\n');
+                        let rest = rest.trim_start().trim_start_matches([' ', '\n']);
                         let rest = rest.split_once("\n\n").map(|(_, u)| u).unwrap_or(rest);
                         rest.chars().take(48).collect()
                     }
