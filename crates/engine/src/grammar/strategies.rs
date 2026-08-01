@@ -501,12 +501,12 @@ pub fn clean_json_output(text: &str) -> String {
     if let Some(start_tag_end) = trimmed.find(">") {
         let tag = &trimmed[..start_tag_end + 1];
         if tag.contains("<tool_use_code") {
-            trimmed = &trimmed[start_tag_end + 1..].trim_start();
+            trimmed = trimmed[start_tag_end + 1..].trim_start();
         }
     }
     // Strip closing </tool_use_output> or </tool_use_code> tag
     if let Some(pos) = trimmed.rfind("</tool_use") {
-        trimmed = &trimmed[..pos].trim_end();
+        trimmed = trimmed[..pos].trim_end();
     }
 
     // Heuristic: model outputs **Title:** ... **Content:** ... instead of JSON.

@@ -320,7 +320,7 @@ mod tests {
     fn test_roll_d20_bounds() {
         for _ in 0..100 {
             let roll = roll_d20();
-            assert!(roll >= 1 && roll <= 20, "Roll was: {}", roll);
+            assert!((1..=20).contains(&roll), "Roll was: {}", roll);
         }
     }
 

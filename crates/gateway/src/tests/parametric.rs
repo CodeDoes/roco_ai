@@ -404,7 +404,7 @@ async fn openai_completions_local() {
     )
     .unwrap();
     assert_eq!(body["object"], "text_completion");
-    assert!(body["choices"][0]["text"].as_str().unwrap().len() > 0);
+    assert!(!body["choices"][0]["text"].as_str().unwrap().is_empty());
     // MockBackend may return 0 for token counts, just verify structure exists
     assert!(body["usage"].is_object());
 }
@@ -540,7 +540,7 @@ async fn session_complete_local() {
             .unwrap(),
     )
     .unwrap();
-    assert!(body["text"].as_str().unwrap().len() > 0);
+    assert!(!body["text"].as_str().unwrap().is_empty());
 
     // Check tokens accumulated
     let resp = app
@@ -624,7 +624,7 @@ async fn workspace_crud() {
             .unwrap(),
     )
     .unwrap();
-    assert!(body["workspaces"].as_array().unwrap().len() > 0);
+    assert!(!body["workspaces"].as_array().unwrap().is_empty());
 
     // Get workspace
     let resp = app

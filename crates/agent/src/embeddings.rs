@@ -75,10 +75,10 @@ pub fn embed(text: &str, dimensions: usize) -> Vec<f32> {
         // Compute term frequency weight (log-scaled frequency)
         let tf_weight = 1.0 + (count as f32).ln();
 
-        for i in 0..dimensions {
+        for slot in doc_vector.iter_mut().take(dimensions) {
             // Generate deterministic projection coordinate in [-1, 1]
             let val = prng.next_f32();
-            doc_vector[i] += tf_weight * val;
+            *slot += tf_weight * val;
         }
     }
 

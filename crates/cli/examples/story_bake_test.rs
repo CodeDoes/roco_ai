@@ -154,7 +154,6 @@ async fn bake_context(backend: &RemoteBackend, session: &str) -> std::result::Re
         deadline_ms: 30000,
         seed: None,
         record_trace: false,
-        ..Default::default()
     };
     backend
         .complete(req)

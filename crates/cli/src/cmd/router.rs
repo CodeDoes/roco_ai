@@ -185,23 +185,23 @@ fn detect_intent(
                             "router",
                             &format!("Intent detected: {} -> prompt: \"{}\"", intent.id, prompt),
                         );
-                        return Ok((intent, r::clean_response(&prompt)));
+                        Ok((intent, r::clean_response(&prompt)))
                     } else {
-                        return Err(format!(
+                        Err(format!(
                             "Unknown intent '{}' detected. Available: {:?}",
                             intent_id,
                             available.iter().map(|i| i.id).collect::<Vec<_>>()
-                        ));
+                        ))
                     }
                 } else {
-                    return Err("Intent detection returned invalid JSON".to_string());
+                    Err("Intent detection returned invalid JSON".to_string())
                 }
             } else {
-                return Err("Intent detection did not return JSON".to_string());
+                Err("Intent detection did not return JSON".to_string())
             }
         }
-        Err(e) => return Err(format!("Intent detection failed: {}", e)),
-    };
+        Err(e) => Err(format!("Intent detection failed: {}", e)),
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

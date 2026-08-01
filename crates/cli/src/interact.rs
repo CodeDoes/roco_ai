@@ -320,7 +320,7 @@ fn run_resume(
     // context history. Gracefully fall back to replay if the state file is
     // missing or corrupt.
     if instant {
-        if let Ok(saved) = std::fs::read(&chat.state_file.as_ref().unwrap()) {
+        if let Ok(saved) = std::fs::read(chat.state_file.as_ref().unwrap()) {
             if futures::executor::block_on(backend.load_state(saved)).is_ok() {
                 chat = chat.with_instant_resume();
                 r::info("Instant resume: backend state loaded.");
@@ -379,7 +379,7 @@ fn run_resume_with_seed(
     // context history. Gracefully fall back to replay if the state file is
     // missing or corrupt.
     if instant {
-        if let Ok(saved) = std::fs::read(&chat.state_file.as_ref().unwrap()) {
+        if let Ok(saved) = std::fs::read(chat.state_file.as_ref().unwrap()) {
             if futures::executor::block_on(backend.load_state(saved)).is_ok() {
                 chat = chat.with_instant_resume();
                 r::info("Instant resume: backend state loaded.");

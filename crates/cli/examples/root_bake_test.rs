@@ -163,7 +163,6 @@ async fn bake_single_shot(
         deadline_ms: 30000,
         seed: None,
         record_trace: false,
-        ..Default::default()
     };
     backend
         .complete(req)
@@ -273,7 +272,6 @@ async fn main() {
             deadline_ms: 30000,
             seed: None,
             record_trace: false,
-            ..Default::default()
         })
         .await;
 

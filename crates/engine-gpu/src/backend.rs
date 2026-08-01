@@ -373,7 +373,7 @@ impl StateTuning for RwkvBackend {
             .map(|(u, a)| (u.to_string(), a.to_string()))
             .collect::<Vec<_>>();
         Box::pin(async move {
-            for (_i, (user_msg, assistant_msg)) in few_shots.iter().enumerate() {
+            for (user_msg, assistant_msg) in few_shots.iter() {
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 // Format the example the same way the gateway will format
                 // real prompts: System: ...\n\nUser: ...\n\nAssistant:{response}
@@ -395,7 +395,7 @@ impl StateTuning for RwkvBackend {
                 .await
                 .map_err(|e| EngineError::Backend(format!("rwkv channel send: {e}")))?;
 
-                let _ = reply_rx
+                reply_rx
                     .await
                     .map_err(|e| EngineError::Backend(format!("rwkv channel recv: {e}")))?
                     .map_err(|e| EngineError::Backend(format!("rwkv actor error: {e}")))?;

@@ -330,6 +330,10 @@ impl AnyState {
 // Request / message types
 // ---------------------------------------------------------------------------
 
+/// Completion reply channel: output text, token usage, and per-token trace.
+pub type CompleteReply =
+    oneshot::Sender<Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError>>;
+
 pub struct CompleteReq {
     /// Raw text — inferd does NOT add System/User/Assistant formatting.
     pub prompt: String,
@@ -341,8 +345,7 @@ pub struct CompleteReq {
     /// Opaque grammar constraint callback, created outside this crate
     /// so grammar-engine types never enter this compilation unit.
     pub bnf_mask: Option<Box<dyn BnfMask>>,
-    pub reply:
-        oneshot::Sender<Result<(String, TokenUsage, Vec<roco_engine::TokenTrace>), EngineError>>,
+    pub reply: CompleteReply,
     pub on_token: roco_engine::OnToken,
     /// Load a named state from the cache before processing.
     /// None = start from blank state.
@@ -856,7 +859,7 @@ impl RwkvActor {
             }
             let pairs: Vec<(&[f32], f32)> =
                 refs.iter().map(|(t, w)| (t.data().as_ref(), *w)).collect();
-            let shape = refs[0].0.shape().clone();
+            let shape = refs[0].0.shape();
             let blended = roco_engine::blend_weighted(&pairs).ok_or_else(|| {
                 EngineError::Backend("blend_states: empty inputs or zero total weight".into())
             })?;

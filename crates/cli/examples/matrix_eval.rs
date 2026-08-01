@@ -153,7 +153,6 @@ async fn main() {
                 deadline_ms: 60000,
                 seed: None,
                 record_trace: false,
-                ..Default::default()
             })
             .await;
         let ms = start.elapsed().as_millis();
@@ -223,7 +222,6 @@ async fn main() {
                 output_schema: None,
                 estimated_prompt_tokens: 0,
                 deadline_ms: 60000,
-                ..Default::default()
             })
             .await;
         let ms = start.elapsed().as_millis();

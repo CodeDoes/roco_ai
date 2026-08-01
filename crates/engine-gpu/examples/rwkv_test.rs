@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
 
     let req = CompletionRequest {
         // System text embedded in prompt
-        prompt: format!("System: You are a helpful assistant.\n\nThe capital of France is"),
+        prompt: "System: You are a helpful assistant.\n\nThe capital of France is".to_string(),
         output_schema: None,
         grammar: None,
         temperature: 0.5,

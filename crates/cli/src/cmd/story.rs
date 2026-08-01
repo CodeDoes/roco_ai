@@ -527,7 +527,7 @@ fn find_latest_workspace() -> Option<roco_workspace::Workspace> {
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .collect();
-    entries.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
     entries.into_iter().next().map(|e| {
         let name = e.file_name().to_string_lossy().to_string();
         // Use absolute path so workspace resolve works correctly
@@ -775,7 +775,6 @@ fn repair_json(s: &str) -> String {
 /// Deleted functions: prose_to_outline, prose_to_wiki, prose_to_chapter,
 /// prose_to_synopsis, prose_to_validation. See git history for the original
 /// implementations.
-
 #[allow(clippy::too_many_arguments)]
 fn structured_complete_with_strategy<T>(
     backend: &dyn ModelBackend,
@@ -1075,7 +1074,7 @@ pub fn cmd_story(extra: &[&str]) {
     let temp_str = parse_opt("--temperature", extra);
     let temperature = temp_str.and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.7);
 
-    let mock = extra.iter().any(|&a| a == "--mock");
+    let mock = extra.contains(&"--mock");
     if mock {
         std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
         println!("  🎭 Using mock backend (no real model)\n");
@@ -1652,10 +1651,10 @@ pub fn cmd_story(extra: &[&str]) {
 
         // Phase 1: outline
         let should_run_outline = existing_outline.is_none()
-            && phase_filter.as_deref() != Some("wiki")
-            && phase_filter.as_deref() != Some("chapter")
-            && phase_filter.as_deref() != Some("synopsis")
-            && phase_filter.as_deref() != Some("publish")
+            && phase_filter != Some("wiki")
+            && phase_filter != Some("chapter")
+            && phase_filter != Some("synopsis")
+            && phase_filter != Some("publish")
             && fix_chapter.is_none();
         let outline_text = if let Some(ref existing) = existing_outline {
             println!("📝 Outline (existing)...");
@@ -1684,10 +1683,10 @@ pub fn cmd_story(extra: &[&str]) {
 
         // Phase 2: wiki
         let should_run_wiki = existing_wiki.is_none()
-            && phase_filter.as_deref() != Some("outline")
-            && phase_filter.as_deref() != Some("chapter")
-            && phase_filter.as_deref() != Some("synopsis")
-            && phase_filter.as_deref() != Some("publish")
+            && phase_filter != Some("outline")
+            && phase_filter != Some("chapter")
+            && phase_filter != Some("synopsis")
+            && phase_filter != Some("publish")
             && fix_chapter.is_none();
         let _wiki_text: String = if let Some(ref existing) = existing_wiki {
             println!("📚 Worldbuilding (existing)...");
@@ -1754,10 +1753,10 @@ pub fn cmd_story(extra: &[&str]) {
             let chapter_exists = existing_chapters.contains(&i);
             let should_run_chapter = if chapter_exists && fix_chapter != Some(i) {
                 // Chapter exists and we're not fixing it — only run if explicitly requesting chapters
-                phase_filter.as_deref() == Some("chapter")
+                phase_filter == Some("chapter")
             } else {
                 // Chapter doesn't exist or we're fixing it — run unless we're only doing synopsis/publish
-                !matches!(phase_filter.as_deref(), Some("synopsis") | Some("publish"))
+                !matches!(phase_filter, Some("synopsis") | Some("publish"))
             };
 
             // Load existing chapter text
@@ -1769,8 +1768,8 @@ pub fn cmd_story(extra: &[&str]) {
 
             // Don't run chapters if user specified a different phase, even if chapters are missing
             let phase_restricted = phase_filter.is_some()
-                && phase_filter.as_deref() != Some("chapters")
-                && phase_filter.as_deref() != Some("fix");
+                && phase_filter != Some("chapters")
+                && phase_filter != Some("fix");
             if (should_run_chapter || existing_ch.is_none()) && !phase_restricted {
                 // Generate new chapter
 

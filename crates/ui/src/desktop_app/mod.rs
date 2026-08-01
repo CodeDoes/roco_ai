@@ -920,7 +920,7 @@ impl RocoDesktopApp {
 
                         let publish_path = ws_path.join("06-STORY.md");
                         std::fs::write(&publish_path, &final_story).ok();
-                        self.status_message = format!("Published final story to 06-STORY.md!");
+                        self.status_message = "Published final story to 06-STORY.md!".to_string();
                     }
                 }
             }
