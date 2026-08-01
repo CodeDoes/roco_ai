@@ -3,10 +3,10 @@
 //! Implements a rich terminal-based campaign manager and interactive game
 //! master, with dynamic NLU-driven triggers and checks checked on each turn.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 use crate::daemon;
 use crate::rich_output as r;
@@ -109,8 +109,8 @@ impl TtrpgState {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let serialized = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Serialization error: {e}"))?;
+        let serialized =
+            serde_json::to_string_pretty(self).map_err(|e| format!("Serialization error: {e}"))?;
         std::fs::write(&path, serialized)
             .map_err(|e| format!("Failed to write state to file {}: {e}", path.display()))?;
         Ok(())
@@ -200,7 +200,11 @@ impl TtrpgState {
             hp: 24,
             max_hp: 24,
             attributes: barnd_attrs,
-            inventory: vec!["Copper Tankard".to_string(), "Heavy Wood Club".to_string(), "Tavern Keys".to_string()],
+            inventory: vec![
+                "Copper Tankard".to_string(),
+                "Heavy Wood Club".to_string(),
+                "Tavern Keys".to_string(),
+            ],
             skills: vec!["Insight".to_string(), "History".to_string()],
         };
 
@@ -219,7 +223,11 @@ impl TtrpgState {
             hp: 38,
             max_hp: 38,
             attributes: grum_attrs,
-            inventory: vec!["Iron Halberd".to_string(), "Chainmail Armor".to_string(), "Watch Horn".to_string()],
+            inventory: vec![
+                "Iron Halberd".to_string(),
+                "Chainmail Armor".to_string(),
+                "Watch Horn".to_string(),
+            ],
             skills: vec!["Athletics".to_string(), "Intimidation".to_string()],
         };
 
@@ -287,7 +295,7 @@ mod tests {
     fn test_character_modifier_math() {
         let mut attributes = HashMap::new();
         attributes.insert("Strength".to_string(), 15); // +2 modifier
-        attributes.insert("Dexterity".to_string(), 8);   // -1 modifier
+        attributes.insert("Dexterity".to_string(), 8); // -1 modifier
         attributes.insert("Constitution".to_string(), 10); // 0 modifier
 
         let character = TtrpgCharacter {
@@ -409,12 +417,18 @@ fn evaluate_nlu_triggers(
 
     let schema = roco_engine::grammar::Schema::object()
         .prop("trigger_fired", roco_engine::grammar::Schema::boolean())
-        .prop("fired_trigger_index", roco_engine::grammar::Schema::integer())
+        .prop(
+            "fired_trigger_index",
+            roco_engine::grammar::Schema::integer(),
+        )
         .prop("consequence", roco_engine::grammar::Schema::string())
         .build();
 
     let request = roco_engine::CompletionRequest {
-        prompt: format!("System: Evaluate TTRPG triggers. Output valid JSON.\n\n{}", prompt),
+        prompt: format!(
+            "System: Evaluate TTRPG triggers. Output valid JSON.\n\n{}",
+            prompt
+        ),
         temperature: 0.1,
         max_tokens: 150,
         prefill: Some("{\n".into()),
@@ -473,13 +487,22 @@ fn evaluate_nlu_action(
         .prop("requires_check", roco_engine::grammar::Schema::boolean())
         .prop("attribute", roco_engine::grammar::Schema::string())
         .prop("dc", roco_engine::grammar::Schema::integer())
-        .prop("consequence_success", roco_engine::grammar::Schema::string())
-        .prop("consequence_failure", roco_engine::grammar::Schema::string())
+        .prop(
+            "consequence_success",
+            roco_engine::grammar::Schema::string(),
+        )
+        .prop(
+            "consequence_failure",
+            roco_engine::grammar::Schema::string(),
+        )
         .prop("simple_outcome", roco_engine::grammar::Schema::string())
         .build();
 
     let request = roco_engine::CompletionRequest {
-        prompt: format!("System: Interpret TTRPG action. Output valid JSON.\n\n{}", prompt),
+        prompt: format!(
+            "System: Interpret TTRPG action. Output valid JSON.\n\n{}",
+            prompt
+        ),
         temperature: 0.1,
         max_tokens: 300,
         prefill: Some("{\n".into()),
@@ -515,18 +538,39 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
     let mut state = TtrpgState::load_or_default();
 
     r::header("⚔️ RoCo TTRPG Campaign System ⚔️");
-    println!("  World:   {}{}{}", r::Colors::CYAN, state.world.name, r::Colors::RESET);
-    println!("  Player:  {}{}{} (Level {} {})", r::Colors::GREEN, state.player.name, r::Colors::RESET, state.player.level, state.player.class_or_role);
+    println!(
+        "  World:   {}{}{}",
+        r::Colors::CYAN,
+        state.world.name,
+        r::Colors::RESET
+    );
+    println!(
+        "  Player:  {}{}{} (Level {} {})",
+        r::Colors::GREEN,
+        state.player.name,
+        r::Colors::RESET,
+        state.player.level,
+        state.player.class_or_role
+    );
     println!("  Location: {}\n", state.current_location);
     r::dim("  Type actions in natural language, or use command system.");
     r::dim("  Type ':help' or '/help' to see available triggers, chat, and stats commands.\n");
 
     // Print starting location description
-    if let Some(loc) = state.world.locations.iter().find(|l| l.name == state.current_location) {
+    if let Some(loc) = state
+        .world
+        .locations
+        .iter()
+        .find(|l| l.name == state.current_location)
+    {
         println!("{}{}{}", r::Colors::CYAN, loc.name, r::Colors::RESET);
         println!("{}", loc.description);
         if !loc.exits.is_empty() {
-            let exit_strs: Vec<_> = loc.exits.iter().map(|(d, l)| format!("{d} -> {l}")).collect();
+            let exit_strs: Vec<_> = loc
+                .exits
+                .iter()
+                .map(|(d, l)| format!("{d} -> {l}"))
+                .collect();
             r::dim(&format!("Exits: {}", exit_strs.join(", ")));
         }
     }
@@ -588,7 +632,10 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
                 }
                 "sheet" | "s" => {
                     r::header(&format!("Character Sheet: {}", state.player.name));
-                    println!("Role:    {} (Level {})", state.player.class_or_role, state.player.level);
+                    println!(
+                        "Role:    {} (Level {})",
+                        state.player.class_or_role, state.player.level
+                    );
                     println!("HP:      {}/{}", state.player.hp, state.player.max_hp);
                     println!("\nAttributes:");
                     let mut keys: Vec<_> = state.player.attributes.keys().cloned().collect();
@@ -608,14 +655,24 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
 
                     println!("\n📚 Locations:");
                     for loc in &state.world.locations {
-                        let active = if loc.name == state.current_location { " (Current)" } else { "" };
+                        let active = if loc.name == state.current_location {
+                            " (Current)"
+                        } else {
+                            ""
+                        };
                         println!("  - {}{}{}", r::Colors::CYAN, loc.name, active);
                         println!("    {}", loc.description);
                     }
 
                     println!("\n👥 NPCs:");
                     for npc in &state.world.npcs {
-                        println!("  - {}{} ({}){}", r::Colors::GREEN, npc.name, npc.class_or_role, r::Colors::RESET);
+                        println!(
+                            "  - {}{} ({}){}",
+                            r::Colors::GREEN,
+                            npc.name,
+                            npc.class_or_role,
+                            r::Colors::RESET
+                        );
                     }
 
                     println!("\n🚩 Factions:");
@@ -626,7 +683,13 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
                             "Suspicious" => r::Colors::CYAN,
                             _ => r::Colors::DIM,
                         };
-                        println!("  - {} ({}Status: {}{})", f.name, color, f.disposition, r::Colors::RESET);
+                        println!(
+                            "  - {} ({}Status: {}{})",
+                            f.name,
+                            color,
+                            f.disposition,
+                            r::Colors::RESET
+                        );
                         println!("    {}", f.description);
                     }
 
@@ -651,7 +714,10 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
                         r::warning("Usage: :roll <AttributeName> (e.g. :roll Dexterity)");
                         continue;
                     }
-                    let attr = state.player.attributes.keys()
+                    let attr = state
+                        .player
+                        .attributes
+                        .keys()
                         .find(|k| k.to_lowercase() == args.to_lowercase())
                         .cloned();
 
@@ -661,7 +727,16 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
                             let roll = roll_d20();
                             let total = roll + modifier;
                             r::success(&format!("Rolling d20 for {} check!", attr_name));
-                            println!("  Result:  {}d20[{}] + {}Modifier[{}] = {}{}{}", r::Colors::CYAN, roll, r::Colors::GREEN, modifier, r::Colors::CYAN, total, r::Colors::RESET);
+                            println!(
+                                "  Result:  {}d20[{}] + {}Modifier[{}] = {}{}{}",
+                                r::Colors::CYAN,
+                                roll,
+                                r::Colors::GREEN,
+                                modifier,
+                                r::Colors::CYAN,
+                                total,
+                                r::Colors::RESET
+                            );
                         }
                         None => {
                             r::warning(&format!("Attribute '{}' not found. Available: Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma", args));
@@ -684,7 +759,10 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
                         description: desc,
                         exits: HashMap::new(),
                     });
-                    r::success(&format!("Location '{}' added to worldbuilding system.", args));
+                    r::success(&format!(
+                        "Location '{}' added to worldbuilding system.",
+                        args
+                    ));
                     let _ = state.save();
                 }
                 "add_faction" => {
@@ -747,7 +825,10 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
                         trigger_text: args.clone(),
                         is_active: true,
                     });
-                    r::success(&format!("Natural language trigger registered: \"{}\"", args));
+                    r::success(&format!(
+                        "Natural language trigger registered: \"{}\"",
+                        args
+                    ));
                     let _ = state.save();
                 }
                 "add_lore" => {
@@ -791,7 +872,9 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
                     break;
                 }
                 _ => {
-                    r::warning(&format!("Unknown subcommand: :{command}. Type :help for all subcommands."));
+                    r::warning(&format!(
+                        "Unknown subcommand: :{command}. Type :help for all subcommands."
+                    ));
                 }
             }
             continue;
@@ -801,22 +884,35 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
         state.turn_count += 1;
         state.history.push(format!("Player: {input}"));
 
-        print!("{}{}[GM is evaluating NLU triggers/actions...]{}\r", r::Colors::DIM, r::Colors::CYAN, r::Colors::RESET);
+        print!(
+            "{}{}[GM is evaluating NLU triggers/actions...]{}\r",
+            r::Colors::DIM,
+            r::Colors::CYAN,
+            r::Colors::RESET
+        );
         io::stdout().flush().ok();
 
         // 1. Evaluate Natural Language Triggers
         if let Some((idx, consequence)) = evaluate_nlu_triggers(&*backend, &state, &input) {
             print!("\r\x1b[K"); // Clear the evaluating line
             let triggered_text = &state.triggers[idx].trigger_text;
-            r::warning(&format!("⚡ Natural Language Trigger Fired: \"{}\"", triggered_text));
+            r::warning(&format!(
+                "⚡ Natural Language Trigger Fired: \"{}\"",
+                triggered_text
+            ));
             println!("\n{}", consequence);
-            state.history.push(format!("Trigger [{}]: {}", triggered_text, consequence));
+            state
+                .history
+                .push(format!("Trigger [{}]: {}", triggered_text, consequence));
 
             // Apply minor state outcomes based on trigger keywords dynamically
             let consequence_lower = consequence.to_lowercase();
             if consequence_lower.contains("lose") && consequence_lower.contains("hp") {
                 state.player.hp = (state.player.hp - 2).max(0);
-                r::error(&format!("HP decreased! Current HP: {}/{}", state.player.hp, state.player.max_hp));
+                r::error(&format!(
+                    "HP decreased! Current HP: {}/{}",
+                    state.player.hp, state.player.max_hp
+                ));
             }
             let _ = state.save();
             continue;
@@ -827,10 +923,15 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
         print!("\r\x1b[K"); // Clear evaluating line
 
         if action_evaluation.requires_check {
-            let attr = action_evaluation.attribute.unwrap_or_else(|| "Dexterity".to_string());
+            let attr = action_evaluation
+                .attribute
+                .unwrap_or_else(|| "Dexterity".to_string());
             let dc = action_evaluation.dc.unwrap_or(12);
 
-            println!("\n🎲 NLU demands an attribute check! Action requires a {} check (DC {}).", attr, dc);
+            println!(
+                "\n🎲 NLU demands an attribute check! Action requires a {} check (DC {}).",
+                attr, dc
+            );
 
             let modifier = state.player.get_modifier(&attr);
             let roll = roll_d20();
@@ -841,38 +942,79 @@ pub fn cmd_ttrpg(_extra: &[&str]) {
             let mut unused = String::new();
             io::stdin().read_line(&mut unused).ok();
 
-            println!("Roll result: d20[{}] + {}Modifier[{}] = {}", roll, attr, modifier, total);
+            println!(
+                "Roll result: d20[{}] + {}Modifier[{}] = {}",
+                roll, attr, modifier, total
+            );
 
             if total >= dc {
-                println!("{}{}{} Success! DC {} met.", r::Colors::GREEN, r::Colors::BOLD, r::Colors::RESET, dc);
+                println!(
+                    "{}{}{} Success! DC {} met.",
+                    r::Colors::GREEN,
+                    r::Colors::BOLD,
+                    r::Colors::RESET,
+                    dc
+                );
                 println!("\n{}", action_evaluation.consequence_success);
-                state.history.push(format!("Action success: {}", action_evaluation.consequence_success));
+                state.history.push(format!(
+                    "Action success: {}",
+                    action_evaluation.consequence_success
+                ));
             } else {
-                println!("{}{}{} Failure! DC {} was not met.", r::Colors::RED, r::Colors::BOLD, r::Colors::RESET, dc);
+                println!(
+                    "{}{}{} Failure! DC {} was not met.",
+                    r::Colors::RED,
+                    r::Colors::BOLD,
+                    r::Colors::RESET,
+                    dc
+                );
                 println!("\n{}", action_evaluation.consequence_failure);
-                state.history.push(format!("Action failure: {}", action_evaluation.consequence_failure));
+                state.history.push(format!(
+                    "Action failure: {}",
+                    action_evaluation.consequence_failure
+                ));
 
                 // Apply dynamic HP consequences if narrative suggests damage
                 let fail_lower = action_evaluation.consequence_failure.to_lowercase();
-                if fail_lower.contains("damage") || fail_lower.contains("hurt") || fail_lower.contains("wound") {
+                if fail_lower.contains("damage")
+                    || fail_lower.contains("hurt")
+                    || fail_lower.contains("wound")
+                {
                     state.player.hp = (state.player.hp - 3).max(0);
-                    r::error(&format!("You sustained damage! HP: {}/{}", state.player.hp, state.player.max_hp));
+                    r::error(&format!(
+                        "You sustained damage! HP: {}/{}",
+                        state.player.hp, state.player.max_hp
+                    ));
                 }
             }
         } else {
             // No attribute check needed, evaluate simple outcome via NLU description
             println!("\n{}", action_evaluation.simple_outcome);
-            state.history.push(format!("Outcome: {}", action_evaluation.simple_outcome));
+            state
+                .history
+                .push(format!("Outcome: {}", action_evaluation.simple_outcome));
         }
 
         // Handle exits transition if player declared movement to a known exit
         let input_lower = input.to_lowercase();
-        if let Some(loc) = state.world.locations.iter().find(|l| l.name == state.current_location) {
+        if let Some(loc) = state
+            .world
+            .locations
+            .iter()
+            .find(|l| l.name == state.current_location)
+        {
             for (dir, dest) in &loc.exits {
-                if input_lower.contains(&dir.to_lowercase()) || input_lower.contains(&dest.to_lowercase()) {
+                if input_lower.contains(&dir.to_lowercase())
+                    || input_lower.contains(&dest.to_lowercase())
+                {
                     r::success(&format!("Traveling to {}...", dest));
                     state.current_location = dest.clone();
-                    if let Some(new_loc) = state.world.locations.iter().find(|l| l.name == state.current_location) {
+                    if let Some(new_loc) = state
+                        .world
+                        .locations
+                        .iter()
+                        .find(|l| l.name == state.current_location)
+                    {
                         println!("\n{}{}{}", r::Colors::CYAN, new_loc.name, r::Colors::RESET);
                         println!("{}", new_loc.description);
                     }
@@ -894,14 +1036,20 @@ fn run_character_chat(
     state: &mut TtrpgState,
     backend: &dyn roco_engine::ModelBackend,
 ) {
-    let npc = state.world.npcs.iter().find(|n| {
-        n.name.to_lowercase().contains(&npc_query.to_lowercase())
-    }).cloned();
+    let npc = state
+        .world
+        .npcs
+        .iter()
+        .find(|n| n.name.to_lowercase().contains(&npc_query.to_lowercase()))
+        .cloned();
 
     let npc = match npc {
         Some(n) => n,
         None => {
-            r::warning(&format!("NPC matching '{}' not found in world registry.", npc_query));
+            r::warning(&format!(
+                "NPC matching '{}' not found in world registry.",
+                npc_query
+            ));
             return;
         }
     };
@@ -948,11 +1096,7 @@ fn run_character_chat(
              - Strictly stay in character as {}.\n\
              - Keep responses immersive, flavorful, and concise (1-3 sentences).\n\
              - Adopt their personality and motivations naturally.",
-            npc.name,
-            npc.class_or_role,
-            state.current_location,
-            state.world.description,
-            npc.name
+            npc.name, npc.class_or_role, state.current_location, state.world.description, npc.name
         );
 
         let request = roco_engine::CompletionRequest {
@@ -962,7 +1106,12 @@ fn run_character_chat(
             ..Default::default()
         };
 
-        print!("{}{}[Responding...]{}\r", r::Colors::DIM, r::Colors::GREEN, r::Colors::RESET);
+        print!(
+            "{}{}[Responding...]{}\r",
+            r::Colors::DIM,
+            r::Colors::GREEN,
+            r::Colors::RESET
+        );
         io::stdout().flush().ok();
 
         match futures::executor::block_on(backend.complete(request)) {

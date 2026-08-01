@@ -71,6 +71,36 @@ pub struct RocoDesktopApp {
 
     // Status
     status_message: String,
+
+    // Story mode GUI integration
+    pub story_premise: String,
+    pub active_story: Option<String>,
+    pub story_workspaces: Vec<String>,
+
+    // Non-blocking background workers for Story Dashboard
+    pub drafting_chapter: Option<usize>,
+    pub validating_chapter: Option<usize>,
+    pub draft_rx: Option<std::sync::mpsc::Receiver<Result<(usize, String), String>>>,
+    pub val_rx: Option<std::sync::mpsc::Receiver<Result<(usize, String), String>>>,
+}
+
+fn list_story_workspaces() -> Vec<String> {
+    let mut workspaces = Vec::new();
+    let base = PathBuf::from(".roco/workspaces");
+    if base.exists() {
+        if let Ok(entries) = std::fs::read_dir(&base) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name != "active" {
+                        workspaces.push(name);
+                    }
+                }
+            }
+        }
+    }
+    workspaces.sort_by(|a, b| b.cmp(a)); // Sort most recent first
+    workspaces
 }
 
 fn now_rfc3339() -> String {
@@ -140,6 +170,13 @@ impl RocoDesktopApp {
             left_panel_open: true,
             right_panel_tool: None,
             status_message: String::new(),
+            story_premise: String::new(),
+            active_story: None,
+            story_workspaces: list_story_workspaces(),
+            drafting_chapter: None,
+            validating_chapter: None,
+            draft_rx: None,
+            val_rx: None,
         }
     }
 
@@ -609,6 +646,284 @@ impl RocoDesktopApp {
     /// Render the active right-panel tool
     fn show_right_panel(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         match self.right_panel_tool {
+            Some(RightPanelTool::Story) => {
+                ui.label(RichText::new("📖 Story Dashboard").strong().size(14.0));
+                ui.separator();
+
+                if self.active_story.is_none() {
+                    ui.label(RichText::new("Start a New Story").strong());
+                    ui.add_space(4.0);
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.story_premise)
+                            .hint_text("Enter your story premise...")
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(3),
+                    );
+
+                    ui.add_space(6.0);
+                    if ui.button("🚀 Create Story Workspace").clicked()
+                        && !self.story_premise.trim().is_empty()
+                    {
+                        let ts = chrono::Utc::now().timestamp();
+                        let slug = self
+                            .story_premise
+                            .split_whitespace()
+                            .take(3)
+                            .collect::<Vec<_>>()
+                            .join("-")
+                            .to_lowercase();
+                        let clean_slug = slug
+                            .chars()
+                            .filter(|c| c.is_alphanumeric() || *c == '-')
+                            .collect::<String>();
+                        let folder_name = format!("{}_{}", ts, clean_slug);
+                        let ws_path = PathBuf::from(".roco/workspaces").join(&folder_name);
+
+                        std::fs::create_dir_all(&ws_path).ok();
+                        std::fs::create_dir_all(ws_path.join("chapters")).ok();
+
+                        // Write outline default
+                        let outline_content = format!(
+                            "Title: Untitled Story\nGenre: Unknown\nTone: Neutral\n\nPremise: {}\n\n## Chapter 1: The Beginning\nSummary: Introduce characters and the premise.\n\n## Chapter 2: The Confrontation\nSummary: Rise of conflict.\n\n## Chapter 3: The Resolution\nSummary: Resolution of conflict.\n",
+                            self.story_premise
+                        );
+                        std::fs::write(ws_path.join("outline.md"), &outline_content).ok();
+                        std::fs::write(ws_path.join("wiki.md"), "## Characters\n\n## Setting\n")
+                            .ok();
+
+                        self.active_story = Some(folder_name);
+                        self.story_workspaces = list_story_workspaces();
+                        self.story_premise.clear();
+                        self.status_message = "Story workspace created!".into();
+                    }
+
+                    ui.add_space(14.0);
+                    ui.separator();
+                    ui.label(RichText::new("📂 Existing Story Workspaces").strong());
+                    ui.add_space(4.0);
+
+                    if self.story_workspaces.is_empty() {
+                        ui.label(RichText::new("No workspaces found. Create one above!").weak());
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .max_height(300.0)
+                            .show(ui, |ui| {
+                                for name in self.story_workspaces.clone() {
+                                    ui.horizontal(|ui| {
+                                        ui.label(&name);
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if ui.button("Load").clicked() {
+                                                    self.active_story = Some(name.clone());
+                                                    self.status_message =
+                                                        format!("Loaded story workspace: {name}");
+                                                }
+                                            },
+                                        );
+                                    });
+                                }
+                            });
+                    }
+                } else {
+                    let name = self.active_story.clone().unwrap();
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("Workspace: {}", name))
+                                .strong()
+                                .size(12.0),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("❌ Close").clicked() {
+                                self.active_story = None;
+                                self.status_message = "Closed workspace".into();
+                            }
+                        });
+                    });
+                    ui.separator();
+
+                    let ws_path = PathBuf::from(".roco/workspaces").join(&name);
+                    let tool_set = roco_agent::validation::tool_set::StoryToolSet::new(&ws_path);
+
+                    // Outline status
+                    ui.horizontal(|ui| {
+                        ui.label("Outline:");
+                        if tool_set.outline_path().exists() {
+                            ui.label("Yes");
+                            if ui.button("✏️ Edit").clicked() {
+                                if let Ok(content) =
+                                    std::fs::read_to_string(tool_set.outline_path())
+                                {
+                                    self.editor_state.document.text = content;
+                                    self.right_panel_tool = Some(RightPanelTool::Editor);
+                                }
+                            }
+                        } else {
+                            ui.label("No");
+                        }
+                    });
+
+                    // Wiki status
+                    ui.horizontal(|ui| {
+                        ui.label("Wiki/Bible:");
+                        if tool_set.wiki_path().exists() {
+                            ui.label("Yes");
+                            if ui.button("✏️ Edit").clicked() {
+                                if let Ok(content) = std::fs::read_to_string(tool_set.wiki_path()) {
+                                    self.editor_state.document.text = content;
+                                    self.right_panel_tool = Some(RightPanelTool::Editor);
+                                }
+                            }
+                        } else {
+                            ui.label("No");
+                        }
+                    });
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.label(RichText::new("Chapters").strong());
+
+                    for i in 1..=3 {
+                        let ch_path = tool_set.chapter_path(i);
+                        let exists = ch_path.exists();
+
+                        ui.horizontal(|ui| {
+                            ui.label(format!("Chapter {}:", i));
+                            if exists {
+                                if let Ok(content) = std::fs::read_to_string(&ch_path) {
+                                    let wc = content.split_whitespace().count();
+                                    ui.label(format!("✓ Written ({} words)", wc));
+
+                                    if ui.button("✏️ Edit").clicked() {
+                                        self.editor_state.document.text = content.clone();
+                                        self.right_panel_tool = Some(RightPanelTool::Editor);
+                                    }
+                                    if self.validating_chapter == Some(i) {
+                                        ui.label("⏳ Validating...");
+                                    } else {
+                                        if ui.button("🔍 Validate").clicked() {
+                                            if let Some(ref backend) = self.backend {
+                                                self.status_message = format!("Validating Chapter {i}...");
+                                                self.validating_chapter = Some(i);
+
+                                                let (tx, rx) = std::sync::mpsc::channel();
+                                                let backend_clone = backend.clone();
+                                                let content_clone = content.clone();
+                                                let outline_path = tool_set.outline_path();
+
+                                                std::thread::spawn(move || {
+                                                    let outline_text = std::fs::read_to_string(outline_path).unwrap_or_default();
+                                                    let report = roco_agent::validation::ValidationEngine::default().validate_chapter(
+                                                        Some(backend_clone.as_ref()),
+                                                        &content_clone,
+                                                        i,
+                                                        &outline_text,
+                                                        &roco_agent::validation::WordCountTargets::default(),
+                                                    );
+                                                    let _ = tx.send(Ok((i, format!("Validation: {}", report.summary))));
+                                                });
+                                                self.val_rx = Some(rx);
+                                            } else {
+                                                self.status_message = "AI backend not loaded for validation".into();
+                                            }
+                                        }
+                                    }
+                                    if ui.button("🔄 Revert").clicked() {
+                                        if let Ok(()) = tool_set.restore_latest_backup(&ch_path) {
+                                            self.status_message = format!("Restored backup for Chapter {i}");
+                                        } else {
+                                            self.status_message = "No backups found".into();
+                                        }
+                                    }
+                                }
+                            } else {
+                                ui.label("✗ Missing");
+                                if self.drafting_chapter == Some(i) {
+                                    ui.label("⏳ Drafting...");
+                                } else {
+                                    if ui.button("⚡ Draft").clicked() {
+                                        if let Some(ref backend) = self.backend {
+                                            self.status_message = format!("Drafting Chapter {i}...");
+                                            self.drafting_chapter = Some(i);
+
+                                            let (tx, rx) = std::sync::mpsc::channel();
+                                            let backend_clone = backend.clone();
+                                            let tool_set_clone = tool_set.clone();
+                                            let outline_path = tool_set.outline_path();
+
+                                            // Get previous chapter if i > 1
+                                            let previous = if i > 1 {
+                                                std::fs::read_to_string(tool_set.chapter_path(i - 1)).unwrap_or_default()
+                                            } else {
+                                                String::new()
+                                            };
+
+                                            std::thread::spawn(move || {
+                                                let outline = std::fs::read_to_string(outline_path).unwrap_or_default();
+                                                // Simple draft prompt
+                                                let prompt = format!(
+                                                    "Write Chapter {i} for this story.\n\nOutline:\n{outline}\n\nPrevious Chapter:\n{previous}\n\nRules:\n- Write vivid prose, 300-500 words.\n- Start directly with action or dialogue.\n- Output ONLY the story content."
+                                                );
+
+                                                let result = futures::executor::block_on(backend_clone.complete(CompletionRequest {
+                                                    prompt: format!("System: You are a professional story writer. Output ONLY the story chapter content.\n\nUser: {}\n\nAssistant:", prompt),
+                                                    temperature: 0.6,
+                                                    max_tokens: 1500,
+                                                    ..Default::default()
+                                                }));
+
+                                                match result {
+                                                    Ok(resp) => {
+                                                        let drafted_text = format!("# Chapter {i}\n\n{}", resp.text.trim());
+                                                        if let Ok(()) = tool_set_clone.write_chapter(i, &drafted_text) {
+                                                            let _ = tx.send(Ok((i, format!("Drafted Chapter {i} successfully!"))));
+                                                        } else {
+                                                            let _ = tx.send(Err("Failed to write draft file".into()));
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        let _ = tx.send(Err(format!("Draft failed: {e}")));
+                                                    }
+                                                }
+                                            });
+                                            self.draft_rx = Some(rx);
+                                        } else {
+                                            self.status_message = "AI backend not loaded for drafting".into();
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    ui.add_space(12.0);
+                    ui.separator();
+                    if ui.button("📦 Compile & Publish Final Story").clicked() {
+                        let _outline_content =
+                            std::fs::read_to_string(tool_set.outline_path()).unwrap_or_default();
+                        let wiki_content =
+                            std::fs::read_to_string(tool_set.wiki_path()).unwrap_or_default();
+
+                        let mut final_story = String::from("# Final Published Story\n\n");
+                        if !wiki_content.is_empty() {
+                            final_story.push_str(&wiki_content);
+                            final_story.push_str("\n\n---\n\n");
+                        }
+
+                        for i in 1..=3 {
+                            if let Ok(ch_text) = std::fs::read_to_string(tool_set.chapter_path(i)) {
+                                final_story.push_str(&ch_text);
+                                final_story.push_str("\n\n---\n\n");
+                            }
+                        }
+
+                        let publish_path = ws_path.join("06-STORY.md");
+                        std::fs::write(&publish_path, &final_story).ok();
+                        self.status_message = format!("Published final story to 06-STORY.md!");
+                    }
+                }
+            }
             Some(RightPanelTool::Editor) => {
                 ui.label(RichText::new("\u{1f4dd} Editor").strong().size(14.0));
                 ui.separator();
@@ -683,6 +998,43 @@ impl RocoDesktopApp {
 
 impl eframe::App for RocoDesktopApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // Process any finished background draft/validation responses
+        if let Some(ref rx) = self.draft_rx {
+            if let Ok(res) = rx.try_recv() {
+                match res {
+                    Ok((_i, msg)) => {
+                        self.status_message = msg;
+                        self.drafting_chapter = None;
+                        self.draft_rx = None;
+                        self.refresh_browsers();
+                    }
+                    Err(e) => {
+                        self.status_message = e;
+                        self.drafting_chapter = None;
+                        self.draft_rx = None;
+                    }
+                }
+            }
+        }
+
+        if let Some(ref rx) = self.val_rx {
+            if let Ok(res) = rx.try_recv() {
+                match res {
+                    Ok((_i, msg)) => {
+                        self.status_message = msg;
+                        self.validating_chapter = None;
+                        self.val_rx = None;
+                        self.refresh_browsers();
+                    }
+                    Err(e) => {
+                        self.status_message = e;
+                        self.validating_chapter = None;
+                        self.val_rx = None;
+                    }
+                }
+            }
+        }
+
         // ── Menu bar ────────────────────────────────────────────────────
         TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -736,6 +1088,7 @@ impl eframe::App for RocoDesktopApp {
                     }
                     ui.separator();
                     for tool in [
+                        RightPanelTool::Story,
                         RightPanelTool::Editor,
                         RightPanelTool::FileTree,
                         RightPanelTool::Wiki,
@@ -853,6 +1206,7 @@ impl eframe::App for RocoDesktopApp {
                         ui.add_space(8.0);
                         ui.label(RichText::new("\u{1f527} Tools").strong().size(14.0));
                         for tool in [
+                            RightPanelTool::Story,
                             RightPanelTool::Editor,
                             RightPanelTool::FileTree,
                             RightPanelTool::Wiki,
@@ -1387,6 +1741,7 @@ mod tests {
 
     #[test]
     fn right_panel_tool_labels_match_expected() {
+        assert_eq!(RightPanelTool::Story.label(), "Story");
         assert_eq!(RightPanelTool::Editor.label(), "Editor");
         assert_eq!(RightPanelTool::FileTree.label(), "Files");
         assert_eq!(RightPanelTool::Wiki.label(), "Wiki");
@@ -1398,6 +1753,7 @@ mod tests {
     #[test]
     fn right_panel_tool_icons_are_non_empty() {
         for tool in &[
+            RightPanelTool::Story,
             RightPanelTool::Editor,
             RightPanelTool::FileTree,
             RightPanelTool::Wiki,
@@ -1411,6 +1767,12 @@ mod tests {
                 tool
             );
         }
+    }
+
+    #[test]
+    fn test_list_story_workspaces_does_not_panic() {
+        let workspaces = list_story_workspaces();
+        let _len = workspaces.len();
     }
 
     // ── toggle_tool tests ──────────────────────────────────────────────

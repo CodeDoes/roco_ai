@@ -264,6 +264,12 @@ impl StoryModeAgent {
             // ── Creation ──
             StoryIntent::BrainstormStory => self.handle_brainstorm(backend),
             StoryIntent::ExpandPremise(premise) => self.handle_expand_premise(backend, premise),
+
+            // ── Safe Editing & Recovery ─────────────────────────────────────────
+            StoryIntent::DraftChapter(num) => self.handle_draft_chapter(backend, *num),
+            StoryIntent::RevertChapter(num) => self.handle_revert_chapter(*num),
+            StoryIntent::ListBackups(num) => self.handle_list_backups(*num),
+            StoryIntent::ApplyRename { old, new } => self.handle_apply_rename(old, new),
         }
     }
 
@@ -1290,6 +1296,172 @@ impl StoryModeAgent {
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Safe Editing & Recovery handlers
+    // ═══════════════════════════════════════════════════════════════════
+
+    fn handle_draft_chapter(
+        &mut self,
+        backend: &dyn ModelBackend,
+        num: usize,
+    ) -> Result<StoryModeResult, String> {
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
+
+        let outline = session.tool_set.read_outline().unwrap_or_default();
+        let (title, summary) = extract_chapter_info_from_outline(&outline, num);
+
+        let previous = if num > 1 {
+            session.tool_set.read_chapter(num - 1).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let context = if num > 1 {
+            format!("\nThis is Chapter {num}: {title}. Continue the story from where the previous chapter ended.\n\n\
+                     PREVIOUS CHAPTER ({}) PROSE:\n{}\n", num - 1, previous)
+        } else {
+            String::new()
+        };
+
+        let prompt = format!(
+            "Write Chapter {num}: {title}.\n\n\
+             Chapter purpose / scene summary:\n{summary}\n\n\
+             Story outline:\n{outline}\n{context}\n\
+             Rules:\n\
+             - Write vivid prose, 300-500 words.\n\
+             - Start directly with action or dialogue, not planning.\n\
+             - Use paragraph breaks (double newlines) between scenes.\n\n\
+             Output ONLY a JSON object. No other text.\n\
+             The JSON must have exactly two keys: title and content.\n\
+             title: the chapter title (string).\n\
+             content: the full chapter prose, 300-500 words (string).\n\
+             The content value must be the actual story prose — write the chapter\n\
+             itself, never a placeholder or an explanation of what to write."
+        );
+
+        let system_chapter = "You are a fiction writer. Output valid JSON only. \
+                             The JSON must have 'title' (string) and 'content' (string with the story prose). \
+                             No thinking, no reasoning, no commentary. Only the JSON object.";
+
+        let result: Result<DraftResponse, String> =
+            state_tuned_json(backend, system_chapter, &prompt, 0.6, 1500);
+
+        match result {
+            Ok(draft) => {
+                let clean_content = clean_story_text(&draft.content);
+                let full_content = format!("# {}\n\n{}", draft.title, clean_content);
+
+                session.tool_set.write_chapter(num, &full_content)?;
+                session.invalidate_cache();
+
+                let wc = clean_content.split_whitespace().count();
+                Ok(StoryModeResult::text(format!(
+                    "## Chapter {num}: {} — Drafted\n\nDrafted successfully! {wc} words written.\n\n### Preview:\n\n{}",
+                    draft.title,
+                    if clean_content.chars().count() > 300 {
+                        format!("{}...", clean_content.chars().take(300).collect::<String>())
+                    } else {
+                        clean_content
+                    }
+                )))
+            }
+            Err(e) => Ok(StoryModeResult::text(format!(
+                "## Chapter {num} — Drafting failed\n\nError: {e}\n\nPlease verify your model configuration."
+            ))),
+        }
+    }
+
+    fn handle_revert_chapter(&mut self, num: usize) -> Result<StoryModeResult, String> {
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
+
+        let path = session.tool_set.chapter_path(num);
+        session.tool_set.restore_latest_backup(&path)?;
+        session.invalidate_cache();
+
+        let content = session.tool_set.read_chapter(num)?;
+        Ok(StoryModeResult::text(format!(
+            "## Chapter {num} — Reverted\n\nSuccessfully restored the most recent backup for Chapter {num}.\n\n### Current Content preview:\n\n{}",
+            if content.chars().count() > 300 {
+                format!("{}...", content.chars().take(300).collect::<String>())
+            } else {
+                content
+            }
+        )))
+    }
+
+    fn handle_list_backups(&mut self, num: usize) -> Result<StoryModeResult, String> {
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
+
+        let path = session.tool_set.chapter_path(num);
+        let backups = session.tool_set.list_backups(&path)?;
+
+        if backups.is_empty() {
+            return Ok(StoryModeResult::text(format!(
+                "No backups found for Chapter {num}."
+            )));
+        }
+
+        let mut output = format!("## Available Backups for Chapter {num}\n\n");
+        for (i, backup) in backups.iter().enumerate() {
+            let name = backup.file_name().unwrap_or_default().to_string_lossy();
+            let parts: Vec<&str> = name.split('_').collect();
+            let time_str = if !parts.is_empty() {
+                if let Ok(ts) = parts[0].parse::<u64>() {
+                    format_epoch_seconds(ts)
+                } else {
+                    "Unknown time".to_string()
+                }
+            } else {
+                "Unknown time".to_string()
+            };
+            output.push_str(&format!("{}. **{}** — {}\n", i + 1, time_str, name));
+        }
+        output.push_str("\nTo restore a specific backup, use `/revert <chapter_num>`.");
+        Ok(StoryModeResult::text(output))
+    }
+
+    fn handle_apply_rename(&mut self, old: &str, new: &str) -> Result<StoryModeResult, String> {
+        let session = self
+            .session_manager_mut()
+            .active_session_mut()
+            .ok_or_else(|| {
+                "No active story session. Use 'let's work on [story]' first.".to_string()
+            })?;
+
+        let results = session.tool_set.find_replace_all(old, new)?;
+        session.invalidate_cache();
+
+        let mut output = format!("## Rename Completed: \"{old}\" → \"{new}\"\n\n");
+        if results.is_empty() {
+            output.push_str("No occurrences found to rename.\n");
+        } else {
+            output.push_str("Successfully executed replacements across files:\n\n");
+            for res in &results {
+                let status_icon = if res.success { "✅" } else { "❌" };
+                output.push_str(&format!(
+                    "{} **{}** — {} replacements\n",
+                    status_icon, res.file, res.replacements
+                ));
+            }
+        }
+        Ok(StoryModeResult::text(output))
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Accessors
     // ═══════════════════════════════════════════════════════════════════
 
@@ -1485,6 +1657,109 @@ fn extract_genre_from_outline(outline: &str) -> &str {
         }
     }
     "Unknown"
+}
+
+#[derive(Deserialize)]
+struct DraftResponse {
+    title: String,
+    content: String,
+}
+
+fn extract_chapter_info_from_outline(outline: &str, num: usize) -> (String, String) {
+    let mut title = format!("Chapter {num}");
+    let mut summary = String::new();
+
+    // Look for lines like "## Chapter N: Title" or "Chapter N."
+    let search_patterns = [
+        format!("## Chapter {num}:"),
+        format!("### Chapter {num}:"),
+        format!("## Chapter {num} -"),
+        format!("### Chapter {num} -"),
+        format!("Chapter {num}:"),
+        format!("Chapter {num} -"),
+        format!("Chapter {num}."),
+    ];
+
+    let lines: Vec<&str> = outline.lines().collect();
+    let mut found_index = None;
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        for pattern in &search_patterns {
+            if trimmed.to_lowercase().starts_with(&pattern.to_lowercase()) {
+                found_index = Some(i);
+                // Extract title
+                let extracted = trimmed[pattern.len()..].trim();
+                if !extracted.is_empty() {
+                    title = extracted.to_string();
+                }
+                break;
+            }
+        }
+        if found_index.is_some() {
+            break;
+        }
+    }
+
+    if let Some(index) = found_index {
+        // Collect summary lines until the next chapter header or main header
+        for line in lines.iter().skip(index + 1) {
+            let trimmed = line.trim();
+            if trimmed.starts_with('#') || trimmed.to_lowercase().contains("chapter ") {
+                break;
+            }
+            if !trimmed.is_empty() {
+                if !summary.is_empty() {
+                    summary.push(' ');
+                }
+                summary.push_str(trimmed);
+            }
+        }
+    }
+
+    (title, summary)
+}
+
+fn format_epoch_seconds(ts: u64) -> String {
+    let h = (ts / 3600) % 24;
+    let m = (ts / 60) % 60;
+    let s = ts % 60;
+    let days = ts / 86400;
+    let z = days as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+    let yr = if mo <= 2 { y + 1 } else { y };
+    format!("{yr:04}-{mo:02}-{d:02} {h:02}:{m:02}:{s:02}")
+}
+
+fn clean_story_text(text: &str) -> String {
+    let mut text_cleaned = text.replace("<think>", "").replace("</think>", "");
+    if let Some(start) = text_cleaned.find("💭 thinking") {
+        if let Some(end) = text_cleaned[start..].find("💭 response") {
+            text_cleaned = text_cleaned.replace(&text_cleaned[start..start + end + 11], "");
+        }
+    }
+    let text = text_cleaned;
+    // Ensure double-newlines between paragraphs
+    let lines: Vec<&str> = text.lines().map(|l| l.trim_end()).collect();
+    let mut result = String::new();
+    for line in lines {
+        if line.is_empty() {
+            if !result.ends_with("\n\n") && !result.is_empty() {
+                result.push_str("\n\n");
+            }
+        } else {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+    result.trim().to_string()
 }
 
 #[cfg(test)]

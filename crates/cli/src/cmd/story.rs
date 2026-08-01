@@ -1088,6 +1088,7 @@ pub fn cmd_story(extra: &[&str]) {
 
     // ── Resume / phase flags ──────────────────────────────────────
     let resume = extra.iter().any(|&a| a == "--resume" || a == "-r");
+    let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
     let phase_filter = parse_opt("--phase", extra);
     let fix_chapter = if let Some(idx) = extra.iter().position(|&a| a == "--fix") {
         extra.get(idx + 1).and_then(|v| {
@@ -1812,11 +1813,47 @@ pub fn cmd_story(extra: &[&str]) {
                         .dispatch_single(backend.as_ref(), &val_task, &ws)?;
 
                     let val_entry = &val_result.output;
-                    let needs_revision = val_entry.contains("Quality: fail")
+                    let mut needs_revision = val_entry.contains("Quality: fail")
                         || val_entry.contains("Quality: needs-work");
 
+                    let mut user_feedback = String::new();
+                    if interactive {
+                        println!("\n==================================================");
+                        println!("📖 Chapter Draft: {chapter_label}");
+                        println!("==================================================");
+                        println!("{current_text}");
+                        println!("==================================================");
+                        println!("🔍 AI Reviewer Feedback:\n{}", val_entry.trim());
+                        println!("==================================================");
+                        loop {
+                            print!("👉 Do you want to [A]ccept, [R]evise with custom feedback, or [S]kip? (a/r/s): ");
+                            std::io::Write::flush(&mut std::io::stdout()).ok();
+                            let mut choice = String::new();
+                            if std::io::stdin().read_line(&mut choice).is_ok() {
+                                let choice = choice.trim().to_lowercase();
+                                if choice == "a" || choice == "accept" {
+                                    needs_revision = false;
+                                    break;
+                                } else if choice == "r" || choice == "revise" {
+                                    needs_revision = true;
+                                    print!("👉 Enter your custom revision feedback: ");
+                                    std::io::Write::flush(&mut std::io::stdout()).ok();
+                                    let mut feedback = String::new();
+                                    if std::io::stdin().read_line(&mut feedback).is_ok() {
+                                        user_feedback = feedback.trim().to_string();
+                                    }
+                                    break;
+                                } else if choice == "s" || choice == "skip" {
+                                    println!("Skipping further revisions of this chapter.\n");
+                                    needs_revision = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
                     if !needs_revision {
-                        println!("  ✓ {chapter_label} quality check passed");
+                        println!("  ✓ {chapter_label} accepted/passed");
                         // Write final version (revision or original) to chapter_texts
                         chapter_texts.push(current_text.clone());
                         break;
@@ -1831,13 +1868,17 @@ pub fn cmd_story(extra: &[&str]) {
                         break;
                     }
 
-                    // Extract feedback from validation output
-                    let revision_feedback: String = val_entry
-                        .lines()
-                        .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
-                        .map(|l| l.to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    // Extract feedback from validation output or user feedback
+                    let revision_feedback: String = if !user_feedback.is_empty() {
+                        format!("User Request: {user_feedback}")
+                    } else {
+                        val_entry
+                            .lines()
+                            .filter(|l| l.starts_with("Issues:") || l.starts_with("Suggestion:"))
+                            .map(|l| l.to_string())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    };
 
                     println!("  ⚠️  {} needs revision (attempt {}/{}) — retrying...",
                         &chapter_label, attempt + 1, max_retries);

@@ -335,7 +335,7 @@ Router NLU is the golden opportunity: every message already flows through `detec
 ### Recommendations (Not Yet Implemented)
 
 Router/NLU items (intent detection, keyword routing, rename/hide `session`/`workspace`, auto-management) live in **§13** — the single origin for the router plan. The remaining UX items:
-
+- [ ] Add `docs/README.md` link to `--help`
 - [ ] Add `roco quickstart` first-run guide
 - [ ] Add progress indicators (spinners) during long waits
 - [ ] Improve error messages with actionable hints

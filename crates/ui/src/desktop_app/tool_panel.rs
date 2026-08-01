@@ -3,6 +3,7 @@
 /// Which tool is shown in the right/browser panel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RightPanelTool {
+    Story,
     Editor,
     FileTree,
     Wiki,
@@ -14,6 +15,7 @@ pub enum RightPanelTool {
 impl RightPanelTool {
     pub fn label(self) -> &'static str {
         match self {
+            RightPanelTool::Story => "Story",
             RightPanelTool::Editor => "Editor",
             RightPanelTool::FileTree => "Files",
             RightPanelTool::Wiki => "Wiki",
@@ -25,6 +27,7 @@ impl RightPanelTool {
 
     pub fn icon(self) -> &'static str {
         match self {
+            RightPanelTool::Story => "📖",
             RightPanelTool::Editor => "\u{1f4dd}",
             RightPanelTool::FileTree => "\u{1f4c1}",
             RightPanelTool::Wiki => "\u{1f4d6}",

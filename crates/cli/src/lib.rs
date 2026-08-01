@@ -289,7 +289,9 @@ fn help_ttrpg() {
     eprintln!("  :world                     Inspect locations, factions, lore");
     eprintln!("  :triggers                  List natural language triggers & checks");
     eprintln!("  :chat <npc_name>           Immersive character conversation chat");
-    eprintln!("  :add_trigger <text>        Register a natural language trigger checked every turn\n");
+    eprintln!(
+        "  :add_trigger <text>        Register a natural language trigger checked every turn\n"
+    );
     std::process::exit(0);
 }
 
