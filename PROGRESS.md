@@ -2,6 +2,20 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-01 — CI/CD + devenv gate landed; PRs 16-21 merged (Jules + auto-generated)
+
+- **Intent**: finish the PR reconciliation batch from earlier (PRs 16-21), then build the CI gate the user explicitly asked for ("this shows we REALLY need CI CD to do this for us").
+- **CI redesign**: moved from `actions-rust-lang/setup-rust-toolchain@v1` (which resolved `stable` independently — 1.97.1 on runners vs 1.96.0 locally) to **devenv shell** for all Rust jobs. Devenv.lock pin 2.1.2 updated to 2.2.0; rust-overlay pinned to 1.97.1 via `languages.rust.version`; flake.nix uses `rust-bin.stable."1.97.1".default`; rust-toolchain.toml pins `channel = "1.97.1"` — all three lockstep now. Devenv.nix gains the GTK3 stack (dev outputs) + PKG_CONFIG_PATH (mirrors flake.nix devShell). CI installs nix + devenv via cachix, runs `devenv shell cargo fmt/check/clippy --all-features/test` with global `RUSTFLAGS=-D warnings`. 6/6 checks green.
+- **LD_LIBRARY_PATH gotcha**: nix-glibc 2.42 + non-transitive RUNPATH means toolchain binaries (rustfmt, clippy) fail on runners with older host glibc (`GLIBC_2.42 not found` — host `/usr/lib`), and fail locally with host LD_LIBRARY_PATH (nix zlibs can't load nix glibc). Fix: `env.LD_LIBRARY_PATH = "${pkgs.zlib}/lib"` — the nix zlib (2.42-compatible) satisfies all toolchain runtime deps without touching the host. Tested in devenv shell before pushing.
+- **PR 19 (world sim)** — merged clean (`bbb4b72`), auto-MERGED.
+- **PR 20 (WFC world map, `roco map`)** — merged + reconciled (`3e9418c`); auto-MERGED. Conflicts in 6 files were all stale (PR 20 branched from old main); kept main's clippy fixes; adopted the new `"map"` subcommand arm in bin/roco.rs.
+- **PR 21 (SSM evaluation bench, `roco solution-bench`)** — merged + reconciled (`2011e89`); auto-MERGED. Kept main's devenv pin (PR 21 tried to revert to `channel="nixpkgs"` which drifts); adopted the new subcommand + eval results.
+- **PRs 14, 15** — closed with commentary (merged via earlier session).
+- **Flaky test fixed**: `test_cli_wfc_map_generation` intermittently failed on CI (1 failure in otherwise-green runs) — both WFC tests set `ROCO_DIR` via `std::env::set_var` (process-global), which raced across parallel test threads. Fixed by using harness's `with_env` (per-process) instead. Verified: 3 consecutive full-workspace runs 1026/0.
+- **Jules chat loop completed** on all 10 PRs (12-21) via `gh pr comment` — Jules acknowledges every message (👀 + text). Notable Jules feedback: noted the `--all-features` clippy failures on PRs 20/21 as the gate working as designed; noted the LD_LIBRARY_PATH conditional approach (I kept the nix-zlib version as robust).
+- `cargo test --workspace`: **1026 passed / 0 failed / 9 ignored**. CI all 6 checks green. No open PRs.
+- Still red: real-model router verification (§13, needs live inferd), model limitations (§9), UX items (§12), management intents + CLI keyword router (§13 future).
+
 ## 2026-08-01 — Merged all open PRs (12-15) into main with reconciliation (intent logged in the PR review itself)
 
 - **Intent**: `git update` + review the auto-created PRs, incorporate their content, then close/merge them — the full PR backlog, done properly.
