@@ -46,6 +46,11 @@
 
   env.PKG_CONFIG_PATH =
     "${pkgs.glib.dev}/lib/pkgconfig:${pkgs.gtk3.dev}/lib/pkgconfig:${pkgs.pango.dev}/lib/pkgconfig:${pkgs.cairo.dev}/lib/pkgconfig:${pkgs.gdk-pixbuf.dev}/lib/pkgconfig:${pkgs.atk.dev}/lib/pkgconfig:${pkgs.libxkbcommon}/lib/pkgconfig:${pkgs.libGL.dev}/lib/pkgconfig";
+  # Nix RPATH/RUNPATH is non-transitive, so toolchain binaries (rustfmt/clippy)
+  # fail to load libz.so.1 from libLLVM at runtime. Point LD_LIBRARY_PATH at
+  # the NIX zlib (NOT the host /usr/lib — that breaks Nix binaries on CI
+  # runners with an older host glibc, GLIBC_2.42 not found).
+  env.LD_LIBRARY_PATH = "${pkgs.zlib}/lib";
   env.CARGO_INCREMENTAL = "";
   env.SCCACHE_DIR = "$HOME/.cache/sccache";
   env.SCCACHE_CACHE_SIZE = "20G";
