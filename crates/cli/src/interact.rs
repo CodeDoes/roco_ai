@@ -28,7 +28,7 @@ pub const MAX_SAVED_SESSIONS: usize = 100;
 
 /// Default persona for the chat surface. The identity preamble is prepended
 /// by `ChatSession`, so this only describes *behaviour*.
-const CHAT_PERSONA: &str = "\
+pub const CHAT_PERSONA: &str = "\
 Hold a natural conversation.
 - Answer the user's actual question first, then add detail if it helps.
 - Match their tone and length: a short question gets a short answer.

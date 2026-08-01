@@ -286,6 +286,14 @@ fn main() {
             cmd::pet::cmd_pet(&extra);
         }
 
+        // ── Session control ──────────────────────────────────────────────
+        "session" => {
+            if has_help_flag(&extra) {
+                help(Some("session"));
+            }
+            cmd::session::cmd_session(&extra);
+        }
+
         // ── Story mode (interactive writing assistant) ───────────────────
         "story-mode" | "sm" => {
             if has_help_flag(&extra) {

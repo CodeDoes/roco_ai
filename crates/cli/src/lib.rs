@@ -67,6 +67,7 @@ pub fn help(sub: Option<&str>) {
     match sub {
         Some("inferd") | Some("server") => help_inferd(),
         Some("gateway") => help_gateway(),
+        Some("session") => help_session(),
         Some("stop") => help_stop(),
         Some("story") | Some("story-mode") | Some("sm") => help_story(),
         Some("session") => help_session(),
@@ -103,6 +104,7 @@ fn help_root() {
     eprintln!("  roco <subcommand> [args]             Run a specific command");
     eprintln!("  roco <subcommand> --help             Show help for a specific command\n");
     eprintln!("Commands:");
+    eprintln!("  session      Persistent multi-turn chat sessions");
     eprintln!("  interact     Interactive CLI with pacing (default mode)");
     eprintln!("  story        Structured short story from premise");
     eprintln!("  story-mode   Interactive story writing assistant");
@@ -147,6 +149,20 @@ fn help_inferd() {
     eprintln!("and serves the completion API. It is auto-started by gateway");
     eprintln!("and other commands that need it.\n");
     eprintln!("Requires: --features net");
+    std::process::exit(0);
+}
+
+fn help_session() {
+    eprintln!("roco session — Persistent multi-turn chat control\n");
+    eprintln!("Usage:");
+    eprintln!(
+        "  roco session create                      Create a new chat session and print its ID"
+    );
+    eprintln!(
+        "  roco session <session_id> -p \"<prompt>\"   Resume a session and run a single turn\n"
+    );
+    eprintln!("Options:");
+    eprintln!("  -p, --prompt <string>                    The chat prompt text to append\n");
     std::process::exit(0);
 }
 
@@ -460,6 +476,7 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
 pub const KNOWN_SUBCOMMANDS: &[&str] = &[
     "story",
     "interact",
+    "session",
     "code",
     "coder",
     "game",
