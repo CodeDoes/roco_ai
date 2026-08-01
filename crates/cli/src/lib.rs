@@ -90,6 +90,7 @@ pub fn help(sub: Option<&str>) {
         Some("stats") | Some("review") => help_stats(),
         Some("inspect") => help_inspect(),
         Some("eval-suite") => help_eval_suite(),
+        Some("solution-bench") => help_solution_bench(),
         Some("completions") => help_completions(),
         Some("whoami") => help_whoami(),
         Some("version") | Some("--version") => help_version(),
@@ -132,7 +133,8 @@ fn help_root() {
     eprintln!("  gpu-check    Show Vulkan device + model info");
     eprintln!("  stats        Story/workspace statistics and review");
     eprintln!("  inspect      Model & system inspection (caches, sessions, config)");
-    eprintln!("  eval-suite   Deterministic evaluation suite\n");
+    eprintln!("  eval-suite   Deterministic evaluation suite");
+    eprintln!("  solution-bench Solution evaluation bench for SSM architectural patterns\n");
     eprintln!("Identity:");
     eprintln!("  whoami       Show what RoCo is and what it knows about you");
     eprintln!("  version      Show version\n");
@@ -460,6 +462,19 @@ fn help_eval_suite() {
     std::process::exit(0);
 }
 
+fn help_solution_bench() {
+    eprintln!("roco solution-bench — Solution Evaluation Bench\n");
+    eprintln!("Usage:");
+    eprintln!("  roco solution-bench                  Run physical benchmarks and multi-workload simulation");
+    eprintln!(
+        "  roco solution-bench list             Show catalog of the 16 architectural aspects"
+    );
+    eprintln!("  roco solution-bench --json           JSON output format\n");
+    eprintln!("Evaluates the 16 core aspects of SSM/RNN and Transformer-hybrid pipelines");
+    eprintln!("such as state baking, BNFS grammars, subagents, multi-states, and routing.\n");
+    std::process::exit(0);
+}
+
 fn help_completions() {
     eprintln!("roco completions — Generate shell completion script\n");
     eprintln!("Usage:");
@@ -503,6 +518,7 @@ pub const KNOWN_SUBCOMMANDS: &[&str] = &[
     "inspect",
     "eval",
     "eval-suite",
+    "solution-bench",
     "gui",
     "pet",
     "stats",

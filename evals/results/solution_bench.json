@@ -1,0 +1,532 @@
+{
+  "suite_name": "RoCo Architectural Solution Bench",
+  "timestamp": 1785583443,
+  "aspects_evaluated": 16,
+  "physical_benchmarks": {
+    "state_baking_vs_context": {
+      "name": "State Baking vs Context Management",
+      "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
+      "score": 0.7216494845360826,
+      "metrics": {
+        "ssm_constant_state_multiplier": "0.7x speedup",
+        "baked_completion_ms": "0.10ms",
+        "fresh_prompt_prefill_ms": "0.07ms"
+      }
+    },
+    "code_overcontrol": {
+      "name": "Code Overcontrol of Inference",
+      "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
+      "score": 10.0,
+      "metrics": {
+        "execution_ms": "0.08ms",
+        "overcontrol_status": "Active Interrupt Hook Green"
+      }
+    },
+    "bnf_constraints": {
+      "name": "BNFS Constrained Decoding",
+      "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
+      "score": 10.0,
+      "metrics": {
+        "constrained_latency_ms": "2.50ms",
+        "grammar_compliance": "100% Correct Syntax"
+      }
+    },
+    "small_router_gating": {
+      "name": "Small Trained Router vs Model NLU",
+      "description": "Compares low-latency local gating classifiers against multi-token model classification",
+      "score": 100.0,
+      "metrics": {
+        "model_nlu_gating_ms": "0.05ms",
+        "small_trained_router_gating_ms": "0.0000ms",
+        "gated_intent": "adventure",
+        "speedup_multiplier": "1000x faster"
+      }
+    }
+  },
+  "simulation": {
+    "workloads": [
+      {
+        "id": "story_gen",
+        "name": "Story Generation",
+        "description": "Deep narrative flows requiring character persistence, world consistency, and emotional pacing.",
+        "weight_latency": 10,
+        "weight_coherence": 40,
+        "weight_adherence": 15,
+        "weight_memory": 15,
+        "weight_complexity": 20
+      },
+      {
+        "id": "lsp_prose",
+        "name": "LSP Prose Completion (FIM)",
+        "description": "Ultra-low latency, single-line continuation at the cursor within a massive code/prose editor.",
+        "weight_latency": 50,
+        "weight_coherence": 15,
+        "weight_adherence": 15,
+        "weight_memory": 10,
+        "weight_complexity": 10
+      },
+      {
+        "id": "structured_json",
+        "name": "Structured JSON Extraction",
+        "description": "Converting raw transcripts into validated schemas with 100% syntactic correctness.",
+        "weight_latency": 20,
+        "weight_coherence": 10,
+        "weight_adherence": 50,
+        "weight_memory": 10,
+        "weight_complexity": 10
+      },
+      {
+        "id": "interactive_chat",
+        "name": "Low-Latency Interactive Chat",
+        "description": "High-frequency, conversational multi-turn engagement with responsive streaming.",
+        "weight_latency": 40,
+        "weight_coherence": 20,
+        "weight_adherence": 10,
+        "weight_memory": 15,
+        "weight_complexity": 15
+      },
+      {
+        "id": "novel_coherence",
+        "name": "Extremely Long Novel Coherence",
+        "description": "Managing consistency and logic across full-length novels (100k+ words) without runaway VRAM.",
+        "weight_latency": 10,
+        "weight_coherence": 50,
+        "weight_adherence": 10,
+        "weight_memory": 20,
+        "weight_complexity": 10
+      },
+      {
+        "id": "edge_device",
+        "name": "Ultra-Low-Power Edge Device",
+        "description": "Deploying local model interactions on thin clients with highly limited RAM/VRAM budgets.",
+        "weight_latency": 25,
+        "weight_coherence": 15,
+        "weight_adherence": 15,
+        "weight_memory": 35,
+        "weight_complexity": 10
+      }
+    ],
+    "solutions": [
+      {
+        "id": "pure_ssm",
+        "name": "Pure SSM Baseline",
+        "description": "Vanilla RWKV-7 model running standard prompts without specialized state tuning, grammars, or multi-agent orchestration.",
+        "aspects": [
+          "context_management",
+          "context_ordering"
+        ],
+        "base_latency": 60,
+        "base_coherence": 55,
+        "base_adherence": 40,
+        "base_memory": 85,
+        "base_complexity": 90
+      },
+      {
+        "id": "state_baked_swarm",
+        "name": "State-Baked swarm (with BNFS)",
+        "description": "Highly structural design: pre-bakes system instructions and format guides into recurrent state slots, delegates tasks to isolated specialized subagents, and enforces syntax via GBNF/kbnf grammars.",
+        "aspects": [
+          "state_baking",
+          "subagents",
+          "bnfs",
+          "hierarchy",
+          "code_overcontrol",
+          "context_ordering"
+        ],
+        "base_latency": 75,
+        "base_coherence": 70,
+        "base_adherence": 100,
+        "base_memory": 60,
+        "base_complexity": 45
+      },
+      {
+        "id": "moe_specialist",
+        "name": "MoE-State Specialist",
+        "description": "Advanced SSM engineering: swap embedding/unembedding projection heads dynamically, maintains an active pool of blended recurrent state experts, and utilizes a fast classifier to gate inputs.",
+        "aspects": [
+          "multi_states",
+          "swapping_heads",
+          "small_trained_router",
+          "mixture_of_state_experts"
+        ],
+        "base_latency": 85,
+        "base_coherence": 80,
+        "base_adherence": 60,
+        "base_memory": 50,
+        "base_complexity": 30
+      },
+      {
+        "id": "edge_hybrid",
+        "name": "Edge Hybrid Router",
+        "description": "Optimized for thin clients: a high-speed small router dispatches simple tasks to tiny specialized RNNs, while complex interactions are routed with programmatic logit overrides.",
+        "aspects": [
+          "small_trained_router",
+          "multiple_rnns",
+          "code_overcontrol",
+          "context_management"
+        ],
+        "base_latency": 90,
+        "base_coherence": 45,
+        "base_adherence": 70,
+        "base_memory": 95,
+        "base_complexity": 65
+      },
+      {
+        "id": "ultimate_architect",
+        "name": "Ultimate Hybrid Architect",
+        "description": "The deluxe pipeline: integrates Rotary Position Embeddings (ROPE) for sequence-length expansion, synthetic datasets for few-shot state tuning, LoRA weight adapters for task alignment, and multi-state blending.",
+        "aspects": [
+          "rope",
+          "synthetic_data",
+          "lora_fine_tune",
+          "deep_embed",
+          "multi_states",
+          "context_ordering"
+        ],
+        "base_latency": 70,
+        "base_coherence": 95,
+        "base_adherence": 80,
+        "base_memory": 40,
+        "base_complexity": 20
+      }
+    ],
+    "matrix": [
+      {
+        "workload_id": "story_gen",
+        "workload_name": "Story Generation",
+        "solutions": [
+          {
+            "solution_id": "state_baked_swarm",
+            "solution_name": "State-Baked swarm (with BNFS)",
+            "weighted_score": 68,
+            "latency_score": 75,
+            "coherence_score": 70,
+            "adherence_score": 100,
+            "memory_score": 60,
+            "complexity_score": 45
+          },
+          {
+            "solution_id": "ultimate_architect",
+            "solution_name": "Ultimate Hybrid Architect",
+            "weighted_score": 67,
+            "latency_score": 70,
+            "coherence_score": 95,
+            "adherence_score": 80,
+            "memory_score": 40,
+            "complexity_score": 20
+          },
+          {
+            "solution_id": "pure_ssm",
+            "solution_name": "Pure SSM Baseline",
+            "weighted_score": 64,
+            "latency_score": 60,
+            "coherence_score": 55,
+            "adherence_score": 40,
+            "memory_score": 85,
+            "complexity_score": 90
+          },
+          {
+            "solution_id": "edge_hybrid",
+            "solution_name": "Edge Hybrid Router",
+            "weighted_score": 64,
+            "latency_score": 90,
+            "coherence_score": 45,
+            "adherence_score": 70,
+            "memory_score": 95,
+            "complexity_score": 65
+          },
+          {
+            "solution_id": "moe_specialist",
+            "solution_name": "MoE-State Specialist",
+            "weighted_score": 63,
+            "latency_score": 85,
+            "coherence_score": 80,
+            "adherence_score": 60,
+            "memory_score": 50,
+            "complexity_score": 30
+          }
+        ]
+      },
+      {
+        "workload_id": "lsp_prose",
+        "workload_name": "LSP Prose Completion (FIM)",
+        "solutions": [
+          {
+            "solution_id": "edge_hybrid",
+            "solution_name": "Edge Hybrid Router",
+            "weighted_score": 78,
+            "latency_score": 90,
+            "coherence_score": 45,
+            "adherence_score": 70,
+            "memory_score": 95,
+            "complexity_score": 65
+          },
+          {
+            "solution_id": "state_baked_swarm",
+            "solution_name": "State-Baked swarm (with BNFS)",
+            "weighted_score": 73,
+            "latency_score": 75,
+            "coherence_score": 70,
+            "adherence_score": 100,
+            "memory_score": 60,
+            "complexity_score": 45
+          },
+          {
+            "solution_id": "moe_specialist",
+            "solution_name": "MoE-State Specialist",
+            "weighted_score": 71,
+            "latency_score": 85,
+            "coherence_score": 80,
+            "adherence_score": 60,
+            "memory_score": 50,
+            "complexity_score": 30
+          },
+          {
+            "solution_id": "ultimate_architect",
+            "solution_name": "Ultimate Hybrid Architect",
+            "weighted_score": 67,
+            "latency_score": 70,
+            "coherence_score": 95,
+            "adherence_score": 80,
+            "memory_score": 40,
+            "complexity_score": 20
+          },
+          {
+            "solution_id": "pure_ssm",
+            "solution_name": "Pure SSM Baseline",
+            "weighted_score": 61,
+            "latency_score": 60,
+            "coherence_score": 55,
+            "adherence_score": 40,
+            "memory_score": 85,
+            "complexity_score": 90
+          }
+        ]
+      },
+      {
+        "workload_id": "structured_json",
+        "workload_name": "Structured JSON Extraction",
+        "solutions": [
+          {
+            "solution_id": "state_baked_swarm",
+            "solution_name": "State-Baked swarm (with BNFS)",
+            "weighted_score": 82,
+            "latency_score": 75,
+            "coherence_score": 70,
+            "adherence_score": 100,
+            "memory_score": 60,
+            "complexity_score": 45
+          },
+          {
+            "solution_id": "edge_hybrid",
+            "solution_name": "Edge Hybrid Router",
+            "weighted_score": 73,
+            "latency_score": 90,
+            "coherence_score": 45,
+            "adherence_score": 70,
+            "memory_score": 95,
+            "complexity_score": 65
+          },
+          {
+            "solution_id": "ultimate_architect",
+            "solution_name": "Ultimate Hybrid Architect",
+            "weighted_score": 69,
+            "latency_score": 70,
+            "coherence_score": 95,
+            "adherence_score": 80,
+            "memory_score": 40,
+            "complexity_score": 20
+          },
+          {
+            "solution_id": "moe_specialist",
+            "solution_name": "MoE-State Specialist",
+            "weighted_score": 63,
+            "latency_score": 85,
+            "coherence_score": 80,
+            "adherence_score": 60,
+            "memory_score": 50,
+            "complexity_score": 30
+          },
+          {
+            "solution_id": "pure_ssm",
+            "solution_name": "Pure SSM Baseline",
+            "weighted_score": 55,
+            "latency_score": 60,
+            "coherence_score": 55,
+            "adherence_score": 40,
+            "memory_score": 85,
+            "complexity_score": 90
+          }
+        ]
+      },
+      {
+        "workload_id": "interactive_chat",
+        "workload_name": "Low-Latency Interactive Chat",
+        "solutions": [
+          {
+            "solution_id": "edge_hybrid",
+            "solution_name": "Edge Hybrid Router",
+            "weighted_score": 76,
+            "latency_score": 90,
+            "coherence_score": 45,
+            "adherence_score": 70,
+            "memory_score": 95,
+            "complexity_score": 65
+          },
+          {
+            "solution_id": "state_baked_swarm",
+            "solution_name": "State-Baked swarm (with BNFS)",
+            "weighted_score": 69,
+            "latency_score": 75,
+            "coherence_score": 70,
+            "adherence_score": 100,
+            "memory_score": 60,
+            "complexity_score": 45
+          },
+          {
+            "solution_id": "moe_specialist",
+            "solution_name": "MoE-State Specialist",
+            "weighted_score": 68,
+            "latency_score": 85,
+            "coherence_score": 80,
+            "adherence_score": 60,
+            "memory_score": 50,
+            "complexity_score": 30
+          },
+          {
+            "solution_id": "pure_ssm",
+            "solution_name": "Pure SSM Baseline",
+            "weighted_score": 65,
+            "latency_score": 60,
+            "coherence_score": 55,
+            "adherence_score": 40,
+            "memory_score": 85,
+            "complexity_score": 90
+          },
+          {
+            "solution_id": "ultimate_architect",
+            "solution_name": "Ultimate Hybrid Architect",
+            "weighted_score": 64,
+            "latency_score": 70,
+            "coherence_score": 95,
+            "adherence_score": 80,
+            "memory_score": 40,
+            "complexity_score": 20
+          }
+        ]
+      },
+      {
+        "workload_id": "novel_coherence",
+        "workload_name": "Extremely Long Novel Coherence",
+        "solutions": [
+          {
+            "solution_id": "ultimate_architect",
+            "solution_name": "Ultimate Hybrid Architect",
+            "weighted_score": 72,
+            "latency_score": 70,
+            "coherence_score": 95,
+            "adherence_score": 80,
+            "memory_score": 40,
+            "complexity_score": 20
+          },
+          {
+            "solution_id": "state_baked_swarm",
+            "solution_name": "State-Baked swarm (with BNFS)",
+            "weighted_score": 69,
+            "latency_score": 75,
+            "coherence_score": 70,
+            "adherence_score": 100,
+            "memory_score": 60,
+            "complexity_score": 45
+          },
+          {
+            "solution_id": "moe_specialist",
+            "solution_name": "MoE-State Specialist",
+            "weighted_score": 67,
+            "latency_score": 85,
+            "coherence_score": 80,
+            "adherence_score": 60,
+            "memory_score": 50,
+            "complexity_score": 30
+          },
+          {
+            "solution_id": "edge_hybrid",
+            "solution_name": "Edge Hybrid Router",
+            "weighted_score": 64,
+            "latency_score": 90,
+            "coherence_score": 45,
+            "adherence_score": 70,
+            "memory_score": 95,
+            "complexity_score": 65
+          },
+          {
+            "solution_id": "pure_ssm",
+            "solution_name": "Pure SSM Baseline",
+            "weighted_score": 63,
+            "latency_score": 60,
+            "coherence_score": 55,
+            "adherence_score": 40,
+            "memory_score": 85,
+            "complexity_score": 90
+          }
+        ]
+      },
+      {
+        "workload_id": "edge_device",
+        "workload_name": "Ultra-Low-Power Edge Device",
+        "solutions": [
+          {
+            "solution_id": "edge_hybrid",
+            "solution_name": "Edge Hybrid Router",
+            "weighted_score": 79,
+            "latency_score": 90,
+            "coherence_score": 45,
+            "adherence_score": 70,
+            "memory_score": 95,
+            "complexity_score": 65
+          },
+          {
+            "solution_id": "state_baked_swarm",
+            "solution_name": "State-Baked swarm (with BNFS)",
+            "weighted_score": 69,
+            "latency_score": 75,
+            "coherence_score": 70,
+            "adherence_score": 100,
+            "memory_score": 60,
+            "complexity_score": 45
+          },
+          {
+            "solution_id": "pure_ssm",
+            "solution_name": "Pure SSM Baseline",
+            "weighted_score": 68,
+            "latency_score": 60,
+            "coherence_score": 55,
+            "adherence_score": 40,
+            "memory_score": 85,
+            "complexity_score": 90
+          },
+          {
+            "solution_id": "moe_specialist",
+            "solution_name": "MoE-State Specialist",
+            "weighted_score": 62,
+            "latency_score": 85,
+            "coherence_score": 80,
+            "adherence_score": 60,
+            "memory_score": 50,
+            "complexity_score": 30
+          },
+          {
+            "solution_id": "ultimate_architect",
+            "solution_name": "Ultimate Hybrid Architect",
+            "weighted_score": 59,
+            "latency_score": 70,
+            "coherence_score": 95,
+            "adherence_score": 80,
+            "memory_score": 40,
+            "complexity_score": 20
+          }
+        ]
+      }
+    ]
+  }
+}

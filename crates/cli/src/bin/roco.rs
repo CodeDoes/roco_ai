@@ -411,6 +411,14 @@ fn main() {
             cmd::eval_suite::cmd_eval_suite(&extra);
         }
 
+        // ── Solution Bench ───────────────────────────────────────────────
+        "solution-bench" => {
+            if has_help_flag(&extra) {
+                help(Some("solution-bench"));
+            }
+            cmd::solution_bench::cmd_solution_bench(&extra);
+        }
+
         // ── Shell Completions ────────────────────────────────────────────
         "completions" => {
             if has_help_flag(&extra) {
