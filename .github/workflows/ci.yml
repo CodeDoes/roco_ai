@@ -30,7 +30,6 @@ jobs:
       - uses: cachix/cachix-action@v16
         with:
           name: ${{ secrets.CACHIX_CACHE_NAME || 'roco' }}
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
           extraPullNames: devenv
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
@@ -46,7 +45,6 @@ jobs:
       - uses: cachix/cachix-action@v16
         with:
           name: ${{ secrets.CACHIX_CACHE_NAME || 'roco' }}
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
           extraPullNames: devenv
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
@@ -62,7 +60,6 @@ jobs:
       - uses: cachix/cachix-action@v16
         with:
           name: ${{ secrets.CACHIX_CACHE_NAME || 'roco' }}
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
           extraPullNames: devenv
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
@@ -80,7 +77,6 @@ jobs:
       - uses: cachix/cachix-action@v16
         with:
           name: ${{ secrets.CACHIX_CACHE_NAME || 'roco' }}
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
           extraPullNames: devenv
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
