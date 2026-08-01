@@ -3,6 +3,19 @@
 Follows the validation loop in AGENTS.md §9:
 `test → eval → check + update PROGRESS.md with what you want to do → e2e (story) → note problems in PROGRESS.md → fix issues → targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md → consider whether a lack of info within AGENTS.md caused this problem → update AGENTS.md if so → repeat`
 
+### 2026-07-31 — Removed FALLBACK from router intent detection
+
+**What I'm doing:** Removing silent fallback to chat mode in the router when intent detection fails. Per user feedback: "I WANT errors instead of FALLBACK. if something is not ready. DO NOT include."
+
+**Changes:**
+- `crates/cli/src/cmd/router.rs::detect_intent` now returns `Result<(Intent, String), String>` instead of silently falling back to chat
+- When intent detection fails (bad JSON, unknown intent, backend error), the error is printed and `exit(1)` is called
+- Call sites in `cmd_router` handle the `Result` explicitly
+
+**Rationale:** Silent fallback to chat was hiding bugs - the router would never actually switch to adventure/coder/html modes because the mock backend returns a truncated echo instead of valid intent JSON. With explicit errors, the failure mode is visible.
+
+**Tests:** 235 passed, 11 ignored, 0 failed
+
 ### 2026-07-31 — Session and Workspace commands added
 
 **What I'm doing:** Implementing session and workspace management commands based on common user feedback.
