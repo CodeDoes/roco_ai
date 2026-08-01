@@ -44,7 +44,6 @@
     grep -E "^(test result|running|passed|failed|ignored)" .roco/tests/latest.log >> /dev/null && echo "See .roco/tests/latest.log for full output." || true
   '';
 
-  env.LD_LIBRARY_PATH = "/usr/lib/x86_64-linux-gnu";
   env.PKG_CONFIG_PATH =
     "${pkgs.glib.dev}/lib/pkgconfig:${pkgs.gtk3.dev}/lib/pkgconfig:${pkgs.pango.dev}/lib/pkgconfig:${pkgs.cairo.dev}/lib/pkgconfig:${pkgs.gdk-pixbuf.dev}/lib/pkgconfig:${pkgs.atk.dev}/lib/pkgconfig:${pkgs.libxkbcommon}/lib/pkgconfig:${pkgs.libGL.dev}/lib/pkgconfig";
   env.CARGO_INCREMENTAL = "";
