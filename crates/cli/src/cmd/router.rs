@@ -170,12 +170,18 @@ fn detect_intent(
             return Ok((intent, user_message.to_string()));
         }
     }
-    if lower.contains("continue") || lower.contains("resume") || lower.contains("pick up") || lower.contains("go again") {
+    if lower.contains("continue")
+        || lower.contains("resume")
+        || lower.contains("pick up")
+        || lower.contains("go again")
+    {
         if let Some(intent) = available.iter().find(|i| i.id == "continue").cloned() {
             return Ok((intent, user_message.to_string()));
         }
     }
-    if lower.contains("show") && (lower.contains("work") || lower.contains("story") || lower.contains("stories")) {
+    if lower.contains("show")
+        && (lower.contains("work") || lower.contains("story") || lower.contains("stories"))
+    {
         if let Some(intent) = available.iter().find(|i| i.id == "show_work").cloned() {
             return Ok((intent, user_message.to_string()));
         }
@@ -455,7 +461,9 @@ pub fn cmd_router(extra: &[&str]) {
                 r::info(&format!("Resuming latest workspace: {}", latest.display()));
                 launch_story(&latest.to_string_lossy(), false);
             } else {
-                r::warning("No existing workspace found. Use `roco story \"premise\"` to start one.");
+                r::warning(
+                    "No existing workspace found. Use `roco story \"premise\"` to start one.",
+                );
             }
             current_mode = Mode::Chat;
             add_history(&mut history, "system", "Workspace resumed. Back in chat.");
@@ -794,7 +802,11 @@ fn find_latest_workspace() -> Option<std::path::PathBuf> {
         .map(|e| e.path())
         .filter(|p| p.is_dir())
         .collect();
-    dirs.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH));
+    dirs.sort_by_key(|p| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
     dirs.into_iter().rev().next()
 }
 
@@ -1066,17 +1078,14 @@ mod tests {
         let backend = MockBackend::default();
         let intents = all_intents();
 
-        let (intent, _) =
-            detect_intent(&backend, "show work", &intents, "chat").unwrap();
+        let (intent, _) = detect_intent(&backend, "show work", &intents, "chat").unwrap();
         assert_eq!(intent.id, "show_work");
         assert_eq!(intent.target_mode, Mode::Chat);
 
-        let (intent, _) =
-            detect_intent(&backend, "show my work", &intents, "chat").unwrap();
+        let (intent, _) = detect_intent(&backend, "show my work", &intents, "chat").unwrap();
         assert_eq!(intent.id, "show_work");
 
-        let (intent, _) =
-            detect_intent(&backend, "show my stories", &intents, "chat").unwrap();
+        let (intent, _) = detect_intent(&backend, "show my stories", &intents, "chat").unwrap();
         assert_eq!(intent.id, "show_work");
     }
 
@@ -1086,13 +1095,11 @@ mod tests {
         let backend = MockBackend::default();
         let intents = all_intents();
 
-        let (intent, _) =
-            detect_intent(&backend, "continue", &intents, "chat").unwrap();
+        let (intent, _) = detect_intent(&backend, "continue", &intents, "chat").unwrap();
         assert_eq!(intent.id, "continue");
         assert_eq!(intent.target_mode, Mode::Story);
 
-        let (intent, _) =
-            detect_intent(&backend, "resume latest", &intents, "chat").unwrap();
+        let (intent, _) = detect_intent(&backend, "resume latest", &intents, "chat").unwrap();
         assert_eq!(intent.id, "continue");
 
         let (intent, _) =
