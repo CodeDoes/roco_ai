@@ -1,6 +1,6 @@
 {
   "suite_name": "RoCo Architectural Solution Bench",
-  "timestamp": 1785586538,
+  "timestamp": 1785587484,
   "aspects_evaluated": 16,
   "physical_benchmarks": {
     "bnf_constraints": {
@@ -8,7 +8,7 @@
       "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
       "score": 10.0,
       "metrics": {
-        "constrained_latency_ms": "1.58ms",
+        "constrained_latency_ms": "1.78ms",
         "grammar_compliance": "100% Correct Syntax"
       }
     },
@@ -17,10 +17,20 @@
       "description": "Compares low-latency local gating classifiers against multi-token model classification",
       "score": 100.0,
       "metrics": {
+        "speedup_multiplier": "1000x faster",
         "model_nlu_gating_ms": "0.03ms",
         "gated_intent": "adventure",
-        "speedup_multiplier": "1000x faster",
         "small_trained_router_gating_ms": "0.0000ms"
+      }
+    },
+    "state_baking_vs_context": {
+      "name": "State Baking vs Context Management",
+      "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
+      "score": 1.714285714285714,
+      "metrics": {
+        "baked_completion_ms": "0.02ms",
+        "fresh_prompt_prefill_ms": "0.04ms",
+        "ssm_constant_state_multiplier": "1.7x speedup"
       }
     },
     "code_overcontrol": {
@@ -28,18 +38,8 @@
       "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
       "score": 10.0,
       "metrics": {
-        "overcontrol_status": "Active Interrupt Hook Green",
-        "execution_ms": "0.02ms"
-      }
-    },
-    "state_baking_vs_context": {
-      "name": "State Baking vs Context Management",
-      "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
-      "score": 0.6470588235294117,
-      "metrics": {
-        "ssm_constant_state_multiplier": "0.6x speedup",
-        "baked_completion_ms": "0.03ms",
-        "fresh_prompt_prefill_ms": "0.02ms"
+        "execution_ms": "0.02ms",
+        "overcontrol_status": "Active Interrupt Hook Green"
       }
     }
   },

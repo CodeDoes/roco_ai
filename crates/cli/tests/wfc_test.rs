@@ -4,10 +4,13 @@ use roco_cli::test_harness::MockCliRunner;
 
 #[test]
 fn test_cli_wfc_map_generation() {
+    // ROCO_DIR is passed per-process via with_env (NOT std::env::set_var):
+    // the process-global env is shared across parallel test threads, so
+    // set_var here raced with the other WFC test and the binary wrote its
+    // HTML into the other test's directory (flaky "Expected wfc_map.html").
     let runner = MockCliRunner::new();
-
-    // Set ROCO_DIR to mock runner's sandbox directory so files are isolated
-    std::env::set_var("ROCO_DIR", runner.working_dir().to_str().unwrap());
+    let roco_dir = runner.working_dir().to_string_lossy().into_owned();
+    let runner = runner.with_env("ROCO_DIR", roco_dir);
 
     // 1. Run basic map generation
     let res = runner.run_binary(["map", "--width", "10", "--height", "6", "--seed", "12345"]);
@@ -27,9 +30,8 @@ fn test_cli_wfc_map_generation() {
 #[test]
 fn test_cli_wfc_map_ttrpg_export() {
     let runner = MockCliRunner::new();
-
-    // Set ROCO_DIR to mock runner's sandbox directory so files are isolated
-    std::env::set_var("ROCO_DIR", runner.working_dir().to_str().unwrap());
+    let roco_dir = runner.working_dir().to_string_lossy().into_owned();
+    let runner = runner.with_env("ROCO_DIR", roco_dir);
 
     // 2. Run map generation with TTRPG export
     let res = runner.run_binary([
