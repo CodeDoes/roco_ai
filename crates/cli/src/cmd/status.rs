@@ -35,7 +35,7 @@ pub fn cmd_status(_extra: &[&str]) {
                     ));
                 }
             }
-            stories.sort_by(|a, b| b.1.cmp(&a.1));
+            stories.sort_by_key(|b| std::cmp::Reverse(b.1));
             println!("Total stories: {}", stories.len());
             for (name, _) in stories.iter().take(5) {
                 println!("  - {}", name);
