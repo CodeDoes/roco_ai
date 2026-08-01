@@ -106,6 +106,18 @@ fn all_intents() -> Vec<Intent> {
             target_mode: Mode::Story,
             is_passive: false,
         },
+        Intent {
+            id: "show_work",
+            label: "Show existing work / stories",
+            target_mode: Mode::Chat,
+            is_passive: false,
+        },
+        Intent {
+            id: "continue",
+            label: "Continue latest project",
+            target_mode: Mode::Story,
+            is_passive: false,
+        },
     ]
 }
 
@@ -155,6 +167,16 @@ fn detect_intent(
         || lower.contains("blank slate")
     {
         if let Some(intent) = available.iter().find(|i| i.id == "new_project").cloned() {
+            return Ok((intent, user_message.to_string()));
+        }
+    }
+    if lower.contains("continue") || lower.contains("resume") || lower.contains("pick up") || lower.contains("go again") {
+        if let Some(intent) = available.iter().find(|i| i.id == "continue").cloned() {
+            return Ok((intent, user_message.to_string()));
+        }
+    }
+    if lower.contains("show") && (lower.contains("work") || lower.contains("story") || lower.contains("stories")) {
+        if let Some(intent) = available.iter().find(|i| i.id == "show_work").cloned() {
             return Ok((intent, user_message.to_string()));
         }
     }
@@ -420,6 +442,23 @@ pub fn cmd_router(extra: &[&str]) {
                 "system",
                 "HTML session completed. Back in chat.",
             );
+            continue;
+        }
+
+        // ── Management intents ────────────────────────────────────
+        if intent.id == "show_work" {
+            show_work();
+            continue;
+        }
+        if intent.id == "continue" {
+            if let Some(latest) = find_latest_workspace() {
+                r::info(&format!("Resuming latest workspace: {}", latest.display()));
+                launch_story(&latest.to_string_lossy(), false);
+            } else {
+                r::warning("No existing workspace found. Use `roco story \"premise\"` to start one.");
+            }
+            current_mode = Mode::Chat;
+            add_history(&mut history, "system", "Workspace resumed. Back in chat.");
             continue;
         }
 
@@ -707,6 +746,58 @@ fn launch_html(prompt: &str) {
     cmd::html::cmd_html(&[prompt]);
 }
 
+fn show_work() {
+    r::header("📂 Existing Work");
+    let stories_dir = std::path::Path::new(".roco/stories");
+    if !stories_dir.exists() {
+        r::dim("No stories directory found. Create one with `roco story \"your premise\"`.\n");
+        return;
+    }
+    let entries = match std::fs::read_dir(stories_dir) {
+        Ok(e) => e,
+        Err(e) => {
+            r::warning(&format!("Could not read stories directory: {e}"));
+            return;
+        }
+    };
+    let mut stories: Vec<_> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map_or(false, |ext| ext == "md"))
+        .collect();
+    if stories.is_empty() {
+        r::dim("No stories found in .roco/stories/.\n");
+        return;
+    }
+    stories.sort();
+    println!("\n{:<40} {:>8}  {}", "Story", "Words", "Path");
+    println!("{:-<80}", "");
+    for path in &stories {
+        let filename = path.file_name().unwrap().to_string_lossy().to_string();
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let word_count = content.split_whitespace().count();
+        let display_name = filename.trim_end_matches(".md");
+        println!("{:<40} {:>8}  {}", display_name, word_count, path.display());
+    }
+    println!();
+}
+
+/// Find the latest workspace directory by timestamp.
+fn find_latest_workspace() -> Option<std::path::PathBuf> {
+    let workspaces_dir = std::path::Path::new(".roco/workspaces");
+    if !workspaces_dir.exists() {
+        return None;
+    }
+    let mut dirs: Vec<_> = std::fs::read_dir(workspaces_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH));
+    dirs.into_iter().rev().next()
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // History
 // ═══════════════════════════════════════════════════════════════════════════
@@ -970,6 +1061,46 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_intent_show_work() {
+        use roco_engine::MockBackend;
+        let backend = MockBackend::default();
+        let intents = all_intents();
+
+        let (intent, _) =
+            detect_intent(&backend, "show work", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "show_work");
+        assert_eq!(intent.target_mode, Mode::Chat);
+
+        let (intent, _) =
+            detect_intent(&backend, "show my work", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "show_work");
+
+        let (intent, _) =
+            detect_intent(&backend, "show my stories", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "show_work");
+    }
+
+    #[test]
+    fn test_detect_intent_continue() {
+        use roco_engine::MockBackend;
+        let backend = MockBackend::default();
+        let intents = all_intents();
+
+        let (intent, _) =
+            detect_intent(&backend, "continue", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "continue");
+        assert_eq!(intent.target_mode, Mode::Story);
+
+        let (intent, _) =
+            detect_intent(&backend, "resume latest", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "continue");
+
+        let (intent, _) =
+            detect_intent(&backend, "pick up where we left off", &intents, "chat").unwrap();
+        assert_eq!(intent.id, "continue");
+    }
+
+    #[test]
     fn test_intent_detection_prompt_contains_available() {
         let intents = all_intents();
         let prompt = intent_detection_prompt("hello", &intents, "chat");
@@ -1051,6 +1182,8 @@ mod tests {
                 "html" => assert_eq!(intent.target_mode, Mode::Html),
                 "coder" => assert_eq!(intent.target_mode, Mode::Coder),
                 "new_project" => assert_eq!(intent.target_mode, Mode::Story),
+                "show_work" => assert_eq!(intent.target_mode, Mode::Chat),
+                "continue" => assert_eq!(intent.target_mode, Mode::Story),
                 _ => panic!("unknown intent: {}", intent.id),
             }
         }
