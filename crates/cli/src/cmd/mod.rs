@@ -20,6 +20,7 @@ pub mod story;
 pub mod story_mode;
 pub mod ttrpg;
 pub mod vector_search;
+pub mod wfc;
 pub mod workspace;
 pub mod world_sim;
 

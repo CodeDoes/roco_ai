@@ -1,3 +1,4 @@
+#![allow(clippy::needless_update)]
 //! Test: root state tune (think, toolcall, prose, message-format)
 //! + story context bake on top.
 //!
