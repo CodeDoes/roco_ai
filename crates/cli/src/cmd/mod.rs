@@ -19,6 +19,7 @@ pub mod story;
 pub mod story_mode;
 pub mod ttrpg;
 pub mod vector_search;
+pub mod wfc;
 pub mod workspace;
 
 #[cfg(any(feature = "gui", feature = "desktop"))]

@@ -338,6 +338,12 @@ fn main() {
             }
             cmd::ttrpg::cmd_ttrpg(&extra);
         }
+        "map" => {
+            if has_help_flag(&extra) {
+                help(Some("map"));
+            }
+            cmd::wfc::cmd_map(&extra);
+        }
         "html" => {
             if has_help_flag(&extra) {
                 help(Some("html"));
