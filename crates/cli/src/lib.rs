@@ -71,6 +71,7 @@ pub fn help(sub: Option<&str>) {
         Some("story") | Some("story-mode") | Some("sm") => help_story(),
         Some("session") => help_session(),
         Some("workspace") => help_workspace(),
+        Some("vector-search") | Some("vector_search") => help_vector_search(),
         Some("interact") => help_interact(),
         Some("eval") | Some("bless") => help_eval(),
         Some("gui") => help_gui(),
@@ -108,6 +109,7 @@ fn help_root() {
     eprintln!("  sm           Alias for story-mode");
     eprintln!("  session      Session management (new, list, show, delete)");
     eprintln!("  workspace    Workspace management (new, list, show, delete)");
+    eprintln!("  vector-search Local offline vector embedding search");
     eprintln!("  game         Adventure game mode (interactive fiction)");
     eprintln!("  html         Live HTML canvas");
     eprintln!("  code         AI coding assistant");
@@ -219,6 +221,17 @@ fn help_workspace() {
     eprintln!("  roco workspace delete <id>               Delete a workspace\n");
     eprintln!("Workspaces store story artifacts (outline, wiki, chapters, etc.).");
     eprintln!("Use with sessions for persistent collaborative writing.\n");
+    std::process::exit(0);
+}
+
+fn help_vector_search() {
+    eprintln!("roco vector-search — Local offline vector embedding search\n");
+    eprintln!("Usage:");
+    eprintln!("  roco vector-search init [--index PATH] [--dimensions NUM]    Initialize index");
+    eprintln!("  roco vector-search add <text> [--id ID] [--index PATH] [--meta JSON] Add text");
+    eprintln!("  roco vector-search query <query> [--limit LIMIT] [--index PATH] Query index");
+    eprintln!("  roco vector-search status [--index PATH]                     Show index details\n");
+    eprintln!("Features deterministic dense vector embeddings computed locally with zero third-party/API dependencies.\n");
     std::process::exit(0);
 }
 
@@ -470,6 +483,8 @@ pub const KNOWN_SUBCOMMANDS: &[&str] = &[
     "grammar",
     "bless",
     "completions",
+    "vector-search",
+    "vector_search",
 ];
 
 /// Find the closest matching subcommand for a given input if within distance 3.

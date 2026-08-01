@@ -8,9 +8,11 @@
 //! files) in a sandboxed workspace. Built on top of [`roco_engine::ModelBackend`]
 //! for inference and [`crate::tools::Tool`] for actions.
 
+pub mod embeddings;
 pub mod tools;
 pub mod validation;
 
+pub use embeddings::{embed, cosine_similarity, VectorEntry, VectorSearchResult, VectorStore};
 pub use tools::*;
 pub use validation::*;
 
