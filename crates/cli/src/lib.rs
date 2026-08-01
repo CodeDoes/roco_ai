@@ -79,6 +79,7 @@ pub fn help(sub: Option<&str>) {
         Some("export") => help_export(),
         Some("game") => help_game(),
         Some("ttrpg") => help_ttrpg(),
+        Some("world-sim") => help_world_sim(),
         Some("html") => help_html(),
         Some("code") | Some("coder") => help_code(),
         Some("rwkv") => help_rwkv(),
@@ -114,6 +115,7 @@ fn help_root() {
     eprintln!("  vector-search Local offline vector embedding search");
     eprintln!("  game         Adventure game mode (interactive fiction)");
     eprintln!("  ttrpg        TTRPG campaign and world building system");
+    eprintln!("  world-sim    World building and organic simulation engine");
     eprintln!("  html         Live HTML canvas");
     eprintln!("  code         AI coding assistant");
     eprintln!("  eval         Run evaluations");
@@ -310,6 +312,19 @@ fn help_ttrpg() {
     std::process::exit(0);
 }
 
+fn help_world_sim() {
+    eprintln!("roco world-sim — World building and simulation engine\n");
+    eprintln!("Usage:");
+    eprintln!("  roco world-sim              Start world simulation engine");
+    eprintln!("In-game Commands:");
+    eprintln!("  :inspect                   Inspect factions, regions, characters");
+    eprintln!("  :tick                      Run one turn of organic simulation");
+    eprintln!("  :influence <text>          Influence world events on next turn");
+    eprintln!("  :generate <premise>        Generate a whole new world from a premise");
+    eprintln!("  :history                   View historical timeline chronicles");
+    std::process::exit(0);
+}
+
 fn help_html() {
     eprintln!("roco html — Live HTML canvas\n");
     eprintln!("Usage:");
@@ -483,6 +498,7 @@ pub const KNOWN_SUBCOMMANDS: &[&str] = &[
     "coder",
     "game",
     "ttrpg",
+    "world-sim",
     "html",
     "inspect",
     "eval",
