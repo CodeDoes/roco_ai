@@ -28,7 +28,7 @@
     grep -E "^(test result|running|passed|failed|ignored)" .roco/tests/latest.log >> /dev/null && echo "See .roco/tests/latest.log for full output." || true
   '';
 
-  env.LD_LIBRARY_PATH = "/usr/lib/x86_64-linux-gnu";
+  env.LD_LIBRARY_PATH = if builtins.getEnv "GITHUB_ACTIONS" == "true" then "" else "/usr/lib/x86_64-linux-gnu";
   env.CARGO_INCREMENTAL = "";
   env.SCCACHE_DIR = "$HOME/.cache/sccache";
   env.SCCACHE_CACHE_SIZE = "20G";
