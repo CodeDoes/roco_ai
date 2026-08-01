@@ -319,6 +319,12 @@ fn main() {
             }
             cmd::game::cmd_game(&extra);
         }
+        "ttrpg" => {
+            if has_help_flag(&extra) {
+                help(Some("ttrpg"));
+            }
+            cmd::ttrpg::cmd_ttrpg(&extra);
+        }
         "html" => {
             if has_help_flag(&extra) {
                 help(Some("html"));
