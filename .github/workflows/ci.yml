@@ -49,7 +49,15 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features
+        # NOTE: no --all-features. --all-features pulls the GTK chain
+        # (glib-sys/gobject-sys via the desktop/gui features) which cannot
+        # build on ubuntu-latest without extra system deps (E0514/exit 101).
+        # Default features keep clippy on the same surface as check/test.
+        run: cargo clippy --workspace --all-targets
+        env:
+          CARGO_TERM_COLOR: always
+      # Lint warnings exist (see e.g. crates/engine eval.rs:657). They do not
+      # fail the job; tighten with `-- -D warnings` once they are cleared.
 
   test-rust:
     name: "Cargo Test (Rust)"

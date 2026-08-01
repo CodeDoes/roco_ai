@@ -1,0 +1,44 @@
+# Auto-merge green pull requests.
+#
+# Jules (and any contributor) opens a PR → CI runs (see ci.yml, required by
+# branch protection on main) → this workflow enables GitHub's native
+# auto-merge → the PR merges automatically once every required check passes
+# and there are no conflicts. No human needed for the happy path; anything
+# that fails CI or conflicts stays open for review.
+#
+# Branch protection (set via `gh api`): required_status_checks = the six CI
+# job names; enforce_admins = false so maintainers can still push hotfixes.
+name: Auto-merge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    name: "Enable auto-merge"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable native auto-merge
+        run: |
+          set +e
+          gh pr merge "$PR_NUMBER" --auto --merge > /tmp/am.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            # Conflicts or checks still pending — auto-merge gets re-enabled
+            # on the next synchronize/ready event, or when a human resolves
+            # the conflict and pushes.
+            echo "::warning::auto-merge not enabled yet: $(tail -1 /tmp/am.log)"
+          else
+            echo "Auto-merge enabled for PR #$PR_NUMBER — will merge when CI is green."
+          fi
+          exit 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
