@@ -16,6 +16,7 @@ pub mod router;
 pub mod session;
 pub mod solution_bench;
 pub mod stats;
+pub mod status;
 pub mod story;
 pub mod story_mode;
 pub mod ttrpg;

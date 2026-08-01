@@ -242,7 +242,7 @@ pub async fn handle_direct_complete_test(
             Ok(resp) => Json(resp).into_response(),
             Err(e) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Inference error: {e}\nHint: Check if the model is loaded and backend is running properly."),
+                format!("Inference error: {e}"),
             )
                 .into_response(),
         }
@@ -293,7 +293,7 @@ pub async fn handle_direct_bake_test(
             Ok(()) => axum::http::StatusCode::OK.into_response(),
             Err(e) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Bake error: {e}\nHint: Ensure the state_id is valid and the model supports state management."),
+                format!("Bake error: {e}"),
             )
                 .into_response(),
         }
@@ -398,7 +398,7 @@ pub async fn handle_openai_completions_test(
             }
             Err(e) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Inference error: {e}\nHint: Check if the model is loaded and backend is running properly."),
+                format!("Inference error: {e}"),
             )
                 .into_response(),
         }
@@ -454,11 +454,7 @@ pub async fn handle_get_session_test(
 ) -> impl IntoResponse {
     match state.sessions.get(&id) {
         Some(session) => Json(session).into_response(),
-        None => (
-            axum::http::StatusCode::NOT_FOUND,
-            "Session not found\nHint: Verify that the session ID is correct and was created.",
-        )
-            .into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "Session not found").into_response(),
     }
 }
 
@@ -502,7 +498,7 @@ pub async fn handle_bake_session_test(
             }
             Err(e) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Local bake failed: {e}\nHint: Ensure the state_id is valid and the model supports state management."),
+                format!("Local bake failed: {e}"),
             )
                 .into_response(),
         }
@@ -562,11 +558,7 @@ pub async fn handle_complete_session_test(
 ) -> impl IntoResponse {
     // Check session exists
     if state.sessions.get(&id).is_none() {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            "Session not found\nHint: Verify that the session ID is correct and was created.",
-        )
-            .into_response();
+        return (axum::http::StatusCode::NOT_FOUND, "Session not found").into_response();
     }
 
     if req.stream {
@@ -611,7 +603,7 @@ pub async fn handle_complete_session_test(
             }
             Err(e) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Local inference error: {e}\nHint: Check if the model is loaded and backend is running properly."),
+                format!("Local inference error: {e}"),
             )
                 .into_response(),
         }
@@ -663,11 +655,7 @@ pub async fn handle_get_tokens_test(
 ) -> impl IntoResponse {
     match state.sessions.get_tokens(&id) {
         Some(tokens) => Json(tokens).into_response(),
-        None => (
-            axum::http::StatusCode::NOT_FOUND,
-            "Session not found\nHint: Verify that the session ID is correct and was created.",
-        )
-            .into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "Session not found").into_response(),
     }
 }
 
@@ -683,11 +671,7 @@ pub async fn handle_get_session_status_test(
             "baked_shots": session.baked_shots,
         }))
         .into_response(),
-        None => (
-            axum::http::StatusCode::NOT_FOUND,
-            "Session not found\nHint: Verify that the session ID is correct and was created.",
-        )
-            .into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "Session not found").into_response(),
     }
 }
 
@@ -718,11 +702,7 @@ pub async fn handle_create_workspace_test(
         .unwrap_or_else(|| format!("ws-{}", uuid::Uuid::new_v4()));
     match state.workspaces.create(&id) {
         Ok(ws) => Json(ws).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::BAD_REQUEST,
-            format!("{e}\nHint: Check if the workspace ID is valid or already exists."),
-        )
-            .into_response(),
+        Err(e) => (axum::http::StatusCode::BAD_REQUEST, e).into_response(),
     }
 }
 
@@ -732,11 +712,7 @@ pub async fn handle_get_workspace_test(
 ) -> impl IntoResponse {
     match state.workspaces.get(&id) {
         Some(ws) => Json(ws).into_response(),
-        None => (
-            axum::http::StatusCode::NOT_FOUND,
-            "Workspace not found\nHint: Verify that the workspace ID is correct.",
-        )
-            .into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "Workspace not found").into_response(),
     }
 }
 
@@ -746,11 +722,7 @@ pub async fn handle_list_files_test(
 ) -> impl IntoResponse {
     match state.workspaces.list_files(&id) {
         Ok(files) => Json(files).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::NOT_FOUND,
-            format!("{e}\nHint: Verify that the workspace ID is correct."),
-        )
-            .into_response(),
+        Err(e) => (axum::http::StatusCode::NOT_FOUND, e).into_response(),
     }
 }
 
@@ -760,11 +732,7 @@ pub async fn handle_read_file_test(
 ) -> impl IntoResponse {
     match state.workspaces.read_file(&id, &path) {
         Ok(content) => content.into_response(),
-        Err(e) => (
-            axum::http::StatusCode::NOT_FOUND,
-            format!("{e}\nHint: Verify that the file path and workspace ID are correct."),
-        )
-            .into_response(),
+        Err(e) => (axum::http::StatusCode::NOT_FOUND, e).into_response(),
     }
 }
 
@@ -780,11 +748,7 @@ pub async fn handle_write_file_test(
 ) -> impl IntoResponse {
     match state.workspaces.write_file(&id, &path, &req.content) {
         Ok(()) => axum::http::StatusCode::OK.into_response(),
-        Err(e) => (
-            axum::http::StatusCode::BAD_REQUEST,
-            format!("{e}\nHint: Check if the file path is valid and within the workspace."),
-        )
-            .into_response(),
+        Err(e) => (axum::http::StatusCode::BAD_REQUEST, e).into_response(),
     }
 }
 
@@ -828,11 +792,7 @@ async fn handle_get_job(
 ) -> impl IntoResponse {
     match state.jobs.get(&id) {
         Some(job) => Json(job).into_response(),
-        None => (
-            axum::http::StatusCode::NOT_FOUND,
-            "Job not found\nHint: Verify that the job ID is correct.",
-        )
-            .into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "Job not found").into_response(),
     }
 }
 

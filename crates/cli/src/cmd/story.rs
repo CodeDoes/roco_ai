@@ -516,6 +516,32 @@ fn detect_chapters(ws: &roco_workspace::Workspace) -> Vec<usize> {
     chapters
 }
 
+/// Save a chapter to the workspace, ensuring chapter numbers are sequential.
+fn save_chapter(
+    ws: &roco_workspace::Workspace,
+    chapter_num: usize,
+    content: &str,
+) -> Result<(), String> {
+    let existing = detect_chapters(ws);
+    // If we're updating an existing chapter, that's fine.
+    // If we're adding a new chapter, it must be exactly max(existing) + 1.
+    // The previous implementation of save_chapter in story_engine.rs had exactly this logic:
+    // "Cannot save chapter X: chapters are written in order (next is Y)"
+    let expected_next = existing.last().copied().unwrap_or(0) + 1;
+
+    if chapter_num > expected_next {
+        return Err(format!(
+            "Cannot save chapter {}: chapters are written in order (next is {})",
+            chapter_num, expected_next
+        ));
+    }
+
+    let filename = format!("03-CHAPTER_{chapter_num}.md");
+    let path = ws.resolve(&filename).unwrap();
+    let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": content}));
+    Ok(())
+}
+
 /// Find the latest story workspace directory.
 fn find_latest_workspace() -> Option<roco_workspace::Workspace> {
     let base = roco_dir().join("workspaces");
@@ -1423,10 +1449,11 @@ pub fn cmd_story(extra: &[&str]) {
                 // Build markdown with front matter
                 let md = format!("# {}\n\n{}", chapter.title, clean_content);
 
-                let filename = format!("03-CHAPTER_{chapter_num}.md");
-                let path = ws.resolve(&filename).unwrap();
-                let _ = WriteTool.call(json!({"path": path.to_string_lossy(), "content": &md}));
+                if let Err(e) = save_chapter(ws, chapter_num, &md) {
+                    return Err(AgentError::Internal(format!("Failed to save chapter: {e}")));
+                }
 
+                let filename = format!("03-CHAPTER_{chapter_num}.md");
                 let wc = clean_content.split_whitespace().count();
                 AgentJournal::action("story", &format!(
                     "{label}: {wc} words written to {filename}"
@@ -1917,12 +1944,10 @@ pub fn cmd_story(extra: &[&str]) {
                     }
 
                     // Write revision to file (will be overwritten if another revision follows)
-                    let filename = format!("03-CHAPTER_{i}.md");
-                    let path = ws.resolve(&filename).unwrap();
-                    let _ = WriteTool.call(json!({
-                        "path": path.to_string_lossy(),
-                        "content": &current_text,
-                    }));
+                    if let Err(e) = save_chapter(&ws, i, &current_text) {
+                        eprintln!("  ⚠️  Failed to save revised chapter {i}: {e}");
+                        AgentJournal::warn("story", &format!("Failed to save revised chapter {i}: {e}"));
+                    }
                 }
         } else {
             // Load existing chapter

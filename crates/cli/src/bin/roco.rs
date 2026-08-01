@@ -299,6 +299,14 @@ fn main() {
             cmd::session::cmd_session(&extra);
         }
 
+        // ── Status ───────────────────────────────────────────────────────
+        "status" => {
+            if has_help_flag(&extra) {
+                help(Some("status"));
+            }
+            cmd::status::cmd_status(&extra);
+        }
+
         // ── Story mode (interactive writing assistant) ───────────────────
         "story-mode" | "sm" => {
             if has_help_flag(&extra) {
