@@ -12,6 +12,7 @@ pub mod inspect;
 pub mod interact;
 pub mod jobs;
 pub mod pet;
+pub mod quickstart;
 pub mod router;
 pub mod session;
 pub mod solution_bench;

@@ -452,6 +452,14 @@ fn main() {
             roco_cli::identity::cmd_whoami(&extra);
         }
 
+        // ── Quickstart ───────────────────────────────────────────────────
+        "quickstart" => {
+            if has_help_flag(&extra) {
+                help(Some("quickstart"));
+            }
+            cmd::quickstart::cmd_quickstart(&extra);
+        }
+
         // ── Version ─────────────────────────────────────────────────────
         "version" | "--version" => {
             eprintln!(

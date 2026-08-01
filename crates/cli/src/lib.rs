@@ -93,6 +93,7 @@ pub fn help(sub: Option<&str>) {
         Some("solution-bench") => help_solution_bench(),
         Some("completions") => help_completions(),
         Some("whoami") => help_whoami(),
+        Some("quickstart") => help_quickstart(),
         Some("version") | Some("--version") => help_version(),
         _ => help_root(),
     }
@@ -138,7 +139,15 @@ fn help_root() {
     eprintln!("Identity:");
     eprintln!("  whoami       Show what RoCo is and what it knows about you");
     eprintln!("  version      Show version\n");
-    eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_DIR/config.toml");
+    eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_DIR/config.toml\n");
+    eprintln!("Try: roco quickstart");
+    std::process::exit(0);
+}
+
+fn help_quickstart() {
+    eprintln!("roco quickstart — Show first-run guide and setup instructions\n");
+    eprintln!("Usage:");
+    eprintln!("  roco quickstart");
     std::process::exit(0);
 }
 
