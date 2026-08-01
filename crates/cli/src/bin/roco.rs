@@ -362,6 +362,12 @@ fn main() {
             }
             cmd::workspace::cmd_workspace(&extra);
         }
+        "vector-search" | "vector_search" => {
+            if has_help_flag(&extra) {
+                help(Some("vector-search"));
+            }
+            cmd::vector_search::cmd_vector_search(&extra);
+        }
 
         // ── Export ───────────────────────────────────────────────────────
         "export" => {

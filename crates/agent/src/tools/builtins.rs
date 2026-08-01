@@ -23,6 +23,7 @@ pub fn all_tools() -> Vec<Arc<dyn Tool>> {
         Arc::new(ListDirTool),
         Arc::new(BashTool),
         Arc::new(NowTool),
+        Arc::new(VectorSearchTool),
     ]
 }
 
@@ -283,13 +284,14 @@ mod tests {
         for tool in all_tools() {
             reg.register(tool);
         }
-        assert_eq!(reg.len(), 6);
+        assert_eq!(reg.len(), 7);
         assert!(reg.get("read").is_some());
         assert!(reg.get("write").is_some());
         assert!(reg.get("search").is_some());
         assert!(reg.get("list").is_some());
         assert!(reg.get("bash").is_some());
         assert!(reg.get("now").is_some());
+        assert!(reg.get("vector_search").is_some());
     }
 
     #[test]
@@ -297,5 +299,205 @@ mod tests {
         let tool = BashTool;
         let result = tool.call(serde_json::json!({}));
         assert!(result.is_err());
+    }
+}
+
+// ── VectorSearchTool ─────────────────────────────────────────────
+
+pub struct VectorSearchTool;
+
+impl Tool for VectorSearchTool {
+    fn name(&self) -> &str {
+        "vector_search"
+    }
+    fn description(&self) -> &str {
+        "Manage and query a local vector embedding similarity search index. \
+         Supports actions: 'add' (index text with optional metadata), 'query' (retrieve nearest neighbors), \
+         and 'status' (get metadata about the index)."
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["add", "query", "status"],
+                    "description": "The action to perform: add, query, or status"
+                },
+                "text": {
+                    "type": "string",
+                    "description": "The text content to embed and index (required for 'add')"
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Optional custom unique ID for the indexed entry (for 'add')"
+                },
+                "metadata": {
+                    "type": "object",
+                    "description": "Optional arbitrary JSON metadata to attach to the entry (for 'add')"
+                },
+                "query": {
+                    "type": "string",
+                    "description": "The search query string (required for 'query')"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of nearest neighbors to return (default: 5, for 'query')"
+                },
+                "index_path": {
+                    "type": "string",
+                    "description": "Custom path to the index JSON file (optional, defaults to .roco/vector_store.json)"
+                }
+            },
+            "required": ["action"]
+        })
+    }
+    fn call(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError> {
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError("missing 'action' argument".into()))?;
+
+        let index_path_str = args
+            .get("index_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".roco/vector_store.json");
+        let index_path = std::path::Path::new(index_path_str);
+
+        // Load the store
+        let mut store = crate::embeddings::VectorStore::load_from_file(index_path)
+            .map_err(|e| ToolError(format!("failed to load vector index: {e}")))?;
+
+        match action {
+            "add" => {
+                let text = args
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ToolError("missing 'text' argument for 'add' action".into()))?;
+                let id = args
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let metadata = args
+                    .get("metadata")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+
+                let added_id = store.add(id, text, metadata);
+                store
+                    .save_to_file(index_path)
+                    .map_err(|e| ToolError(format!("failed to save vector index: {e}")))?;
+
+                Ok(serde_json::json!({
+                    "ok": true,
+                    "id": added_id,
+                    "message": "Text successfully embedded and indexed."
+                }))
+            }
+            "query" => {
+                let query = args.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
+                    ToolError("missing 'query' argument for 'query' action".into())
+                })?;
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+
+                let results = store.search(query, limit);
+                let items: Vec<serde_json::Value> = results
+                    .into_iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "id": r.entry.id,
+                            "text": r.entry.text,
+                            "score": r.score,
+                            "metadata": r.entry.metadata
+                        })
+                    })
+                    .collect();
+
+                Ok(serde_json::json!({
+                    "results": items,
+                    "count": items.len()
+                }))
+            }
+            "status" => Ok(serde_json::json!({
+                "entries_count": store.entries.len(),
+                "dimensions": store.dimensions,
+                "index_path": index_path_str
+            })),
+            _ => Err(ToolError(format!("unknown action: {action}"))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod vector_tool_tests {
+    use super::*;
+
+    #[test]
+    fn test_vector_search_tool_lifecycle() {
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("test_vector_store_tool.json");
+        let path_str = path.to_string_lossy().to_string();
+
+        let tool = VectorSearchTool;
+
+        // Check status on empty
+        let r_status = tool
+            .call(serde_json::json!({
+                "action": "status",
+                "index_path": path_str
+            }))
+            .unwrap();
+        assert_eq!(r_status["entries_count"], 0);
+
+        // Add an entry
+        let r_add = tool
+            .call(serde_json::json!({
+                "action": "add",
+                "text": "The quick brown fox jumps over the lazy dog",
+                "id": "fox-1",
+                "metadata": {"type": "animal"},
+                "index_path": path_str
+            }))
+            .unwrap();
+        assert_eq!(r_add["ok"], true);
+        assert_eq!(r_add["id"], "fox-1");
+
+        // Add another entry
+        let r_add2 = tool
+            .call(serde_json::json!({
+                "action": "add",
+                "text": "Rust is an extremely safe systems programming language",
+                "id": "rust-1",
+                "metadata": {"type": "tech"},
+                "index_path": path_str
+            }))
+            .unwrap();
+        assert_eq!(r_add2["ok"], true);
+
+        // Check status updated
+        let r_status2 = tool
+            .call(serde_json::json!({
+                "action": "status",
+                "index_path": path_str
+            }))
+            .unwrap();
+        assert_eq!(r_status2["entries_count"], 2);
+
+        // Query the index
+        let r_query = tool
+            .call(serde_json::json!({
+                "action": "query",
+                "query": "safe programming language",
+                "limit": 1,
+                "index_path": path_str
+            }))
+            .unwrap();
+
+        assert_eq!(r_query["count"], 1);
+        let first_match = &r_query["results"][0];
+        assert_eq!(first_match["id"], "rust-1");
+        assert!(first_match["score"].as_f64().unwrap() > 0.0);
+
+        let _ = std::fs::remove_file(path);
     }
 }

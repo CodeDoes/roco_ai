@@ -244,3 +244,74 @@ fn test_cli_session_subcommand() {
     assert_eq!(state.messages[1].role, "assistant");
     assert!(!state.messages[1].content.is_empty());
 }
+
+#[test]
+fn test_cli_vector_search() {
+    let runner = MockCliRunner::new();
+    let index_file = runner.working_dir().join("test_vector_index.json");
+    let index_str = index_file.to_string_lossy().to_string();
+
+    // 1. Initialize
+    let res_init = runner.run_binary([
+        "vector-search",
+        "init",
+        "--index",
+        &index_str,
+        "--dimensions",
+        "128",
+    ]);
+    res_init.assert_success();
+    assert!(index_file.exists());
+
+    // 2. Status empty
+    let res_status = runner.run_binary(["vector-search", "status", "--index", &index_str]);
+    res_status.assert_success();
+    res_status.assert_stdout_contains("Entries:     0");
+
+    // 3. Add
+    let res_add = runner.run_binary([
+        "vector-search",
+        "add",
+        "The quick brown fox jumps over the lazy dog",
+        "--id",
+        "fox-entry",
+        "--index",
+        &index_str,
+    ]);
+    res_add.assert_success();
+    res_add.assert_stdout_contains("ID: fox-entry");
+
+    // 4. Add another one with meta
+    let res_add2 = runner.run_binary([
+        "vector-search",
+        "add",
+        "Rust is a systems programming language focused on safety and speed",
+        "--id",
+        "rust-entry",
+        "--meta",
+        "{\"type\":\"tech\",\"level\":\"advanced\"}",
+        "--index",
+        &index_str,
+    ]);
+    res_add2.assert_success();
+
+    // 5. Status with entries
+    let res_status2 = runner.run_binary(["vector-search", "status", "--index", &index_str]);
+    res_status2.assert_success();
+    res_status2.assert_stdout_contains("Entries:     2");
+    res_status2.assert_stdout_contains("Dimensions:  128");
+
+    // 6. Query
+    let res_query = runner.run_binary([
+        "vector-search",
+        "query",
+        "safe coding systems",
+        "--limit",
+        "1",
+        "--index",
+        &index_str,
+    ]);
+    res_query.assert_success();
+    res_query.assert_stdout_contains("rust-entry");
+    res_query.assert_stdout_contains("Text: Rust is a systems programming language");
+}
