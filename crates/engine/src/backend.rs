@@ -541,14 +541,29 @@ impl ModelBackend for MockBackend {
                     matched_text = Some(r#"{"characters": [{"name": "Alistair", "description": "The clockmaker"}], "setting": "A dusty Victorian workshop"}"#.to_string());
                 } else if prompt_lower.contains("writer") || prompt_lower.contains("fiction writer")
                 {
-                    matched_text = Some(r#"{"title": "The Time Freeze", "content": "Alistair adjusted the gears. The ticking stopped. The world froze."}"#.to_string());
+                    if std::env::var("ROCO_MOCK_FORCE_FAIL_VALIDATION").is_ok()
+                        && prompt_lower.contains("has trigger")
+                    {
+                        matched_text = Some(r#"{"title": "The Time Freeze", "content": "Alistair adjusted the gears. The ticking stopped. Remove trigger."}"#.to_string());
+                    } else {
+                        matched_text = Some(r#"{"title": "The Time Freeze", "content": "Alistair adjusted the gears. The ticking stopped. The world froze."}"#.to_string());
+                    }
                 } else if prompt_lower.contains("reviewer")
                     || prompt_lower.contains("quality reviewer")
                 {
-                    matched_text = Some(
-                        r#"{"quality": "pass", "issues": "none", "suggestion": "none"}"#
-                            .to_string(),
-                    );
+                    if std::env::var("ROCO_MOCK_FORCE_FAIL_VALIDATION").is_ok()
+                        && !prompt_lower.contains("remove trigger")
+                    {
+                        matched_text = Some(
+                            r#"{"quality": "fail", "issues": "Has trigger", "suggestion": "Remove trigger"}"#
+                                .to_string(),
+                        );
+                    } else {
+                        matched_text = Some(
+                            r#"{"quality": "pass", "issues": "none", "suggestion": "none"}"#
+                                .to_string(),
+                        );
+                    }
                 } else if prompt_lower.contains("summarizer")
                     || prompt_lower.contains("literary summarizer")
                 {

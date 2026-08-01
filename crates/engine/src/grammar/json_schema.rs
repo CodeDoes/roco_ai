@@ -129,7 +129,11 @@ fn gen_rule(name: &str, schema: &Value, rules: &mut Vec<String>) -> Result<Strin
             let mut members: Vec<String> = Vec::with_capacity(props.len());
             for (key, sub) in props {
                 let sub_name = format!("{}_{}", name, sanitize(key));
-                let sub_body = gen_rule(&sub_name, sub, rules)?;
+                let sub_body = gen_rule(&sub_name, sub, rules).map_err(|e| match e {
+                    GbnfError::BadSchema { detail } => GbnfError::BadSchema {
+                        detail: format!("in field '{}': {}", key, detail),
+                    },
+                })?;
                 members.push(format!("{} \":\" {}", quote(key), sub_body));
             }
             let body = members.join(" \",\" ");
