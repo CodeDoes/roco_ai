@@ -3,6 +3,18 @@
 Follows the validation loop in AGENTS.md §9:
 `test → eval → check + update PROGRESS.md with what you want to do → e2e (story) → note problems in PROGRESS.md → fix issues → targeted-e2e (chapter/wiki/outline/validate) → update PROGRESS.md → consider whether a lack of info within AGENTS.md caused this problem → update AGENTS.md if so → repeat`
 
+### 2026-07-31 — Docs aligned: current state, future state, invalid state removed
+
+**What I'm doing:** Updating AGENTS.md, PROGRESS.md, and the v0.5 impressions doc so they reflect (a) what is true now, (b) what we're pursuing next, and (c) removing things we are NOT going to pursue anymore.
+
+**What changed:**
+- AGENTS.md is now the single origin for current + future state (see §12 workflow + §13 router NLU plan). This entry only logs the delta.
+- Fixed stale §12 claims: session/workspace are NOT "intuitive" for common users; score corrected 7/10 → 6/10 (matches v0.5 findings).
+- Removed as invalid (not pursuing): the explicit `session`/`workspace` workflow as the recommended common-user path (power-user tooling only now); silent chat fallback in the router (commit `3181178`, never to return).
+- Router intent detection with MockBackend is documented red/unverified in §13.
+
+**Tests:** 235 passed, 11 ignored, 0 failed
+
 ### 2026-07-31 — Removed FALLBACK from router intent detection
 
 **What I'm doing:** Removing silent fallback to chat mode in the router when intent detection fails. Per user feedback: "I WANT errors instead of FALLBACK. if something is not ready. DO NOT include."

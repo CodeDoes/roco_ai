@@ -185,6 +185,7 @@ As of the latest full E2E run (2026-07-31), the complete story pipeline passes a
 - Gateway `/v1/completions` forwards `grammar`/`prefill`/`init_state`/`state_slot`/`seed`
 - **Schema enum scoping fixed** (`json_schema.rs`): enums are emitted as named rules, never inlined into object rules (GBNF `|` precedence trap — see §10)
 - **Generation loop budget fixed** (`engine-gpu/src/actor.rs`): the first loop samples ONE token then hands off to the main loop (previously ran to `max_tokens` AND the main loop ran `max_tokens−1` more = 2×max_tokens−1 tokens). Grammar-closing token emitted before stopping in both loops.
+- **No silent fallbacks anywhere** (commit `3181178`): router `detect_intent` returns `Result` and fails loudly. A failed intent parse, an unknown intent id, or a backend error is surfaced as an error — it is NEVER silently downgraded to chat. Same rule as prose fallback: if something isn't ready, it fails loudly, it doesn't quietly pretend to work.
 - Full E2E: outline → wiki → chapters 1-3 (validated) → synopsis → publish ✅
 
 ## 10. Known Legacy Issues
@@ -246,14 +247,9 @@ The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fiel
 | Can I run without GPU? | Not obvious |
 | Where do stories go? | Only in output |
 
-### Recommendations (Not Yet Implemented)
+### Recommendations
 
-- [ ] Add `roco quickstart` first-run guide
-- [ ] Add progress indicators (spinners) during long waits
-- [ ] Improve error messages with actionable hints
-- [ ] Show full output path prominently
-- [ ] Offer story preview after publishing
-- [ ] Add `docs/README.md` link to `--help`
+Adopted into the current, deduplicated list in §12 — this section is the historical v0.4 record only.
 
 **User Score: 8/10** — The magic is real. Main gaps are onboarding and feedback during long waits.
 
@@ -265,24 +261,25 @@ The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fiel
 ### Key Findings
 
 **What works well:**
-- `roco story "premise"` is a one-command magic experience
-- `roco -p "Hello"` now works (one-shot prompt)
-- Session management with `roco session new` is intuitive
-- Workspace management with `roco workspace new` provides explicit control
+- `roco -p "make a story"` is a one-command magic experience
+- The router's natural-language intent detection is the right mental model
+- Emoji progress indicators (`✓`, `⚠️`, `📝`) are intuitive
+- Automatic retry on validation failure is reassuring
 - Resume capability works seamlessly
 
 **Pain points to address:**
-1. **No `roco quickstart`** — new users don't know how to begin
-2. **No help for `roco session --help` and `roco workspace --help`** (now fixed)
-3. **Help text is technical** — lacks "Quick Start" guidance
-4. **No first-time setup guide** — new users don't know about GPU requirements or model setup
-5. **Output location not obvious** — `.roco/stories/` path buried in output
-6. **No story preview** — story goes to disk with no terminal preview
-7. **Error messages are technical** — need actionable hints
+1. **Session/workspace terminology is confusing** — common users don't know what these mean and don't need to. The explicit `session`/`workspace` workflow is NOT recommended for common users; these commands stay in the tool for power users and automated flows, and should be renamed or hidden from default help.
+2. **Router intent detection is broken in practice** — with the mock backend it fails, so after the FALLBACK removal natural-language mode switching (`roco "let's play an adventure"`) errors loudly instead of routing. Correct behavior, unfinished feature — top priority, see **§13**.
+3. **No `roco quickstart`** — new users don't know how to begin
+4. **Help text is technical** — lacks "Quick Start" guidance
+5. **No first-time setup guide** — new users don't know about GPU requirements or model setup
+6. **Output location not obvious** — `.roco/stories/` path buried in output
+7. **No story preview** — story goes to disk with no terminal preview
+8. **Error messages are technical** — need actionable hints
 
-### CLI Workflow (v0.5)
+### CLI Workflow (v0.5, current)
 
-The recommended workflow for common users:
+The recommended workflow for common users — router-first, state auto-managed:
 
 ```bash
 # Quick one-shot story
@@ -291,20 +288,59 @@ roco -p "Write a story about a cat who loves cheese"
 # Structured story pipeline (detached)
 roco story "A cat who loves cheese"
 
-# Interactive session workflow
-roco session new                          # Create session
-roco workspace new                        # Create workspace
-roco session <session_id> -p "Use the workspace <workspace_id>"
-roco session <session_id> -p "Hey write a story about X"
+# Natural language routing (target state — §13)
+roco "write a story about a cat"
+roco "let's play an adventure"
+roco "generate a webpage about sailing"
 ```
 
+The explicit session/workspace flow is **not** for common users. It exists for power users and automation:
+
+```bash
+roco session new                          # Create session (power user)
+roco workspace new                        # Create workspace (power user)
+roco session <session_id> -p "Use the workspace <workspace_id>"
+```
+
+### Future State — Router NLU Is the Golden Opportunity
+
+Router NLU is the golden opportunity: every message already flows through `detect_intent`; extend it with management intents and auto-managed state and "user says what they want → roco does it" becomes the whole UX. Full current + future state: **§13**.
+
 ### Recommendations (Not Yet Implemented)
+
+Router/NLU items (intent detection, keyword routing, rename/hide `session`/`workspace`, auto-management) live in **§13** — the single origin for the router plan. The remaining UX items:
 
 - [ ] Add `roco quickstart` first-run guide
 - [ ] Add progress indicators (spinners) during long waits
 - [ ] Improve error messages with actionable hints
 - [ ] Show full output path prominently
 - [ ] Offer story preview after publishing
-- [ ] Add `docs/README.md` link to `--help`
 
-**User Score: 7/10** — The magic is real but the entry points are confusing. A user trying `roco -p "make a story"` would now work, but quickstart guidance is still missing.
+**User Score: 6/10** — The magic works when users discover the router or `-p` flag, but the technical terminology (`session`, `workspace`) and the broken natural-language routing create friction. The NLU router is the golden opportunity: it already handles natural language, we just need to extend it with more intents and make it actually work.
+
+## 13. Router & NLU — Current State and Future State
+
+### Current State (as of 2026-07-31)
+
+- Modes ARE implemented as system prompts (`mode_system_prompt` in `crates/cli/src/cmd/router.rs`, ~line 576 Adventure, ~line 588 Coder). They are reachable ONLY via direct subcommands: `roco game`, `roco code`, `roco html`, `roco story`.
+- `all_intents()` defines 5 intents: `chat`, `adventure`, `story`, `html`, `coder`.
+- `detect_intent()` sends an intent-classification prompt to the backend, expects `{"intent": ..., "prompt": ...}` JSON back, and maps it to a mode.
+- **Broken in practice:** `MockBackend` returns a truncated echo of the prompt (48 chars), not intent JSON. So `detect_intent` fails → after the FALLBACK removal (commit `3181178`) it now returns an `Err` that terminates with exit code 1. Natural-language mode switching (`roco "let's play an adventure"`) is currently an ERROR, not a silent misroute. This is the correct behavior (fail loudly) but the feature itself is unfinished.
+- With the real model the intent prompt MAY work (it's a valid completion request), but it has never been verified end-to-end through the router loop. This is unverified state — treat as red until proven.
+
+### Future State — the plan
+
+1. **Make intent detection actually work.** Two options, both needed:
+   - Fix `MockBackend` to return valid intent JSON when the prompt asks for classification (so tests and the router work without a real model).
+   - Add a deterministic **keyword-based router** as the primary path (real classifier, not a silent fallback — see below): e.g. `\b(story|write|tale)\b` → story, `\b(adventure|play|game)\b` → adventure, `\b(html|webpage|website|page)\b` → html, `\b(code|program|function|bug|rust)\b` → coder. If keywords don't match, THEN ask the model. If the model fails to produce valid JSON, error loudly (current behavior).
+2. **Extend `all_intents()` with management intents** so the router auto-manages state invisibly:
+   - `continue` → find and resume the latest workspace/project
+   - `new_project` → start fresh, auto-create state
+   - `show_work` → list existing stories/projects
+   - This removes the need for common users to know about `session`/`workspace` at all.
+3. **Auto-manage state.** The router should create/resume/switch sessions and workspaces on the user's behalf. Explicit `session`/`workspace` commands remain for power users and automation but are hidden from default help.
+4. **Keep the no-fallback rule.** The keyword router is a real classification step, not a silent downgrade: if neither keywords nor the model can classify intent, the user gets an explicit error telling them what went wrong.
+
+### Why this is the golden opportunity
+
+Every message already passes through `detect_intent`. Extending it with management intents and auto-managed state turns the CLI into: "user says what they want → roco figures out mode, project, and state → does it". No commands to remember, no `session`/`workspace` jargon, no `roco story -p` detour. The pipeline, grammar, and state management already work (§9) — the only missing piece is the routing layer.

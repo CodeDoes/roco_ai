@@ -55,34 +55,7 @@ See `/tmp/user_journal.md` for detailed journey log.
 
 ### Recommendations
 
-#### Rename for Clarity
-| Current | Better |
-|---------|--------|
-| `session` | `chat` or `continue` |
-| `workspace` | `project` or `story` |
-
-#### Auto-Management
-```bash
-# User just wants to write
-roco "write a story about a cat"
-→ Auto-creates project, starts writing
-
-# User wants to continue
-roco "continue"
-→ Finds last project, resumes
-
-# User wants to see work
-roco "show my stories"
-→ Lists projects
-```
-
-#### Simplify Help
-Instead of showing `session` and `workspace`, show:
-```
-story        Write a story
-chat         Continue a conversation
-projects     Show your stories
-```
+The plan from this test (rename `session`→`chat`/`continue`, `workspace`→`project`; auto-management; simplified help) has been adopted into AGENTS.md — see §12 (workflow + UX items) and §13 (router NLU plan, the single origin). This section is the historical record only; AGENTS.md is canonical.
 
 ## User Score: 6/10
 The magic works when users discover the router or `-p` flag, but the technical terminology (`session`, `workspace`) creates friction. The NLU router is the golden opportunity — it already handles natural language, we just need to extend it with more intents.
