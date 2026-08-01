@@ -771,14 +771,14 @@ fn show_work() {
     let mut stories: Vec<_> = entries
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |ext| ext == "md"))
+        .filter(|p| p.extension().is_some_and(|ext| ext == "md"))
         .collect();
     if stories.is_empty() {
         r::dim("No stories found in .roco/stories/.\n");
         return;
     }
     stories.sort();
-    println!("\n{:<40} {:>8}  {}", "Story", "Words", "Path");
+    println!("\n{:<40} {:>8}  Path", "Story", "Words");
     println!("{:-<80}", "");
     for path in &stories {
         let filename = path.file_name().unwrap().to_string_lossy().to_string();
@@ -807,7 +807,7 @@ fn find_latest_workspace() -> Option<std::path::PathBuf> {
             .and_then(|m| m.modified())
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
     });
-    dirs.into_iter().rev().next()
+    dirs.into_iter().next_back()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
