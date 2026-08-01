@@ -1,17 +1,8 @@
 {
   "suite_name": "RoCo Architectural Solution Bench",
-  "timestamp": 1785605085,
+  "timestamp": 1785605961,
   "aspects_evaluated": 16,
   "physical_benchmarks": {
-    "code_overcontrol": {
-      "name": "Code Overcontrol of Inference",
-      "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
-      "score": 10.0,
-      "metrics": {
-        "execution_ms": "0.04ms",
-        "overcontrol_status": "Active Interrupt Hook Green"
-      }
-    },
     "small_router_gating": {
       "name": "Small Trained Router vs Model NLU",
       "description": "Compares low-latency local gating classifiers against multi-token model classification",
@@ -20,17 +11,26 @@
         "gated_intent": "adventure",
         "small_trained_router_gating_ms": "0.0000ms",
         "speedup_multiplier": "1000x faster",
-        "model_nlu_gating_ms": "0.03ms"
+        "model_nlu_gating_ms": "0.02ms"
+      }
+    },
+    "code_overcontrol": {
+      "name": "Code Overcontrol of Inference",
+      "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
+      "score": 10.0,
+      "metrics": {
+        "execution_ms": "0.01ms",
+        "overcontrol_status": "Active Interrupt Hook Green"
       }
     },
     "state_baking_vs_context": {
       "name": "State Baking vs Context Management",
       "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
-      "score": 1.1935483870967742,
+      "score": 1.15,
       "metrics": {
-        "baked_completion_ms": "0.03ms",
-        "ssm_constant_state_multiplier": "1.2x speedup",
-        "fresh_prompt_prefill_ms": "0.04ms"
+        "ssm_constant_state_multiplier": "1.1x speedup",
+        "baked_completion_ms": "0.02ms",
+        "fresh_prompt_prefill_ms": "0.02ms"
       }
     },
     "bnf_constraints": {
@@ -38,8 +38,8 @@
       "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
       "score": 10.0,
       "metrics": {
-        "constrained_latency_ms": "2.07ms",
-        "grammar_compliance": "100% Correct Syntax"
+        "grammar_compliance": "100% Correct Syntax",
+        "constrained_latency_ms": "1.51ms"
       }
     }
   },
