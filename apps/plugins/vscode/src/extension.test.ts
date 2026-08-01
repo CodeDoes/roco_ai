@@ -3,7 +3,7 @@ import * as vscode from '../src/__mocks__/vscode';
 // Re-implement the functions from extension.ts to test them in isolation
 function apiBase(): string {
     const config = vscode.workspace.getConfiguration('roco');
-    return config.get<string>('apiUrl', 'http://localhost:8080');
+    return config.get<string>('apiUrl', 'http://localhost:8080') ?? 'http://localhost:8080';
 }
 
 describe('RoCo AI Extension', () => {

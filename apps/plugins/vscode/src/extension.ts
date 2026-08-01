@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 function apiBase(): string {
     const config = vscode.workspace.getConfiguration('roco');
-    return config.get<string>('apiUrl', 'http://localhost:8080');
+    return config.get<string>('apiUrl', 'http://localhost:8080') ?? 'http://localhost:8080';
 }
 
 async function apiRequest(path: string, options?: RequestInit): Promise<any> {
@@ -109,14 +109,17 @@ export function activate(context: vscode.ExtensionContext) {
                     body: JSON.stringify({ text: content }),
                 });
 
+                interface SuggestionItem extends vscode.QuickPickItem {
+                    suggestion: { text: string };
+                }
                 // Show suggestions in quick pick
-                const items = result.suggestions.map((s: any) => ({
+                const items: SuggestionItem[] = result.suggestions.map((s: any) => ({
                     label: s.type,
                     description: s.text.substring(0, 100),
                     suggestion: s,
                 }));
 
-                const selected = await vscode.window.showQuickPick(items, {
+                const selected = await vscode.window.showQuickPick<SuggestionItem>(items, {
                     placeHolder: 'Select a suggestion to apply',
                 });
 
