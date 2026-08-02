@@ -73,3 +73,15 @@ Lean delta log — one entry per change, newest first. **How to use this file pr
 ## Migration (Phases 1–7 done)
 
 Phase 3 `edf13bf` · Phase 4 `f1bed8e` · Phases 5–7 `3e75904` · out of scope: `crates/core`, `EvalCase` fixtures (DEPRECATED).
+
+## 2026-08-02 — Multi-turn story edit landed; 15 active Jules sessions
+
+- **Intent**: implement the `test_future_multiturn_narrative_editing` ignored test (the first of 3 in `crates/cli/tests/future_capabilities.rs`) via parallel Jules sessions, then rotate the freed slots with new tasks.
+- **Landed (commit 28cc9e2)**: `cmd_story_edit()` in `crates/cli/src/cmd/story.rs` (+ `roco story edit` dispatch arm in `bin/roco.rs`); MockBackend keyword match for "rewrite the dialogue…" so the future-capability test passes without a live model; test_future_multiturn_narrative_editing un-ignored and passing; `get_sessions_dir()` honors `ROCO_DIR`; devenv.nix `roco` script prefers the release binary if present.
+- **Sessions in flight (15 active)**:
+  - 5× story branching/merge (1 in progress, 2 completed, 1 awaiting, 1 failed — `crates/cli/tests/future_capabilities.rs::test_future_story_branching_and_merge`)
+  - 5× collaborative revisions (4 awaiting user feedback, 1 no diff)
+  - 5× story continue management intent
+  - 4× UX quickstart/spinners/hints (§12 items)
+- `cargo test --workspace`: green; build clean.
+- Still red: remaining 2 ignored future-capability tests (branching, revisions), §12 UX items, §13 real-model router verification.
