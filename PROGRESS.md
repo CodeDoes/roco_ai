@@ -2,6 +2,15 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-02 — Full Jules archive: all 125 sessions indexed (95 roco_ai, 30 other)
+
+- **Intent**: archive *every* Jules task for roco_ai — complete closure record, not just the unusable ones.
+- **Inventory**: fetched all pages (125 sessions — earlier sweeps only saw 100/page-1 + 1). Categorized by PR URLs + changeSet file evidence: **95 roco_ai / 30 other-repo** (16 Svelte-web-app, 6 `rwkv-lab`, 2 `latent-state-thinking-vs-speaking`, 1 `flakes`, 1 `original_performance_takehome`, 1 game-dev, 1 RWKV-training, 2 more).
+- **JULES_ARCHIVE.md rewritten** as the complete index: disposition buckets verified against the repo (file-existence + git-log checks), not just titles — e.g. quickstart/status/tests/ttrpg/world-sim/WFC/vector-search landed; spinners/`--preview`/`retry.rs`/`management_intents.md` did NOT.
+- **Recovery data**: 18 completed-no-PR sessions have extractable changeSets; the 6 genuinely-still-open features are listed in the archive (spinners, `--preview`, backoff retry, management_intents doc, help-text intents, README).
+- **Corrected** a stale claim (superseded table said `--preview` landed — repo check says no).
+- No code touched. `cargo test --workspace`: **1048 passed**.
+
 ## 2026-08-02 — Triage sweep #2: found and closed 1 more stale waiting session
 
 - **Intent**: re-run the archive/respond sweep — page 1 showed all-clear (94 completed / 6 failed), but pagination check found page 2 held one more `AWAITING_USER_FEEDBACK` session.
