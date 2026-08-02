@@ -248,20 +248,60 @@ The CLI includes a dedicated `roco session` subcommand designed to support state
 
 The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fields have been removed. All callers use `init_state`/`state_slot` and embed system text directly in the prompt.
 
-### Jules API key — where it lives and how to manage it
+### Jules onboarding — `scripts/jules.sh` (Jules AI coding-agent API)
 
-`JULES_API_KEY` (Jules API, https://developers.google.com/jules/api) lives **only** in `.env` at the repo root, which is gitignored — it has never been committed and must never be. Two hard rules:
+Jules (Google) is a cloud coding agent that works on `CodeDoes` GitHub repos. `scripts/jules.sh` is the ONLY sanctioned way to talk to it — it wraps the v1alpha API (`https://jules.googleapis.com/v1alpha`, auth header `X-Goog-Api-Key`; doc: https://developers.google.com/jules/api) so the key never leaks into logs or commits.
 
-1. **Never echo or log the key.** `scripts/jules.sh` masks it (`AQ.A…suyA` style) everywhere; `check`/`sources`/etc. never print it. Do not add `-v`/`--verbose` curl flags to that script that would leak the header.
-2. **Never commit `.env`** (already in `.gitignore`). The committed template is `.env.example` (placeholder only).
+#### First run (5 seconds)
+```bash
+scripts/jules.sh check        # validates the key, prints masked "AQ.A…" form
+scripts/jules.sh sources      # which GitHub repos are connected (~100)
+scripts/jules.sh sessions     # recent sessions (id + title + PR links)
+```
 
-Operational notes:
-- **Loader**: `devenv.nix` sets `dotenv.enable = true`, so every devenv shell injects the key into the environment — which also copies it into the generated (gitignored) `.devenv/shell-*.sh` files. That's expected; those files are local-only. Note the loader exports the value wrapped in literal double quotes (`"AQ.…"`, length 55 vs 53) — `scripts/jules.sh` normalizes quotes before use.
-- **Usage**: `scripts/jules.sh check | sources | sessions | session <id> | activities <id> | send <id> "msg" | create <repo> "prompt" [--pr] | approve <id> | archive <id> | archive-all | curl <METHOD> <path>`. It reads the key from `$JULES_API_KEY` (env) or `.env` at call time.
-- **Archiving sessions**: the v1alpha API has **no cancel/delete** (probed `:cancel` → 404, PATCH → 404, `:close` → 404) — but **`POST /sessions/{id}:archive` works** and sets `archived: true`. `scripts/jules.sh archive <id>` does it; `archive-all` iterates every page. The list endpoint excludes archived sessions, so a shrinking page count is the signal that archiving worked. All 125 historical sessions were archived this way on 2026-08-02 (recorded in `JULES_ARCHIVE.md`).
-- **Rotation**: keys are created/revoked at https://jules.google.com/settings#api (max 3). Google **auto-disables** any key found publicly exposed — if a leak is suspected, rotate there and update `.env`. Verify after rotation with `scripts/jules.sh check`.
+#### Subcommand reference
+
+| Command | What it does |
+|---|---|
+| `check` | Validate the API key (masks it; never prints the key) |
+| `sources` | List connected GitHub repos |
+| `sessions [--limit N]` | List recent sessions (id, title, PR links) |
+| `session <id>` | Full session resource — state, outputs (PRs + changeSets) |
+| `activities <id> [--limit N]` | Timeline (planGenerated → progressUpdated → sessionCompleted) |
+| `send <id> "message"` | Reply to the agent in a session |
+| `create <repo> "prompt" [--branch X] [--pr] [--approval]` | Start a new session on a repo |
+| `approve <id>` | Approve a pending plan (if `--approval` was used) |
+| `archive <id>` | Mark a session archived on the platform (`archived: true`) |
+| `archive-all` | Archive every session across all pages (sequential; slow for large sets) |
+| `curl <METHOD> <path> [--data '<json>']` | Raw passthrough for anything not covered |
+
+#### Typical orchestration loop
+```bash
+scripts/jules.sh sessions --limit 100        # triage: which sessions are waiting/failed
+scripts/jules.sh activities <id>             # what is the agent doing / waiting for?
+scripts/jules.sh send <id> "proceed, open a PR"   # unblock / steer / stop a session
+scripts/jules.sh session <id>                # grab outputs (changeSet diffs) before archiving
+scripts/jules.sh archive <id>                # close it out on the platform
+```
+
+#### Key rules (hard invariants)
+1. **Never echo or log the key.** `scripts/jules.sh` masks it everywhere; do not add `-v`/`--verbose` curl flags that would leak the header.
+2. **Never commit `.env`** (gitignored). The committed template is `.env.example` (placeholder only). `JULES_API_KEY` lives **only** in `.env` at the repo root.
+3. **One owner per task.** If the same task was dispatched to multiple sessions, tell exactly one to proceed+PR and message the rest to stop — otherwise you get conflicting PRs.
+
+#### Gotchas learned the hard way
+- **No cancel/delete endpoint.** `:cancel` → 404, PATCH → 404, `:close` → 404. Only `POST /sessions/{id}:archive` exists (sets `archived: true`; archived sessions vanish from the list endpoint — a shrinking page count is the success signal).
+- **Agents complete without pushing.** The recurring failure mode: a session finishes, claims success, but never opens a branch/PR — the work exists only as `unidiffPatch` changeSets in its activities. `session <id>` shows them; extract and apply manually.
+- **`sendMessage` returns `{}`.** The agent replies in the NEXT activity — session `state`/`updateTime` is the reliable signal, activity lists lag.
+- **Bulk API calls: go concurrent.** Sequential shell loops over ~100 sessions hang (curl `-m 60` per call). Use concurrent HTTP (16 workers) for bulk archive/verify; the one-shot `archive-all` shell loop is fine for small sets.
+- **`session` states**: `AWAITING_USER_FEEDBACK` (needs `send`), `IN_PROGRESS`, `AWAITING_PLAN_APPROVAL` (`approve`; plans auto-approve by default), `COMPLETED`, `FAILED`.
+
+#### Operational notes
+- **Loader**: `devenv.nix` sets `dotenv.enable = true`, so every devenv shell injects the key — and copies it into the generated (gitignored) `.devenv/shell-*.sh` files. The loader exports the value wrapped in literal double quotes (length 55 vs 53); `scripts/jules.sh` normalizes quotes.
+- **Rotation**: keys created/revoked at https://jules.google.com/settings#api (max 3). Google **auto-disables** any key found publicly exposed. After rotating, update `.env` and `scripts/jules.sh check`.
 - **Permissions**: keep `.env` at 0600 (`chmod 600 .env`).
-- **Cost/access**: the key authenticates as the CodeDoes GitHub org owner across ~100 connected repos; treat it as full repo write access (it can open PRs — `create --pr`).
+- **Cost/access**: the key authenticates as the CodeDoes org owner across ~100 repos; treat it as full repo write access (`create --pr` opens real PRs).
+- **History**: all 125 sessions (every project) archived on 2026-08-02; the permanent closure record with dispositions is `JULES_ARCHIVE.md` at the repo root.
 
 ## 11. Common User Feedback
 
@@ -408,6 +448,7 @@ AGENTS.md is the origin: current architecture (§1-8), verification state (§9),
 | `docs/TECHNICAL_SPECIFICATION.md` | Historical snapshot | Pre-migration reasoning behind design decisions; failure-mode table; reproduction checklist. Superseded by §1-8 — read for the *why*, not the *what* |
 | `docs/SIMPLICITY_AND_SAFETY_DEEP_DIVE.md` | Historical audit | Sandbox path-containment rationale (`is_safe_relative_path`), crate-consolidation history (19 → current) |
 | `docs/rfc/0001-0015` | Decision records | Per-feature design rationale: harness, offline protocol, privacy RAG, security boundary, vision, etc. |
+| `JULES_ARCHIVE.md` | Operational | Complete index of all 125 Jules sessions (every project): disposition per session, PRs, extractable changeSets, open items. See §10 "Jules onboarding" for the script |
 | `docs/future.md` | Completed | All roadmap items landed |
 
 Rule of thumb: **AGENTS.md tells you how the system works today; the docs tell you why it was built this way.** If you're about to add a behavior, check the corresponding RFC/impression first so you don't re-decide a closed question. And if you're about to leave the project without writing down something you now know, write it down here first — see the onboarding contract at the top.
