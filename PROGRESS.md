@@ -94,3 +94,12 @@ Phase 3 `edf13bf` · Phase 4 `f1bed8e` · Phases 5–7 `3e75904` · out of scope
   - 4× UX quickstart/spinners/hints (§12 items)
 - `cargo test --workspace`: green; build clean.
 - Still red: remaining 2 ignored future-capability tests (branching, revisions), §12 UX items, §13 real-model router verification.
+
+## 2026-08-02 — Jules session cleanup; branching test landed
+
+- **Intent**: clean up duplicate Jules sessions and implement remaining future capabilities tests.
+- **Lessons learned**: creating 5 parallel sessions for each task produced excessive duplicates with mostly identical patches. Better to create 1-2 focused sessions per distinct capability.
+- **Landed (commit 119333d)**: `roco story branch create|list|merge|switch` with `walkdir` dependency; `test_future_story_branching_and_merge` un-ignored and passing.
+- **Cleaned up**: `test_future_multiturn_narrative_editing` and `test_future_story_branching_and_merge` both pass. No more ignored tests in `future_capabilities.rs`.
+- **Active sessions remaining**: 17 (many duplicates). API has no delete/archive endpoint — sessions must be cleaned up manually at jules.google.com.
+- **Build**: green. `cargo test --workspace` passes.
