@@ -12,7 +12,7 @@ use roco_cli::test_harness::MockCliRunner;
 /// edits (e.g., "rewrite the dialogue to sound more urgent"), and verify
 /// that the edits are properly incorporated into the target chapter.
 #[test]
-#[ignore]
+
 fn test_future_multiturn_narrative_editing() {
     let runner = MockCliRunner::new();
 

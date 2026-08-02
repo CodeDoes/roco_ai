@@ -564,6 +564,8 @@ impl ModelBackend for MockBackend {
                                 .to_string(),
                         );
                     }
+                } else if prompt_lower.contains("rewrite the dialogue to sound more urgent") {
+                    matched_text = Some("hurry up, we need to be quick!".to_string());
                 } else if prompt_lower.contains("summarizer")
                     || prompt_lower.contains("literary summarizer")
                 {

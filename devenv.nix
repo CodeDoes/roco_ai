@@ -33,7 +33,15 @@
     components = [ "rustfmt" "clippy" "rust-analyzer" ];
   };
 
-  scripts.roco.exec = "cargo watch -x \"run -p roco-cli -- \\\"$@\\\"\"";
+  scripts.roco.exec = ''
+    # Use direct release binary if available, otherwise cargo run
+    TARGET_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/release/roco"
+    if [ -f "$TARGET_BIN" ]; then
+      exec "$TARGET_BIN" "$@"
+    else
+      exec cargo run -p roco-cli -- "$@"
+    fi
+  '';
 
   dotenv.enable = true;
 

@@ -330,7 +330,11 @@ fn main() {
             if has_help_flag(&extra) {
                 help(Some("story"));
             }
-            cmd::story::cmd_story(&extra);
+            if extra.first() == Some(&"edit") {
+                cmd::story::cmd_story_edit(&extra[1..]);
+            } else {
+                cmd::story::cmd_story(&extra);
+            }
         }
 
         // ── Game / HTML / Code / Interact ────────────────────────────────

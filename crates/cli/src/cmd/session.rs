@@ -230,7 +230,11 @@ fn cmd_session_chat(session_id: &str, args: &[&str]) {
 
 /// Get the sessions directory path.
 fn get_sessions_dir() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_default()
-        .join(SESSIONS_DIR)
+    if let Ok(dir) = std::env::var("ROCO_DIR") {
+        PathBuf::from(dir).join("sessions")
+    } else {
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join(SESSIONS_DIR)
+    }
 }

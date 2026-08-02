@@ -2021,3 +2021,63 @@ pub fn cmd_story(extra: &[&str]) {
         AgentJournal::warn("story", &format!("Pipeline failed: {e}"));
     }
 }
+
+pub fn cmd_story_edit(extra: &[&str]) {
+    let workspace_path = parse_opt("--workspace", extra).expect("Missing --workspace");
+    let chapter = parse_opt("--chapter", extra).expect("Missing --chapter");
+    let instruction = parse_opt("--instruction", extra).expect("Missing --instruction");
+
+    let mock = std::env::var("ROCO_USE_MOCK_BACKEND").is_ok() || extra.contains(&"--mock");
+    if mock {
+        std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
+    }
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build Tokio runtime");
+
+    let backend = daemon::ensure_backend();
+
+    rt.block_on(async move {
+        println!("Rewriting Chapter {}...", chapter);
+
+        let ws_path = PathBuf::from(workspace_path);
+        let chapter_filename = format!("03-CHAPTER_{}.md", chapter);
+        let chapter_file = ws_path.join(&chapter_filename);
+
+        let content = std::fs::read_to_string(&chapter_file).unwrap_or_default();
+
+        let backups_dir = ws_path.join(".roco").join("backups");
+        std::fs::create_dir_all(&backups_dir).expect("Failed to create backups dir");
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let backup_file = backups_dir.join(format!("{}-{timestamp}.md.bak", chapter_filename));
+
+        std::fs::write(&backup_file, &content).expect("Failed to write backup");
+        println!("Backup created: {}", backup_file.display());
+
+        let prompt = format!("{instruction}:\n\nCHAPTER:\n{}", content);
+
+        #[allow(clippy::needless_update)]
+        let req = CompletionRequest {
+            prompt,
+            max_tokens: 1500,
+            temperature: 0.7,
+            ..Default::default()
+        };
+
+        match backend.complete(req).await {
+            Ok(resp) => {
+                let new_content = resp.text;
+                std::fs::write(&chapter_file, new_content).expect("Failed to write new chapter");
+            }
+            Err(e) => {
+                eprintln!("Error rewriting chapter: {}", e);
+            }
+        }
+    });
+}
