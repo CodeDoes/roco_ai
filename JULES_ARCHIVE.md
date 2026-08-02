@@ -1,30 +1,33 @@
-# Jules Session Archive
+# Jules Session Archive — all projects
 
-Complete index of **all Jules (Bolt) API sessions** for the `roco_ai` repo — every task,
-its outcome, and where its work landed (if it did). Sessions cannot be deleted via the
-v1alpha API (no cancel/delete endpoint — probed `:cancel` → 404), so this file is the
-permanent closure record. **Read-only: do not revive archived sessions.**
+Complete index of **all Jules (Bolt) API sessions** across every `CodeDoes` project —
+
+each task, its repo, outcome, and where its work landed (if it did). Sessions cannot be
+
+deleted via the v1alpha API (no cancel/delete endpoint — probed `:cancel` → 404), so this
+
+file is the permanent closure record. **Read-only: do not revive archived sessions.**
 
 Live management: `scripts/jules.sh` (`check | sources | sessions | session | activities | send | create | approve | curl`).
 
-Archived (complete): 2026-08-02.
+Archived (complete, all projects): 2026-08-02.
 
 ---
 
 ## Summary
 
-- **125 sessions total**: 95 for `roco_ai`, 30 for other repos.
-
-- Session states: 89 completed / 6 failed (roco_ai only).
+- **125 sessions total** — the complete set (all API pages fetched).
 
 - **Recurring failure mode**: agents complete tasks but never push a branch/PR — the work
 
   exists only as `unidiffPatch` changeSets inside session activities. Use `scripts/jules.sh`
 
-  `activities <id>` + the changeSet to recover it. Several were recovered manually (below).
+  `activities <id>` + the changeSet to recover it.
 
 
-### ✅ Merged as PR (17)
+## roco_ai sessions (96) — CodeDoes/roco_ai
+
+### ✅ Merged as PR (18)
 
 | Date | Session ID | Task | Evidence |
 |---|---|---|---|
@@ -32,6 +35,7 @@ Archived (complete): 2026-08-02.
 | 2026-07-17 | `8360147831957112935` | Comprehensive App Enhancement Suite | `Cargo.lock`, `crates/agent/Cargo.toml`, `crates/agent/src/common_agent.rs` |
 | 2026-07-23 | `10052844614878231535` | Codebase Review Suggestions | `.github/workflows/ci.yml`, `Cargo.lock`, `Cargo.toml` |
 | 2026-07-23 | `7926610897732011758` | Mocked Local AI Harness and Domain Agent Framework Scaffold | `ACTUAL_CODE_INVENTORY.md`, `EXPANDED_USE_CASES.md`, `FRAMEWORK_EVERYTHING.md` |
+| 2026-07-23 | `12658744895937403067` | Port App to Node.js & TypeScript | `apps/node-local-agent/package.json`, `apps/node-local-agent/package-lock.json` |
 | 2026-07-24 | `6796626086556462783` | Refactor Non-DRY Code | `Cargo.lock`, `Cargo.toml`, `crates/agent/src/evals.rs` |
 | 2026-07-24 | `10519066996559109175` | Conceptualizing Safer and Simpler Apps | `crates/app/src/local_agent/loop/mod.rs`, `crates/app/src/local_agent/mod.rs`, `crates/app/src/local_agent/sandbox.rs` |
 | 2026-07-31 | `6521845017215265445` | Conceptual App Specification and Architecture Blueprint | `docs/TECHNICAL_SPECIFICATION.md` |
@@ -158,60 +162,83 @@ Archived (complete): 2026-08-02.
 | 2026-08-02 | `3969969234300664741` | Implement UX improvements from AGENTS.md §12 that are still  | — |
 | 2026-08-02 | `13465324747186126277` | Implement UX improvements from AGENTS.md §12 that are still  | — |
 
-### ⚠️ Still-open work — owner completed without landing (1)
+### ⚠️ Still-open work (owner completed without landing) (1)
 
 | Date | Session ID | Task | Evidence |
 |---|---|---|---|
-| 2026-08-02 | `10186746275937479489` | UX improvements §12 (quickstart/spinners/errors/preview) | owner session — claimed done, **work NOT landed** (no indicatif, no `--preview`; quickstart *did* land via `8b0fc33` from an earlier session) |
+| 2026-08-02 | `10186746275937479489` | Implement UX improvements from AGENTS.md §12 that are still  | `Cargo.lock`, `crates/cli/Cargo.toml`, `crates/cli/evals/results/solution_bench.json` |
 
-## Non-roco_ai sessions (30) — other repos, not archived here
+## Other projects (29 sessions)
 
-| Date | Session ID | State | Task | Repo |
-|---|---|---|---|---|
-| 2026-03-05 | `15104867601527237647` | COMP | Implement velocity matching steering behavior | game-dev task (velocity matching steering) |
-| 2026-03-06 | `14294061104615164060` | FAIL | Power Scaling and Documentation Refinement | original_performance_takehome (VLIW kernels) |
-| 2026-03-11 | `14058719088113017008` | COMP | Objective:
-Connect src/routes/api/generate/+server | Svelte web app (multimodal AI) |
-| 2026-03-11 | `5174207530317002379` | COMP | Objective:
-Connect src/routes/api/chat/+server.ts  | Svelte web app |
-| 2026-03-11 | `4827945186960224277` | COMP | Objective:
-Implement the generateMultimodalResult  | Svelte web app |
-| 2026-03-11 | `1334094249730695404` | COMP | Objective:
-Connect src/routes/api/chat/+server.ts  | Svelte web app |
-| 2026-03-11 | `12574769483911978343` | COMP | Objective:
-Connect src/routes/api/generate/+server | Svelte web app |
-| 2026-03-11 | `1983554067568281348` | COMP | Objective:
-Update src/lib/components/GenerationFra | Svelte web app |
-| 2026-03-11 | `10097787836228141116` | COMP | Objective:
-Fix any failing tests or edge cases dis | Svelte web app |
-| 2026-03-11 | `540646293208045456` | COMP | Missing test file for +layout.svelte | Svelte web app |
-| 2026-03-11 | `1871961298558032772` | COMP | Commented-out code blocks in App namespace | Svelte web app |
-| 2026-03-11 | `16935497792251903279` | COMP | Objective:
-Add `aspectRatio` to the genState store | Svelte web app |
-| 2026-03-11 | `6804994860212566471` | COMP | Objective:
-Polish the Chat panel's text+image outp | Svelte web app |
-| 2026-03-11 | `785421470006324310` | COMP | Objective:
-Add Playwright E2E tests for clipboard  | Svelte web app |
-| 2026-03-18 | `3091545590837256682` | COMP | Remove commented-out App interfaces | Svelte web app |
-| 2026-03-18 | `3964751903607889389` | COMP | Missing component test for +layout.svelte | Svelte web app |
-| 2026-03-25 | `17686350528415431646` | COMP | Remove placeholder test file | Svelte web app |
-| 2026-03-25 | `9430392529171822203` | COMP | Missing Test File for +layout.svelte | Svelte web app |
-| 2026-07-17 | `4965955086516320916` | COMP | Self-Directed Theory and Experimentation Project | latent-state-thinking-vs-speaking |
-| 2026-07-17 | `15524421758993822951` | COMP | HRM-RWKV-Text Integration | latent-state-thinking-vs-speaking |
-| 2026-07-23 | `17883479254757571693` | COMP | BLT-RWKV: Mathematical Validation and Theoretical  | rwkv-lab |
-| 2026-07-23 | `1999974213176302052` | COMP | BLT Proofs on Small Model Runs | rwkv-lab |
-| 2026-07-23 | `12658744895937403067` | COMP | Port App to Node.js & TypeScript | Svelte web app (Port to Node.js/TS) |
-| 2026-07-24 | `13263888723548697095` | COMP | make a RWKV8 toy prototype and train it slightly
- | rwkv-lab |
-| 2026-07-31 | `13113377282666784784` | COMP | Optimizing RWKV with Byte Latents | rwkv-lab |
-| 2026-08-01 | `3562451623900755702` | COMP | The Game Master's Multi-Genre Adventure Guide Coll | rwkv-lab |
-| 2026-08-01 | `16263368156771076855` | COMP | Non-Linear Flow Network with Byte-Latent Tokens an | latent-state-thinking-vs-speaking |
-| 2026-08-01 | `1539468230288512396` | COMP | RWKV-KAN with Tiny Stories | rwkv-lab |
-| 2026-08-01 | `7045949993432300923` | COMP | Nix Flakes Empire Setup and Package List | flakes |
-| 2026-08-01 | `3908728015845795766` | COMP | Training to Achieve Loss Under 0.5 | rwkv-lab-style model training (no repo evidence) |
+### svelte multimodal web app (16)
+
+| Date | Session ID | State | Task | PR | Evidence |
+|---|---|---|---|---|---|
+| 2026-03-11 | `14058719088113017008` | COMP | Objective: Connect src/routes/api/generate/+serv | no PR | — |
+| 2026-03-11 | `5174207530317002379` | COMP | Objective: Connect src/routes/api/chat/+server.t | no PR | — |
+| 2026-03-11 | `4827945186960224277` | COMP | Objective: Implement the generateMultimodalResul | no PR | `src/lib/server/multimodal.spec.ts`, `src/lib/server/multimo |
+| 2026-03-11 | `1334094249730695404` | COMP | Objective: Connect src/routes/api/chat/+server.t | no PR | `src/routes/api/chat/+server.ts`, `src/routes/api/chat/serve |
+| 2026-03-11 | `12574769483911978343` | COMP | Objective: Connect src/routes/api/generate/+serv | no PR | `src/routes/api/generate/+server.ts`, `src/routes/api/genera |
+| 2026-03-11 | `1983554067568281348` | COMP | Objective: Update src/lib/components/GenerationF | no PR | `src/lib/components/GenerationFrame.svelte` |
+| 2026-03-11 | `10097787836228141116` | COMP | Objective: Fix any failing tests or edge cases d | no PR | `src/lib/server/multimodal.ts`, `src/routes/api/generate/+se |
+| 2026-03-11 | `540646293208045456` | COMP | Missing test file for +layout.svelte | no PR | — |
+| 2026-03-11 | `1871961298558032772` | COMP | Commented-out code blocks in App namespace | no PR | `src/app.d.ts` |
+| 2026-03-11 | `16935497792251903279` | COMP | Objective: Add `aspectRatio` to the genState sto | no PR | `src/lib/components/panel/ImageGenPanel.svelte`, `src/lib/se |
+| 2026-03-11 | `6804994860212566471` | COMP | Objective: Polish the Chat panel's text+image ou | no PR | `src/lib/components/panel/ChatPanel.svelte`, `src/routes/api |
+| 2026-03-11 | `785421470006324310` | COMP | Objective: Add Playwright E2E tests for clipboar | no PR | `tests/connect-tool.spec.ts` |
+| 2026-03-18 | `3091545590837256682` | COMP | Remove commented-out App interfaces | no PR | `src/app.d.ts` |
+| 2026-03-18 | `3964751903607889389` | COMP | Missing component test for +layout.svelte | no PR | — |
+| 2026-03-25 | `17686350528415431646` | COMP | Remove placeholder test file | no PR | — |
+| 2026-03-25 | `9430392529171822203` | COMP | Missing Test File for +layout.svelte | no PR | `src/routes/+layout.svelte.test.ts` |
+
+### rwkv-lab (6)
+
+| Date | Session ID | State | Task | PR | Evidence |
+|---|---|---|---|---|---|
+| 2026-07-23 | `17883479254757571693` | COMP | BLT-RWKV: Mathematical Validation and Theoretica | PR #1 merged | `docs/BLT_THEORY.md`, `src/rwkv_lab/blt_channel_mix.py` |
+| 2026-07-23 | `1999974213176302052` | COMP | BLT Proofs on Small Model Runs | PR #2 merged | `src/rwkv_lab/blt_channel_mix.py`, `src/rwkv_lab/toy_blt_tra |
+| 2026-07-24 | `13263888723548697095` | COMP | make a RWKV8 toy prototype and train it slightly | PR #3 merged | `poetry.lock`, `pyproject.toml` |
+| 2026-07-31 | `13113377282666784784` | COMP | Optimizing RWKV with Byte Latents | PR #4 merged | `src/rwkv_lab/blt_validation.py`, `src/rwkv_lab/toy_blt_trai |
+| 2026-08-01 | `3562451623900755702` | COMP | The Game Master's Multi-Genre Adventure Guide Co | PR #5 open | `adventure_guides/adventure_guide.md`, `adventure_guides/col |
+| 2026-08-01 | `1539468230288512396` | COMP | RWKV-KAN with Tiny Stories | PR #6 merged | `src/rwkv_lab/kan_rwkv.py`, `src/rwkv_lab/toy_kan_rwkv_train |
+
+### latent-state-thinking-vs-speaking (3)
+
+| Date | Session ID | State | Task | PR | Evidence |
+|---|---|---|---|---|---|
+| 2026-07-17 | `4965955086516320916` | COMP | Self-Directed Theory and Experimentation Project | PR #2 merged | `experiments/exp001/metrics.json`, `experiments/exp001/sampl |
+| 2026-07-17 | `15524421758993822951` | COMP | HRM-RWKV-Text Integration | PR #1 merged | `experiments/delta_mem_baseline_smoke/config.json`, `experim |
+| 2026-08-01 | `16263368156771076855` | COMP | Non-Linear Flow Network with Byte-Latent Tokens  | PR #3 open | `domains/rwkv/rwkv_nano.py`, `experiments/INDEX.md` |
+
+### game-dev repo (SteeringBehaviour, no PR) (1)
+
+| Date | Session ID | State | Task | PR | Evidence |
+|---|---|---|---|---|---|
+| 2026-03-05 | `15104867601527237647` | COMP | Implement velocity matching steering behavior | no PR | `SteeringBehaviour/Assets/Steering/SteeringVelocityMatching. |
+
+### original_performance_takehome (1)
+
+| Date | Session ID | State | Task | PR | Evidence |
+|---|---|---|---|---|---|
+| 2026-03-06 | `14294061104615164060` | FAIL | Power Scaling and Documentation Refinement | PR #1 open | `.github/prompts/optimize-vliw-kernel.prompt.md`, `.vscode/l |
+
+### flakes (1)
+
+| Date | Session ID | State | Task | PR | Evidence |
+|---|---|---|---|---|---|
+| 2026-08-01 | `7045949993432300923` | COMP | Nix Flakes Empire Setup and Package List | PR #1 merged | `README.md`, `cli/empire.sh` |
+
+### rwkv-style model training (repo unknown) (1)
+
+| Date | Session ID | State | Task | PR | Evidence |
+|---|---|---|---|---|---|
+| 2026-08-01 | `3908728015845795766` | COMP | Training to Achieve Loss Under 0.5 | no PR | — |
+
 ---
 
-## Failed sessions (6) — detail
+## Detailed notes — roco_ai
+
+### Failed sessions (6) — detail
 
 | Session ID | Title | Created | Last update | Last activity |
 |---|---|---|---|---|
@@ -222,7 +249,7 @@ Add Playwright E2E tests for clipboard  | Svelte web app |
 | `15251794233235826841` | Implement story branching and merge capability | 2026-08-02 06:30 | 2026-08-02 08:32 | "Executed tests which passed, clippy passes locally" then failed; duplicate of landed work |
 | `3969969234300664741` | UX improvements §12 | 2026-08-02 08:05 | 2026-08-02 08:39 | Failed; duplicate of the UX task (owned by `10186746275937479489`) |
 
-## Superseded hanging sessions (7) — detail
+### Superseded hanging sessions (7) — detail
 
 These were `AWAITING_USER_FEEDBACK`; their task has since landed in the repo
 (verified in git/AGENTS.md). Each received a stop message on 2026-08-02.
@@ -237,7 +264,7 @@ These were `AWAITING_USER_FEEDBACK`; their task has since landed in the repo
 | `12412840637205810569` | Implement session persistence tests | 2026-08-01 20:32 | Landed — completed session `15216642766507773818` (2026-08-01 13:47) |
 | `17289339326306258117` | Story branching and merge capability | 2026-08-02 06:40 | Landed — commit `119333d` `roco story branch` |
 
-## Task owners (kept after dedup, Aug 2 dispatch)
+### Task owners (kept after dedup, Aug 2 dispatch)
 
 Sessions told to **proceed and open a PR** (one per task, to avoid conflicting PRs):
 
@@ -249,13 +276,7 @@ Sessions told to **proceed and open a PR** (one per task, to avoid conflicting P
 | `1704905722071487336` | auto-managed session/workspace state | completed without pushing — **changeSet extracted; help-hidden part landed** in `67ef06b`, auto-resume hunk rejected (stale signature + wrong semantics) |
 | `16415932402413650959` | The Warden's Folio (creative writing) | completed; PR #24 open, content landed in repo |
 
-## Stale cross-project session (1) — replied "task closed", stopped
-
-| Session ID | Title | Waiting since | Notes |
-|---|---|---|---|
-| `14294061104615164060` | Power Scaling and Documentation Refinement | 2026-03-11 | From a different repo (`CodeDoes/original_performance_takehome`, VLIW kernel optimization); delivered PR #1 (still open, unmerged) and never got a reply. Stopped 2026-08-02; session state now FAILED (closed). |
-
-## Known open items surfaced by this archive
+### Known open items surfaced by this archive (roco_ai)
 
 - **Progress spinners** (AGENTS.md §12): 3 sessions produced indicatif diffs (`904786315020180526`, `9768741472268291629`, `12167752732194728543`) — **no indicatif in repo**; the §12 owner claimed done but never pushed. Feature genuinely open.
 - **`--preview` flag**: sessions `8476536743818790608`, `17981227535420543824` — **not in repo**. Open.
@@ -264,6 +285,9 @@ Sessions told to **proceed and open a PR** (one per task, to avoid conflicting P
 - **CLI help text with management intents**: session `9784625986273857388` — not in `lib.rs` help. Open.
 - **README update** (intents): session `2458249735060063710` — no root `README.md` exists. Open.
 - **Warden's Folio PR #24** still open on `CodeDoes/roco_ai` (content already in repo).
+- **TTRPG adventure guides PR #5** still open on `CodeDoes/rwkv-lab`.
+- **Predictive-Coding flow network PR #3** still open on `CodeDoes/latent-state-thinking-vs-speaking`.
+- **VLIW docs PR #1** still open on `CodeDoes/original_performance_takehome`.
 
 ## Key reference
 

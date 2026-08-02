@@ -2,6 +2,15 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-02 — Full archive extended: ALL 125 sessions, ALL projects
+
+- **Intent**: archive every Jules task not just for roco_ai but for every project.
+- **Expanded** JULES_ARCHIVE.md to a repo-wide closure record: fetched outputs (PR URLs + changeSet files) for the remaining 29 other-repo sessions, checked PR states on all 5 repos (`gh`), and regrouped by repo: 96 roco_ai / 16 svelte multimodal web app / 6 `rwkv-lab` / 3 `latent-state-thinking-vs-speaking` / 1 `flakes` / 1 `original_performance_takehome` / 1 game-dev / 1 rwkv-style training.
+- **Correction**: `12658744895937403067` ("Port App to Node.js & TypeScript") was mislabeled as a Svelte-app session — it holds **roco_ai PR #5 (merged)**; moved into the roco_ai merged-PR bucket (now 18).
+- **Dispositions verified against repo evidence** for every session; PR states live: rwkv-lab 5 merged + 1 open (#5), latent-state 2 merged + 1 open (#3), flakes 1 merged, takehome 1 open, roco_ai 18 merged + 1 open (#24) + 2 closed-unmerged.
+- **Cross-project open items added**: rwkv-lab PR #5 (TTRPG guides), latent-state PR #3 (predictive coding), takehome PR #1 (VLIW docs).
+- No code touched. `cargo test --workspace`: **1048 passed**.
+
 ## 2026-08-02 — Full Jules archive: all 125 sessions indexed (95 roco_ai, 30 other)
 
 - **Intent**: archive *every* Jules task for roco_ai — complete closure record, not just the unusable ones.
