@@ -1,6 +1,6 @@
 {
   "suite_name": "RoCo Architectural Solution Bench",
-  "timestamp": 1785644840,
+  "timestamp": 1785660877,
   "aspects_evaluated": 16,
   "physical_benchmarks": {
     "bnf_constraints": {
@@ -8,19 +8,8 @@
       "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
       "score": 10.0,
       "metrics": {
-        "constrained_latency_ms": "2.34ms",
+        "constrained_latency_ms": "1.46ms",
         "grammar_compliance": "100% Correct Syntax"
-      }
-    },
-    "small_router_gating": {
-      "name": "Small Trained Router vs Model NLU",
-      "description": "Compares low-latency local gating classifiers against multi-token model classification",
-      "score": 100.0,
-      "metrics": {
-        "speedup_multiplier": "1000x faster",
-        "small_trained_router_gating_ms": "0.0000ms",
-        "gated_intent": "adventure",
-        "model_nlu_gating_ms": "0.03ms"
       }
     },
     "code_overcontrol": {
@@ -28,18 +17,29 @@
       "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
       "score": 10.0,
       "metrics": {
-        "overcontrol_status": "Active Interrupt Hook Green",
-        "execution_ms": "0.02ms"
+        "execution_ms": "0.03ms",
+        "overcontrol_status": "Active Interrupt Hook Green"
       }
     },
     "state_baking_vs_context": {
       "name": "State Baking vs Context Management",
       "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
-      "score": 1.1111111111111112,
+      "score": 1.4583333333333335,
       "metrics": {
-        "fresh_prompt_prefill_ms": "0.03ms",
-        "ssm_constant_state_multiplier": "1.1x speedup",
-        "baked_completion_ms": "0.03ms"
+        "fresh_prompt_prefill_ms": "0.04ms",
+        "ssm_constant_state_multiplier": "1.5x speedup",
+        "baked_completion_ms": "0.02ms"
+      }
+    },
+    "small_router_gating": {
+      "name": "Small Trained Router vs Model NLU",
+      "description": "Compares low-latency local gating classifiers against multi-token model classification",
+      "score": 100.0,
+      "metrics": {
+        "gated_intent": "adventure",
+        "model_nlu_gating_ms": "0.03ms",
+        "small_trained_router_gating_ms": "0.0000ms",
+        "speedup_multiplier": "1000x faster"
       }
     }
   },

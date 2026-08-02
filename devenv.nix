@@ -34,8 +34,8 @@
   };
 
   scripts.roco.exec = ''
-    # Use direct release binary if available, otherwise cargo run
-    TARGET_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/release/roco"
+    # Use direct release binary if available, otherwise cargo run.
+    TARGET_BIN="''${CARGO_TARGET_DIR:-$(pwd)/target}/release/roco"
     if [ -f "$TARGET_BIN" ]; then
       exec "$TARGET_BIN" "$@"
     else

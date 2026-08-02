@@ -1112,7 +1112,8 @@ pub fn cmd_story(extra: &[&str]) {
     }
 
     // ── Resume / phase flags ──────────────────────────────────────
-    let resume = extra.iter().any(|&a| a == "--resume" || a == "-r");
+    let is_continue_cmd = extra.first() == Some(&"continue");
+    let resume = extra.iter().any(|&a| a == "--resume" || a == "-r") || is_continue_cmd;
     let force_new = extra.contains(&"--new");
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
     let phase_filter = parse_opt("--phase", extra);

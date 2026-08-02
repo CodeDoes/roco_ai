@@ -223,6 +223,9 @@ The complete() path has two loops: the first flushes the prompt and samples the 
 ### Prefill vs grammar mask
 Prefill tokens (`{\n`) are fed to the model but deliberately NOT passed through the grammar mask. The mask re-emits `{` as its first generated token, so `resp.text` is complete JSON on its own — callers parse `resp.text` directly without prepending the prefill. Do NOT "fix" this by accepting prefill tokens into the mask; it breaks the pipeline's parse path.
 
+### Devenv shell-script strings — escape `${` as `''${`
+`scripts.<name>.exec = ''…''` is an **indented Nix string**. Nix parses `${...}` inside it as interpolation before the result reaches bash. If you want bash parameter expansion (`${VAR:-default}`, `${VAR}`), the `${` MUST be written as `''${` (leading `''` is an empty-string interpolation; the rest is passed verbatim to bash). Bare `$VAR` (no braces) does not need escaping. This applies to comment lines inside the same block too — Nix's lexer still scans them. Re-introduced by commit `28cc9e2`, fixed `2026-08-02`. See `devenv.nix` `scripts.roco.exec`.
+
 ### Model-Specific Behavior
 2.9B parameter RWKV-7 model (full model reference incl. architecture, quantization, baking patterns, research links: `docs/rwkv-v7-g1.md`):
 - Starts repeating at temperature ≥ 0.7 (empirical)

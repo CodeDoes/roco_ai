@@ -2,6 +2,15 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-02 — devenv.nix broken by unescaped Nix interpolation in scripts.roco.exec
+
+- **Intent**: fix `devenv shell` — was failing with `error: syntax error, unexpected invalid token` at `devenv.nix:38` (and cascading `config.cachix.enable` lookup failure).
+- **Root cause**: commit `28cc9e2` re-introduced the `scripts.roco.exec` block that had been fixed in `c8b59ff`. The shell line `TARGET_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/release/roco"` is **bash** syntax, but Nix parses `${...}` as interpolation when the script is given as an indented string (`''...''`). The original fix used `''${...}` to escape Nix interpolation; that escape was lost.
+- **Fix**: `''${CARGO_TARGET_DIR:-$(pwd)/target}` (Nix sees `''` empty-string + literal `${...}`). Generated script `/nix/store/...-roco-script` now reads correct bash; `devenv shell roco --help` works end-to-end.
+- **Lesson for AGENTS.md**: any time a `scripts.<name>.exec = ''...''` body contains shell `${VAR:-default}` or `${VAR}` parameter expansion, the `${` MUST be written as `''${` (the leading `''` is an empty-string Nix interpolation; the rest is passed through verbatim to bash). Same rule applies to comments inside the same block — Nix's lexer still scans them. Bare `$VAR` is fine (no `${`).
+- No tests changed (`cargo test --workspace` count unchanged); devenv is configuration-only.
+- Still red: same items as before — real-model router verification (§13), model limitations (§9), §12 UX items.
+
 ## 2026-08-01 — CI/CD + devenv gate landed; PRs 16-21 merged (Jules + auto-generated)
 
 - **Intent**: finish the PR reconciliation batch from earlier (PRs 16-21), then build the CI gate the user explicitly asked for ("this shows we REALLY need CI CD to do this for us").
