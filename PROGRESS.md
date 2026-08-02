@@ -2,6 +2,15 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-02 — Triage sweep #2: found and closed 1 more stale waiting session
+
+- **Intent**: re-run the archive/respond sweep — page 1 showed all-clear (94 completed / 6 failed), but pagination check found page 2 held one more `AWAITING_USER_FEEDBACK` session.
+- **Found**: `14294061104615164060` "Power Scaling and Documentation Refinement" — **waiting since 2026-03-11** (5 months). It belongs to a *different* repo (`CodeDoes/original_performance_takehome`, VLIW kernel optimization); it delivered PR #1 back in March (still open/unmerged) and its last message was a mid-research technical question.
+- **Action**: replied "task closed, 5 months old, superseded — stop, no new PRs". Session moved out of waiting (now FAILED/closed). Added to `JULES_ARCHIVE.md` stale section. No further pages exist (verified pageToken chain).
+- Inventory now: **94 completed / 6 failed (archived) / 1 stale (closed) / 0 waiting**.
+- No Rust code touched; `cargo test --workspace` unchanged (**1048 passed**).
+- Still red: same items as before — real-model router verification (§13), model limitations (§9), §12 UX items (quickstart/spinners still open).
+
 ## 2026-08-02 — Jules session work landed: continue, revise, hidden help; PR #23 merged
 
 - **Intent**: "go on with jules" — review/merge the open Bolt PR, then land the work from the proceed sessions (which completed without pushing).

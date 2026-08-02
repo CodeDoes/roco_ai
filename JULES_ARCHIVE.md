@@ -7,6 +7,12 @@ closed out here. Read-only state; do not revive these sessions.
 
 Archived: 2026-08-02. See `scripts/jules.sh` for live session management.
 
+## Stale cross-project session (1) — replied "task closed", stopped
+
+| Session ID | Title | Waiting since | Notes |
+|---|---|---|---|
+| `14294061104615164060` | Power Scaling and Documentation Refinement | 2026-03-11 | From a different repo (`CodeDoes/original_performance_takehome`, VLIW kernel optimization); delivered PR #1 (still open, unmerged) and never got a reply. Stopped 2026-08-02; session state now FAILED (closed). |
+
 ---
 
 ## FAILED sessions (6)
