@@ -45,8 +45,8 @@ impl DeterministicPrng {
 /// Helper to tokenize text into lowercase alphanumeric tokens of length >= 2.
 pub fn tokenize(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphanumeric())
-        .map(|t| t.to_lowercase())
         .filter(|t| t.len() >= 2)
+        .map(|t| t.to_lowercase())
         .collect()
 }
 
@@ -83,10 +83,7 @@ pub fn embed(text: &str, dimensions: usize) -> Vec<f32> {
     }
 
     // Normalize to L2 unit length
-    let mut norm_sq = 0.0f32;
-    for &val in &doc_vector {
-        norm_sq += val * val;
-    }
+    let norm_sq: f32 = doc_vector.iter().map(|&val| val * val).sum();
     let norm = norm_sq.sqrt();
 
     if norm > 1e-9 {

@@ -54,8 +54,8 @@ fn new_id() -> String {
 
 pub(crate) fn tokenize(s: &str) -> Vec<String> {
     s.split(|c: char| !c.is_alphanumeric())
-        .map(|t| t.to_lowercase())
         .filter(|t| t.len() >= 3)
+        .map(|t| t.to_lowercase())
         .collect()
 }
 
