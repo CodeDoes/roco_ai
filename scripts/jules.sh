@@ -15,6 +15,8 @@
 #   scripts/jules.sh send <id> "<message>"     Message the agent in a session
 #   scripts/jules.sh create <repo> "<prompt>" [--branch main] [--pr] [--approval]
 #   scripts/jules.sh approve <id>              Approve a pending plan
+#   scripts/jules.sh archive <id>              Archive one session (archived=true)
+#   scripts/jules.sh archive-all [--limit N]   Archive every session (all pages)
 #   scripts/jules.sh curl <METHOD> <path> [--data '<json>']   Raw passthrough
 #
 # The key is read from $JULES_API_KEY if set, otherwise from ./.env (repo root).
@@ -204,6 +206,39 @@ case "$CMD" in
         require_id "$@"
         api POST "/sessions/$1:approvePlan" | jq . || true
         echo "Plan approved for session $1"
+        ;;
+    archive)
+        require_id "$@"
+        resp="$(api POST "/sessions/$1:archive")"
+        die_on_error "$resp"
+        printf '%s' "$resp" | jq -r '"Archived: " + .id + " (state: " + .state + ", archived: " + ((.archived // false) | tostring) + ")"'
+        ;;
+    archive-all)
+        # Archive every session across all pages; prints id + new archived flag.
+        # Paginates with nextPageToken; skips already-archived sessions.
+        limit="${2:-100}"
+        token=""
+        total=0
+        archived=0
+        while :; do
+            page="$(api GET "/sessions?pageSize=$limit${token:+&pageToken=$token}")"
+            die_on_error "$page"
+            ids="$(printf '%s' "$page" | jq -r '.sessions[]?.id')"
+            [ -z "$ids" ] && break
+            while IFS= read -r sid; do
+                total=$((total + 1))
+                is_archived="$(api GET "/sessions/$sid" | jq -r '.archived // false')"
+                if [ "$is_archived" = "true" ]; then
+                    continue
+                fi
+                api POST "/sessions/$sid:archive" > /dev/null 2>&1 || echo "  !! failed: $sid" >&2
+                archived=$((archived + 1))
+                echo "  archived $sid"
+            done <<< "$ids"
+            token="$(printf '%s' "$page" | jq -r '.nextPageToken // empty')"
+            [ -z "$token" ] && break
+        done
+        echo "Done: $total sessions seen, $archived newly archived."
         ;;
     curl)
         method="${1:-GET}"

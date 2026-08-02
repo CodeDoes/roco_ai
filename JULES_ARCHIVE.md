@@ -2,13 +2,19 @@
 
 Complete index of **all Jules (Bolt) API sessions** across every `CodeDoes` project —
 
-each task, its repo, outcome, and where its work landed (if it did). Sessions cannot be
+each task, its repo, outcome, and where its work landed (if it did). **All 125 sessions are
 
-deleted via the v1alpha API (no cancel/delete endpoint — probed `:cancel` → 404), so this
+archived on the Jules platform itself** (via `POST /sessions/{id}:archive` → `archived: true`;
 
-file is the permanent closure record. **Read-only: do not revive archived sessions.**
+verified 2026-08-02). The API has **no cancel/delete** endpoint (probed `:cancel` → 404,
 
-Live management: `scripts/jules.sh` (`check | sources | sessions | session | activities | send | create | approve | curl`).
+PATCH → 404, `:close` → 404), but `:archive` exists and marks sessions as archived. This file
+
+is the permanent closure record of what each task was and what happened to its work.
+
+**Read-only: do not revive archived sessions.**
+
+Live management: `scripts/jules.sh` (`check | sources | sessions | session | activities | send | create | approve | archive | archive-all | curl`).
 
 Archived (complete, all projects): 2026-08-02.
 
@@ -16,7 +22,9 @@ Archived (complete, all projects): 2026-08-02.
 
 ## Summary
 
-- **125 sessions total** — the complete set (all API pages fetched).
+- **125 sessions total** — the complete set (all API pages fetched). **All 125 archived
+  on Jules** (`archived: true`, verified concurrently 2026-08-02; the list endpoint now
+  excludes archived sessions).
 
 - **Recurring failure mode**: agents complete tasks but never push a branch/PR — the work
 
@@ -293,4 +301,6 @@ Sessions told to **proceed and open a PR** (one per task, to avoid conflicting P
 
 - Jules API: https://developers.google.com/jules/api
 - Live management: `scripts/jules.sh` (`check | sources | sessions | session | activities | send | create | approve | curl`)
-- No delete/cancel endpoint exists in v1alpha (probed `:cancel` → 404) — archived sessions remain in the Jules web UI history.
+- No delete/cancel endpoint exists in v1alpha (probed `:cancel` → 404, PATCH → 404, `:close` → 404).
+  **`POST /sessions/{id}:archive` exists** and sets `archived: true` — use `scripts/jules.sh archive <id>` or `archive-all`.
+  Archived sessions remain in the Jules web UI history but are excluded from the API list endpoint.

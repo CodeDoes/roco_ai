@@ -2,6 +2,15 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-02 — ALL 125 sessions archived ON Jules (found the real `:archive` endpoint)
+
+- **Intent**: user correctly pointed out I was only writing docs to the repo, not archiving on the platform. Probed the API: PATCH → 404, `:close` → 404, `:cancel` → 404 — but **`POST /sessions/{id}:archive` → 200, sets `archived: true`** (persists; the list endpoint then excludes archived sessions).
+- **Added** `archive <id>` + `archive-all` subcommands to `scripts/jules.sh`.
+- **Archived all 125 sessions** (concurrent HTTP, 16 workers — sequential shell was too slow and was aborted): 68 archived in the final pass; the other 57 had been archived by the earlier aborted runs. **Verification: 125/125 `archived: true`, 0 errors** (concurrent check of all known IDs, ~10s).
+- Updated `JULES_ARCHIVE.md` (platform-archived status + corrected "no delete/cancel" note → archive exists), `AGENTS.md` §10 (endpoint documented as an invariant), PROGRESS.md.
+- No Rust code touched. `cargo test --workspace`: **1048 passed**.
+- **Gotcha recorded**: do not iterate the Jules API sequentially in shell for bulk ops — use concurrent HTTP (a 12-worker process-spawning loop and a sequential bash loop both hung/aborted); the direct-Python concurrent version finished in seconds.
+
 ## 2026-08-02 — Full archive extended: ALL 125 sessions, ALL projects
 
 - **Intent**: archive every Jules task not just for roco_ai but for every project.
