@@ -64,7 +64,6 @@ fn test_future_multiturn_narrative_editing() {
 /// explore a different plot direction, list current branches, and merge
 /// the favorite branch back into the main story trunk.
 #[test]
-#[ignore]
 fn test_future_story_branching_and_merge() {
     let runner = MockCliRunner::new();
     let ws_dir = runner.working_dir().join("test_branching_story");

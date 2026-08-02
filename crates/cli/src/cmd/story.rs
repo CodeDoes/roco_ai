@@ -2082,3 +2082,138 @@ pub fn cmd_story_edit(extra: &[&str]) {
         }
     });
 }
+
+pub fn cmd_story_branch(extra: &[&str]) {
+    let subcommand = extra.first().copied();
+    let mock = std::env::var("ROCO_USE_MOCK_BACKEND").is_ok() || extra.contains(&"--mock");
+    if mock {
+        std::env::set_var("ROCO_USE_MOCK_BACKEND", "1");
+    }
+
+    match subcommand {
+        Some("create") => cmd_branch_create(&extra[1..]),
+        Some("list") => cmd_branch_list(&extra[1..]),
+        Some("merge") => cmd_branch_merge(&extra[1..]),
+        Some("switch") => cmd_branch_switch(&extra[1..]),
+        _ => {
+            eprintln!("Usage: roco story branch <create|list|merge|switch> [args]");
+            eprintln!("  create  <name>  --workspace <path>  Create a new branch");
+            eprintln!("  list    --workspace <path>           List branches");
+            eprintln!("  merge   <name>  --workspace <path>  Merge branch back");
+            eprintln!("  switch  <name>  --workspace <path>  Switch active branch");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn cmd_branch_create(extra: &[&str]) {
+    let workspace_path = parse_opt("--workspace", extra).expect("Missing --workspace");
+    let branch_name = extra.first().copied().expect("Missing branch name");
+
+    let ws_dir = std::path::PathBuf::from(workspace_path);
+    let branches_dir = ws_dir.join(".roco").join("branches");
+    std::fs::create_dir_all(&branches_dir).expect("Failed to create branches dir");
+
+    // Create branch directory if it doesn't exist
+    let branch_path = branches_dir.join(branch_name);
+    if !branch_path.exists() {
+        // Copy current workspace to branch
+        let walker = walkdir::WalkDir::new(&ws_dir)
+            .min_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let p = e.path();
+                !p.starts_with(&branches_dir) && !p.starts_with(".git")
+            });
+        for entry in walker {
+            let rel = entry.path().strip_prefix(&ws_dir).unwrap();
+            let dest = branch_path.join(rel);
+            if entry.file_type().is_dir() {
+                std::fs::create_dir_all(&dest).ok();
+            } else if entry.file_type().is_file() {
+                std::fs::create_dir_all(dest.parent().unwrap()).ok();
+                std::fs::copy(entry.path(), dest).ok();
+            }
+        }
+    }
+
+    // Write current branch to .roco/current_branch
+    let current_branch_file = ws_dir.join(".roco").join("current_branch");
+    std::fs::write(current_branch_file, branch_name).expect("Failed to write current branch");
+
+    println!("Active branch switched to '{}'", branch_name);
+}
+
+fn cmd_branch_list(extra: &[&str]) {
+    let workspace_path = parse_opt("--workspace", extra).expect("Missing --workspace");
+    let ws_dir = std::path::PathBuf::from(workspace_path);
+    let branches_dir = ws_dir.join(".roco").join("branches");
+
+    println!("Branches:");
+    println!("  main (current)");
+
+    if branches_dir.exists() {
+        for entry in std::fs::read_dir(&branches_dir).expect("Failed to read branches dir") {
+            if let Ok(e) = entry {
+                if e.path().is_dir() {
+                    println!("  {}", e.file_name().to_string_lossy());
+                }
+            }
+        }
+    }
+}
+
+fn cmd_branch_merge(extra: &[&str]) {
+    let workspace_path = parse_opt("--workspace", extra).expect("Missing --workspace");
+    let branch_name = extra.first().copied().expect("Missing branch name");
+
+    let ws_dir = std::path::PathBuf::from(workspace_path);
+    let branches_dir = ws_dir.join(".roco").join("branches");
+    let branch_path = branches_dir.join(branch_name);
+
+    if !branch_path.exists() {
+        eprintln!("Error: Branch '{}' does not exist.", branch_name);
+        std::process::exit(1);
+    }
+
+    // Copy branch files to workspace
+    let walker = walkdir::WalkDir::new(&branch_path)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file());
+    for entry in walker {
+        let rel = entry.path().strip_prefix(&branch_path).unwrap();
+        let dest = ws_dir.join(rel);
+        std::fs::create_dir_all(dest.parent().unwrap()).ok();
+        std::fs::copy(entry.path(), dest).ok();
+        println!("Merged: {}", rel.display());
+    }
+
+    // Switch back to main
+    let current_branch_file = ws_dir.join(".roco").join("current_branch");
+    std::fs::write(current_branch_file, "main").expect("Failed to write current branch");
+
+    println!("Merged branch '{}' back into 'main'.", branch_name);
+}
+
+fn cmd_branch_switch(extra: &[&str]) {
+    let workspace_path = parse_opt("--workspace", extra).expect("Missing --workspace");
+    let branch_name = extra.first().copied().expect("Missing branch name");
+
+    let ws_dir = std::path::PathBuf::from(workspace_path);
+    let branches_dir = ws_dir.join(".roco").join("branches");
+    let branch_path = branches_dir.join(branch_name);
+
+    if !branch_path.exists() {
+        eprintln!("Error: Branch '{}' does not exist.", branch_name);
+        std::process::exit(1);
+    }
+
+    // Write current branch
+    let current_branch_file = ws_dir.join(".roco").join("current_branch");
+    std::fs::write(current_branch_file, branch_name).expect("Failed to write current branch");
+
+    println!("Active branch switched to '{}'.", branch_name);
+}

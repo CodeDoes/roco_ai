@@ -330,7 +330,9 @@ fn main() {
             if has_help_flag(&extra) {
                 help(Some("story"));
             }
-            if extra.first() == Some(&"edit") {
+            if extra.first() == Some(&"branch") {
+                cmd::story::cmd_story_branch(&extra[1..]);
+            } else if extra.first() == Some(&"edit") {
                 cmd::story::cmd_story_edit(&extra[1..]);
             } else {
                 cmd::story::cmd_story(&extra);
