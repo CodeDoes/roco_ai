@@ -2,6 +2,18 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-02 — Jules session work landed: continue, revise, hidden help; PR #23 merged
+
+- **Intent**: "go on with jules" — review/merge the open Bolt PR, then land the work from the proceed sessions (which completed without pushing).
+- **PR #23 merged** (squash, `97736ea`): Bolt tokenization optimization (filter-before-map in `embeddings.rs`/`memory.rs` to skip allocations for empty/short tokens). Verified locally first (235 agent tests + clippy clean).
+- **Landed 3 dropped changeSets** extracted from session activities (`JULES_ARCHIVE.md`/`scripts/jules.sh` workflow — agents produce `unidiffPatch` diffs but never push):
+  1. `story --continue`/`continue` (session `1790401646888824729`): writes only the next chapter, skips outline/wiki regen, backup first, `state_slot` plumbing; new `tests/story_continue_test.rs`. Resolved 3-way conflicts with existing `--resume`/branching code (kept `is_continue_cmd` + new flag; restored dropped closing brace).
+  2. `cmd_revise` (session `7057193458828796296`): `--workspace/--chapter/--feedback`, original saved to `.roco/revisions/`; `test_future_collaborative_revisions` now passes (3/3 future-capability tests).
+  3. hidden power-user help (session `1704905722071487336`): `help(sub, hidden)` + `--hidden` flag hides session/workspace from root help (§12); all call sites updated incl. two the agent missed (`status`, `quickstart`).
+- **Rejected** the agent's `launch_story` auto-resume hunk: it dropped the `is_new` param (stale signature vs current router) and would auto-resume the latest workspace for EVERY story prompt, breaking the explicit `new_project`/`continue` intents (§13). Router already handles auto-management correctly.
+- `cargo test --workspace`: **1048 passed / 0 failed / 0 ignored**; clippy 0 warnings; fmt clean. Commits `67ef06b` + `16df803` pushed.
+- Still red: same items as before — real-model router verification (§13), model limitations (§9), §12 UX items (quickstart/spinners genuinely still open — the UX §12 session claimed done but never pushed).
+
 ## 2026-08-02 — Jules backlog triage: 21 hanging sessions replied, 13 archived
 
 - **Intent**: clear the 21 AWAITING_USER_FEEDBACK sessions (some stuck since Aug 1) and the 6 FAILED sessions; ensure no conflicting duplicate PRs.

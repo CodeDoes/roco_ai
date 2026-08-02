@@ -39,13 +39,13 @@ These were `AWAITING_USER_FEEDBACK`; their task has since landed in the repo
 
 Sessions told to **proceed and open a PR** (one per task, to avoid conflicting PRs):
 
-| Session ID | Task | Instruction |
+| Session ID | Task | Outcome |
 |---|---|---|
-| `10186746275937479489` | UX improvements §12 | verify + open PR |
-| `1790401646888824729` | `roco story continue` | verify + open PR |
-| `7057193458828796296` | collaborative revisions (`revise`) | finish + verify + open PR |
-| `1704905722071487336` | auto-managed session/workspace state | verify + open PR |
-| `16415932402413650959` | The Warden's Folio (creative writing) | deliver work, no PR |
+| `10186746275937479489` | UX improvements §12 | completed **without pushing** — claimed done, but quickstart/spinners never landed (still open §12 items) |
+| `1790401646888824729` | `roco story continue` | completed without pushing — **changeSet extracted and landed** in `67ef06b` |
+| `7057193458828796296` | collaborative revisions (`revise`) | completed without pushing — **changeSet extracted and landed** in `67ef06b` |
+| `1704905722071487336` | auto-managed session/workspace state | completed without pushing — **changeSet extracted; help-hidden part landed**, auto-resume hunk rejected (stale signature + wrong semantics) |
+| `16415932402413650959` | The Warden's Folio (creative writing) | completed, 2 outputs delivered |
 
 Duplicate sessions told to **stop** (15): `7675478194000220051`, `11357377229008668739`,
 `3521386786704750735`, `18396354018188246689`, `2633546216780420868`,
