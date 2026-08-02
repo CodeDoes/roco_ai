@@ -10,7 +10,7 @@ pub fn cmd_eval(extra: &[&str]) {
         "run",
         &[
             "-p",
-            "roco-inference",
+            "roco-engine-gpu",
             "--example",
             "rwkv_test",
             "--release",

@@ -89,7 +89,7 @@ check:
 
 # Leaf-crate check — use while editing agent/engine without rebuilding CLI.
 check-leaf:
-	CARGO_INCREMENTAL=1 RUSTC_WRAPPER= $(CARGO) check -p roco-agent -p roco-engine -p roco-grammar
+	CARGO_INCREMENTAL=1 RUSTC_WRAPPER= $(CARGO) check -p roco-agent -p roco-engine
 
 # Watch a crate (requires cargo-watch). Example: make watch CRATE=roco-agent
 CRATE ?= roco-cli
@@ -130,10 +130,10 @@ cache-zero:
 # ─── RWKV inference ──────────────────────────────────────────────────────────
 
 rwkv:
-	$(CARGO) run -p roco-inference --example rwkv_test --release
+	$(CARGO) run -p roco-engine-gpu --example rwkv_test --release
 
 grammar:
-	$(CARGO) run -p roco-inference --example grammar_smoke --release
+	$(CARGO) run -p roco-engine-gpu --example grammar_smoke --release
 
 eval:
 	$(CARGO) run -p roco-engine --example eval_suite --release -- --backend rwkv 2>/dev/null || $(CARGO) run -p roco-cli -- eval -- --backend rwkv

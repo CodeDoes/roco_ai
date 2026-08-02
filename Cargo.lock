@@ -4470,6 +4470,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tray-icon",
+ "walkdir",
 ]
 
 [[package]]

@@ -12,7 +12,7 @@
 //! Open http://localhost:<port> in your browser to see the HTML-rendered
 //! conversation. The page auto-refreshes after each agent response.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -116,8 +116,14 @@ pub fn cmd_html(extra: &[&str]) {
     r::dim("  Open the URL in your browser to see HTML-rendered responses.");
     r::dim("  Type in the terminal.  :h for help, :q to quit.\n");
 
-    // Open browser
-    open_browser(&server_url);
+    // Open browser — only for interactive sessions (TTY stdout). Tests and
+    // scripts pipe stdout and must never spawn a browser. Use `:open` to
+    // (re)open the page manually at any time.
+    if std::io::stdout().is_terminal() {
+        open_browser(&server_url);
+    } else {
+        r::dim("  Non-interactive session — skipping browser auto-open. Use ':open' to open it manually.");
+    }
 
     // Helper: add a message and mark dirty so the page refreshes
     let add_msg = |role: &str, content: &str| {

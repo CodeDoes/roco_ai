@@ -79,6 +79,7 @@ pub fn help(sub: Option<&str>) {
         Some("export") => help_export(),
         Some("game") => help_game(),
         Some("ttrpg") => help_ttrpg(),
+        Some("map") => help_map(),
         Some("world-sim") => help_world_sim(),
         Some("html") => help_html(),
         Some("code") | Some("coder") => help_code(),
@@ -319,6 +320,21 @@ fn help_ttrpg() {
     eprintln!("  :chat <npc_name>           Immersive character conversation chat");
     eprintln!(
         "  :add_trigger <text>        Register a natural language trigger checked every turn\n"
+    );
+    std::process::exit(0);
+}
+
+fn help_map() {
+    eprintln!("roco map — Procedural WFC world map generator\n");
+    eprintln!("Usage:");
+    eprintln!("  roco map [--width W] [--height H] [--seed N] [--no-open]");
+    eprintln!("  roco map --ttrpg                     Also export biome regions to TTRPG state\n");
+    eprintln!("Flags:");
+    eprintln!("  --width W / --height H               Map dimensions (default 40x20)");
+    eprintln!("  --seed N                             Deterministic seed (default: random)");
+    eprintln!("  --ttrpg                              Export travelable biome regions");
+    eprintln!(
+        "  --no-open                            Do not open the generated HTML in a browser\n"
     );
     std::process::exit(0);
 }

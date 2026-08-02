@@ -1,6 +1,6 @@
 //! Full eval suite runner — tests the model across all pipeline and chat categories.
 //!
-//! Run: cargo run --release --example full_eval --package roco-inference
+//! Run: cargo run --release --example full_eval --package roco-engine-gpu
 
 //! All prompts/grammars imported from production code to keep evals DRY.
 //! - INTENT_GRAMMAR from crates/agent/src/mecha_agent.rs

@@ -74,7 +74,7 @@ cargo test --workspace --no-run
 # ── Step 4: example targets (used by start.sh + surfaces) ────────────────
 echo ""
 echo "Step 4: Example target build (start.sh, story_*, grammar_smoke)..."
-cargo check -p roco-inference --examples
+cargo check -p roco-engine-gpu --examples
 cargo check -p roco-cli
 
 # ── Step 5: rustfmt check ────────────────────────────────────────────────
@@ -99,4 +99,4 @@ echo "✅ Verification complete."
 echo "If any step failed, fix it before committing."
 echo ""
 echo "Note: full backend tests hang in debug builds (see AGENTS.md §I)."
-echo "      Use 'RWKV_ADAPTER=llvmpipe cargo test -p roco-inference' for CPU fallback."
+echo "      Use 'RWKV_ADAPTER=llvmpipe cargo test -p roco-engine-gpu' for CPU fallback."

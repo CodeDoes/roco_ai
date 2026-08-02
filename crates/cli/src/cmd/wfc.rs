@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use crate::rich_output as r;
@@ -978,6 +979,10 @@ pub fn cmd_map(extra: &[&str]) {
                 .unwrap_or_default()
                 .as_secs()
         });
+    // Auto-open the generated HTML in the default browser only for interactive
+    // sessions. Tests/scripts pipe stdout (not a TTY), so they never spawn a
+    // browser; `--no-open` disables it even in interactive use.
+    let auto_open = !extra.contains(&"--no-open") && std::io::stdout().is_terminal();
 
     r::header("🌍 Procedural WFC World Map Creator 🌍");
     println!("  Width:  {width}");
@@ -1033,10 +1038,16 @@ pub fn cmd_map(extra: &[&str]) {
             "HTML Interactive Webapp saved to: {}",
             map_html_path.display()
         ));
-        // Automatically open map in browser
-        let absolute_path = std::fs::canonicalize(&map_html_path).unwrap_or(map_html_path);
-        let url = format!("file://{}", absolute_path.display());
-        open_browser(&url);
+        if auto_open {
+            // Automatically open map in browser
+            let absolute_path = std::fs::canonicalize(&map_html_path).unwrap_or(map_html_path);
+            let url = format!("file://{}", absolute_path.display());
+            open_browser(&url);
+        } else if !extra.contains(&"--no-open") {
+            r::dim(
+                "  Skipped browser auto-open (non-interactive). Open the file path above manually.",
+            );
+        }
     }
 
     // ── Export to TTRPG if requested ───────────────────────────────────────

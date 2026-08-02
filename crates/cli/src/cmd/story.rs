@@ -2154,11 +2154,12 @@ fn cmd_branch_list(extra: &[&str]) {
     println!("  main (current)");
 
     if branches_dir.exists() {
-        for entry in std::fs::read_dir(&branches_dir).expect("Failed to read branches dir") {
-            if let Ok(e) = entry {
-                if e.path().is_dir() {
-                    println!("  {}", e.file_name().to_string_lossy());
-                }
+        for e in std::fs::read_dir(&branches_dir)
+            .expect("Failed to read branches dir")
+            .flatten()
+        {
+            if e.path().is_dir() {
+                println!("  {}", e.file_name().to_string_lossy());
             }
         }
     }

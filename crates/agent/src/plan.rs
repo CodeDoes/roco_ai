@@ -370,7 +370,7 @@ pub struct StepOutcome {
     pub used_tool: Option<String>,
 }
 
-/// Generate a strict GBNF grammar for our Plan structure using `roco-grammar`.
+/// Generate a strict GBNF grammar for our Plan structure using `roco_engine::grammar`.
 pub fn plan_grammar() -> String {
     use roco_engine::grammar::{schema_to_gbnf, Schema};
     let step_schema = Schema::object()

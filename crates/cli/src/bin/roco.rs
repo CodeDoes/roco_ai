@@ -87,7 +87,7 @@ fn main() {
                 "run",
                 &[
                     "-p",
-                    "roco-inference",
+                    "roco-engine-gpu",
                     "--example",
                     "rwkv_test",
                     "--release",
@@ -103,7 +103,7 @@ fn main() {
                 "run",
                 &[
                     "-p",
-                    "roco-inference",
+                    "roco-engine-gpu",
                     "--example",
                     "grammar_smoke",
                     "--release",

@@ -226,6 +226,9 @@ Prefill tokens (`{\n`) are fed to the model but deliberately NOT passed through 
 ### Devenv shell-script strings — escape `${` as `''${`
 `scripts.<name>.exec = ''…''` is an **indented Nix string**. Nix parses `${...}` inside it as interpolation before the result reaches bash. If you want bash parameter expansion (`${VAR:-default}`, `${VAR}`), the `${` MUST be written as `''${` (leading `''` is an empty-string interpolation; the rest is passed verbatim to bash). Bare `$VAR` (no braces) does not need escaping. This applies to comment lines inside the same block too — Nix's lexer still scans them. Re-introduced by commit `28cc9e2`, fixed `2026-08-02`. See `devenv.nix` `scripts.roco.exec`.
 
+### Browser auto-open is gated on TTY — tests must never spawn a browser
+The `open_browser` helpers in `crates/cli/src/cmd/wfc.rs` and `crates/cli/src/cmd/html.rs` must only fire for interactive sessions. The guard is `std::io::stdout().is_terminal()` (tests/scripts pipe stdout, so they never open a browser — WFC integration tests run `roco map` end-to-end and used to pop `xdg-open` on every `cargo test`). `roco map` also honors `--no-open`; `roco html` keeps `:open` as the manual escape hatch. Do NOT remove the TTY guard to "make it always open" — it breaks the test suite's side-effect-free guarantee.
+
 ### Model-Specific Behavior
 2.9B parameter RWKV-7 model (full model reference incl. architecture, quantization, baking patterns, research links: `docs/rwkv-v7-g1.md`):
 - Starts repeating at temperature ≥ 0.7 (empirical)
@@ -244,6 +247,20 @@ The CLI includes a dedicated `roco session` subcommand designed to support state
 ### Migration Complete
 
 The legacy `session`/`bake_state`/`OpenAiCompletionRequest::session` bridge fields have been removed. All callers use `init_state`/`state_slot` and embed system text directly in the prompt.
+
+### Jules API key — where it lives and how to manage it
+
+`JULES_API_KEY` (Jules API, https://developers.google.com/jules/api) lives **only** in `.env` at the repo root, which is gitignored — it has never been committed and must never be. Two hard rules:
+
+1. **Never echo or log the key.** `scripts/jules.sh` masks it (`AQ.A…suyA` style) everywhere; `check`/`sources`/etc. never print it. Do not add `-v`/`--verbose` curl flags to that script that would leak the header.
+2. **Never commit `.env`** (already in `.gitignore`). The committed template is `.env.example` (placeholder only).
+
+Operational notes:
+- **Loader**: `devenv.nix` sets `dotenv.enable = true`, so every devenv shell injects the key into the environment — which also copies it into the generated (gitignored) `.devenv/shell-*.sh` files. That's expected; those files are local-only. Note the loader exports the value wrapped in literal double quotes (`"AQ.…"`, length 55 vs 53) — `scripts/jules.sh` normalizes quotes before use.
+- **Usage**: `scripts/jules.sh check | sources | sessions | session <id> | activities <id> | send <id> "msg" | create <repo> "prompt" [--pr] | approve <id> | curl <METHOD> <path>`. It reads the key from `$JULES_API_KEY` (env) or `.env` at call time.
+- **Rotation**: keys are created/revoked at https://jules.google.com/settings#api (max 3). Google **auto-disables** any key found publicly exposed — if a leak is suspected, rotate there and update `.env`. Verify after rotation with `scripts/jules.sh check`.
+- **Permissions**: keep `.env` at 0600 (`chmod 600 .env`).
+- **Cost/access**: the key authenticates as the CodeDoes GitHub org owner across ~100 connected repos; treat it as full repo write access (it can open PRs — `create --pr`).
 
 ## 11. Common User Feedback
 

@@ -2,6 +2,39 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-02 — Jules backlog triage: 21 hanging sessions replied, 13 archived
+
+- **Intent**: clear the 21 AWAITING_USER_FEEDBACK sessions (some stuck since Aug 1) and the 6 FAILED sessions; ensure no conflicting duplicate PRs.
+- **Audit**: 100 sessions = 73 completed / 21 waiting / 6 failed. The 21 waiting were all duplicates of only ~7 tasks (UX §12 ×2, continue intent ×5, collaborative revisions ×4, story branching, auto-managed state ×2, singles); agents had finished work and asked questions nobody answered. No cancel/delete API exists in v1alpha (probed `:cancel` → 404) — the only lever is `sendMessage`.
+- **Replied to all 21** (via `scripts/jules.sh send`): 5 got proceed+PR instructions (one owner per task: UX §12 = `10186746275937479489`, continue = `1790401646888824729`, collab = `7057193458828796296`, auto-managed = `1704905722071487336`, Warden's Folio = `16415932402413650959`), 15 got stop/duplicate messages. Sessions flipped to IN_PROGRESS immediately; 15/21 completed within minutes with no rogue PRs.
+- **Archived 13 unusable** in new committed `JULES_ARCHIVE.md`: 6 FAILED + 7 superseded (work verified landed: error hints in gateway, show_work/new_project intents §13, WFC-test fix, --preview, session-persistence tests, `roco story branch` commit `119333d`).
+- **Gotcha**: `sendMessage` returns `{}` and the agent replies in the next activity (per API docs); session state/updateTime is the reliable signal, activity lists lag. The UX §12 owner completed WITHOUT opening a PR and its indicatif diff never landed (agent claimed "already implemented" against base `89e2c9f`) — session closed, work not in repo; `roco quickstart`/spinners still open §12 items.
+- `cargo test --workspace`: **1046 passed / 0 failed** (unchanged — no Rust code touched).
+- Still red: same items as before — real-model router verification (§13), model limitations (§9), §12 UX items.
+
+## 2026-08-02 — Jules API key management: wrapper script, lockdown, docs
+
+- **Intent**: the Jules API key in `.env` was unmanaged — no consumer, no rotation path, no docs; and it had silently spread into devenv's generated `shell-*.sh` files. Verify it never leaked, then build proper management.
+- **Audit**: key valid (authenticates as CodeDoes org owner, ~100 repos); present in exactly 3 gitignored files (`.env`, `.devenv/shell-env.sh`, `.devenv/shell-2c3b8adda910bb45.sh`); **never in git history/tracked files**; `.env` already in `.gitignore`. No repo code consumed it before this.
+- **Added `scripts/jules.sh`**: key manager + API wrapper (check/sources/sessions/session/activities/send/create/approve/curl). Reads key from `$JULES_API_KEY` or `.env` at call time, **never prints it** (masked `AQ.A…suyA`); normalizes the devenv dotenv double-quote wrapping (55-char vs 53-char key) — without that, `check` got a 401. Uses jq for formatting (no shell-escape bugs, no double-request fallback on SIGPIPE). All read paths verified live: `check` ✅, `sources` (100 repos), `sessions`, `session`, `activities`.
+- **Lockdown**: `chmod 600` on `.env` + the two devenv shell copies (devenv regenerates them on each shell entry — `.env` is the canonical secret store). Added committed `.env.example` template (placeholder only). Documented invariants in AGENTS.md §10 (never echo/commit the key; loader quote-wrapping gotcha; rotation at jules.google.com/settings#api; auto-disable on public exposure; repo-write-level access).
+- `cargo test --workspace`: **1046 passed / 0 failed** (unchanged — no Rust code touched).
+- Still red: same items as before — real-model router verification (§13), model limitations (§9), §12 UX items.
+
+## 2026-08-02 — Browser auto-open suppressed in non-interactive runs (tests kept spawning xdg-open)
+
+- **Intent**: stop `cargo test` from launching a browser window every run — `test_cli_wfc_map_generation`/`test_cli_wfc_map_ttrpg_export` invoke `roco map`, which called `open_browser` (xdg-open) unconditionally after writing `wfc_map.html`.
+- **Fix**: auto-open now requires a TTY (`std::io::stdout().is_terminal()`); tests/scripts pipe stdout so they never spawn a browser. Added `--no-open` flag to `roco map` (+ `help_map()` section; was falling through to root help) and a skip hint in non-interactive mode. `roco html` interactive auto-open gated the same way; `:open` stays as the manual escape hatch. Also fixed the leftover clippy `manual_flatten` lint in `story.rs` branch listing and stale `roco-inference`/`roco-grammar` package refs in `run_tests.sh`, `Makefile` (rwkv/grammar/check-leaf), `bin/roco.rs` (rwkv/grammar), `cmd/eval.rs`, `full_eval.rs`, `plan.rs` docs.
+- **Result**: verified piped run prints "Skipped browser auto-open" (0 xdg-open), TTY run attempts open; `cargo test --workspace` = **1046 passed / 0 failed / 0 ignored**; clippy + fmt clean; `run_tests.sh` green end-to-end.
+- Still red: same items as before — real-model router verification (§13), model limitations (§9), §12 UX items.
+
+## 2026-08-02 — Stale `roco-inference`/`roco-grammar` package refs cleaned; clippy manual_flatten fix
+
+- **Intent**: sweep the tree for references to crates that no longer exist (`roco-inference` → renamed `roco-engine-gpu`; `roco-grammar` → consolidated into `roco-engine`), fix the one remaining clippy lint, and get every repo script green.
+- **Fixed**: clippy `manual_flatten` in `crates/cli/src/cmd/story.rs` (branch listing `if let Ok(e) = entry` → `.flatten()`); stale `-p roco-inference` in `run_tests.sh` (Step 4 + CPU-fallback note), `Makefile` (`rwkv`/`grammar` targets), `crates/cli/src/bin/roco.rs` (`rwkv`/`grammar` subcommands), `crates/cli/src/cmd/eval.rs`; stale `-p roco-grammar` in `Makefile check-leaf`; doc-comment refs in `crates/engine-gpu/examples/full_eval.rs` and `crates/agent/src/plan.rs`.
+- **Result**: `run_tests.sh` (check/clippy/test-compile/examples/fmt) green end-to-end; `make rwkv`/`make grammar`/`make check-leaf` resolve correctly (runtime model-load error only — no `.st` model in `models/`); `cargo check/clippy --all-features` zero warnings; `cargo test --workspace` = **1046 passed / 0 failed / 0 ignored**.
+- Still red: same items as before — real-model router verification (§13), model limitations (§9), §12 UX items.
+
 ## 2026-08-02 — devenv.nix broken by unescaped Nix interpolation in scripts.roco.exec
 
 - **Intent**: fix `devenv shell` — was failing with `error: syntax error, unexpected invalid token` at `devenv.nix:38` (and cascading `config.cachix.enable` lookup failure).
