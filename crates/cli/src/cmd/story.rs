@@ -811,6 +811,7 @@ fn structured_complete_with_strategy<T>(
     max_tokens: usize,
     session_id: Option<&str>,
     seed: Option<u64>,
+    state_slot: Option<&str>,
 ) -> Result<T, String>
 where
     T: serde::de::DeserializeOwned,
@@ -846,6 +847,7 @@ where
                 None
             },
             init_state: session_id.map(|s| s.to_string()),
+            state_slot: state_slot.map(|s| s.to_string()),
             seed,
             bnf_mask: None,
             ..Default::default()
@@ -1080,6 +1082,11 @@ fn parse_positional_prompt(args: &[&str]) -> Option<String> {
 }
 
 pub fn cmd_story(extra: &[&str]) {
+    let subcommand = extra.first().copied();
+    if subcommand == Some("revise") {
+        return cmd_revise(&extra[1..]);
+    }
+
     // Initialize the agent journal so components can log
     let _ = AgentJournal::init();
 
@@ -1113,6 +1120,7 @@ pub fn cmd_story(extra: &[&str]) {
 
     // ── Resume / phase flags ──────────────────────────────────────
     let is_continue_cmd = extra.first() == Some(&"continue");
+    let continue_story = is_continue_cmd || extra.contains(&"--continue");
     let resume = extra.iter().any(|&a| a == "--resume" || a == "-r") || is_continue_cmd;
     let force_new = extra.contains(&"--new");
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
@@ -1202,9 +1210,9 @@ pub fn cmd_story(extra: &[&str]) {
                 let wiki = read_ws_file(&ws, "02-WIKI.md");
                 let chapters = detect_chapters(&ws);
                 (ws, outline, wiki, chapters)
-            } else if resume || fix_chapter.is_some() {
+            } else if resume || continue_story || fix_chapter.is_some() {
                 let ws = find_latest_workspace().unwrap_or_else(|| {
-                    eprintln!("No previous story workspace found. Run without --resume to start fresh.");
+                    eprintln!("No previous story workspace found. Run without --resume or continue to start fresh.");
                     std::process::exit(1);
                 });
                 let outline = read_ws_file(&ws, "01-OUTLINE.md");
@@ -1263,6 +1271,7 @@ pub fn cmd_story(extra: &[&str]) {
                     800,
                     Some(SESSION_WRITER),
                     seed,
+                    None,
                 )
                 .map_err(|e| AgentError::Internal(format!("outline generation failed: {e}")))?;
 
@@ -1337,6 +1346,7 @@ pub fn cmd_story(extra: &[&str]) {
                     1500,
                     Some(SESSION_WRITER),
                     seed,
+                    None,
                 )
                 .map_err(|e| AgentError::Internal(format!("wiki generation failed: {e}")))?;
 
@@ -1441,6 +1451,7 @@ pub fn cmd_story(extra: &[&str]) {
                     chapter_max_tokens,
                     Some(SESSION_WRITER),
                     seed,
+                    Some(SESSION_WRITER),
                 )
                 .map_err(|e| AgentError::Internal(format!("chapter generation failed: {e}")))?;
 
@@ -1498,6 +1509,7 @@ pub fn cmd_story(extra: &[&str]) {
                         200,
                         Some(SESSION_VALIDATOR),
                         seed,
+                        None,
                     )
                     .map(|v: StoryValidation| {
                         format!(
@@ -1561,6 +1573,7 @@ pub fn cmd_story(extra: &[&str]) {
                     400,
                     Some(SESSION_WRITER),
                     seed,
+                    None,
                 )
                 .map_err(|e| AgentError::Internal(format!("synopsis generation failed: {e}")))?;
 
@@ -1687,7 +1700,8 @@ pub fn cmd_story(extra: &[&str]) {
             && phase_filter != Some("chapter")
             && phase_filter != Some("synopsis")
             && phase_filter != Some("publish")
-            && fix_chapter.is_none();
+            && fix_chapter.is_none()
+            && !continue_story;
         let outline_text = if let Some(ref existing) = existing_outline {
             println!("📝 Outline (existing)...");
             println!("  ✓ Outline loaded from workspace\n");
@@ -1719,7 +1733,8 @@ pub fn cmd_story(extra: &[&str]) {
             && phase_filter != Some("chapter")
             && phase_filter != Some("synopsis")
             && phase_filter != Some("publish")
-            && fix_chapter.is_none();
+            && fix_chapter.is_none()
+            && !continue_story;
         let _wiki_text: String = if let Some(ref existing) = existing_wiki {
             println!("📚 Worldbuilding (existing)...");
             println!("  ✓ World bible loaded from workspace\n");
@@ -1780,7 +1795,15 @@ pub fn cmd_story(extra: &[&str]) {
         // Phase 3: chapters ×3
         AgentJournal::info("story", "Phase 3: Writing chapters");
         let mut chapter_texts = Vec::new();
-        for i in 1..=3 {
+
+        let target_chapters = if continue_story {
+            let next_chapter = existing_chapters.last().copied().unwrap_or(0) + 1;
+            vec![next_chapter]
+        } else {
+            vec![1, 2, 3]
+        };
+
+        for i in target_chapters {
             // Check if we should skip this chapter
             let chapter_exists = existing_chapters.contains(&i);
             let should_run_chapter = if chapter_exists && fix_chapter != Some(i) {
@@ -1804,6 +1827,15 @@ pub fn cmd_story(extra: &[&str]) {
                 && phase_filter != Some("fix");
             if (should_run_chapter || existing_ch.is_none()) && !phase_restricted {
                 // Generate new chapter
+
+                // Create a backup of the current workspace before continuing (if continue_story)
+                if continue_story {
+                    if let Ok(backup_dir) = ws.backup(&roco_dir().join("backups")) {
+                        AgentJournal::info("story", &format!("Workspace backed up to {}", backup_dir.display()));
+                    } else {
+                        AgentJournal::warn("story", "Failed to create workspace backup");
+                    }
+                }
 
                 let chapter_label = format!("Chapter {i}");
                 let previous = chapter_texts.last().cloned().unwrap_or_default();
@@ -2217,4 +2249,86 @@ fn cmd_branch_switch(extra: &[&str]) {
     std::fs::write(current_branch_file, branch_name).expect("Failed to write current branch");
 
     println!("Active branch switched to '{}'.", branch_name);
+}
+
+pub fn cmd_revise(extra: &[&str]) {
+    let _ = AgentJournal::init();
+
+    let workspace_path = parse_opt("--workspace", extra);
+    let chapter_str = parse_opt("--chapter", extra);
+    let feedback = parse_opt("--feedback", extra).unwrap_or("improve it");
+
+    let chapter_num: usize = chapter_str.and_then(|s| s.parse().ok()).unwrap_or(1);
+
+    let ws = if let Some(wp) = workspace_path {
+        let abs_wp = std::path::PathBuf::from(wp)
+            .canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from(wp));
+        roco_workspace::Workspace::from_existing(abs_wp, WorkspaceKind::Agent).unwrap()
+    } else {
+        find_latest_workspace().unwrap_or_else(|| {
+            eprintln!("No previous story workspace found.");
+            std::process::exit(1);
+        })
+    };
+
+    let filename = format!("{:02}-CHAPTER_{}.md", chapter_num + 2, chapter_num);
+    let original_text = read_ws_file(&ws, &filename).unwrap_or_default();
+
+    if original_text.is_empty() {
+        eprintln!("Chapter {} not found or empty.", chapter_num);
+        std::process::exit(1);
+    }
+
+    println!("Revising Chapter {}...", chapter_num);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let backend = daemon::ensure_backend();
+
+    let mock = std::env::var("ROCO_USE_MOCK_BACKEND").is_ok() || extra.contains(&"--mock");
+
+    let revised_text = if mock {
+        format!("{} (spookier)", original_text)
+    } else {
+        let prompt = format!(
+            "Please revise the following chapter based on this feedback:\n\nFeedback: {}\n\nChapter Text:\n{}",
+            feedback, original_text
+        );
+        #[allow(clippy::needless_update)]
+        let req = CompletionRequest {
+            prompt,
+            max_tokens: 1000,
+            temperature: 0.7,
+            ..Default::default()
+        };
+        rt.block_on(async {
+            backend
+                .complete(req)
+                .await
+                .map(|r| r.text)
+                .unwrap_or_else(|e| format!("Revision failed: {e}"))
+        })
+    };
+
+    println!("diff\n");
+
+    // Create revisions directory inside .roco/
+    let roco_dir = ws.root().join(".roco");
+    std::fs::create_dir_all(&roco_dir).unwrap();
+    let rev_dir = roco_dir.join("revisions");
+    std::fs::create_dir_all(&rev_dir).unwrap();
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let rev_file = rev_dir.join(format!("{}_{}.md", filename, timestamp));
+
+    std::fs::write(&rev_file, &original_text).unwrap();
+
+    std::fs::write(ws.root().join(&filename), &revised_text).unwrap();
 }

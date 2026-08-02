@@ -61,19 +61,20 @@ fn main() {
         // ── Help — always show help when asked ────────────────────────────
         "help" | "--help" | "-h" => {
             let topic = extra.first().filter(|&&t| !t.starts_with('-')).copied();
-            help(topic);
+            let hidden = extra.contains(&"--hidden");
+            help(topic, hidden);
         }
 
         // ── Evaluations ──────────────────────────────────────────────────
         "eval" => {
             if has_help_flag(&extra) {
-                help(Some("eval"));
+                help(Some("eval"), false);
             }
             cmd::eval::cmd_eval(&extra);
         }
         "bless" => {
             if has_help_flag(&extra) {
-                help(Some("eval"));
+                help(Some("eval"), false);
             }
             cmd::eval::cmd_bless(&extra);
         }
@@ -81,7 +82,7 @@ fn main() {
         // ── RWKV backend smoke tests ─────────────────────────────────────
         "rwkv" => {
             if has_help_flag(&extra) {
-                help(Some("rwkv"));
+                help(Some("rwkv"), false);
             }
             run_cargo(
                 "run",
@@ -97,7 +98,7 @@ fn main() {
         }
         "grammar" => {
             if has_help_flag(&extra) {
-                help(Some("grammar"));
+                help(Some("grammar"), false);
             }
             run_cargo(
                 "run",
@@ -120,13 +121,13 @@ fn main() {
         // ── GPU / Jobs ───────────────────────────────────────────────────
         "gpu-check" => {
             if has_help_flag(&extra) {
-                help(Some("gpu-check"));
+                help(Some("gpu-check"), false);
             }
             cmd::gpu::cmd_gpu_check(&extra);
         }
         "jobs" | "inferd-jobs" | "inferd-status" => {
             if has_help_flag(&extra) {
-                help(Some("jobs"));
+                help(Some("jobs"), false);
             }
             cmd::jobs::cmd_jobs(&extra);
         }
@@ -135,7 +136,7 @@ fn main() {
         "inferd" | "server" => {
             // --help / -h anywhere in args -> show help
             if has_help_flag(&extra) {
-                help(Some("inferd"));
+                help(Some("inferd"), false);
             }
             let sub_cmd = extra.first().copied();
             match sub_cmd {
@@ -168,7 +169,7 @@ fn main() {
                     cmd::jobs::cmd_jobs(&extra[1..]);
                 }
                 Some("help") => {
-                    help(Some("inferd"));
+                    help(Some("inferd"), false);
                 }
                 _ => {
                     // No recognized subcommand: pass through to cmd_server
@@ -187,7 +188,7 @@ fn main() {
         "gateway" => {
             // --help / -h anywhere in args -> show help
             if has_help_flag(&extra) {
-                help(Some("gateway"));
+                help(Some("gateway"), false);
             }
             let sub_cmd = extra.first().copied();
             match sub_cmd {
@@ -234,7 +235,7 @@ fn main() {
                     }
                 }
                 Some("help") => {
-                    help(Some("gateway"));
+                    help(Some("gateway"), false);
                 }
                 _ => {
                     // No recognized subcommand: pass through to cmd_gateway
@@ -251,7 +252,7 @@ fn main() {
         // ── Reload both daemons ──────────────────────────────────────────
         "reload" => {
             if has_help_flag(&extra) {
-                help(Some("reload"));
+                help(Some("reload"), false);
             }
             #[cfg(feature = "net")]
             cmd::server::cmd_reload(&extra);
@@ -262,7 +263,7 @@ fn main() {
         // ── Stop daemons (NEVER starts anything) ─────────────────────────
         "stop" => {
             if has_help_flag(&extra) {
-                help(Some("stop"));
+                help(Some("stop"), false);
             }
             let sub_cmd = extra.first().copied();
             match sub_cmd {
@@ -275,7 +276,7 @@ fn main() {
         // ── Desktop GUI ──────────────────────────────────────────────────
         "gui" => {
             if has_help_flag(&extra) {
-                help(Some("gui"));
+                help(Some("gui"), false);
             }
             #[cfg(any(feature = "gui", feature = "desktop"))]
             cmd::desktop::cmd_gui(&extra);
@@ -286,7 +287,7 @@ fn main() {
         // ── Desktop pet ──────────────────────────────────────────────────
         "pet" => {
             if has_help_flag(&extra) {
-                help(Some("pet"));
+                help(Some("pet"), false);
             }
             cmd::pet::cmd_pet(&extra);
         }
@@ -294,7 +295,7 @@ fn main() {
         // ── Session control ──────────────────────────────────────────────
         "session" => {
             if has_help_flag(&extra) {
-                help(Some("session"));
+                help(Some("session"), false);
             }
             cmd::session::cmd_session(&extra);
         }
@@ -302,7 +303,7 @@ fn main() {
         // ── Status ───────────────────────────────────────────────────────
         "status" => {
             if has_help_flag(&extra) {
-                help(Some("status"));
+                help(Some("status"), false);
             }
             cmd::status::cmd_status(&extra);
         }
@@ -310,12 +311,12 @@ fn main() {
         // ── Story mode (interactive writing assistant) ───────────────────
         "story-mode" | "sm" => {
             if has_help_flag(&extra) {
-                help(Some("story"));
+                help(Some("story"), false);
             }
             let story_name = parse_opt("--story", &extra);
             let command = extra.first().copied();
             match command {
-                Some("help") => help(Some("story")),
+                Some("help") => help(Some("story"), false),
                 Some(cmd) if !cmd.starts_with("--") => {
                     cmd::story_mode::run_story_command(story_name, cmd);
                 }
@@ -328,7 +329,7 @@ fn main() {
         // ── Structured story pipeline ────────────────────────────────────
         "story" => {
             if has_help_flag(&extra) {
-                help(Some("story"));
+                help(Some("story"), false);
             }
             if extra.first() == Some(&"branch") {
                 cmd::story::cmd_story_branch(&extra[1..]);
@@ -342,56 +343,56 @@ fn main() {
         // ── Game / HTML / Code / Interact ────────────────────────────────
         "game" => {
             if has_help_flag(&extra) {
-                help(Some("game"));
+                help(Some("game"), false);
             }
             cmd::game::cmd_game(&extra);
         }
         "ttrpg" => {
             if has_help_flag(&extra) {
-                help(Some("ttrpg"));
+                help(Some("ttrpg"), false);
             }
             cmd::ttrpg::cmd_ttrpg(&extra);
         }
         "world-sim" => {
             if has_help_flag(&extra) {
-                help(Some("world-sim"));
+                help(Some("world-sim"), false);
             }
             cmd::world_sim::cmd_world_sim(&extra);
         }
 
         "map" => {
             if has_help_flag(&extra) {
-                help(Some("map"));
+                help(Some("map"), false);
             }
             cmd::wfc::cmd_map(&extra);
         }
         "html" => {
             if has_help_flag(&extra) {
-                help(Some("html"));
+                help(Some("html"), false);
             }
             cmd::html::cmd_html(&extra);
         }
         "code" | "coder" => {
             if has_help_flag(&extra) {
-                help(Some("code"));
+                help(Some("code"), false);
             }
             cmd::coder::cmd_coder(&extra);
         }
         "interact" => {
             if has_help_flag(&extra) {
-                help(Some("interact"));
+                help(Some("interact"), false);
             }
             cmd::interact::cmd_interact(&extra);
         }
         "workspace" => {
             if has_help_flag(&extra) {
-                help(Some("workspace"));
+                help(Some("workspace"), false);
             }
             cmd::workspace::cmd_workspace(&extra);
         }
         "vector-search" | "vector_search" => {
             if has_help_flag(&extra) {
-                help(Some("vector-search"));
+                help(Some("vector-search"), false);
             }
             cmd::vector_search::cmd_vector_search(&extra);
         }
@@ -399,7 +400,7 @@ fn main() {
         // ── Export ───────────────────────────────────────────────────────
         "export" => {
             if has_help_flag(&extra) {
-                help(Some("export"));
+                help(Some("export"), false);
             }
             cmd::export::run(
                 extra.first().copied().unwrap_or("."),
@@ -411,7 +412,7 @@ fn main() {
         // ── Stats & Review ───────────────────────────────────────────────
         "stats" | "review" => {
             if has_help_flag(&extra) {
-                help(Some("stats"));
+                help(Some("stats"), false);
             }
             cmd::stats::cmd_stats(&extra);
         }
@@ -419,7 +420,7 @@ fn main() {
         // ── Inspect (interpretability, state, config) ────────────────────
         "inspect" => {
             if has_help_flag(&extra) {
-                help(Some("inspect"));
+                help(Some("inspect"), false);
             }
             cmd::inspect::cmd_inspect(&extra);
         }
@@ -427,7 +428,7 @@ fn main() {
         // ── Deterministic Eval Suite ─────────────────────────────────────
         "eval-suite" => {
             if has_help_flag(&extra) {
-                help(Some("eval-suite"));
+                help(Some("eval-suite"), false);
             }
             cmd::eval_suite::cmd_eval_suite(&extra);
         }
@@ -435,7 +436,7 @@ fn main() {
         // ── Solution Bench ───────────────────────────────────────────────
         "solution-bench" => {
             if has_help_flag(&extra) {
-                help(Some("solution-bench"));
+                help(Some("solution-bench"), false);
             }
             cmd::solution_bench::cmd_solution_bench(&extra);
         }
@@ -443,7 +444,7 @@ fn main() {
         // ── Shell Completions ────────────────────────────────────────────
         "completions" => {
             if has_help_flag(&extra) {
-                help(Some("completions"));
+                help(Some("completions"), false);
             }
             let shell = extra.first().copied().unwrap_or("bash");
             roco_cli::generate_completions(shell);
@@ -453,7 +454,7 @@ fn main() {
         // ── Identity ─────────────────────────────────────────────────────
         "whoami" | "who-am-i" => {
             if has_help_flag(&extra) {
-                help(Some("whoami"));
+                help(Some("whoami"), false);
             }
             roco_cli::identity::cmd_whoami(&extra);
         }
@@ -461,7 +462,7 @@ fn main() {
         // ── Quickstart ───────────────────────────────────────────────────
         "quickstart" => {
             if has_help_flag(&extra) {
-                help(Some("quickstart"));
+                help(Some("quickstart"), false);
             }
             cmd::quickstart::cmd_quickstart(&extra);
         }
@@ -482,7 +483,7 @@ fn main() {
         _ => {
             // If the user typed something like "roco unknown --help", show help.
             if has_help_flag(&extra) {
-                help(None);
+                help(None, false);
             }
             // Check if user mistyped a known subcommand and suggest the closest match
             if let Some(suggestion) = roco_cli::suggest_subcommand(sub) {

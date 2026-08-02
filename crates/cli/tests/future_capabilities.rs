@@ -117,3 +117,30 @@ fn test_future_story_branching_and_merge() {
     branch_merge.assert_success();
     branch_merge.assert_stdout_contains("Merged branch 'dark-ending' back into 'main'");
 }
+#[test]
+fn test_future_collaborative_revisions() {
+    let runner = MockCliRunner::new();
+    let ws_dir = runner.working_dir().join("test_revisions");
+    std::fs::create_dir_all(&ws_dir).unwrap();
+    std::fs::write(
+        ws_dir.join("03-CHAPTER_1.md"),
+        "# Chapter 1\n\nThe hero walked into the dark room.",
+    )
+    .unwrap();
+
+    let res = runner.run_binary([
+        "story",
+        "revise",
+        "--workspace",
+        ws_dir.to_str().unwrap(),
+        "--chapter",
+        "1",
+        "--feedback",
+        "make it spookier",
+    ]);
+    res.assert_success();
+    res.assert_stdout_contains("diff");
+
+    let rev_dir = ws_dir.join(".roco").join("revisions");
+    assert!(rev_dir.exists());
+}

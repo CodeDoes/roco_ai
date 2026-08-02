@@ -63,7 +63,7 @@ pub fn has_help_flag(args: &[&str]) -> bool {
 }
 
 /// Print help for a specific subcommand, or the top-level help.
-pub fn help(sub: Option<&str>) {
+pub fn help(sub: Option<&str>, hidden: bool) {
     match sub {
         Some("inferd") | Some("server") => help_inferd(),
         Some("gateway") => help_gateway(),
@@ -96,11 +96,11 @@ pub fn help(sub: Option<&str>) {
         Some("whoami") => help_whoami(),
         Some("quickstart") => help_quickstart(),
         Some("version") | Some("--version") => help_version(),
-        _ => help_root(),
+        _ => help_root(hidden),
     }
 }
 
-fn help_root() {
+fn help_root(hidden: bool) {
     eprintln!("RoCo AI — Collaborative Writing Assistant\n");
     eprintln!("Usage:");
     eprintln!("  roco                                 Start interactive chat (natural language)");
@@ -108,13 +108,14 @@ fn help_root() {
     eprintln!("  roco <subcommand> [args]             Run a specific command");
     eprintln!("  roco <subcommand> --help             Show help for a specific command\n");
     eprintln!("Commands:");
-    eprintln!("  session      Persistent multi-turn chat sessions");
     eprintln!("  interact     Interactive CLI with pacing (default mode)");
     eprintln!("  story        Structured short story from premise");
     eprintln!("  story-mode   Interactive story writing assistant");
     eprintln!("  sm           Alias for story-mode");
-    eprintln!("  session      Session management (new, list, show, delete)");
-    eprintln!("  workspace    Workspace management (new, list, show, delete)");
+    if hidden {
+        eprintln!("  session      Session management (new, list, show, delete)");
+        eprintln!("  workspace    Workspace management (new, list, show, delete)");
+    }
     eprintln!("  vector-search Local offline vector embedding search");
     eprintln!("  game         Adventure game mode (interactive fiction)");
     eprintln!("  ttrpg        TTRPG campaign and world building system");
