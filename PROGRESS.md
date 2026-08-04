@@ -2,6 +2,19 @@
 
 Lean delta log — one entry per change, newest first. **How to use this file properly: see AGENTS.md §9 "Using PROGRESS.md".** Canonical state lives in AGENTS.md (§9 loop, §10 known issues, §12 UX, §13 router NLU). Old history is in git.
 
+## 2026-08-04 — PR cleanup batch + docs quickstart
+
+- **Intent**: clean up stale PRs and address §12 UX items that don't need Rust compilation.
+- **PR #24 closed**: "Integrate Hearts & Academics" superseded — content already in main with `tome-datingsim` naming.
+- **PR #25 merged**: Bolt spelling optimization (Cow-based allocation avoidance in `classic.rs`, ~90% fewer allocations).
+- **PR #26 closed**: Duplicate of PR #25.
+- **docs/README.md created**: Quickstart guide with requirements, common workflows, troubleshooting, file locations.
+- **Help text updated**: `crates/cli/src/lib.rs` now links to `docs/README.md` and suggests `roco quickstart`.
+- **JULES_ARCHIVE.md updated**: Reflects PR changes and marks 2 open items as addressed.
+- **project-current-state.md updated**: Added note pointing to AGENTS.md, updated crate list.
+- No Rust code compiled (cargo unavailable in sandbox). Changes are docs-only.
+- Still red: progress spinners (§12), `--preview` flag (§12), exponential-backoff retry, `docs/management_intents.md`.
+
 ## 2026-08-02 — ALL 125 sessions archived ON Jules (found the real `:archive` endpoint)
 
 - **Intent**: user correctly pointed out I was only writing docs to the repo, not archiving on the platform. Probed the API: PATCH → 404, `:close` → 404, `:cancel` → 404 — but **`POST /sessions/{id}:archive` → 200, sets `archived: true`** (persists; the list endpoint then excludes archived sessions).
