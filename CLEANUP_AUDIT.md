@@ -1,6 +1,9 @@
 # RoCo AI — Project Health Audit & Cleanup Plan
 **Date:** 2026-07-29  
-**Status:** Build ✓ | Tests ✓ (229 pass) | Clippy ✗ (toolchain mismatch)
+**Status:** Historical — superseded by CLEANUP_AUDIT_V2.md
+
+> **Note**: This document describes the state as of 2026-07-29. The project has since
+> undergone significant cleanup and consolidation. For current state, see [AGENTS.md](AGENTS.md).
 
 ---
 

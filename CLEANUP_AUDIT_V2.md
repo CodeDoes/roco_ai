@@ -1,10 +1,15 @@
 # RoCo AI — Architecture Analysis & Cleanup Plan (v2)
 **Date:** 2026-07-29  
-**User Constraints:**
-- 1 workspace, many sessions
-- Sessions can switch workspaces
-- Engine/merge only if it makes sense (trait vs implementation distinction)
-- Server/gateway merge only if performance stays same and expressivity improves
+**Status:** Historical — many items addressed; some remain open
+
+> **Note**: This document describes the state as of 2026-07-29. The project has since
+> undergone significant cleanup. For current architecture, see [AGENTS.md](AGENTS.md).
+> 
+> **User Constraints:**
+> - 1 workspace, many sessions
+> - Sessions can switch workspaces
+> - Engine/merge only if it makes sense (trait vs implementation distinction)
+> - Server/gateway merge only if performance stays same and expressivity improves
 
 ---
 

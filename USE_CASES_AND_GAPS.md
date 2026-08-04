@@ -1,50 +1,49 @@
-# RoCo AI Codebase Analysis — Tests & Evals
+# RoCo AI Codebase Analysis — Crates & Architecture
 
-## Use Cases by Crate
-| Crate | Use Case |
-|-------|----------|
+> **Note**: This document is historical. For current architecture, see [AGENTS.md](AGENTS.md).
+
+## Crates
+
+| Crate | Purpose |
+|-------|---------|
 | agent | Autonomous agent loop (ReAct + Mechanistic), memory, story pipeline (chapter steering, commentary, outline editing, quality, persistence) |
-| app | AppContext, session agent binding, workspace timeline |
-| app | AppContext, session agent binding, workspace timeline |
-| bnf-engine | Token-level BNF grammar engine (kbnf wrapper) |
-| chat-common | Shared chat types across CLI/TUI/web |
-| cli | CLI commands (eval, story, desktop, router, server) |
-| engine | ModelBackend trait, eval framework, story pipeline evals |
+| app | AppContext, session agent binding, workspace timeline, config |
+| cli | CLI commands (eval, story, interact, router, server), thin dispatcher |
+| core | Core utilities shared across crates |
+| engine | ModelBackend trait, CompletionRequest/Response types, MockBackend, BNF grammar engine, JSON helpers |
+| engine-gpu | RWKV-7 Vulkan inference via web-rwkv |
 | gateway | HTTP gateway / router |
-| grammar | JSON Schema → GBNF, schema builder, output strategies |
+| harness | Domain harness traits and implementations |
 | infer-client | Remote inference client |
 | inferd | RWKV inference daemon |
-| inference | RWKV backend, quantization, sampling |
-| message | Chat protocol, formatting, GBNF templates |
+| napi | Node.js native addon bindings |
+| protocol | Serialization models and shared data types |
+| rwkv7-opencl | OpenCL backend for RWKV-7 |
+| rwkv7-triton | Triton backend for RWKV-7 |
+| rwkv7-vulkan | Vulkan backend for RWKV-7 |
 | server | HTTP server, routes, config |
 | session | Persistent session store, sub-sessions, tracing |
-| tools | Tool trait, registry, built-in file/bash/search/write/edit |
 | ui | Desktop widgets (chat, markdown editor, pet, session browser) |
-| validation | Multi-layer validation (classic, inference, outline, wiki) |
 | workspace | Sandbox workspace, file access, version control |
 
-## Existing Tests / Evals
-- crates/app/tests/facade.rs
-- crates/engine/src/tests/eval_suite.rs
-- crates/ui/tests/token0_probe.rs, user_story.rs
-- crates/inference/examples/rwkv_test.rs
-- crates/cli/src/cmd/eval.rs
-- evals/run.sh, evals/results/
-- agent/src/evals.rs, engine/src/eval.rs, engine/src/story_evals.rs
-- Added temporary: bnf-engine/src/tests/mod.rs, evals/run_missing.sh
+## Current Test Coverage
 
-## Gaps Found
-Crates with NO tests: chat-common, cli, gateway, grammar, message, server, session, tools, ui (only 2), workspace, validation.
-No unit tests for validation, session persistence, workspace sandboxing, grammar strategies.
-No eval scripts for gateway, session, workspace, validation.
+- `crates/app/tests/`
+- `crates/cli/tests/` — integration tests (session, story pipeline, WFC, future capabilities)
+- `crates/engine/tests/` — grammar tests, eval suite
+- `crates/engine/examples/` — full_eval, matrix_eval, root_bake_test
+- `crates/engine-gpu/examples/` — full_eval, grammar_smoke, rwkv_test
+- `crates/agent/src/evals.rs`
+- `evals/results/` — solution_bench.json
 
-## Filled Gaps (new files)
-- crates/session/src/tests/mod.rs
-- crates/workspace/src/tests/mod.rs
-- crates/grammar/src/tests/mod.rs
-- crates/message/src/tests/mod.rs
-- crates/validation/src/tests/mod.rs
-- crates/chat-common/src/tests/mod.rs
-- crates/gateway/src/tests/mod.rs
-- crates/tools/src/tests/mod.rs
-- evals/session_eval.sh, workspace_eval.sh, validation_eval.sh, grammar_eval.sh
+All 1005+ tests pass (as of 2026-08-01). See [PROGRESS.md](PROGRESS.md) for latest test counts.
+
+## Historical Gaps (now filled)
+
+The following gaps were identified and addressed:
+- Session persistence tests → `crates/cli/tests/session_persistence.rs`
+- Story pipeline integration tests → `crates/cli/tests/pipeline_integration.rs`
+- WFC tests → `crates/cli/tests/wfc_test.rs`
+- Future capabilities tests → `crates/cli/tests/future_capabilities.rs`
+- Grammar constraint tests → `crates/engine/tests/grammar_tests.rs`
+- Keyword router tests → `crates/cli/src/cmd/router.rs`
