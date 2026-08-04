@@ -141,8 +141,10 @@ fn help_root(hidden: bool) {
     eprintln!("Identity:");
     eprintln!("  whoami       Show what RoCo is and what it knows about you");
     eprintln!("  version      Show version\n");
-    eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_DIR/config.toml\n");
-    eprintln!("Try: roco quickstart");
+    eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_DIR/config.toml");
+    eprintln!("Docs:   https://github.com/CodeDoes/roco_ai/blob/main/docs/README.md");
+    eprintln!("Try:   roco quickstart  (first-run guide)\n");
+    eprintln!("Quick start: roco \"tell me a story about dragons\"\n");
     std::process::exit(0);
 }
 
@@ -150,6 +152,7 @@ fn help_quickstart() {
     eprintln!("roco quickstart — Show first-run guide and setup instructions\n");
     eprintln!("Usage:");
     eprintln!("  roco quickstart");
+    eprintln!("\nFull docs: https://github.com/CodeDoes/roco_ai/blob/main/docs/README.md\n");
     std::process::exit(0);
 }
 

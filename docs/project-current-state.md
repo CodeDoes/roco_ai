@@ -1,25 +1,33 @@
 # Project Current State: RoCo AI
 
+> **Note**: This document describes the v0.4-v0.5 architecture. For current state, see [AGENTS.md](../AGENTS.md).
+
 This document details the exact architectural, functional, and developer experience (DX) state of RoCo AI as of version 0.4.
 
 ## 1. Physical Architecture & Layout
 
 RoCo AI is a unified Rust workspace designed for local AI collaborative writing, worldbuilding, and text editing using **RWKV-7 State Space Models (SSM)**.
 
-### Sub-crates & Fragmentation
-The codebase was recently streamlined by removing vestigial and duplicate crates (`crates/agent-core` and `crates/agent-story`), unifying all scheduling, orchestration, memory management, and story generation logic into a single central crate: `crates/agent`.
+### Sub-crates
+The codebase was streamlined by consolidating scheduling, orchestration, memory management, and story generation logic into a single central crate: `crates/agent`.
 
 The current crate layout is as follows:
 - `crates/agent`: Central agent orchestration, scheduling, memory, validation, and story-generation capabilities.
 - `crates/app`: Core logic for managing configurations, environment, and CLI dispatcher body.
 - `crates/cli`: Thin dispatcher, REPL command-loop interfaces, terminal formatting.
+- `crates/core`: Core utilities shared across crates.
 - `crates/engine`: pure-Rust definition of ModelBackend traits, CompletionRequests, and deterministic MockBackend.
 - `crates/engine-gpu`: GPU Vulkan inference via `web-rwkv` implementing `ModelBackend`.
 - `crates/gateway`: API Gateway reverse-proxy with rate-limiting.
-- `crates/inferd`: The local model server (inferd) that loads the model into VRAM and handles inference.
-- `crates/protocol`: Serialization models and shared data types (e.g., `ConversationState`).
+- `crates/harness`: Domain harness traits and implementations.
+- `crates/infer-client`: Client for the inference daemon.
+- `crates/inferd`: The local model server that loads the model into VRAM and handles inference.
+- `crates/napi`: Node.js native addon bindings.
+- `crates/protocol`: Serialization models and shared data types.
+- `crates/rwkv7-opencl` / `rwkv7-triton` / `rwkv7-vulkan`: Backend-specific RWKV-7 implementations.
 - `crates/server`: HTTP API server implementing an OpenAI-compatible `/v1/completions` endpoint.
-- `crates/ui` / `crates/tui`: Desktop-GUI and terminal-UI frontends.
+- `crates/session`: Session management logic.
+- `crates/ui` / `crates/workspace`: Desktop-GUI, workspace management, and terminal-UI frontends.
 
 ---
 
