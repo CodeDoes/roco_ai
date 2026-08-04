@@ -391,18 +391,47 @@ impl ChapterValidator {
         let mut potential_typos: Vec<String> = Vec::new();
 
         for word in text.split_whitespace() {
-            let cleaned: String = word
-                .chars()
-                .filter(|c| c.is_alphabetic() || *c == '\'' || *c == '-')
-                .collect();
+            // Allocation-free length pre-scan: if word length is under 3,
+            // cleaned word length is guaranteed to be under 3.
+            if word.len() < 3 {
+                continue;
+            }
+
+            // Construct cleaned word slice as Cow to avoid allocation if no filtering is needed
+            let mut needs_filter = false;
+            for c in word.chars() {
+                if !(c.is_alphabetic() || c == '\'' || c == '-') {
+                    needs_filter = true;
+                    break;
+                }
+            }
+
+            let cleaned = if !needs_filter {
+                std::borrow::Cow::Borrowed(word)
+            } else {
+                let s: String = word
+                    .chars()
+                    .filter(|&c| c.is_alphabetic() || c == '\'' || c == '-')
+                    .collect();
+                std::borrow::Cow::Owned(s)
+            };
 
             if cleaned.len() < 3 {
                 continue;
             }
 
-            let lower = cleaned.to_lowercase();
-            if !self.common_words.contains(&lower) && is_likely_typo(&lower) {
-                potential_typos.push(cleaned);
+            // Check if cleaned is already lowercase to avoid another lowercase allocation
+            let is_all_lowercase = cleaned.chars().all(|c| !c.is_uppercase());
+            let lower = if is_all_lowercase {
+                std::borrow::Cow::Borrowed(cleaned.as_ref())
+            } else {
+                std::borrow::Cow::Owned(cleaned.to_lowercase())
+            };
+
+            if !self.common_words.contains(lower.as_ref())
+                && is_likely_typo(cleaned.as_ref(), lower.as_ref())
+            {
+                potential_typos.push(cleaned.into_owned());
             }
         }
 
@@ -702,21 +731,20 @@ fn count_multi_spaces(text: &str) -> usize {
 }
 
 /// Check if a word is likely a typo (not a proper noun, not common English).
-fn is_likely_typo(word: &str) -> bool {
+fn is_likely_typo(cleaned: &str, lower: &str) -> bool {
     // Skip words with numbers
-    if word.chars().any(|c| c.is_ascii_digit()) {
+    if cleaned.chars().any(|c| c.is_ascii_digit()) {
         return false;
     }
     // Skip very short words
-    if word.len() < 3 {
+    if cleaned.len() < 3 {
         return false;
     }
     // Skip proper nouns (capitalized in middle of text - rough heuristic)
-    if word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 2 {
+    if cleaned.chars().next().is_some_and(|c| c.is_uppercase()) && cleaned.len() > 2 {
         return false;
     }
     // Check for repeated characters that might be typos (e.g., "teh" for "the")
-    let lower = word.to_lowercase();
     // Common patterns
     if lower.contains("thier") || lower.contains("recieve") || lower.contains("beleive") {
         return true;
