@@ -391,18 +391,44 @@ impl ChapterValidator {
         let mut potential_typos: Vec<String> = Vec::new();
 
         for word in text.split_whitespace() {
-            let cleaned: String = word
-                .chars()
-                .filter(|c| c.is_alphabetic() || *c == '\'' || *c == '-')
-                .collect();
+            // Fast scan: estimate cleaned length without string allocation
+            let mut cleaned_len = 0;
+            let mut has_non_alphabetic_filter = false;
+            for c in word.chars() {
+                if c.is_alphabetic() || c == '\'' || c == '-' {
+                    cleaned_len += 1;
+                } else {
+                    has_non_alphabetic_filter = true;
+                }
+            }
 
-            if cleaned.len() < 3 {
+            if cleaned_len < 3 {
                 continue;
             }
 
-            let lower = cleaned.to_lowercase();
-            if !self.common_words.contains(&lower) && is_likely_typo(&lower) {
-                potential_typos.push(cleaned);
+            // Clean only if the word met our length requirement
+            let cleaned: std::borrow::Cow<'_, str> = if has_non_alphabetic_filter {
+                std::borrow::Cow::Owned(
+                    word.chars()
+                        .filter(|&c| c.is_alphabetic() || c == '\'' || c == '-')
+                        .collect::<String>(),
+                )
+            } else {
+                std::borrow::Cow::Borrowed(word)
+            };
+
+            // Optimize lowercasing: check if already lowercase to avoid allocation
+            let is_all_lowercase = cleaned.chars().all(|c| !c.is_uppercase());
+            let lower: std::borrow::Cow<'_, str> = if is_all_lowercase {
+                std::borrow::Cow::Borrowed(cleaned.as_ref())
+            } else {
+                std::borrow::Cow::Owned(cleaned.to_lowercase())
+            };
+
+            if !self.common_words.contains(lower.as_ref())
+                && is_likely_typo(cleaned.as_ref(), lower.as_ref())
+            {
+                potential_typos.push(cleaned.into_owned());
             }
         }
 
@@ -702,7 +728,8 @@ fn count_multi_spaces(text: &str) -> usize {
 }
 
 /// Check if a word is likely a typo (not a proper noun, not common English).
-fn is_likely_typo(word: &str) -> bool {
+/// Accepts the original cleaned word and its lowercase form to avoid allocating/lowercasing repeatedly.
+fn is_likely_typo(word: &str, lower: &str) -> bool {
     // Skip words with numbers
     if word.chars().any(|c| c.is_ascii_digit()) {
         return false;
@@ -716,7 +743,6 @@ fn is_likely_typo(word: &str) -> bool {
         return false;
     }
     // Check for repeated characters that might be typos (e.g., "teh" for "the")
-    let lower = word.to_lowercase();
     // Common patterns
     if lower.contains("thier") || lower.contains("recieve") || lower.contains("beleive") {
         return true;
