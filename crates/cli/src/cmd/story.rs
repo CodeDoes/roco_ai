@@ -29,7 +29,88 @@ use serde::{Deserialize, Deserializer};
 use serde_json::json;
 
 use crate::{daemon, parse_opt};
+use indicatif::{ProgressBar, ProgressStyle};
 use roco_app::agent_journal::AgentJournal;
+use std::io::IsTerminal;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UI & Progress Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Run a blocking task with a beautiful interactive CLI spinner if stdout is a TTY.
+fn run_with_spinner<F, R>(message: &str, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    if std::io::stdout().is_terminal() {
+        let pb = ProgressBar::new_spinner();
+        pb.set_message(message.to_string());
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .template("{spinner:.green} {msg}...")
+                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+        );
+        pb.enable_steady_tick(std::time::Duration::from_millis(80));
+        let res = f();
+        pb.finish_and_clear();
+        res
+    } else {
+        println!("  {}...", message);
+        f()
+    }
+}
+
+/// Print a beautiful preview of the published story in the terminal.
+fn show_story_preview(ws: &roco_workspace::Workspace) {
+    use crate::rich_output::Colors;
+    println!("\n================================================================================");
+    println!("📖 STORY PREVIEW");
+    println!("================================================================================");
+
+    // Try to load synopsis
+    if let Some(synopsis) = read_ws_file(ws, "05-SYNOPSIS.md") {
+        println!("{}Synopsis:{}", Colors::GREEN, Colors::RESET);
+        // Skip title of markdown
+        let content = if synopsis.starts_with("# Synopsis") {
+            synopsis
+                .strip_prefix("# Synopsis")
+                .unwrap_or(&synopsis)
+                .trim()
+        } else {
+            synopsis.trim()
+        };
+        println!("  {}\n", content);
+    }
+
+    // Try to load Chapter 1
+    if let Some(ch1) = read_ws_file(ws, "03-CHAPTER_1.md") {
+        println!("{}Chapter 1 excerpt:{}", Colors::GREEN, Colors::RESET);
+        // Get the first two paragraphs or 400 chars of Chapter 1
+        let mut lines = ch1.lines();
+        let mut title = "Chapter 1".to_string();
+        if let Some(first_line) = lines.next() {
+            if first_line.starts_with("# ") {
+                title = first_line
+                    .strip_prefix("# ")
+                    .unwrap_or(first_line)
+                    .trim()
+                    .to_string();
+            }
+        }
+        println!("  {}*{}*{}", Colors::CYAN, title, Colors::RESET);
+
+        let content_start: String = lines
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .chars()
+            .take(600)
+            .collect();
+        println!("  {}...", content_start.trim());
+    }
+    println!("================================================================================\n");
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Markdown helpers
@@ -1124,6 +1205,7 @@ pub fn cmd_story(extra: &[&str]) {
     let resume = extra.iter().any(|&a| a == "--resume" || a == "-r") || is_continue_cmd;
     let force_new = extra.contains(&"--new");
     let interactive = extra.iter().any(|&a| a == "--interactive" || a == "-i");
+    let preview_flag = extra.iter().any(|&a| a == "--preview" || a == "-p");
     let phase_filter = parse_opt("--phase", extra);
     let fix_chapter = if let Some(idx) = extra.iter().position(|&a| a == "--fix") {
         extra.get(idx + 1).and_then(|v| {
@@ -1716,8 +1798,9 @@ pub fn cmd_story(extra: &[&str]) {
                     spec: serde_json::json!({"premise": prompt}),
                 }],
             };
-            let _outline_result = agent
-                .dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)?;
+            let _outline_result = run_with_spinner("Generating story outline", || {
+                agent.dispatch_single(backend.as_ref(), &plan.tasks[0], &ws)
+            })?;
             // Read back the markdown file (handler writes full chapter details there)
             let outline_text = read_ws_file(&ws, "01-OUTLINE.md").unwrap_or_default();
             println!("  ✓ Outline complete\n");
@@ -1749,7 +1832,9 @@ pub fn cmd_story(extra: &[&str]) {
                     spec: serde_json::json!({"premise": prompt, "outline": outline_text}),
                 }],
             };
-            agent.dispatch_single(backend.as_ref(), &wiki_plan.tasks[0], &ws)?;
+            run_with_spinner("Building world bible", || {
+                agent.dispatch_single(backend.as_ref(), &wiki_plan.tasks[0], &ws)
+            })?;
             println!("  ✓ World bible complete\n");
             read_ws_file(&ws, "02-WIKI.md").unwrap_or_default()
         } else {
@@ -1761,15 +1846,17 @@ pub fn cmd_story(extra: &[&str]) {
         // Examples have diverse themes (fantasy, sci-fi) but identical JSON output schema
         println!("  🔥 Baking writer session (format: JSON chapter prose)...");
         AgentJournal::info("story", "Baking writer session with format examples");
-        let bake_result = futures::executor::block_on(
-            roco_engine::bake_into_session(
-                backend.as_ref(),
-                SESSION_WRITER,
-                "You write fiction chapters. You always output JSON with title and content fields. \
-                 Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
-                BAKE_CHAPTER_EXAMPLES,
+        let bake_result = run_with_spinner("Baking writer session format expectations", || {
+            futures::executor::block_on(
+                roco_engine::bake_into_session(
+                    backend.as_ref(),
+                    SESSION_WRITER,
+                    "You write fiction chapters. You always output JSON with title and content fields. \
+                     Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
+                    BAKE_CHAPTER_EXAMPLES,
+                )
             )
-        );
+        });
         match bake_result {
             Ok(()) => AgentJournal::action("story", "Writer session baked"),
             Err(e) => AgentJournal::warn("story", &format!("Writer session baking skipped: {e}")),
@@ -1778,15 +1865,17 @@ pub fn cmd_story(extra: &[&str]) {
         // Bake instructional state into validator session — primes JSON `{quality, issues, suggestion}` format
         println!("  🔥 Baking validator session (format: JSON quality report)...");
         AgentJournal::info("story", "Baking validator session with format examples");
-        let val_bake_result = futures::executor::block_on(
-            roco_engine::bake_into_session(
-                backend.as_ref(),
-                SESSION_VALIDATOR,
-                "You review fiction chapters. You always output JSON with quality, issues, and suggestion fields. \
-                 Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
-                BAKE_VALIDATION_EXAMPLES,
+        let val_bake_result = run_with_spinner("Baking validator session format expectations", || {
+            futures::executor::block_on(
+                roco_engine::bake_into_session(
+                    backend.as_ref(),
+                    SESSION_VALIDATOR,
+                    "You review fiction chapters. You always output JSON with quality, issues, and suggestion fields. \
+                     Never include thinking, reasoning, or meta-commentary. Only the JSON object.",
+                    BAKE_VALIDATION_EXAMPLES,
+                )
             )
-        );
+        });
         match val_bake_result {
             Ok(()) => AgentJournal::action("story", "Validator session baked"),
             Err(e) => AgentJournal::warn("story", &format!("Validator session baking skipped: {e}")),
@@ -1855,8 +1944,9 @@ pub fn cmd_story(extra: &[&str]) {
                         "chapter_summary": chapter_summary,
                     }),
                 };
-                let ch_result = agent
-                    .dispatch_single(backend.as_ref(), &ch_task, &ws)?;
+                let ch_result = run_with_spinner(&format!("Drafting Chapter {i}"), || {
+                    agent.dispatch_single(backend.as_ref(), &ch_task, &ws)
+                })?;
 
                 // Retry loop: validate → [if fail] revise → re-validate → repeat
                 let max_retries = 3;
@@ -1872,8 +1962,9 @@ pub fn cmd_story(extra: &[&str]) {
                             "text": current_text,
                         }),
                     };
-                    let val_result = agent
-                        .dispatch_single(backend.as_ref(), &val_task, &ws)?;
+                    let val_result = run_with_spinner(&format!("Analyzing quality of Chapter {i}"), || {
+                        agent.dispatch_single(backend.as_ref(), &val_task, &ws)
+                    })?;
 
                     let val_entry = &val_result.output;
                     let mut needs_revision = val_entry.contains("Quality: fail")
@@ -1962,8 +2053,9 @@ pub fn cmd_story(extra: &[&str]) {
                             "feedback": revision_feedback,
                         }),
                     };
-                    let retry_result = agent
-                        .dispatch_single(backend.as_ref(), &retry_task, &ws)?;
+                    let retry_result = run_with_spinner(&format!("Revising Chapter {i} (attempt {})", attempt + 1), || {
+                        agent.dispatch_single(backend.as_ref(), &retry_task, &ws)
+                    })?;
                     current_text = retry_result.output;
 
                     // Validate retry output isn't empty or degenerate
@@ -2004,7 +2096,9 @@ pub fn cmd_story(extra: &[&str]) {
             domain: "synopsis".into(),
             spec: serde_json::json!({"chapters": all_chapters}),
         };
-        agent.dispatch_single(backend.as_ref(), &synopsis_task, &ws)?;
+        run_with_spinner("Creating final synopsis", || {
+            agent.dispatch_single(backend.as_ref(), &synopsis_task, &ws)
+        })?;
         println!("  ✓ Synopsis complete\n");
 
         // Phase 5: publish
@@ -2045,6 +2139,10 @@ pub fn cmd_story(extra: &[&str]) {
         println!(
             "✅ Monitor: tail -f .roco/agent-journal.md\n"
         );
+
+        if preview_flag || std::io::stdout().is_terminal() {
+            show_story_preview(&ws);
+        }
 
         Ok(())
     });
@@ -2331,4 +2429,37 @@ pub fn cmd_revise(extra: &[&str]) {
     std::fs::write(&rev_file, &original_text).unwrap();
 
     std::fs::write(ws.root().join(&filename), &revised_text).unwrap();
+}
+
+#[cfg(test)]
+mod story_preview_tests {
+    use super::*;
+    use roco_workspace::{Workspace, WorkspaceKind};
+
+    #[test]
+    fn test_show_story_preview_handles_missing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let ws = Workspace::from_existing(temp.path().to_path_buf(), WorkspaceKind::Agent).unwrap();
+        // Should not panic or fail when files are missing
+        show_story_preview(&ws);
+    }
+
+    #[test]
+    fn test_show_story_preview_with_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let ws = Workspace::from_existing(temp.path().to_path_buf(), WorkspaceKind::Agent).unwrap();
+
+        std::fs::write(
+            ws.root().join("05-SYNOPSIS.md"),
+            "# Synopsis\nA grand adventure begins.",
+        )
+        .unwrap();
+        std::fs::write(
+            ws.root().join("03-CHAPTER_1.md"),
+            "# Chapter 1: The Beginning\nProse of Chapter 1 goes here.",
+        )
+        .unwrap();
+
+        show_story_preview(&ws);
+    }
 }

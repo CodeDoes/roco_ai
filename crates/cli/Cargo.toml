@@ -32,6 +32,7 @@ roco-infer-client = { path = "../infer-client" }
 roco-app = { path = "../app", package = "roco-app" }
 roco-session = { path = "../session" }
 walkdir = "2"
+indicatif = "0.17"
 # Optional surfaces — not in the fast default path.
 roco-server = { path = "../server", optional = true }
 roco-gateway = { path = "../gateway", optional = true }

@@ -693,7 +693,8 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
             "Inference server",
         ))
         .unwrap_or_else(|e| {
-            eprintln!("Error: {e}");
+            eprintln!("Error: {e}\n\nHint: The inference server failed to load the model.\n      Check that your model path exists: RWKV_MODEL=\"{}\"\n      Also make sure you have enough VRAM (~6GB). Run `roco inferd start` to view detailed logs.",
+                      std::env::var("RWKV_MODEL").unwrap_or_default());
             std::process::exit(1);
         });
         return Arc::new(RemoteBackend::new(format!("http://127.0.0.1:{}", gp)));
@@ -712,7 +713,7 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
     ensure_daemon(&exe, "gateway", gp, &["--detach"]);
     rt.block_on(wait_for_healthy(gp, Duration::from_secs(90), "Gateway"))
         .unwrap_or_else(|e| {
-            eprintln!("Error: {e}");
+            eprintln!("Error: {e}\n\nHint: Gateway did not start or port {gp} is already in use.\n      Try stopping other daemons with `roco stop` or checking system logs.");
             std::process::exit(1);
         });
 
@@ -726,7 +727,8 @@ pub fn ensure_backend() -> Arc<dyn roco_engine::ModelBackend> {
         "Inference server",
     ))
     .unwrap_or_else(|e| {
-        eprintln!("Error: {e}");
+        eprintln!("Error: {e}\n\nHint: The inference server failed to load the model.\n      Check that your model path exists: RWKV_MODEL=\"{}\"\n      Also make sure you have enough VRAM (~6GB). Run `roco inferd start` to view detailed logs.",
+                  std::env::var("RWKV_MODEL").unwrap_or_default());
         std::process::exit(1);
     });
 
