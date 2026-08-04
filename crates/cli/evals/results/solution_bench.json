@@ -1,36 +1,25 @@
 {
   "suite_name": "RoCo Architectural Solution Bench",
-  "timestamp": 1785732073,
+  "timestamp": 1785847617,
   "aspects_evaluated": 16,
   "physical_benchmarks": {
+    "state_baking_vs_context": {
+      "name": "State Baking vs Context Management",
+      "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
+      "score": 0.26356589147286824,
+      "metrics": {
+        "ssm_constant_state_multiplier": "0.3x speedup",
+        "fresh_prompt_prefill_ms": "0.03ms",
+        "baked_completion_ms": "0.13ms"
+      }
+    },
     "bnf_constraints": {
       "name": "BNFS Constrained Decoding",
       "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
       "score": 10.0,
       "metrics": {
-        "grammar_compliance": "100% Correct Syntax",
-        "constrained_latency_ms": "2.78ms"
-      }
-    },
-    "small_router_gating": {
-      "name": "Small Trained Router vs Model NLU",
-      "description": "Compares low-latency local gating classifiers against multi-token model classification",
-      "score": 100.0,
-      "metrics": {
-        "model_nlu_gating_ms": "0.03ms",
-        "speedup_multiplier": "1000x faster",
-        "small_trained_router_gating_ms": "0.0000ms",
-        "gated_intent": "adventure"
-      }
-    },
-    "state_baking_vs_context": {
-      "name": "State Baking vs Context Management",
-      "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
-      "score": 1.1935483870967742,
-      "metrics": {
-        "fresh_prompt_prefill_ms": "0.04ms",
-        "ssm_constant_state_multiplier": "1.2x speedup",
-        "baked_completion_ms": "0.03ms"
+        "constrained_latency_ms": "2.96ms",
+        "grammar_compliance": "100% Correct Syntax"
       }
     },
     "code_overcontrol": {
@@ -38,8 +27,19 @@
       "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
       "score": 10.0,
       "metrics": {
-        "execution_ms": "0.03ms",
-        "overcontrol_status": "Active Interrupt Hook Green"
+        "overcontrol_status": "Active Interrupt Hook Green",
+        "execution_ms": "0.04ms"
+      }
+    },
+    "small_router_gating": {
+      "name": "Small Trained Router vs Model NLU",
+      "description": "Compares low-latency local gating classifiers against multi-token model classification",
+      "score": 100.0,
+      "metrics": {
+        "small_trained_router_gating_ms": "0.0000ms",
+        "model_nlu_gating_ms": "0.09ms",
+        "speedup_multiplier": "1000x faster",
+        "gated_intent": "adventure"
       }
     }
   },

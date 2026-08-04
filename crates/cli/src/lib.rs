@@ -141,6 +141,12 @@ fn help_root(hidden: bool) {
     eprintln!("Identity:");
     eprintln!("  whoami       Show what RoCo is and what it knows about you");
     eprintln!("  version      Show version\n");
+    eprintln!("Quick Start & Requirements:");
+    eprintln!("  - Requires Vulkan GPU support and ~6GB VRAM for local inference.");
+    eprintln!("  - Set the following environment variables to load the RWKV model:");
+    eprintln!("      export RWKV_MODEL=\"/path/to/model.st\"");
+    eprintln!("      export RWKV_VOCAB=\"/path/to/vocab.json\"");
+    eprintln!("  - Run `roco quickstart` for a comprehensive step-by-step first-run guide.\n");
     eprintln!("Config: RWKV_MODEL / .roco/config.toml / $ROCO_DIR/config.toml\n");
     eprintln!("Try: roco quickstart");
     std::process::exit(0);
