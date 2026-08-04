@@ -57,12 +57,15 @@ Archived (complete, all projects): 2026-08-02.
 | 2026-08-01 | `8734906127248152439` | Advanced LLM Inference and Architecture Evaluation Bench | `crates/cli/src/bin/roco.rs`, `crates/cli/src/cmd/mod.rs`, `crates/cli/src/cmd/solution_bench.rs` |
 | 2026-08-01 | `14390178209579120919` | Speed Up Nix CI with Cachix | `.github/workflows/ci.yml`, `crates/cli/evals/results/solution_bench.json` |
 | 2026-08-02 | `7029977012429529988` | Bolt ⚡: Performance Optimization Agent | `.jules/bolt.md`, `crates/agent/src/embeddings.rs`, `crates/agent/src/memory.rs` |
+| 2026-08-04 | `5674460186927467214` | Bolt ⚡: optimize spell-checking string allocations | PR #25 merged — `crates/agent/src/validation/classic.rs`, `crates/cli/evals/results/solution_bench.json` |
 
 ### 🟣 Open PR (1)
 
 | Date | Session ID | Task | Evidence |
 |---|---|---|---|
 | 2026-08-01 | `16415932402413650959` | The Warden's Folio: Five Adventure Tomes for Game Masters | `docs/ttrpg_guides/wardens_folio.html` |
+
+**Update (2026-08-04)**: Closed as superseded — Hearts & Academics content already in main with `tome-datingsim` naming convention.
 
 ### ⚠️ PR closed-unmerged, feature landed (2)
 
@@ -290,9 +293,9 @@ Sessions told to **proceed and open a PR** (one per task, to avoid conflicting P
 - **`--preview` flag**: sessions `8476536743818790608`, `17981227535420543824` — **not in repo**. Open.
 - **Exponential-backoff error recovery** (`crates/engine/src/retry.rs`): session `15967067688989217211` — **file absent**. Open.
 - **`docs/management_intents.md`**: session `18207128461200737770` — **file absent**. Open.
-- **CLI help text with management intents**: session `9784625986273857388` — not in `lib.rs` help. Open.
-- **README update** (intents): session `2458249735060063710` — no root `README.md` exists. Open.
-- **Warden's Folio PR #24** still open on `CodeDoes/roco_ai` (content already in repo).
+- ~~**CLI help text with management intents**~~: session `9784625986273857388` — **addressed 2026-08-04**: help link to docs/README.md added in `crates/cli/src/lib.rs`.
+- ~~**README update**~~: session `2458249735060063710` — **addressed 2026-08-04**: `docs/README.md` created with quickstart guide, requirements, common workflows.
+- ~~**Warden's Folio PR #24**~~ — closed 2026-08-04 as superseded (content already in main with `tome-datingsim` naming).
 - **TTRPG adventure guides PR #5** still open on `CodeDoes/rwkv-lab`.
 - **Predictive-Coding flow network PR #3** still open on `CodeDoes/latent-state-thinking-vs-speaking`.
 - **VLIW docs PR #1** still open on `CodeDoes/original_performance_takehome`.
