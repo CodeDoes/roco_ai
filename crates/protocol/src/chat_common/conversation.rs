@@ -42,7 +42,34 @@ impl ConversationState {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(path, &json).map_err(|e| e.to_string())?;
+
+        // Atomic write: write to a temporary file in the same directory, then rename.
+        // This avoids concurrent readers reading a truncated or partially written file.
+        use std::collections::hash_map::RandomState;
+        use std::hash::{BuildHasher, Hasher};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let count = COMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let pid = std::process::id();
+        let mut hasher = RandomState::new().build_hasher();
+        hasher.write_usize(count);
+        hasher.write_u32(pid);
+
+        let temp_name = format!(
+            "{}.tmp-{:x}",
+            path.file_name()
+                .map(|name| name.to_string_lossy())
+                .unwrap_or_else(|| std::borrow::Cow::Borrowed("")),
+            hasher.finish()
+        );
+        let temp_path = path.with_file_name(temp_name);
+
+        std::fs::write(&temp_path, &json).map_err(|e| e.to_string())?;
+        if let Err(e) = std::fs::rename(&temp_path, path) {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(e.to_string());
+        }
         Ok(())
     }
 
