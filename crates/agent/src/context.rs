@@ -359,10 +359,9 @@ fn compute_relevance(a: &str, b: &str) -> f32 {
 /// Lowercase and split on non-alpha characters. Returns owned strings to avoid
 /// dangling-reference issues.
 fn tokenize_words(text: &str) -> std::collections::HashSet<String> {
-    text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
+    text.split(|c: char| !c.is_alphanumeric())
         .filter(|s| !s.is_empty())
-        .map(String::from)
+        .map(|s| s.to_lowercase())
         .collect()
 }
 
