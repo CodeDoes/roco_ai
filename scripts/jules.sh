@@ -10,11 +10,13 @@
 #   scripts/jules.sh check                     Validate the key (key is masked)
 #   scripts/jules.sh sources                   List connected GitHub sources
 #   scripts/jules.sh sessions [--limit N]      List recent sessions (default 20)
+#   scripts/jules.sh prs [--limit N]           List open PRs from non-archived sessions
 #   scripts/jules.sh session <id>              Get one session (outputs/PRs)
 #   scripts/jules.sh activities <id> [--limit N]   List session activities
 #   scripts/jules.sh send <id> "<message>"     Message the agent in a session
 #   scripts/jules.sh create <repo> "<prompt>" [--branch main] [--pr] [--approval]
 #   scripts/jules.sh approve <id>              Approve a pending plan
+#   scripts/jules.sh supervise                 Poll active sessions for questions/plans
 #   scripts/jules.sh archive <id>              Archive one session (archived=true)
 #   scripts/jules.sh archive-all [--limit N]   Archive every session (all pages)
 #   scripts/jules.sh curl <METHOD> <path> [--data '<json>']   Raw passthrough
@@ -126,6 +128,15 @@ case "$CMD" in
             ([.outputs[]? | select(.pullRequest) | " → PR: " + .pullRequest.url] | join(""))
         '
         ;;
+    prs)
+        limit="100"
+        if [ "${1:-}" = "--limit" ]; then limit="$2"; fi
+        api GET "/sessions?pageSize=$limit" | fmt '
+            .sessions[]? | select((.archived != true) and ([.outputs[]? | has("pullRequest")] | any)) |
+            "  " + .id + "  " + (.title // "" | .[0:60]) +
+            ([.outputs[]? | select(.pullRequest) | " → PR: " + .pullRequest.url] | join(""))
+        '
+        ;;
     session)
         require_id "$@"
         api GET "/sessions/$1" | jq . || true
@@ -212,6 +223,49 @@ case "$CMD" in
         resp="$(api POST "/sessions/$1:archive")"
         die_on_error "$resp"
         printf '%s' "$resp" | jq -r '"Archived: " + .id + " (state: " + .state + ", archived: " + ((.archived // false) | tostring) + ")"'
+        ;;
+    supervise)
+        echo "Starting supervisor mode... (polling every 60s)"
+        state_dir="${TMPDIR:-/tmp}/jules_supervise_state"
+        mkdir -p "$state_dir"
+        while :; do
+            page="$(api GET "/sessions?pageSize=50")"
+            if ! printf '%s' "$page" | jq -e '.sessions' >/dev/null 2>&1; then
+                sleep 60
+                continue
+            fi
+            active_ids="$(printf '%s' "$page" | jq -r '.sessions[]? | select(.archived != true and .state != "COMPLETED" and .state != "ERROR") | .id')"
+
+            while IFS= read -r sid; do
+                [ -z "$sid" ] && continue
+                acts="$(api GET "/sessions/$sid/activities?pageSize=1")"
+                [ -z "$acts" ] && continue
+
+                latest_time="$(printf '%s' "$acts" | jq -r '.activities[0]?.createTime // empty')"
+                [ -z "$latest_time" ] && continue
+
+                state_file="$state_dir/$sid"
+                last_seen=""
+                if [ -f "$state_file" ]; then
+                    last_seen="$(cat "$state_file")"
+                fi
+
+                if [ "$latest_time" != "$last_seen" ]; then
+                    alert="$(printf '%s' "$acts" | jq -r '.activities[0]? | if .planGenerated then "NEEDS PLAN APPROVAL" elif .message and .originator == "AGENT" then "AGENT MESSAGE: " + .message.text else empty end')"
+                    if [ "$alert" = "NEEDS PLAN APPROVAL" ]; then
+                        echo "Session $sid NEEDS PLAN APPROVAL. Run: scripts/jules.sh approve $sid"
+                        echo "$latest_time" > "$state_file"
+                    elif [[ "$alert" == "AGENT MESSAGE:"* ]]; then
+                        msg="${alert#AGENT MESSAGE: }"
+                        echo "Session $sid AGENT QUESTION: $msg"
+                        echo "  Run: scripts/jules.sh send $sid '<reply>'"
+                        echo "$latest_time" > "$state_file"
+                    fi
+                fi
+            done <<< "$active_ids"
+
+            sleep 60
+        done
         ;;
     archive-all)
         # Archive every session across all pages; prints id + new archived flag.
