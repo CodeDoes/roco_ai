@@ -302,8 +302,9 @@ impl ChapterValidator {
         // Check 1: Repeated sentences
         let sentences: Vec<String> = text
             .split(['.', '!', '?'])
-            .map(|s| s.trim().to_lowercase())
+            .map(|s| s.trim())
             .filter(|s| s.len() > 10) // ignore very short fragments
+            .map(|s| s.to_lowercase())
             .collect();
 
         let mut seen: HashMap<String, usize> = HashMap::new();
