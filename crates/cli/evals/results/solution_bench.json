@@ -1,15 +1,15 @@
 {
   "suite_name": "RoCo Architectural Solution Bench",
-  "timestamp": 1785732073,
+  "timestamp": 1786076743,
   "aspects_evaluated": 16,
   "physical_benchmarks": {
-    "bnf_constraints": {
-      "name": "BNFS Constrained Decoding",
-      "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
+    "code_overcontrol": {
+      "name": "Code Overcontrol of Inference",
+      "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
       "score": 10.0,
       "metrics": {
-        "grammar_compliance": "100% Correct Syntax",
-        "constrained_latency_ms": "2.78ms"
+        "execution_ms": "0.03ms",
+        "overcontrol_status": "Active Interrupt Hook Green"
       }
     },
     "small_router_gating": {
@@ -18,28 +18,28 @@
       "score": 100.0,
       "metrics": {
         "model_nlu_gating_ms": "0.03ms",
-        "speedup_multiplier": "1000x faster",
         "small_trained_router_gating_ms": "0.0000ms",
+        "speedup_multiplier": "1000x faster",
         "gated_intent": "adventure"
       }
     },
     "state_baking_vs_context": {
       "name": "State Baking vs Context Management",
       "description": "Compares recurrent state vector recall (O(1) time complexity) against prompt sequence pre-feeding (O(L) time complexity)",
-      "score": 1.1935483870967742,
+      "score": 1.0909090909090908,
       "metrics": {
-        "fresh_prompt_prefill_ms": "0.04ms",
-        "ssm_constant_state_multiplier": "1.2x speedup",
-        "baked_completion_ms": "0.03ms"
+        "ssm_constant_state_multiplier": "1.1x speedup",
+        "baked_completion_ms": "0.03ms",
+        "fresh_prompt_prefill_ms": "0.04ms"
       }
     },
-    "code_overcontrol": {
-      "name": "Code Overcontrol of Inference",
-      "description": "Evaluates program-level stopping boundary enforcement over raw logit sequence completion",
+    "bnf_constraints": {
+      "name": "BNFS Constrained Decoding",
+      "description": "Validates that BNF grammar-constrained masks enforce 100% correct JSON structure",
       "score": 10.0,
       "metrics": {
-        "execution_ms": "0.03ms",
-        "overcontrol_status": "Active Interrupt Hook Green"
+        "grammar_compliance": "100% Correct Syntax",
+        "constrained_latency_ms": "2.13ms"
       }
     }
   },
