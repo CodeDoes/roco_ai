@@ -1194,7 +1194,8 @@ fn build_common_word_set() -> &'static HashSet<&'static str> {
         "current",
         "depth",
     ];
-    static COMMON_WORDS_LOCK: std::sync::OnceLock<HashSet<&'static str>> = std::sync::OnceLock::new();
+    static COMMON_WORDS_LOCK: std::sync::OnceLock<HashSet<&'static str>> =
+        std::sync::OnceLock::new();
     COMMON_WORDS_LOCK.get_or_init(|| words.into_iter().collect())
 }
 
