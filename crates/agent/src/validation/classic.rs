@@ -29,7 +29,7 @@ pub struct ChapterValidator {
     /// Maximum consecutive short paragraphs before flagging
     pub max_consecutive_short_paragraphs: usize,
     /// Common English words (used for spell-check baseline)
-    common_words: HashSet<String>,
+    common_words: &'static HashSet<&'static str>,
 }
 
 impl Default for ChapterValidator {
@@ -751,7 +751,7 @@ fn is_likely_typo(word: &str, lower: &str) -> bool {
 }
 
 /// Build a set of common English words for spell-check baseline.
-fn build_common_word_set() -> HashSet<String> {
+fn build_common_word_set() -> &'static HashSet<&'static str> {
     let words = [
         "the",
         "be",
@@ -1194,7 +1194,8 @@ fn build_common_word_set() -> HashSet<String> {
         "current",
         "depth",
     ];
-    words.iter().map(|s| s.to_string()).collect()
+    static COMMON_WORDS_LOCK: std::sync::OnceLock<HashSet<&'static str>> = std::sync::OnceLock::new();
+    COMMON_WORDS_LOCK.get_or_init(|| words.into_iter().collect())
 }
 
 #[cfg(test)]
